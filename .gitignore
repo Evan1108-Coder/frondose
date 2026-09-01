@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+dist/
+.rumbo/
+.env
+.env.*
+*.log
+npm-debug.log*
