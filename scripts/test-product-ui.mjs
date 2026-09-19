@@ -39,7 +39,7 @@ try {
   await page.screenshot({path:'/tmp/rumbo-home-desktop.png'});
   await page.locator('.project-nav-row').filter({hasText:'SourceLens'}).hover();await page.getByRole('button',{name:'Options for SourceLens',exact:true}).click();await page.getByRole('button',{name:'Hide from sidebar',exact:true}).click();
   assert.equal(await page.locator('.project-nav-row').filter({hasText:'SourceLens'}).count(),0);
-  await page.reload();await page.getByRole('button',{name:'Customize sidebar',exact:true}).click();
+  await go('settings/appearance');await page.getByRole('button',{name:'Customize',exact:true}).click();
   await page.locator('.sidebar-editor-row').filter({hasText:'SourceLens'}).getByRole('button',{name:'Restore',exact:true}).click();await page.getByRole('button',{name:'Save layout',exact:true}).click();
   await page.locator('.project-nav-row').filter({hasText:'SourceLens'}).waitFor();
   await page.keyboard.press('Control+k');await page.getByPlaceholder('Search anything · try type:output or project:Atlas').fill('type:message spectrometer');await page.keyboard.press('Enter');await page.waitForURL(/message=/);assert.ok(page.url().includes(chat.id));

@@ -2,6 +2,8 @@ import { Fragment } from "react";
 import { safeUrl } from "../lib/model.js";
 import { parsePage, pageHash } from '../lib/navigation.js';
 import "./document-content.css";
+import { ServiceLogo } from './ServiceLogo.jsx';
+import { serviceBrand } from '../lib/service-brands.js';
 
 // Deliberately small Markdown subset. React escapes all text; raw HTML and
 // remote images never execute or load as a side effect of reading a document.
@@ -17,7 +19,7 @@ function Inline({ text }) {
       const base = link[2].split('?')[0];
       if (pageHash(page.view,page.id).split('?')[0] === base) return <a key={index} href={link[2]}>{link[1]}</a>;
     }
-    if (link && safeUrl(link[2])) return <a key={index} href={safeUrl(link[2])} target="_blank" rel="noreferrer noopener">{link[1]}</a>;
+    if (link && safeUrl(link[2])) return <a key={index} href={safeUrl(link[2])} target="_blank" rel="noreferrer noopener">{serviceBrand(null, link[2]) ? <ServiceLogo url={link[2]} className="inline-service-logo" /> : null}{link[1]}</a>;
     return <Fragment key={index}>{token}</Fragment>;
   });
 }

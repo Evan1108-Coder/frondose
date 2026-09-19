@@ -37,6 +37,8 @@
   --warning: #e4b85a;
   --danger: #f06b6b;
   --avatar: #34343a;
+  --brand-logo-background: #ffffff;
+  --brand-logo-fallback: #34383d;
   --backdrop: #000000a8;
   --scrim: #00000099;
   --selection: #4653ae;
@@ -415,6 +417,11 @@ input[type="checkbox"] {
   border-radius: 5px;
   padding: 2px 7px;
 }
+.service-logo { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 3px; border-radius: 5px; background: var(--brand-logo-background); flex-shrink: 0; color: var(--brand-logo-fallback); }
+.service-logo > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.service-logo > svg { width: 18px; height: 18px; }
+.service-logo.inline-service-logo { width: 16px; height: 16px; padding: 1px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+.provider-icon.large .service-logo, .integration-catalog-icon .service-logo { width: 30px; height: 30px; padding: 4px; }
 .provider-icon {
   display: inline-flex;
   align-items: center;
@@ -939,6 +946,19 @@ input[type="checkbox"] {
   padding-left: 35px;
   background: transparent;
 }
+/* Search is one control: focus encloses the icon and input together. */
+.search-field { border-radius: 8px; }
+:is(.search-field, .settings-search, .command-search):focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+:is(.search-field, .settings-search, .command-search) input:focus,
+:is(.search-field, .settings-search, .command-search) input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.search-field input:focus { border-color: var(--border); }
+.command-search:focus-within { outline-offset: -2px; border-radius: 10px 10px 0 0; }
 .select-wrap {
   position: relative;
   display: flex;

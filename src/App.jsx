@@ -38,6 +38,8 @@ const AgentsView = lazy(() => import('./views/AgentRoster.jsx').then(module => (
 import { Form } from "./components/Form.jsx";
 const ConnectionsView = lazy(() => import('./views/Connections.jsx').then(module => ({ default: module.ConnectionsView })));
 const SettingsCenter = lazy(() => import('./views/settings/SettingsCenter.jsx').then(module => ({ default: module.SettingsCenter })));
+const DocsView = lazy(() => import('./views/Docs.jsx').then(module => ({ default: module.DocsView })));
+const FeedbackDialog = lazy(() => import('./components/FeedbackDialog.jsx').then(module => ({ default: module.FeedbackDialog })));
 import { RumboWordmark, RumboSymbol } from "./components/Brand.jsx";
 import { parsePage, pageHash } from "./lib/navigation.js";
 import { trackInputModality } from "./lib/motion.js";
@@ -92,6 +94,7 @@ export function App() {
   const [mobileOpen, setMobileOpen] = useState(false),
     [commandOpen, setCommandOpen] = useState(false),
     [helpOpen, setHelpOpen] = useState(false),
+    [feedbackOpen, setFeedbackOpen] = useState(false),
     [editor, setEditor] = useState(null),
     [session, setSession] = useState(null),
     [toast, setToast] = useState(null);
@@ -364,6 +367,7 @@ export function App() {
     startSession,
     status,
     showShortcuts: () => setHelpOpen(true),
+    showFeedback: () => { setMobileOpen(false); setFeedbackOpen(true); },
     customizeSidebar: () => { setMobileOpen(false); setSidebarEditorOpen(true); },
     organization, updateOrganization, toggleFavorite, experience, updateExperience,
   };
@@ -398,7 +402,7 @@ export function App() {
   const currentTeam = page.view === 'teams' ? visible(data.teams).find(team => team.id === page.id) : null;
   return (
     <AppContext.Provider value={context}>
-      <div className={`rumbo-app ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''}`}>
+      <div className={`rumbo-app ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
         <a
           href="#main-content"
           className="skip-link"
@@ -409,7 +413,7 @@ export function App() {
         >
           Skip to content
         </a>
-        <Sidebar
+        {page.view === 'docs' ? <ScreenBoundary key={`docs-${workspace.id}`}><Suspense fallback={<div className="app-loading" role="status">Opening documentation…</div>}><DocsView /></Suspense></ScreenBoundary> : <><Sidebar
           key={workspace.id}
           collapsed={collapsed}
           setCollapsed={setCollapsed}
@@ -417,7 +421,7 @@ export function App() {
           setMobileOpen={setMobileOpen}
           onSearch={() => setCommandOpen(true)}
           onHelp={() => setHelpOpen(true)}
-          overlayOpen={Boolean(commandOpen || helpOpen || editor || session || sidebarEditorOpen)}
+          overlayOpen={Boolean(commandOpen || helpOpen || feedbackOpen || editor || session || sidebarEditorOpen)}
         />
         <div className="app-main" inert={mobileOpen ? true : undefined}>
           <header className="topbar">
@@ -475,6 +479,8 @@ export function App() {
             </ScreenBoundary>
           </div>
         </div>
+        </>}
+        {feedbackOpen ? <Suspense fallback={<p role="status">Opening feedback…</p>}><FeedbackDialog onClose={() => setFeedbackOpen(false)} /></Suspense> : null}
         {commandOpen ? (
           <CommandPalette onClose={() => setCommandOpen(false)} />
         ) : null}

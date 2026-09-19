@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useRef } from "react";
 import { MorphIcon } from "morphicons/react";
 import {
   Activity as ActivityNode, Archive as ArchiveNode, RotateCw as RotateCwNode,
+  Sun as SunNode, Moon as MoonNode,
   RotateCcw as RotateCcwNode, ArrowDown as ArrowDownNode, ArrowLeft as ArrowLeftNode,
   ArrowRight as ArrowRightNode, ExternalLink as ExternalLinkNode, ArrowUp as ArrowUpNode,
   ArrowUpRight as ArrowUpRightNode, Asterisk as AsteriskNode, Bell as BellNode,
@@ -92,6 +93,8 @@ function defineIcon(name, node) {
 }
 
 export const Activity = defineIcon("Activity", ActivityNode);
+export const Sun = defineIcon("Sun", SunNode);
+export const Moon = defineIcon("Moon", MoonNode);
 export const Archive = defineIcon("Archive", ArchiveNode);
 export const RotateCw = defineIcon("RotateCw", RotateCwNode);
 export const RotateCcw = defineIcon("RotateCcw", RotateCcwNode);

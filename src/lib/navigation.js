@@ -1,6 +1,6 @@
 const VIEWS = new Set([
   "overview", "inbox", "projects", "tasks", "chats", "work", "memory",
-  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views",
+  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents"]);
 const home = () => ({ view: "overview", id: null, projectId: null });

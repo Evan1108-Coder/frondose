@@ -4,6 +4,7 @@ import { Button, Dialog, Empty, ErrorMessage, Field, IconButton, SearchField, Se
 import { apiRequest } from '../data/api.js';
 import { relative, visible } from '../lib/model.js';
 import './team-resources.css';
+import { ServiceLogo } from '../components/ServiceLogo.jsx';
 
 const KINDS = { file: 'File', url: 'Web link', route: 'Route', project: 'Project', chat: 'Chat', document: 'Document', branch: 'GitHub branch' };
 const ICONS = { file: Paperclip, url: Link, route: Route, project: FolderKanban, chat: MessageSquareText, document: NotebookPen, branch: GitBranch };
@@ -14,12 +15,8 @@ const resourcePath = (team, id = '') => `/api/team-resources${id ? `/${encodeURI
 const contentPath = (team, item, preview = false) => `/api/team-resources/${encodeURIComponent(item.id)}/content?workspace_id=${encodeURIComponent(team.workspace_id)}&team_id=${encodeURIComponent(team.id)}${preview ? '&preview=1' : ''}`;
 
 function ResourceIcon({ item }) {
-  const [failed, setFailed] = useState(false);
   const Icon = ICONS[item.kind] || FileText;
-  // Only the browser visits the explicitly supplied resource origin. Never send
-  // URLs to a third-party favicon service or fetch arbitrary URLs on the server.
-  const favicon = item.url ? new URL('/favicon.ico', item.url).href : null;
-  return <span className="team-resource-symbol">{favicon && !failed ? <img src={favicon} alt="" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} /> : <Icon />}</span>;
+  return <span className="team-resource-symbol">{item.url ? <ServiceLogo url={item.url} /> : <Icon />}</span>;
 }
 
 export function TeamResources({ team, compact = false, onViewAll }) {

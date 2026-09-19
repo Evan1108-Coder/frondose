@@ -17,7 +17,7 @@ export function readExperience(storage, workspaceId) {
   try { return normalizeExperience(JSON.parse(storage.getItem(`rumbo.experience.${workspaceId}`))); } catch { return normalizeExperience(null); }
 }
 export function rememberPage(preferences, page, time = Date.now()) {
-  if (page.view === 'settings') return preferences;
+  if (['settings', 'docs'].includes(page.view)) return preferences;
   const hash = pageHash(page.view, page.id, page);
   const recent = [{ hash, at: time }, ...preferences.recent.filter(p => p.hash !== hash)].slice(0, 24);
   return { ...preferences, recent };

@@ -43,7 +43,9 @@ export function normalizeOrganization(value) {
     if (!['projects', 'teams', 'agents', 'chats', 'views'].includes(item?.view) || !validString(item.id) || hiddenSeen.has(favoriteKey(item))) continue;
     hiddenSeen.add(favoriteKey(item)); hiddenItems.push({ view: item.view, id: item.id });
   }
-  return { version: 1, order, visibility, favorites, hiddenItems,
+  const pinnedLayout = (Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => Object.values(SIDEBAR_GROUPS).flat().includes(id));
+  const entityOrder = Object.fromEntries(['projects', 'teams', 'agents', 'chats'].map(view => [view, [...new Set((Array.isArray(input.entityOrder?.[view]) ? input.entityOrder[view] : []).filter(validString))].slice(0, 500)]));
+  return { version: 1, order, visibility, favorites, hiddenItems, pinnedLayout, entityOrder,
     badges: ["count", "dot", "none"].includes(input.badges) ? input.badges : "count",
     density: input.density === "compact" ? "compact" : "comfortable",
     shortcuts: input.shortcuts !== false,
@@ -65,6 +67,16 @@ export function moveItem(items, id, offset) {
   if (from < 0 || to < 0 || to >= next.length) return next;
   [next[from], next[to]] = [next[to], next[from]];
   return next;
+}
+export function placeSidebarItem(items, source, target) {
+  if (source === target || !items.includes(source) || !items.includes(target)) return [...items];
+  const next = items.filter(id => id !== source);
+  next.splice(items.indexOf(target), 0, source);
+  return next;
+}
+export function sortSidebarEntities(items, order = []) {
+  const positions = new Map(order.map((id, index) => [id, index]));
+  return [...items].sort((a, b) => (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity));
 }
 export function resolveFavorite(data, reference) {
   if (!FAVORITE_VIEWS.has(reference?.view)) return null;

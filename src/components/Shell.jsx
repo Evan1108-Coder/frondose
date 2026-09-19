@@ -16,6 +16,9 @@ import { describePage } from '../lib/workspace-experience.js';
 import { parsePage } from '../lib/navigation.js';
 import { featureItems } from '../lib/settings-catalog.js';
 import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban } from './icons.jsx';
+import { HelpMenu } from './HelpMenu.jsx';
+import { useSidebarArrange } from './SidebarArrange.jsx';
+import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 
 const NAV_ICONS = { overview: House, focus: Focus, inbox: Inbox, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
@@ -37,7 +40,6 @@ export function Sidebar({
     page,
     navigate,
     edit,
-    status,
     startSession,
     organization, customizeSidebar, toggleFavorite, updateOrganization, notify,
   } = useApp();
@@ -50,17 +52,17 @@ export function Sidebar({
       setCreateOpen(false);
     }
   }, [overlayOpen]);
-  const sidebarItems = view => visible(data[view] ?? []).filter(item => !isSidebarHidden(organization, view, item.id));
+  const sidebarItems = view => sortSidebarEntities(visible(data[view] ?? []).filter(item => !isSidebarHidden(organization, view, item.id)), organization.entityOrder[view]);
   const projects = sidebarItems('projects');
   const teams = sidebarItems('teams');
-  const chats = sidebarItems('chats').toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || byUpdated(a, b));
+  const chats = sortSidebarEntities(sidebarItems('chats').toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || byUpdated(a, b)), organization.entityOrder.chats);
   const recentChats = chats.slice(0, 8);
   const agents = sidebarItems('agents');
-  const savedViews = featureItems(data, 'saved_view').filter(item => !isSidebarHidden(organization, 'views', item.id));
   const optionsButton = (view, item) => <IconButton className="icon-button sidebar-item-options" label={`Options for ${item.name || item.title}`} onClick={() => setItemOptions({ view, id: item.id, title: item.name || item.title })}><Ellipsis /></IconButton>;
   const favorites = organization.favorites.map(reference => resolveFavorite(data, reference)).filter(Boolean);
   const counts = organizationCounts(data, organization);
-  const sectionStyle = id => ({ order: organization.order.sections.indexOf(id) + 1, display: showSidebarItem(id, organization, counts) ? undefined : "none" });
+  const layoutOrder = group => [...organization.order[group]].sort((a, b) => Number(organization.pinnedLayout.includes(b)) - Number(organization.pinnedLayout.includes(a)));
+  const sectionStyle = id => ({ order: layoutOrder('sections').indexOf(id) + 1, display: showSidebarItem(id, organization, counts) ? undefined : "none" });
   const badge = (id, label) => !counts[id] || organization.badges === "none" ? null : organization.badges === "dot" ? <i className="live-dot activity-badge" aria-label={`${counts[id]} ${label}`} /> : <small className="nav-count" aria-label={`${counts[id]} ${label}`}>{counts[id]}</small>;
   const entity = page.view === "tasks" ? data.tasks.find((item) => item.id === page.id)
     : page.view === "chats" ? data.chats.find((item) => item.id === page.id) : null;
@@ -168,6 +170,10 @@ export function Sidebar({
   const toggleSection = (section) => setPreferences((current) => ({ ...current,
     sections: { ...current.sections, [section]: !current.sections[section] },
   }));
+  const arrange = useSidebarArrange({ organization, updateOrganization, notify, create, toggleFavorite });
+  const creationKind = id => ({ projects: 'project', teams: 'team', agents: 'agent', chats: 'chat', tasks: 'task', workspace: 'task', memory: 'memory' })[id];
+  const layoutBinding = (id, title) => arrange.bind({ id, title: title ?? SECTION_LABELS[id] ?? NAV.find(n => n.id === id)?.label, group: Object.keys(organization.order).find(group => organization.order[group].includes(id)), kind: creationKind(id) });
+  const entityBinding = (view, item) => arrange.bind({ entity: true, group: view, id: item.id, title: item.name || item.title, items: sidebarItems(view).map(i => i.id), kind: ['projects', 'teams'].includes(view) ? 'task' : creationKind(view), defaults: view === 'projects' ? { project_id: item.id } : view === 'teams' ? { team_id: item.id } : {} });
   const toggleProject = (id) => setPreferences((current) => ({ ...current,
     projects: { ...current.projects, [id]: !current.projects[id] },
   }));
@@ -175,12 +181,12 @@ export function Sidebar({
     const item = NAV.find((entry) => entry.id === id), Icon = item.icon;
     const active = page.view === id && ((collapsed && !isMobile) || !activeProject);
     return <Tooltip key={id} label={`${label ?? item.label}${organization.shortcuts ? ` · G ${item.key}` : ""}`}><button className={`nav-item ${active ? "active" : ""}`}
-      aria-current={active ? "page" : undefined} onClick={() => go(id)}>
+      {...layoutBinding(id, label ?? item.label)} aria-current={active ? "page" : undefined} onClick={() => go(id)}>
       <Icon /><span>{label ?? item.label}</span>
       {badge(id, `${item.label.toLowerCase()} items`)}
     </button></Tooltip>;
   };
-  const sectionHeader = (section, label, target, onCreate) => <div className="sidebar-section-heading">
+  const sectionHeader = (section, label, target, onCreate) => <div className="sidebar-section-heading" {...layoutBinding(section, label)}>
     <button className="section-disclosure" aria-label={`${preferences.sections[section] ? "Collapse" : "Expand"} ${label.toLowerCase()}`}
       aria-expanded={preferences.sections[section]} aria-controls={`navigation-${section}`} onClick={() => toggleSection(section)}>
       <span className="disclosure-chevron"><ChevronRight morphTo={preferences.sections[section] ? ChevronDown : ChevronRight} interactive={false} /></span>
@@ -242,7 +248,6 @@ export function Sidebar({
               ))}
               <div className="menu-divider" />
               <button onClick={() => go("settings", "workspace")}><Settings /><span>Workspace settings</span></button>
-              <button onClick={() => { setWorkspaceOpen(false); customizeSidebar(); }}><PanelLeft /><span>Customize sidebar</span></button>
               <button onClick={() => { setWorkspaceOpen(false); setMobileOpen(false); onHelp(); }}><Keyboard /><span>Keyboard shortcuts</span></button>
               <button
                 onClick={() => create("workspace")}
@@ -254,6 +259,8 @@ export function Sidebar({
           ) : null}
         </div>
         <div className="sidebar-header-actions">
+          <IconButton label={isMobile ? "Close navigation" : collapsed ? "Expand navigation" : "Collapse navigation"}
+            onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(!collapsed)}><UiIcon icon={isMobile ? X : collapsed ? PanelLeftOpen : PanelLeftClose} /></IconButton>
           <IconButton label="Search anything · ⌘ / Ctrl K" onClick={() => { setMobileOpen(false); setWorkspaceOpen(false); setCreateOpen(false); onSearch(); }}><Search /></IconButton>
           <div className="sidebar-create">
             <IconButton ref={createTriggerRef} label="Create new" aria-expanded={createOpen} onClick={() => { setCreateOpen(!createOpen); setWorkspaceOpen(false); }}><SquarePen /></IconButton>
@@ -267,7 +274,7 @@ export function Sidebar({
         </div>
         <nav aria-label="Main navigation">
           <div className="nav-group main-nav">
-            {organization.order.primary.filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id))}
+            {layoutOrder('primary').filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id))}
           </div>
           <section className="sidebar-section favorites-navigation" style={sectionStyle("favorites")}>
             {sectionHeader("favorites", "Favorites")}
@@ -280,9 +287,9 @@ export function Sidebar({
             <div className="collapsed-section-link">{navItem("agents")}</div>
             {sectionHeader("agents", "Your agents", "agents", () => create("agent"))}
             <Collapse id="navigation-agents" className="sidebar-section-content nav-group" open={preferences.sections.agents}>
-              {agents.slice().sort((a, b) => Number(favorites.some(f => f.view === "agents" && f.id === b.id)) - Number(favorites.some(f => f.view === "agents" && f.id === a.id)) || a.name.localeCompare(b.name)).map(agent => {
+              {agents.map(agent => {
                 const active = data.runs.filter(run => val(run, "agent_id") === agent.id && runningStatuses.has(run.status)).length;
-                return <div className="sidebar-entity-row" key={agent.id}><Tooltip label={`${agent.name}${active ? ` · ${active} active sessions` : agent.status === "paused" ? " · Paused" : " · Agent profile"}`}><button className={`nav-item ${page.view === "agents" && page.id === agent.id ? "active" : ""}`} onClick={() => go("agents", agent.id)}><Bot /><span>{agent.name}</span>{active && organization.badges !== "none" ? organization.badges === "dot" ? <i className="live-dot" /> : <small className="nav-count">{active}</small> : null}</button></Tooltip>{optionsButton('agents', agent)}</div>;
+                return <div className="sidebar-entity-row" key={agent.id} {...entityBinding("agents", agent)}><Tooltip label={`${agent.name}${active ? ` · ${active} active sessions` : agent.status === "paused" ? " · Paused" : " · Agent profile"}`}><button className={`nav-item ${page.view === "agents" && page.id === agent.id ? "active" : ""}`} onClick={() => go("agents", agent.id)}><Bot /><span>{agent.name}</span>{active && organization.badges !== "none" ? organization.badges === "dot" ? <i className="live-dot" /> : <small className="nav-count">{active}</small> : null}</button></Tooltip>{optionsButton('agents', agent)}</div>;
               })}
               {!agents.length ? <button className="sidebar-empty-action" onClick={() => create("agent")}><Plus /><span>Create an agent</span></button> : null}
             </Collapse>
@@ -292,7 +299,7 @@ export function Sidebar({
             {sectionHeader("teams", "Teams", "teams", () => create("team"))}
             <Collapse id="navigation-teams" className="sidebar-section-content nav-group" open={preferences.sections.teams}>
               {teams.map(team => <div className="sidebar-project sidebar-team-group" key={team.id}>
-                <div className={`project-nav-row ${page.view === 'teams' && page.id === team.id ? 'current-project' : ''}`}>
+                <div {...entityBinding("teams", team)} className={`project-nav-row ${page.view === 'teams' && page.id === team.id ? 'current-project' : ''}`}>
                   <button className="project-disclosure" aria-expanded={Boolean(preferences.teams[team.id])} aria-label={`${preferences.teams[team.id] ? 'Collapse' : 'Expand'} team ${team.name}`} aria-controls={`team-navigation-${team.id}`} onClick={() => setPreferences(current => ({ ...current, teams: { ...current.teams, [team.id]: !current.teams[team.id] } }))}><ChevronRight morphTo={preferences.teams[team.id] ? ChevronDown : ChevronRight} interactive={false} /></button>
                   <Tooltip label={team.name}><button className="project-nav-name" onClick={() => go('teams', team.id)}><Users /><span>{team.name}</span></button></Tooltip>{optionsButton('teams', team)}
                 </div>
@@ -311,7 +318,7 @@ export function Sidebar({
             {sectionHeader("projects", "Projects", "projects", () => create("project"))}
             <Collapse id="navigation-projects" className="sidebar-section-content" open={preferences.sections.projects}>
               {projects.map((project) => <div className="sidebar-project" key={project.id}>
-                <div className={`project-nav-row ${activeProject?.id === project.id ? "current-project" : ""}`}>
+                <div {...entityBinding("projects", project)} className={`project-nav-row ${activeProject?.id === project.id ? "current-project" : ""}`}>
                   <button className="project-disclosure" aria-expanded={Boolean(preferences.projects[project.id])}
                     aria-label={`${preferences.projects[project.id] ? "Collapse" : "Expand"} ${project.name}`}
                     aria-controls={`project-navigation-${project.id}`} onClick={() => toggleProject(project.id)}>
@@ -340,22 +347,17 @@ export function Sidebar({
           <section className="sidebar-section workspace-navigation" style={sectionStyle("workspace")}>
             {sectionHeader("workspace", "Workspace")}
             <Collapse id="navigation-workspace" className="sidebar-section-content nav-group" open={(collapsed && !isMobile) || preferences.sections.workspace}>
-              {organization.order.tools.filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id, id === "tasks" ? "All routes" : undefined))}
+              {layoutOrder('tools').filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id, id === "tasks" ? "All routes" : undefined))}
             </Collapse>
           </section>
           <section className="sidebar-section saved-view-navigation" style={sectionStyle('views')}>
-            <div className="collapsed-section-link">{navItem('views')}</div>
-            {sectionHeader('views', 'Saved views', 'views')}
-            <Collapse id="navigation-views" className="sidebar-section-content nav-group" open={preferences.sections.views}>
-              {savedViews.map(item => <div className="sidebar-entity-row" key={item.id}><Tooltip label={item.name}><button className={`nav-item ${page.view === 'views' && page.id === item.id ? 'active' : ''}`} aria-current={page.view === 'views' && page.id === item.id ? 'page' : undefined} onClick={() => go('views', item.id)}><Compass /><span>{item.name}</span></button></Tooltip>{optionsButton('views', item)}</div>)}
-              {!savedViews.length ? <button className="sidebar-empty-action" onClick={() => go('views')}><Plus /><span>Create a saved view</span></button> : null}
-            </Collapse>
+            {navItem('views')}
           </section>
           <section className="sidebar-section chat-navigation" style={sectionStyle("chats")}>
             <div className="collapsed-section-link">{navItem("chats")}</div>
             {sectionHeader("chats", "Chats", "chats", () => create("chat"))}
             <Collapse id="navigation-chats" className="sidebar-section-content nav-group" open={preferences.sections.chats}>
-              {recentChats.map((chat) => <div className="sidebar-entity-row" key={chat.id}><Tooltip label={chat.title}><button
+              {recentChats.map((chat) => <div className="sidebar-entity-row" key={chat.id} {...entityBinding("chats", chat)}><Tooltip label={chat.title}><button
                 aria-current={page.view === "chats" && page.id === chat.id ? "page" : undefined}
                 className={`nav-item sidebar-chat ${page.view === "chats" && page.id === chat.id ? "active" : ""}`}
                 onClick={() => go("chats", chat.id)}>
@@ -366,7 +368,6 @@ export function Sidebar({
             </Collapse>
           </section>
         </nav>
-        <div className="sidebar-utility"><button className="text-button" onClick={customizeSidebar}><PanelLeft /><span>Customize sidebar</span></button><IconButton label="Keyboard shortcuts" onClick={() => { setMobileOpen(false); onHelp(); }}><Keyboard /></IconButton></div>
         <div className="sidebar-bottom">
           <Tooltip label="Your profile"><button
             className="profile-button"
@@ -381,17 +382,12 @@ export function Sidebar({
             </span>
             <span>
               <strong>{data.profile?.name ?? "You"}</strong>
-              <small>
-                <i className={`live-dot ${status.error ? "offline" : ""}`} />
-                {status.error ? "Connection interrupted" : workspace.name}
-              </small>
             </span>
           </button></Tooltip>
-          <IconButton label="Settings" onClick={() => go("settings")}><Settings /></IconButton>
-          <IconButton label={isMobile ? "Close navigation" : collapsed ? "Expand navigation" : "Collapse navigation"}
-            onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(!collapsed)}><UiIcon icon={isMobile ? X : collapsed ? PanelLeftOpen : PanelLeftClose} /></IconButton>
+          <HelpMenu onNavigate={go} onAction={() => setMobileOpen(false)} overlayOpen={overlayOpen} />
         </div>
       </aside>
+      {arrange.dialog}
       {itemOptions ? <Dialog title={itemOptions.title} subtitle="Sidebar options" onClose={() => setItemOptions(null)}><div className="sidebar-item-dialog"><Button icon={Pin} onClick={() => { toggleFavorite(itemOptions); setItemOptions(null); }}>{favorites.some(item => favoriteKey(item) === favoriteKey(itemOptions)) ? 'Remove from favorites' : 'Add to favorites'}</Button><Button icon={PanelLeftClose} onClick={() => { try { updateOrganization({ ...organization, hiddenItems: [...organization.hiddenItems, { view: itemOptions.view, id: itemOptions.id }] }); setItemOptions(null); notify('Hidden from sidebar. Restore it in Customize sidebar.'); } catch (error) { notify(error.message, 'error'); } }}>Hide from sidebar</Button><p className="organization-note">This does not archive anything or stop active work. You can still find it through search or its collection.</p></div></Dialog> : null}
     </>
   );

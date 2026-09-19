@@ -1,9 +1,10 @@
 import { cloneElement, useEffect, useId, useRef, useState } from "react";
-import { X, LoaderCircle, Search, CircleAlert, CircleCheck, Circle, CircleDot, Clock, Minus, Terminal, Sparkles, GitFork, HardDrive } from "./components/icons.jsx";
+import { X, LoaderCircle, Search, CircleAlert, CircleCheck, Circle, CircleDot, Clock, Minus } from "./components/icons.jsx";
 import { STATUSES, RUN_STATUSES } from "./lib/model.js";
 import { registerDialog } from "./components/dialog-manager.js";
 import { Tooltip } from "./components/Tooltip.jsx";
 import { UiIcon } from "./components/icons.jsx";
+import { ServiceLogo } from './components/ServiceLogo.jsx';
 import { useApp as useAppContext } from './app-context.js';
 
 export { AppContext, useApp } from "./app-context.js";
@@ -72,17 +73,9 @@ export function Status({ value, label, item }) {
   );
 }
 export function ProviderIcon({ provider, large }) {
-  const Icon =
-    provider === "github"
-      ? GitFork
-      : ["google-drive", "google_drive"].includes(provider)
-        ? HardDrive
-        : provider === "claude"
-          ? Sparkles
-          : Terminal;
   return (
     <span className={`provider-icon ${large ? "large" : ""}`}>
-      <Icon />
+      <ServiceLogo name={provider} />
     </span>
   );
 }
