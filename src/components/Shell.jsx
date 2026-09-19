@@ -18,6 +18,8 @@ import { featureItems } from '../lib/settings-catalog.js';
 import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban } from './icons.jsx';
 import { HelpMenu } from './HelpMenu.jsx';
 import { useSidebarArrange } from './SidebarArrange.jsx';
+import { SidebarLayout } from './SidebarLayout.jsx';
+import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 
 const NAV_ICONS = { overview: House, focus: Focus, inbox: Inbox, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
@@ -52,7 +54,8 @@ export function Sidebar({
       setCreateOpen(false);
     }
   }, [overlayOpen]);
-  const sidebarItems = view => sortSidebarEntities(visible(data[view] ?? []).filter(item => !isSidebarHidden(organization, view, item.id)), organization.entityOrder[view]);
+  const placed = new Set([...organization.layout.root, ...organization.layout.groups.flatMap(g => g.items)]);
+  const sidebarItems = view => sortSidebarEntities(visible(data[view] ?? []).filter(item => !isSidebarHidden(organization, view, item.id) && !placed.has(entityKey(view, item.id))), organization.entityOrder[view]);
   const projects = sidebarItems('projects');
   const teams = sidebarItems('teams');
   const chats = sortSidebarEntities(sidebarItems('chats').toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || byUpdated(a, b)), organization.entityOrder.chats);
@@ -178,6 +181,7 @@ export function Sidebar({
     projects: { ...current.projects, [id]: !current.projects[id] },
   }));
   const navItem = (id, label) => {
+    if (!showSidebarItem(id, organization, counts)) return null;
     const item = NAV.find((entry) => entry.id === id), Icon = item.icon;
     const active = page.view === id && ((collapsed && !isMobile) || !activeProject);
     return <Tooltip key={id} label={`${label ?? item.label}${organization.shortcuts ? ` · G ${item.key}` : ""}`}><button className={`nav-item ${active ? "active" : ""}`}
@@ -273,17 +277,23 @@ export function Sidebar({
         </div>
         </div>
         <nav aria-label="Main navigation">
+          <SidebarLayout organization={organization} arrange={arrange} renderTab={navItem} updateOrganization={updateOrganization} customizeSidebar={customizeSidebar} renderEntity={({ view, id }) => {
+            const item = visible(data[view] ?? []).find(item => item.id === id);
+            if (!item || isSidebarHidden(organization, view, id)) return null;
+            const Icon = NAV_ICONS[view];
+            return <button className="nav-item" {...entityBinding(view, item)} onClick={() => go(view, id)}><Icon /><span>{item.name || item.title}</span></button>;
+          }}>
           <div className="nav-group main-nav">
             {layoutOrder('primary').filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id))}
           </div>
-          <section className="sidebar-section favorites-navigation" style={sectionStyle("favorites")}>
+          <section data-layout-id="favorites" className="sidebar-section favorites-navigation" style={sectionStyle("favorites")}>
             {sectionHeader("favorites", "Favorites")}
             <Collapse id="navigation-favorites" className="sidebar-section-content nav-group" open={preferences.sections.favorites}>
               {favorites.map(item => { const Icon = NAV.find(entry => entry.id === item.view)?.icon ?? Pin; return <div className="favorite-nav-row" key={favoriteKey(item)}><Tooltip label={`${item.title} · ${NAV.find(entry => entry.id === item.view)?.label}`}><button className={`nav-item ${page.view === item.view && page.id === item.id ? "active" : ""}`} onClick={() => go(item.view, item.id)}><Icon /><span>{item.title}</span></button></Tooltip><IconButton label={`Remove ${item.title} from favorites`} onClick={() => toggleFavorite(item)}><X /></IconButton></div>; })}
               {!favorites.length ? <p className="sidebar-empty-action">Open an item and use its pin to keep it here.</p> : null}
             </Collapse>
           </section>
-          <section className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
+          <section data-layout-id="agents" className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
             <div className="collapsed-section-link">{navItem("agents")}</div>
             {sectionHeader("agents", "Your agents", "agents", () => create("agent"))}
             <Collapse id="navigation-agents" className="sidebar-section-content nav-group" open={preferences.sections.agents}>
@@ -294,7 +304,7 @@ export function Sidebar({
               {!agents.length ? <button className="sidebar-empty-action" onClick={() => create("agent")}><Plus /><span>Create an agent</span></button> : null}
             </Collapse>
           </section>
-          <section className="sidebar-section team-navigation" style={sectionStyle("teams")}>
+          <section data-layout-id="teams" className="sidebar-section team-navigation" style={sectionStyle("teams")}>
             <div className="collapsed-section-link">{navItem("teams")}</div>
             {sectionHeader("teams", "Teams", "teams", () => create("team"))}
             <Collapse id="navigation-teams" className="sidebar-section-content nav-group" open={preferences.sections.teams}>
@@ -313,7 +323,7 @@ export function Sidebar({
               {!teams.length ? <button className="sidebar-empty-action" onClick={() => create("team")}><Plus /><span>Create your first team</span></button> : null}
             </Collapse>
           </section>
-          <section className="sidebar-section project-navigation" style={sectionStyle("projects")}>
+          <section data-layout-id="projects" className="sidebar-section project-navigation" style={sectionStyle("projects")}>
             <div className="collapsed-section-link">{navItem("projects")}</div>
             {sectionHeader("projects", "Projects", "projects", () => create("project"))}
             <Collapse id="navigation-projects" className="sidebar-section-content" open={preferences.sections.projects}>
@@ -353,7 +363,7 @@ export function Sidebar({
           <section className="sidebar-section saved-view-navigation" style={sectionStyle('views')}>
             {navItem('views')}
           </section>
-          <section className="sidebar-section chat-navigation" style={sectionStyle("chats")}>
+          <section data-layout-id="chats" className="sidebar-section chat-navigation" style={sectionStyle("chats")}>
             <div className="collapsed-section-link">{navItem("chats")}</div>
             {sectionHeader("chats", "Chats", "chats", () => create("chat"))}
             <Collapse id="navigation-chats" className="sidebar-section-content nav-group" open={preferences.sections.chats}>
@@ -367,6 +377,7 @@ export function Sidebar({
                 : <button className="sidebar-all-chats" onClick={() => go("chats")}><span>All chats</span><ArrowRight /></button>}
             </Collapse>
           </section>
+          </SidebarLayout>
         </nav>
         <div className="sidebar-bottom">
           <Tooltip label="Your profile"><button

@@ -28,7 +28,7 @@ export function SettingsCenter() {
   const teams = visible(data.teams);
   return <main className="settings-center">
     <aside className="settings-rail">
-      <div className="settings-brand"><RumboSymbol size={22} /><strong>{workspace.name}</strong></div>
+      <div className="settings-brand"><RumboSymbol size={34} decorative /><strong>{workspace.name}</strong></div>
       <button className="settings-back" onClick={() => navigate('overview')}><ArrowLeft />Back to workspace</button>
       <div className="settings-search"><Search /><input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={e => setQuery(e.target.value)} /></div>
       <div className="settings-mobile-jump"><Select aria-label="Settings page" value={section.id} onChange={v => navigate('settings', v)}>{sections.map(s => <option key={s.id} value={s.id}>{s.group} · {s.label}</option>)}</Select></div>

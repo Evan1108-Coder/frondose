@@ -1,43 +1,47 @@
 import { useRef, useState } from 'react';
-import { Button, Dialog } from '../ui.jsx';
-import { placeSidebarItem, moveItem } from '../lib/organization.js';
+import { Button, Dialog, Select } from '../ui.jsx';
+import { entityKey, moveSidebarEntry, BUILTIN_GROUPS } from '../lib/sidebar-layout.js';
 
-// Drag metadata never comes from an external drop. Only a drag started here can reorder.
 export function useSidebarArrange({ organization, updateOrganization, notify, create, toggleFavorite }) {
   const source = useRef(null);
-  const [over, setOver] = useState(null), [options, setOptions] = useState(null);
+  const [over, setOver] = useState(null), [options, setOptions] = useState(null), [dragging, setDragging] = useState(false);
+  const keyOf = item => item.entity ? entityKey(item.group, item.id) : item.id;
   const save = patch => { try { updateOrganization({ ...organization, ...patch }); } catch (error) { notify(error.message, 'error'); } };
-  const list = item => item.entity ? item.items : organization.order[item.group];
-  const reorder = (item, next) => save(item.entity
-    ? { entityOrder: { ...organization.entityOrder, [item.group]: next } }
-    : { order: { ...organization.order, [item.group]: next } });
+  const move = (key, container, target, after) => save({ layout: moveSidebarEntry(organization.layout, key, container, target, after) });
+  const destinationOf = key => organization.layout.groups.find(g => g.items.includes(key))?.id ?? 'root';
+  const stop = () => { source.current = null; setOver(null); setDragging(false); };
+  const drop = (container, target = null) => ({
+    'data-drop-target': over?.container === container && over?.target === target ? over.after ? 'after' : 'before' : undefined,
+    onDragOver: event => {
+      if (!source.current) return;
+      if (container !== 'root' && (BUILTIN_GROUPS.includes(source.current) || source.current.startsWith('custom:'))) return;
+      event.preventDefault(); event.stopPropagation();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const after = target !== null && event.clientY > rect.top + rect.height / 2;
+      setOver({ container, target, after }); event.dataTransfer.dropEffect = 'move';
+      const scroll = event.currentTarget.closest('nav');
+      if (scroll) { const bounds = scroll.getBoundingClientRect(); if (event.clientY < bounds.top + 45) scroll.scrollTop -= 14; if (event.clientY > bounds.bottom - 45) scroll.scrollTop += 14; }
+    },
+    onDrop: event => { if (!source.current) return; event.preventDefault(); event.stopPropagation(); const key = source.current; const rect = event.currentTarget.getBoundingClientRect(); move(key, container, target, target !== null && event.clientY > rect.top + rect.height / 2); stop(); },
+  });
   const bind = item => ({
-    draggable: true,
-    'data-sidebar-arrange': item.id,
-    'data-drop-target': over === item.group + ':' + item.id ? 'true' : undefined,
-    onDragStart: event => { event.stopPropagation(); source.current = item; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.title); },
-    onDragOver: event => { if (source.current?.group !== item.group || Boolean(source.current?.entity) !== Boolean(item.entity)) return; event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(item.group + ':' + item.id); },
-    onDrop: event => { event.preventDefault(); event.stopPropagation(); const from = source.current; source.current = null; setOver(null); if (from?.group === item.group && Boolean(from.entity) === Boolean(item.entity)) reorder(item, placeSidebarItem(list(item), from.id, item.id)); },
-    onDragEnd: () => { source.current = null; setOver(null); },
+    draggable: true, 'data-sidebar-arrange': keyOf(item),
+    onDragStart: event => { event.stopPropagation(); source.current = keyOf(item); setDragging(true); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.title); },
+    onDragEnd: stop,
     onContextMenu: event => { event.preventDefault(); event.stopPropagation(); setOptions(item); },
     onKeyDown: event => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); event.stopPropagation(); setOptions(item); } },
   });
   const act = fn => { fn(); setOptions(null); };
-  const pinned = options && (options.entity
-    ? organization.favorites.some(f => f.view === options.group && f.id === options.id)
-    : organization.pinnedLayout.includes(options.id));
-  const dialog = options ? <Dialog title={options.title} subtitle="Organize your sidebar. These changes do not change workspace content." onClose={() => setOptions(null)}>
-    <div className="sidebar-item-dialog">
-      <Button onClick={() => act(() => {
-        if (options.entity) toggleFavorite({ view: options.group, id: options.id });
-        else save({ pinnedLayout: pinned ? organization.pinnedLayout.filter(id => id !== options.id) : [...organization.pinnedLayout, options.id] });
-      })}>{pinned ? 'Unpin' : 'Pin'}</Button>
-      <Button onClick={() => act(() => save(options.entity
-        ? { hiddenItems: [...organization.hiddenItems, { view: options.group, id: options.id }] }
-        : { visibility: { ...organization.visibility, [options.id]: 'hidden' } }))}>Hide from sidebar</Button>
-      {[-1, 1].map(offset => <Button key={offset} disabled={offset < 0 ? list(options).indexOf(options.id) === 0 : list(options).indexOf(options.id) === list(options).length - 1} onClick={() => act(() => reorder(options, moveItem(list(options), options.id, offset)))}>Move {offset < 0 ? 'up' : 'down'}</Button>)}
-      {options.kind ? <Button onClick={() => act(() => create(options.kind, options.defaults ?? {}))}>Create new {options.kind === 'task' ? 'Route' : options.kind}</Button> : null}
-    </div>
-  </Dialog> : null;
-  return { bind, dialog };
+  const key = options && keyOf(options);
+  const pinned = options && (options.entity ? organization.favorites.some(f => f.view === options.group && f.id === options.id) : organization.pinnedLayout.includes(options.id));
+  const container = options ? destinationOf(key) : 'root';
+  const items = container === 'root' ? organization.layout.root : organization.layout.groups.find(g => g.id === container).items;
+  const dialog = options ? <Dialog title={options.title} subtitle="Organize your sidebar without changing workspace content." onClose={() => setOptions(null)}><div className="sidebar-item-dialog">
+    <Button onClick={() => act(() => { if (options.entity) toggleFavorite({ view: options.group, id: options.id }); else save({ pinnedLayout: pinned ? organization.pinnedLayout.filter(id => id !== key) : [...organization.pinnedLayout, key], layout: pinned ? organization.layout : moveSidebarEntry(organization.layout, key, 'root', organization.layout.root[0]) }); })}>{pinned ? 'Unpin' : 'Pin'}</Button>
+    <Button onClick={() => act(() => save(options.entity ? { hiddenItems: [...organization.hiddenItems, { view: options.group, id: options.id }] } : { visibility: { ...organization.visibility, [key]: 'hidden' } }))}>Hide from sidebar</Button>
+    {[-1, 1].map(offset => <Button key={offset} disabled={!items.includes(key) || !items[items.indexOf(key) + offset]} onClick={() => act(() => move(key, container, items[items.indexOf(key) + offset], offset > 0))}>Move {offset < 0 ? 'up' : 'down'}</Button>)}
+    {!BUILTIN_GROUPS.includes(key) && !key.startsWith('custom:') ? <label>Move to<Select aria-label="Move sidebar item to" value={container} onChange={value => act(() => move(key, value))}><option value="root">Sidebar (top level)</option>{organization.layout.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></label> : null}
+    {options.kind ? <Button onClick={() => act(() => create(options.kind, options.defaults ?? {}))}>Create new {options.kind === 'task' ? 'Route' : options.kind}</Button> : null}
+  </div></Dialog> : null;
+  return { bind, drop, dialog, dragging, stop };
 }

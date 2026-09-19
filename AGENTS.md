@@ -10,7 +10,11 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
-- Sidebar navigation tabs, groups, and project/team/agent/chat entries support direct drag reordering within their list and right-click options. Settings provides the same order controls plus keyboard move buttons. Pinning layout entries places them first in their list; entity pins use Favorites. Hide is reversible presentation, not archive. Never turn sidebar drag into a change of project/team ownership.
+- Keep the expanded sidebar workspace identity stationary across main and Settings: the same 34px approved mark, 4px name gap, typography, and top/left alignment.
+
+- Settings navigation must visually share the main sidebar's responsive expanded width, 12px inset/rounded frame, neutral background, 14px labels, 18px icons, and 32px row cadence. Keep settings-specific destinations without switching to an edge-to-edge narrow rail.
+
+- Sidebar uses one free top-level order: tabs and built-in groups can move above/below each other. Only user-created custom groups accept dropped tabs or entity shortcuts; built-in collections are never membership drop targets. Custom groups can be created/renamed/removed in Settings; removal returns children to the top level. Preserve exactly one placement, reload persistence, keyboard move controls, and reversible hiding. Sidebar movement never changes project/team ownership.
 
 - Every Docs article has a distinct topic-specific line icon, shared between its card, search result, and article header. Maintain the explicit article icon registry and its coverage/geometry-uniqueness test; do not fall back to one category symbol for all articles.
 

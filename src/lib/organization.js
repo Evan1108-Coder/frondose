@@ -1,4 +1,5 @@
 import { val, visible } from "./model.js";
+import { normalizeSidebarLayout } from './sidebar-layout.js';
 
 export const NAV_ITEMS = [
   { id: "overview", label: "Home", key: "O" },
@@ -43,9 +44,11 @@ export function normalizeOrganization(value) {
     if (!['projects', 'teams', 'agents', 'chats', 'views'].includes(item?.view) || !validString(item.id) || hiddenSeen.has(favoriteKey(item))) continue;
     hiddenSeen.add(favoriteKey(item)); hiddenItems.push({ view: item.view, id: item.id });
   }
-  const pinnedLayout = (Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => Object.values(SIDEBAR_GROUPS).flat().includes(id));
+  const layout = normalizeSidebarLayout(input.layout, order);
+  for (const group of layout.groups) visibility[group.id] = input.visibility?.[group.id] === 'hidden' ? 'hidden' : 'always';
+  const pinnedLayout = (Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => Object.values(SIDEBAR_GROUPS).flat().includes(id) || layout.groups.some(g => g.id === id));
   const entityOrder = Object.fromEntries(['projects', 'teams', 'agents', 'chats'].map(view => [view, [...new Set((Array.isArray(input.entityOrder?.[view]) ? input.entityOrder[view] : []).filter(validString))].slice(0, 500)]));
-  return { version: 1, order, visibility, favorites, hiddenItems, pinnedLayout, entityOrder,
+  return { version: 1, order, visibility, favorites, hiddenItems, pinnedLayout, entityOrder, layout,
     badges: ["count", "dot", "none"].includes(input.badges) ? input.badges : "count",
     density: input.density === "compact" ? "compact" : "comfortable",
     shortcuts: input.shortcuts !== false,
