@@ -9,12 +9,20 @@ import discord from '@iconify-icons/logos/discord-icon';
 import notion from '@iconify-icons/logos/notion-icon';
 import gitlab from '@iconify-icons/logos/gitlab-icon';
 import mcp from '@iconify-icons/logos/model-context-protocol-icon';
+import linear from '@iconify-icons/logos/linear-icon';
+import jira from '@iconify-icons/logos/jira';
+import figma from '@iconify-icons/logos/figma';
+import githubActions from '@iconify-icons/logos/github-actions';
 
 // Trusted, bundled SVG Logos assets, not user-supplied SVG or remote HTML.
 const entries = [
   ['openai', openai, ['codex', 'chatgpt'], ['openai.com', 'chatgpt.com']],
   ['claude', claude, ['anthropic'], ['claude.ai', 'anthropic.com']],
-  ['github', github, [], ['github.com']],
+  ['github', github, ['github-packages', 'github packages'], ['github.com']],
+  ['github-actions', githubActions, ['github actions'], []],
+  ['linear', linear, [], ['linear.app']],
+  ['jira', jira, [], ['atlassian.net', 'atlassian.com']],
+  ['figma', figma, ['figjam'], ['figma.com']],
   ['google-drive', drive, ['google_drive', 'google drive'], ['drive.google.com']],
   ['google', google, ['google account'], ['google.com']],
   ['slack', slack, [], ['slack.com']],
@@ -28,6 +36,7 @@ const brands = entries.map(([id, icon, aliases, domains]) => ({
   id, aliases: [id, ...aliases], domains,
   src: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${icon.width}" height="${icon.height}" viewBox="0 0 ${icon.width} ${icon.height}">${icon.body}</svg>`)}`,
 }));
+brands.push(...['docs', 'sheets', 'slides'].map(product => ({ id: `google-${product}`, aliases: [`google-${product}`, `google ${product}`], domains: [], src: `/brand/services/google-${product}.png` })));
 
 export function safeWebsiteUrl(value) {
   try {

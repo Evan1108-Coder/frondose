@@ -116,6 +116,9 @@ const entity = async (request, key) => {
 };
 
 export const rumboApi = {
+  listActivity: ({ workspaceId, targetType, targetId, includeArchived = false }, options) => get(`${API_ROOT}/activity?workspace_id=${encodeURIComponent(workspaceId)}&target_type=${encodeURIComponent(targetType)}&target_id=${encodeURIComponent(targetId)}${includeArchived ? '&include_archived=true' : ''}`, options),
+  createActivity: (input, options) => post(`${API_ROOT}/activity`, input, options),
+  updateActivity: (id, input, options) => patch(`${API_ROOT}/activity/${encodeURIComponent(id)}`, input, options),
   createWorkspaceItem: input => post(pathFor('workspace-items'), input),
   importWorkspace: input => post(`${API_ROOT}/import`, input),
   updateWorkspaceItem: (id, input) => patch(pathFor('workspace-items', id), input),

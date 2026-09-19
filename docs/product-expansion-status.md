@@ -1,8 +1,16 @@
 # Rumbo product expansion — implementation and limits
 
-Updated September 19, 2026. This is a coverage ledger for the supplied product roadmap, not a statement that every roadmap item is finished. The app remains a **single-user localhost product**. No account was connected, paid agent invoked, or production workspace populated during this QA work.
+Updated September 19, 2026. This is a coverage ledger for the supplied product roadmap, not a statement that every roadmap item is finished. The app remains a **localhost development product**, now with optional local accounts and enforced workspace access. No real provider account was connected, paid agent invoked, or production workspace populated during QA.
 
 ## What you can use now
+
+### Governance and Group 1 connections
+
+Local account setup, password sign-in, session revocation, one-use copied invitation links, four management ranks, custom permission roles, individual grants/denies, team/project/connection scopes and expiry are implemented. Owner promotions and departures use owner-electorate approvals. Multi-owner destructive workspace actions and high-impact external actions require exact-target approvals. Delegated agents cannot approve requests, elevate privileges, see tokens, or act after their sponsor loses permission.
+
+The marketplace includes fourteen entries: existing Codex/Claude runners and twelve SaaS adapters. OAuth registration is an operator prerequisite; the UI exposes it explicitly. Available provider-specific operations, OAuth requirements, and limitations are listed in `server/connectors/README.md`. Per-connection settings control selected resources, enabled actions, agent allowlists, cached imports, conflict handling, durable read jobs, scheduled reconciliation and supported signed webhooks. GitHub adds remote code browsing/comparison; Code & reviews adds shared personal code-display preferences.
+
+Not complete: arbitrary custom management-rank levels; temporary rank promotions (temporary permission grants are implemented); email invitations and recovery; public deployment; general two-way field synchronization; full native Slides/Sheets/Figma editing; autonomous multi-step agent tools. Current agent actions are bounded, reviewed final-reply proposals. Provider account compatibility still needs live verification after operator registrations. Do not infer these missing features from the connection catalog.
 
 ### Workbench
 
@@ -78,9 +86,9 @@ Workspace export/restore includes the new workflow content, message bookmarks, v
 | Outputs | Dedicated attachment/evidence storage, specialized code/image viewers, exact review-version deep links and controlled external sharing. Current output content is Markdown/text with provenance links. |
 | Settings | Universal setting-level anchors/search, inherited values, resets for every section and historical configuration restoration. Some section resets and history already work. |
 | Layout and errors | Remembered resizable split panels and contextual error-help panels. Responsive custom dialogs, keyboard/focus states and reduced motion are implemented. |
-| Public service | Authentication, invitations, enforced roles, shared credentials, cross-device sync, hosted execution/local runner pairing, verified backups and billing. None should be inferred from local directory records or placeholder settings. |
+| Public service | Public identity operations/recovery, invitation email delivery, cross-device sync, hosted execution/local runner pairing, verified backups and billing. Local sign-in, copied invitation links, encrypted workspace credentials and enforced role permissions are implemented, not a production deployment. |
 
-Public service work needs a separate architecture decision: trusted local runner, hosted execution or both, plus an identity/deployment service. Do not expose the current localhost API publicly or represent stored local member names as access control.
+Public service work still needs a hosted identity/deployment service and a trusted execution architecture. Do not expose the current localhost API publicly. Governance memberships now enforce access; legacy team-directory names alone do not create accounts or grants.
 
 ## Verification
 
@@ -95,4 +103,4 @@ Reproducible checks live in:
 
 Browser scripts accept `RUMBO_PLAYWRIGHT_MODULE` when using an externally installed Playwright. Each script starts an isolated API/database/cache and removes only its own temporary fixture. None connects a real AI account.
 
-Latest verification: 222 unit/API tests passed; production build passed; both full-app and settings browser rounds passed, including document/view favorites, navigation history, timeline and 320/390px layouts. Real-PTY Workbench checks, picture crop/persistence, reaction color/selection persistence, resource uploads and semantic icon-motion checks also passed in isolated fixtures. A settings dropdown reopening bug and a narrow-screen selected-team-tab visibility bug were found and fixed. Real provider account tests are deliberately excluded.
+Latest verification: 313 unit/API tests passed; production build and Sites packaging tests passed. Isolated browser checks covered the marketplace, member/custom-role creation, permission policies, scoped grants, agent delegation, sync settings, protected cache removal, local account setup/invitations/sign-in, code appearance persistence and mocked GitHub file/diff browsing at 1440×960 and 390×844. No framework or runtime errors were observed. The build retains a main-bundle size warning. Live provider account compatibility, public hosting and arbitrary external-product feature parity were not verified or claimed.

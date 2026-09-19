@@ -40,11 +40,19 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 - Clearly labeled local simulations for testing session events, approval, denial, and stopping without contacting accounts.
 - Inbox for outstanding decisions and session updates. Read state and notification preferences persist.
 - Real connection setup, explicit sign-in checks, progress, disconnect, and resource browsing. See the provider table below.
+- Searchable slash commands in chat and Workbench. The registry includes Rumbo, agent, Git, and connection namespaces; only commands with a real handler are executable. Catalog-only and external connection commands are labeled as previews. Workbench Git/shell commands always open the existing machine/command review and confirmation dialog before execution; raw terminal input is never intercepted.
+- Typed project and Route updates with threaded replies, recoverable archiving, and recorded `@agent` requests. An agent mention in an update does not contact or start that agent; users must review and launch agent work separately.
 - Profile/image settings, workspace editing, appearance, session defaults, JSON exports, archive restore, and diagnostics.
 - No silent demo fallback: failed requests show errors, and rejected optimistic changes roll back.
 - Rumbo-authored dropdowns, date picker, dialogs, confirmations, validation, and tooltips, with keyboard navigation and focus management. File selection and provider authorization retain their required browser/OS interfaces.
 
 ## Connections
+
+The workspace connection marketplace now includes Codex and Claude account management plus OAuth adapters for GitHub, GitHub Actions, GitHub Packages, Google Drive, Docs, Sheets, Slides, Linear, Jira, Slack, Figma, and FigJam. Per-connection controls cover selected resources, enabled actions, agent delegation, cached context, imports, conflicts, and synchronization jobs. GitHub includes a branch/file browser and comparisons. Code appearance preferences are shared with Workbench.
+
+See [workspace connector setup and exact supported operations](server/connectors/README.md). These adapters require operator-owned provider application registrations before a user can authorize an account. Their implemented action sets are intentionally explicit: this is not complete feature parity with each external product, a native Slides/Figma editor, or arbitrary two-way synchronization.
+
+The existing installation-level connections remain available separately:
 
 | Provider     | Implemented path                                         | Scope                                                           |
 | ------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
@@ -59,7 +67,11 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 
 Workspace data is in `.rumbo/rumbo.sqlite`. Optional GitHub/Google credentials are in the private, owner-only `.rumbo/integrations.private.json`; they are not encrypted and do not enter exports or browser state. The local server denies static access to `.rumbo`, environment files, and key files.
 
-Do not expose this server to a network: this version has no multi-user authentication layer. Live sessions send the chosen context to the selected provider. Live CLI sessions use permissions chosen before execution; they do not provide interactive per-command approvals. Stopping a session does not undo edits already made.
+Do not expose this development server to a network. Optional local account sign-in now uses salted scrypt passwords, opaque expiring sessions, revocation, and one-use invitation links. Workspace APIs enforce membership, four built-in ranks, custom permission roles, scoped/temporary grants, individual exceptions, and owner approval workflows. Custom roles do not create arbitrary new rank levels. Invitations are copied links, not delivered email; password recovery, public hosting, and production identity operations are not implemented.
+
+New workspace OAuth credentials use AES-256-GCM encryption; the private encryption key is stored separately in `.rumbo/connections.key` (or supplied by the operator). Never publish this directory. Legacy credentials described above retain their existing separate storage and are not silently migrated. Workspace exports exclude credentials, governance/account data, and connection caches.
+
+Live sessions send the chosen accessible context to the selected provider. An explicitly delegated connection can expose bounded cached context and reviewed action proposals to an allowed agent. Both the original sponsor’s and reviewer’s current authority are checked before an action runs. Live CLI sessions use permissions chosen before execution; they do not provide interactive per-command approvals. Stopping a session does not undo edits already made.
 
 Archived records can be restored. Workspace JSON exports can be imported into a new workspace through Settings → Import & export. Imports remap content references, reset approvals and work-plan state, pause repeat schedules, and never restore credentials, active processes or local folder permissions. They are not full installation backups. Back up the `.rumbo` folder when the app is stopped to preserve the full installation.
 

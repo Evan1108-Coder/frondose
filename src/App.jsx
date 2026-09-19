@@ -36,7 +36,7 @@ import { WorkView, SessionDialog } from "./views/Work.jsx";
 import { MemoryView } from "./views/Agents.jsx";
 const AgentsView = lazy(() => import('./views/AgentRoster.jsx').then(module => ({ default: module.AgentsView })));
 import { Form } from "./components/Form.jsx";
-const ConnectionsView = lazy(() => import('./views/Connections.jsx').then(module => ({ default: module.ConnectionsView })));
+const ConnectionsView = lazy(() => import('./views/ConnectionPlatform.jsx').then(module => ({ default: module.ConnectionPlatformView })));
 const SettingsCenter = lazy(() => import('./views/settings/SettingsCenter.jsx').then(module => ({ default: module.SettingsCenter })));
 const DocsView = lazy(() => import('./views/Docs.jsx').then(module => ({ default: module.DocsView })));
 const FeedbackDialog = lazy(() => import('./components/FeedbackDialog.jsx').then(module => ({ default: module.FeedbackDialog })));

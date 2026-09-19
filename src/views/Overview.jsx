@@ -11,6 +11,7 @@ import {
 } from "../lib/model.js";
 import { rumboActions } from "../data/useRumbo.js";
 import { WorkLabels } from '../components/WorkProperties.jsx';
+import { AccessApprovalInbox } from '../components/AccessApprovalInbox.jsx';
 
 export function ProjectRow({ project }) {
   const { data, navigate } = useApp();
@@ -349,6 +350,7 @@ export function InboxView() {
           Mark all read
         </Button>
       </PageHeader>
+      <AccessApprovalInbox />
       <div className="tabs">
         <button
           className={tab === "unread" ? "active" : ""}

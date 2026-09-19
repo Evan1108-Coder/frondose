@@ -1,0 +1,36 @@
+.activity-feed { display: grid; gap: 16px; }
+.activity-feed > .section-heading { margin: 0; }
+.activity-feed > .section-heading > div { display: grid; gap: 4px; }
+.activity-feed > .section-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+.activity-count { min-width: 28px; height: 24px; padding: 0 8px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; }
+.activity-composer { position:relative; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); display: grid; gap: 10px; }
+.activity-composer-top { min-height: 32px; display: flex; align-items: center; }
+.activity-composer-top .rumbo-select { width: 150px; }
+.activity-composer textarea { width: 100%; min-height: 78px; resize: vertical; line-height: 1.55; }
+.activity-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.activity-composer-actions > span { color: var(--muted); font-size: 12px; }
+.activity-reply-target { display: flex; align-items: center; gap: 8px; color: var(--secondary); font-size: 13px; }
+.activity-reply-target svg { width: 15px; height: 15px; }
+.activity-reply-target button { margin-left: 4px; color: var(--muted); text-decoration: underline; }
+.activity-mention-review, .activity-agent-request { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 7%, transparent); display: grid; gap: 3px; font-size: 12px; }
+.activity-mention-review span, .activity-agent-request span { color: var(--secondary); line-height: 1.45; }
+.activity-list { display: grid; }
+.activity-entry { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; padding: 12px 0; }
+.activity-entry-marker { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 3px var(--surface); }
+.activity-decision > .activity-entry-marker, .activity-release > .activity-entry-marker, .activity-outcome > .activity-entry-marker { background: var(--accent); }
+.activity-blocker > .activity-entry-marker, .activity-risk > .activity-entry-marker { background: var(--danger, #d66); }
+.activity-entry-body { min-width: 0; display: grid; gap: 8px; }
+.activity-entry header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
+.activity-entry header strong { font-size: 13px; font-weight: 550; }
+.activity-entry header time { color: var(--muted); margin-left: auto; }
+.activity-type { padding: 2px 6px; border-radius: 4px; background: var(--hover); color: var(--secondary); text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+.activity-entry p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); line-height: 1.55; font-size: 14px; }
+.activity-entry-actions { display: flex; gap: 12px; }
+.activity-entry-actions button { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.activity-entry-actions button:hover { color: var(--text); }
+.activity-entry-actions svg { width: 14px; height: 14px; }
+.activity-replies { margin-left: 2px; padding-left: 14px; border-left: 1px solid var(--border); }
+.activity-state { min-height: 110px; padding: 22px; display: grid; place-items: center; align-content: center; gap: 7px; border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); text-align: center; font-size: 13px; }
+.activity-state svg { width: 22px; height: 22px; }
+.activity-state strong { color: var(--secondary); }
+@media (max-width: 640px) { .activity-composer-actions { align-items: stretch; flex-direction: column; } .activity-composer-actions .button { justify-content: center; } .activity-entry header time { width: 100%; margin-left: 0; } }

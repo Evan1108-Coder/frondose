@@ -17,6 +17,25 @@ import {
   useAsync,
 } from "../ui.jsx";
 import { safeUrl } from "../lib/model.js";
+import {
+  CONNECTION_PROVIDERS,
+  connectionSettingsTabs,
+  defaultConnectionSettings,
+  effectiveConnectionCommands,
+} from "../lib/connection-settings.js";
+
+const CONNECTION_TAB_LABELS = {
+  overview: "Overview",
+  resources: "Resources",
+  mappings: "Mappings",
+  rules: "Rules",
+  agents: "Agent access",
+  context: "Context",
+  commands: "Commands",
+  notifications: "Notifications",
+  security: "Security",
+  activity: "Activity",
+};
 
 export function ConnectionsView() {
   const { data } = useApp();
@@ -85,6 +104,29 @@ export function ConnectionsView() {
             ))}
         </div>
       </div>
+      <div className="connections-group">
+        <h2>Extension previews</h2>
+        <p className="muted">
+          Review planned settings and commands. These entries do not authorize
+          an account or enable an external API.
+        </p>
+        <div className="connection-grid">
+          {Object.values(CONNECTION_PROVIDERS)
+            .filter((item) => item.implementation === "metadata_only")
+            .map((descriptor) => (
+              <ConnectionCard
+                key={descriptor.id}
+                connection={{
+                  provider: descriptor.id,
+                  state: "preview",
+                  description: descriptor.boundary,
+                }}
+                descriptor={descriptor}
+                onOpen={() => setSelected(descriptor.id)}
+              />
+            ))}
+        </div>
+      </div>
       <div className="page-footnote">
         <ShieldCheck />
         <p>
@@ -102,9 +144,10 @@ export function ConnectionsView() {
     </main>
   );
 }
-function ConnectionCard({ connection, setup, onOpen }) {
+function ConnectionCard({ connection, setup, descriptor, onOpen }) {
   const name =
-    setup?.displayName ?? connection.display_name ?? connection.displayName;
+    setup?.displayName ?? descriptor?.displayName ?? connection.display_name ?? connection.displayName;
+  const preview = connection.state === "preview";
   return (
     <article className="connection-card">
       <div className="connection-card-top">
@@ -117,14 +160,18 @@ function ConnectionCard({ connection, setup, onOpen }) {
             ? "Connected"
             : connection.state === "connecting"
               ? "Connecting"
-              : "Not connected"}
+              : preview
+                ? "Preview"
+                : "Not connected"}
         </span>
       </div>
       <h3>{name}</h3>
-      <p>{setup?.purpose ?? connection.description}</p>
+      <p>{setup?.purpose ?? descriptor?.boundary ?? connection.description}</p>
       <div className="connection-card-footer">
         <span>
-          {connection.provider === "google-drive"
+          {preview
+            ? "Configuration only"
+            : connection.provider === "google-drive"
             ? "Read-only metadata"
             : connection.provider === "claude"
               ? "Read & search"
@@ -133,7 +180,7 @@ function ConnectionCard({ connection, setup, onOpen }) {
                 : "Repositories"}
         </span>
         <Button onClick={onOpen}>
-          {connection.state === "connected" ? "Manage" : "Set up"}
+          {connection.state === "connected" ? "Manage" : preview ? "View details" : "Set up"}
           <ArrowRight />
         </Button>
       </div>
@@ -142,6 +189,8 @@ function ConnectionCard({ connection, setup, onOpen }) {
 }
 export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const { data, perform, notify, edit } = useApp();
+  const descriptor = CONNECTION_PROVIDERS[provider];
+  const metadataOnly = descriptor?.implementation === "metadata_only";
   const [setup, setSetup] = useState(initialSetup),
     [current, setCurrent] = useState(null),
     [token, setToken] = useState(""),
@@ -151,12 +200,14 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     [resources, setResources] = useState(null),
     [nextPage, setNextPage] = useState(null),
     [query, setQuery] = useState(""),
+    [activeTab, setActiveTab] = useState("overview"),
     [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const { busy, error, execute, setError } = useAsync();
   const connection =
     current ?? data.connections.find((item) => item.provider === provider);
   const connected = connection?.state === "connected";
   useEffect(() => {
+    if (metadataOnly) return undefined;
     let active = true;
     Promise.all([
       rumboApi.connectionSetup(provider),
@@ -174,7 +225,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     return () => {
       active = false;
     };
-  }, [provider]);
+  }, [provider, metadataOnly]);
   const reloadSetup = () =>
     execute(async () => {
       const [s, c] = await Promise.all([
@@ -250,29 +301,68 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     });
   const authOutput =
     connection?.auth?.output ?? connection?.metadata?.auth?.output;
+  const tabs = connectionSettingsTabs(provider, {
+    connectionState: connection?.state ?? "not_connected",
+  });
   return (
     <Dialog
-      title={setup?.displayName ?? provider}
-      subtitle={setup?.purpose}
+      title={setup?.displayName ?? descriptor?.displayName ?? provider}
+      subtitle={setup?.purpose ?? descriptor?.boundary}
       onClose={onClose}
       wide
     >
       <div className="connection-setup">
         <div className="connection-detail-state">
           <ProviderIcon large provider={provider} />
-          <Status
-            value={connection?.state}
-            label={
-              connected
-                ? "Connected"
-                : String(connection?.state ?? "not_connected").replaceAll(
-                    "_",
-                    " ",
-                  )
-            }
-          />
+          {metadataOnly ? (
+            <span className="connection-preview-badge">Configuration preview</span>
+          ) : (
+            <Status
+              value={connection?.state}
+              label={
+                connected
+                  ? "Connected"
+                  : String(connection?.state ?? "not_connected").replaceAll(
+                      "_",
+                      " ",
+                    )
+              }
+            />
+          )}
         </div>
-        <p className="prose">{setup?.resourcePolicy}</p>
+        <div className={`connection-boundary ${metadataOnly ? "is-preview" : ""}`}>
+          <strong>{metadataOnly ? "Not implemented" : "Current capability boundary"}</strong>
+          <p>{descriptor?.boundary ?? setup?.resourcePolicy}</p>
+        </div>
+        <div className="connection-settings-tabs" role="tablist" aria-label="Connection settings">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls={`connection-panel-${tab.id}`}
+              disabled={tab.state === "locked"}
+              title={tab.reason}
+              className={activeTab === tab.id ? "is-active" : ""}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {CONNECTION_TAB_LABELS[tab.id]}
+              {tab.state === "preview" ? <small>Preview</small> : null}
+            </button>
+          ))}
+        </div>
+        {activeTab !== "overview" ? (
+          <ConnectionSettingsPanel
+            provider={provider}
+            tab={activeTab}
+            tabState={tabs.find((tab) => tab.id === activeTab)}
+            setup={setup}
+            connection={connection}
+          />
+        ) : (
+          <div id="connection-panel-overview" role="tabpanel" className="connection-settings-panel">
+        <p className="prose">{setup?.resourcePolicy ?? descriptor?.boundary}</p>
         {message ? <div className="notice">{message}</div> : null}
         {connection?.accountLabel ? (
           <p>
@@ -280,12 +370,12 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
           </p>
         ) : null}
         <ErrorMessage error={error} />
-        {!setup ? (
+        {!setup && !metadataOnly ? (
           <Button busy={busy} onClick={reloadSetup}>
             Retry setup details
           </Button>
         ) : null}
-        {!connected && setup?.configured === false ? (
+        {!metadataOnly && !connected && setup?.configured === false ? (
           <div className="setup-instructions">
             <h3>One-time Google setup</h3>
             <p>
@@ -312,7 +402,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
             </p>
           </div>
         ) : null}
-        {!connected && setup?.installCommand ? (
+        {!metadataOnly && !connected && setup?.installCommand ? (
           <div className="setup-instructions">
             <h3>Connect your {setup.displayName} installation</h3>
             <p>
@@ -354,7 +444,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
             {Array.isArray(authOutput) ? authOutput.join("\n") : authOutput}
           </pre>
         ) : null}
-        {!connected && setup?.configured !== false ? (
+        {!metadataOnly && !connected && setup?.configured !== false ? (
           <div className="connection-actions">
             {setup?.methods?.includes("existing") ? (
               <Button
@@ -536,7 +626,115 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
             Provider setup documentation <ExternalLink />
           </a>
         ) : null}
+          </div>
+        )}
       </div>
     </Dialog>
+  );
+}
+
+function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection }) {
+  const descriptor = CONNECTION_PROVIDERS[provider];
+  const settings = defaultConnectionSettings(provider);
+  const preview = tabState?.state === "preview";
+  const baseName = CONNECTION_PROVIDERS[descriptor.baseConnection]?.displayName ?? descriptor.displayName;
+  const sectionIntro = preview ? (
+    <div className="connection-preview-note">
+      <strong>Preview only</strong>
+      <p>{tabState?.reason ?? "This configuration is defined but has no external execution service."}</p>
+    </div>
+  ) : null;
+
+  if (tab === "commands") {
+    return (
+      <section id="connection-panel-commands" role="tabpanel" className="connection-settings-panel">
+        {sectionIntro}
+        <div className="connection-section-heading">
+          <div><h3>Slash commands</h3><p>Commands contributed by this connection appear only as documented previews.</p></div>
+          <span>{descriptor.commands.length} commands</span>
+        </div>
+        <div className="connection-command-list">
+          {effectiveConnectionCommands(provider, settings).map((item) => (
+            <article key={item.id}>
+              <div>
+                <code>{item.name}</code>
+                <p>{item.summary}</p>
+                <small>{item.effect} · {item.target.replaceAll("_", " ")} · {item.resourceScope.replaceAll("_", " ")}</small>
+              </div>
+              <button type="button" disabled title={item.disabledReason}>Unavailable</button>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  const panels = {
+    resources: {
+      title: "Allowed resources",
+      description: "Limit this connection to explicitly selected provider resources.",
+      rows: [
+        ["Selection", settings.resources.allowed.length ? `${settings.resources.allowed.length} selected` : "No resources selected"],
+        ["Refresh", settings.resources.refresh],
+        ["Archive handling", settings.resources.includeArchived ? "Include archived" : "Exclude archived"],
+      ],
+    },
+    mappings: {
+      title: "Rumbo destinations and mappings",
+      description: "Choose how reviewed external objects would map into Rumbo without treating synchronization as active.",
+      rows: [
+        ["Default intake", settings.mappings.intakeType],
+        ["Sync direction", settings.mappings.syncDirection],
+        ["Conflict policy", settings.mappings.conflictPolicy],
+      ],
+    },
+    rules: {
+      title: "Connection rules",
+      description: "Rules would match provider events and prepare reviewed Rumbo work. External event ingestion is not active.",
+      rows: [["Rule execution", "Disabled"], ["Configured rules", String(settings.rules.items.length)], ["Agent launches", "Never automatic"]],
+    },
+    agents: {
+      title: "Agent access",
+      description: "A connected account never becomes an automatic agent tool. Access must be scoped independently.",
+      rows: [["Allowed agents", "None selected"], ["Writable actions", "None"], ["Approval", "Required"]],
+    },
+    context: {
+      title: "Context policy",
+      description: "Control how authorized provider information could enter a reviewed agent context.",
+      rows: [["Retrieval", settings.context.retrieval], ["Maximum items", String(settings.context.maxItems)], ["Citations", settings.context.requireCitations ? "Required" : "Optional"], ["Include automatically", "No"]],
+    },
+    notifications: {
+      title: "Notifications",
+      description: "Rumbo can describe notification preferences, but external delivery is not configured.",
+      rows: [["Rumbo Inbox", settings.notifications.inbox ? "Enabled" : "Disabled"], ["External delivery", "Unavailable"], ["Digest", settings.notifications.digest]],
+    },
+    security: {
+      title: "Security and scopes",
+      description: "Review the implemented boundary separately from the provider capabilities proposed for later.",
+      rows: [
+        ["Base connection", baseName],
+        ["Account state", connection?.state === "connected" ? "Connected" : "Not connected"],
+        ["Granted scopes", setup?.scopes?.length ? setup.scopes.join(", ") : "None reported"],
+        ["Consequential actions", "Always confirm"],
+        ["Destructive actions", "Disabled"],
+      ],
+    },
+    activity: {
+      title: "Activity settings",
+      description: "These preferences describe future connection records; this panel is not an external audit log.",
+      rows: [["Retention preference", `${settings.activity.retentionDays} days`], ["Read events", settings.activity.includeReads ? "Include" : "Exclude"], ["External event ingestion", "Unavailable"]],
+    },
+  };
+  const panel = panels[tab];
+  if (!panel) return null;
+  return (
+    <section id={`connection-panel-${tab}`} role="tabpanel" className="connection-settings-panel">
+      {sectionIntro}
+      <div className="connection-section-heading"><div><h3>{panel.title}</h3><p>{panel.description}</p></div></div>
+      <dl className="connection-setting-list">
+        {panel.rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value).replaceAll("_", " ")}</dd></div>)}
+      </dl>
+      <Button disabled>Settings unavailable</Button>
+    </section>
   );
 }

@@ -8,11 +8,23 @@ import { reactionKey } from '../lib/reaction-catalog.js';
 import { Form } from '../components/Form.jsx';
 import { ChatMessage, ChatRunStatus } from '../components/ChatMessage.jsx';
 import { AgentMemoryPanel } from '../components/AgentMemoryPanel.jsx';
+import { CommandLibrary, SlashCommandMenu } from '../components/SlashCommandMenu.jsx';
 import { byUpdated, download, relative, val, visible } from '../lib/model.js';
 import { agentReadiness } from '../lib/agents.js';
 import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnBlocker, restoreComposer, persistComposer, messageLink, quotedMessage, threadMessages } from '../lib/chats.js';
+import { parseSlashCommand, searchCommands } from '../lib/commands.js';
 import './chats-page.css';
 const ReactionPicker = lazy(() => import('../components/ReactionPicker.jsx'));
+
+const CHAT_COMMANDS = Object.freeze([
+  'help', 'agent', 'ask', 'reply', 'update', 'context', 'sources', 'remember', 'attach', 'clear',
+  'chat.new', 'route.new', 'request.new', 'project.new', 'document.new', 'inbox', 'focus', 'workbench',
+  'connections', 'settings', 'runs', 'permissions', 'status', 'priority', 'due', 'route.block', 'chat.export',
+  'summarize', 'translate', 'format', 'run', 'continue', 'retry', 'review', 'compare', 'test', 'explain',
+  'investigate', 'implement', 'research', 'codex.ask', 'codex.implement', 'codex.review', 'codex.test',
+  'codex.explain', 'codex.fix', 'codex.document', 'codex.continue', 'claude.ask', 'claude.analyze',
+  'claude.implement', 'claude.review', 'claude.compare', 'claude.document', 'claude.continue',
+]);
 
 function draftStorage() { try { return sessionStorage; } catch { return undefined; } }
 
@@ -85,6 +97,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const composer = composers.get(chat.id);
   const [, render] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
+  const [slashIndex, setSlashIndex] = useState(0), [commandLibraryOpen, setCommandLibraryOpen] = useState(false), [commandQuery, setCommandQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false), [search, setSearch] = useState(''), [atBottom, setAtBottom] = useState(true), [retrying, setRetrying] = useState(null);
   const [threadId, setThreadId] = useState(null), [bookmarksOnly, setBookmarksOnly] = useState(false), [messageOptions, setMessageOptions] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false), [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -112,6 +125,9 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const shownMessages = inThread.filter(message => (!search.trim() || message.content?.toLowerCase().includes(search.trim().toLowerCase())) && (!bookmarksOnly || bookmarks.has(message.id)));
   const selectedMessages = messages.filter(message => selectedIds.has(message.id));
   const replyMessage = messages.find(item => item.id === composer.replyTo);
+  const connectedProviders = (data.connections || []).filter(item => item.status === 'connected' || item.connected).map(item => item.provider);
+  const slashVisible = composer.text.trimStart().startsWith('/') && !composer.text.trimStart().startsWith('//') && !composer.text.includes('\n');
+  const slashResults = slashVisible ? searchCommands(composer.text.trimStart().slice(1), { context: 'chat' }).slice(0, 10) : [];
   const scrollToEnd = () => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; setAtBottom(true); };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
@@ -215,6 +231,13 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   async function send(event) {
     event.preventDefault();
     if (sending.current || composer.sending || (!composer.text.trim() && !composer.files.length)) return;
+    const slash = parseSlashCommand(composer.text);
+    if (slash) {
+      if (slash.type === 'unknown') { setError(new Error(`Unknown command /${slash.name}. Use /help to search Rumbo commands.`)); return; }
+      if (slash.error) { setError(new Error(slash.error)); return; }
+      await executeSlashCommand(slash.command, slash.argv, { submitted: true });
+      return;
+    }
     if (blocker) { setError(new Error(blocker)); return; }
     if (composer.context && composer.files.length >= 20) { setError(new Error('The context snapshot uses one attachment slot. Remove a file before sending.')); return; }
     sending.current = true; composer.sending = true; setBusy(true); setError(null);
@@ -242,6 +265,87 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
       // Keep the same turn key on retries after an uncertain network result.
       if (mounted.current) setError(cause); else notify(`Could not confirm delivery in ${chat.title}: ${cause.message}`, 'error');
     } finally { sending.current = false; composer.sending = false; onComposerChange(); if (mounted.current) setBusy(false); }
+  }
+
+  async function executeSlashCommand(command, argv = [], { submitted = false } = {}) {
+    const args = argv.join(' ').trim();
+    const findAgent = value => agents.find(item => [item.name, item.provider, item.id].some(candidate => String(candidate || '').toLowerCase() === value.toLowerCase()));
+    setError(null);
+    if (command.startsAgent) {
+      const providerAgent = command.connection ? agents.find(item => item.provider === command.connection) : null;
+      const namedAgent = argv[0] ? findAgent(argv[0]) : null;
+      const selected = namedAgent || providerAgent || agent;
+      if (!selected) { setError(new Error(`Choose an agent before preparing ${command.command}.`)); return; }
+      const instruction = namedAgent ? argv.slice(1).join(' ') : args;
+      change({
+        recipient: selected.id,
+        permission: command.write && selected.provider === 'codex' && folder ? 'workspace-write' : command.write && folder ? 'read-only' : 'conversation',
+        text: instruction || command.description,
+      });
+      notify(`${command.command} prepared for ${selected.name}. Review the message and access level before sending.`);
+      inputRef.current?.focus();
+      return;
+    }
+    if (!CHAT_COMMANDS.includes(command.id)) {
+      if (command.connection) {
+        notify(`${command.command} is registered for ${command.connection}, but its external executor is not available yet.`, 'error');
+        navigate('connections');
+      } else if (submitted) setError(new Error(`${command.command} is in Rumbo’s command catalog, but it is not executable in chat yet.`));
+      else change({ text: `${command.command} ` });
+      return;
+    }
+    if (command.id === 'help') { setCommandQuery(args); setCommandLibraryOpen(true); return; }
+    if (command.id === 'agent') {
+      if (!args) { change({ text: '/agent ' }); return; }
+      const selected = findAgent(args);
+      if (!selected) { setError(new Error(`No agent named “${args}” is available in this workspace.`)); return; }
+      change({ recipient: selected.id, permission: 'conversation', text: '' }); notify(`${selected.name} selected for the next message.`); return;
+    }
+    if (command.id === 'ask') {
+      const selected = argv[0] ? findAgent(argv[0]) : null;
+      const instruction = selected ? argv.slice(1).join(' ') : args;
+      if (selected) change({ recipient: selected.id, permission: 'conversation', text: instruction });
+      else change({ text: instruction });
+      inputRef.current?.focus(); return;
+    }
+    if (command.id === 'reply') {
+      if (!threadId && !composer.replyTo) setError(new Error('Choose Reply on a message first, then use /reply in that thread.'));
+      else change({ text: args });
+      return;
+    }
+    if (command.id === 'update') { change({ text: `${args ? `${args[0].toUpperCase()}${args.slice(1)} update` : 'Progress update'}\n\n` }); inputRef.current?.focus(); return; }
+    if (['summarize', 'translate', 'format'].includes(command.id)) { change({ text: `${command.description}${args ? `\n\n${args}` : ''}` }); inputRef.current?.focus(); return; }
+    if (command.id === 'context' || command.id === 'sources') { setContextOpen(true); return; }
+    if (command.id === 'remember') { edit('memory', null, { title: project ? `${project.name} memory` : 'Workspace memory', content: args, project_id: project?.id }); return; }
+    if (command.id === 'attach') { fileRef.current?.click(); return; }
+    if (command.id === 'clear') { change({ text: '', files: [], replyTo: null, context: null }); return; }
+    if (command.id === 'chat.new') { edit('chat', null, project ? { project_id: project.id } : {}); return; }
+    if (command.id === 'route.new') { edit('task', null, { title: args || undefined, description: args || undefined, project_id: project?.id }); return; }
+    if (command.id === 'request.new') { navigate('settings', 'requests'); return; }
+    if (command.id === 'project.new') { edit('project', null, { name: args || undefined }); return; }
+    if (command.id === 'document.new') { navigate('documents'); return; }
+    if (command.id === 'inbox') { navigate('inbox'); return; }
+    if (command.id === 'focus') { navigate('focus'); return; }
+    if (command.id === 'workbench') { navigate('workbench', project?.id || null, project ? { projectId: project.id } : {}); return; }
+    if (command.id === 'connections') { navigate('connections'); return; }
+    if (command.id === 'settings') { navigate('settings', args || null); return; }
+    if (command.id === 'runs') { navigate('work'); return; }
+    if (command.id === 'permissions') { setContextOpen(true); return; }
+    if (command.id === 'chat.export') { exportChat(); return; }
+    if (['status', 'priority', 'due', 'route.block'].includes(command.id)) {
+      if (!task) { setError(new Error(`${command.command} needs a Route-linked conversation.`)); return; }
+      const patch = command.id === 'route.block' ? { status: 'blocked' } : command.id === 'status' ? { status: args } : command.id === 'priority' ? { priority: args } : { due_at: args || null };
+      if (command.id !== 'route.block' && !args) { setError(new Error(`Add a value after ${command.command}.`)); return; }
+      await perform(() => rumboActions.updateTask(task.id, patch), `${task.title} updated.`);
+      change({ text: '' }); return;
+    }
+  }
+
+  function selectSlash(command) {
+    const parsed = parseSlashCommand(composer.text);
+    const exact = parsed?.type === 'command' && parsed.command.id === command.id;
+    if (!exact && command.usage.includes('[')) { change({ text: `${command.command} ` }); inputRef.current?.focus(); return; }
+    executeSlashCommand(command, exact ? parsed.argv : []);
   }
   async function retry(message, run) {
     if (retrying || active) return;
@@ -305,7 +409,13 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
         {replyMessage ? <div className="chat-composer-reply"><MessageCircle /><span>Replying to {val(replyMessage, 'sender_name')}<small>{replyMessage.content.slice(0, 150)}</small></span><IconButton label="Cancel reply" onClick={() => change({ replyTo: null })}><X /></IconButton></div> : null}
         {composer.context ? <div className="chat-context-tray"><FileText /><button type="button" onClick={() => setPreview({ name: 'Selected context snapshot', content: composer.context.content, type: 'text/markdown' })}>{composer.context.sources?.length || 0} sources · inspect exact snapshot</button><IconButton label="Remove selected context" onClick={() => change({ context: null })}><X /></IconButton></div> : null}
         {composer.files.length ? <div className="chat-compose-files">{composer.files.map((file, index) => <span key={`${file.name}-${index}`}><Paperclip /><button type="button" onClick={() => setPreview(file)}>{file.name}</button><IconButton label={`Remove ${file.name}`} onClick={() => change({ files: composer.files.filter((_, i) => i !== index) })}><X /></IconButton></span>)}</div> : null}
-        <textarea ref={inputRef} aria-label="Message" value={composer.text} maxLength={100000} placeholder={agent ? `Ask ${agent.name}…` : 'Write a note for this conversation…'} onChange={event => change({ text: event.target.value })} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && (data.settings?.preferences?.sendKey !== 'modifier' || event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy) event.currentTarget.form.requestSubmit(); } }} />
+        <SlashCommandMenu text={composer.text} context="chat" activeIndex={slashIndex} onActiveIndexChange={setSlashIndex} onSelect={selectSlash} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} />
+        <textarea ref={inputRef} aria-label="Message" value={composer.text} maxLength={100000} placeholder={agent ? `Ask ${agent.name}…` : 'Write a note or type / for commands…'} onChange={event => { setSlashIndex(0); change({ text: event.target.value }); }} onKeyDown={event => {
+          if (slashVisible && slashResults.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); setSlashIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + slashResults.length) % slashResults.length); return; }
+          if (slashVisible && event.key === 'Escape') { event.preventDefault(); change({ text: `/${composer.text.trimStart()}` }); return; }
+          if (slashVisible && slashResults.length && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); selectSlash(slashResults[Math.min(slashIndex, slashResults.length - 1)]); return; }
+          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && (data.settings?.preferences?.sendKey !== 'modifier' || event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy) event.currentTarget.form.requestSubmit(); }
+        }} />
         <div className="chat-compose-controls"><div className="chat-compose-target">
           <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider)).canStartLive ? '' : ' · Not ready'}</option>)}</Select>
           {agent ? <Select aria-label="Agent access" value={composer.permission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
@@ -330,6 +440,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
       <section><Toggle label="Include saved memory" description="Workspace notes and this project’s notes are included when you send to an agent." checked={composer.memory} onChange={value => change({ memory: value })} />{notes.map(note => <button className="chat-context-link" key={note.id} onClick={() => { setContextOpen(false); edit('memory', note); }}><BookOpen />{note.title}</button>)}</section>
       <section><h3>Attachments</h3><p>Text and code files can be sent to agents: up to 20 files, 100,000 characters each. Agent context uses at most 16 KB per file and 32 KB total. Full files remain saved here. Images are stored in notes only; they are not sent to CLI providers.</p></section>
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}
+    {commandLibraryOpen ? <Dialog title="Rumbo commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
     {optionsOpen ? <Dialog title="Conversation options" onClose={() => setOptionsOpen(false)}><div className="dialog-body chat-options">
       <Button icon={Pencil} onClick={() => { setOptionsOpen(false); edit('chat', chat); }}>Edit conversation details</Button>
       <Button icon={Folder} onClick={() => openAction('move')}>Move to another project</Button>

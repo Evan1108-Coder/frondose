@@ -14,6 +14,10 @@ import { ResourcePage } from './ResourcePage.jsx';
 import { ExperienceSettings } from './ExperienceSettings.jsx';
 import { RepeatingRoutes } from '../../components/RouteTools.jsx';
 import { AgentAwarenessSettings } from './AgentAwarenessSettings.jsx';
+import { IdentitySettings } from './IdentitySettings.jsx';
+import { CodeAppearanceSettings } from './CodeAppearanceSettings.jsx';
+import { GovernanceSettings } from './GovernanceSettings.jsx';
+import { ConnectionPlatformView } from '../ConnectionPlatform.jsx';
 import './settings-center.css';
 import { SlidersHorizontal, Focus, Tag, Tags, ListChecks, PanelsTopLeft, Radio, Waypoints, Shapes, ScrollText, ChartNoAxesCombined, ReceiptText, BadgeCheck, ShieldUser, KeyRound, UserRound, UserRoundCog, Network, Cable, AppWindow, Webhook, Gauge, ClipboardCheck, ListOrdered, Route, TimerReset, Workflow, Target, Flag, NotebookPen, MessageSquareText, Package, LibraryBig, ArchiveRestore, History, FolderKanban, SquareStack, Smile, Terminal } from '../../components/icons.jsx';
 
@@ -57,6 +61,10 @@ function SettingsContent({ section, teamId }) {
   const update = (group, value) => perform(() => rumboActions.updateSettings({ [group]: value }), 'Preference saved');
   if (teamId) return <TeamSettings teamId={teamId} />;
   if (section === 'awareness') return <AgentAwarenessSettings />;
+  if (section === 'personal-security') return <IdentitySettings />;
+  if (section === 'code-reviews') return <CodeAppearanceSettings />;
+  if (['security', 'members', 'access-approvals'].includes(section)) return <GovernanceSettings initialTab={section === 'members' ? 'members' : section === 'access-approvals' ? 'approvals' : 'roles'} />;
+  if (section === 'integrations') return <ConnectionPlatformView embedded />;
   if (section === 'profile') return <Profile />;
   if (section === 'archive' || section === 'retention') return <><Heading title="Data & retention" description="Archive work without losing its history. There is no automatic deletion policy enabled." /><Group title="Lifecycle"><LinkRow title="Export before cleanup" description="Download your workspace without provider credentials." action={() => navigate('settings', 'storage')} label="Export" /><Row title="Retention policy" description="Content is retained until you explicitly remove it. Archiving is reversible."><span>Keep until removed</span></Row></Group><ArchiveList /><ResourceArchive /></>;
   if (section === 'preferences') return <><Heading title="Preferences" description="Small choices that shape your everyday workflow." /><Group title="General"><Row title="Default home" description="The page shown when opening Rumbo without a deep link."><Select aria-label="Default home" value={preferences.home ?? 'overview'} onChange={home => update('preferences', { home })}>{['overview', 'focus', 'inbox', 'projects', 'tasks', 'chats', 'agents'].map(v => <option key={v} value={v}>{v === 'tasks' ? 'Routes' : pretty(v)}</option>)}</Select></Row><Row title="Send chat messages with" description="Shift + Enter always adds a new line."><Select aria-label="Send messages with" value={preferences.sendKey ?? 'enter'} onChange={sendKey => update('preferences', { sendKey })}><option value="enter">Enter</option><option value="modifier">Cmd / Ctrl + Enter</option></Select></Row><Row title="First day of the week" description="Applies to Rumbo’s date pickers."><Select aria-label="First day of week" value={preferences.weekStart ?? 'monday'} onChange={weekStart => update('preferences', { weekStart })}><option value="monday">Monday</option><option value="sunday">Sunday</option></Select></Row></Group><Group title="Your workspace"><LinkRow title="Appearance & navigation" description="Theme, text size, motion, sidebar, and keyboard shortcuts." action={() => navigate('settings', 'appearance')} /><LinkRow title="Your profile" description="Name, image, and contact information." action={() => navigate('settings', 'profile')} /></Group></>;

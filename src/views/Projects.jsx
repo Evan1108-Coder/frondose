@@ -27,6 +27,7 @@ import { ProjectHub } from "./ProjectHub.jsx";
 import { WorkflowSelect, LabelPicker, WorkLabels } from '../components/WorkProperties.jsx';
 import { RouteWorkflow } from '../components/RouteWorkflow.jsx';
 import { featureItems } from '../lib/settings-catalog.js';
+import { ActivityFeed } from '../components/ActivityFeed.jsx';
 
 export function ProjectsView() {
   const { data, page, navigate, edit } = useApp();
@@ -560,6 +561,7 @@ function RouteDetail({ route }) {
               </p>
             )}
           </section>
+          <ActivityFeed workspaceId={route.workspace_id} targetType="route" targetId={route.id} />
         </div>
         <aside className="detail-aside">
           <section>

@@ -74,6 +74,7 @@
 .space-editor .space-discard, .space-discard { padding: 4px 28px 28px; }
 .space-discard > p { color: var(--secondary); font-size: 14px; line-height: 1.7; margin-bottom: 24px; }
 .space-editor-actions { display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.project-activity-sections { display: grid; gap: 40px; }
 .space-editor .document-write-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; color: var(--muted); font-size: 12px; }
 .space-editor .document-write-toolbar .segmented button { width: auto; min-width: 66px; padding: 6px 12px; font-size: 13px; }
 .space-editor .document-input { min-height: 300px; line-height: 1.75; font-family: inherit; resize: vertical; }

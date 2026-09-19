@@ -2616,6 +2616,174 @@ dd {
 .connection-setup > .prose {
   font-size: 13px;
 }
+.connection-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.connection-boundary {
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--input);
+}
+.connection-boundary.is-preview {
+  border-style: dashed;
+}
+.connection-boundary strong,
+.connection-preview-note strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.connection-boundary p,
+.connection-preview-note p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.connection-settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 18px -2px 0;
+  padding: 0 2px 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-soft);
+}
+.connection-settings-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.connection-settings-tabs button:hover:not(:disabled),
+.connection-settings-tabs button.is-active {
+  border-color: var(--border);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.connection-settings-tabs button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.connection-settings-tabs small {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--input);
+  color: var(--faint);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.connection-settings-panel {
+  padding-top: 18px;
+}
+.connection-preview-note {
+  margin-bottom: 17px;
+  padding: 12px 13px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.connection-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.connection-section-heading h3 {
+  font-size: 14px;
+}
+.connection-section-heading p {
+  margin-top: 5px;
+  max-width: 610px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.connection-section-heading > span {
+  flex: none;
+  color: var(--faint);
+  font-size: 11px;
+}
+.connection-setting-list {
+  margin-bottom: 16px;
+  border-top: 1px solid var(--border-soft);
+}
+.connection-setting-list > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.45fr) 1fr;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+.connection-setting-list dt {
+  color: var(--muted);
+}
+.connection-setting-list dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.connection-command-list {
+  display: grid;
+  gap: 7px;
+  max-height: min(430px, 54vh);
+  overflow-y: auto;
+}
+.connection-command-list article {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+.connection-command-list article > div {
+  min-width: 0;
+  flex: 1;
+}
+.connection-command-list code {
+  color: var(--text);
+  font-size: 12px;
+}
+.connection-command-list p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.connection-command-list small {
+  display: block;
+  margin-top: 5px;
+  color: var(--faint);
+  font-size: 9px;
+  text-transform: capitalize;
+}
+.connection-command-list button {
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 10px;
+}
 .setup-instructions {
   margin: 22px 0;
   font-size: 13px;
@@ -4591,3 +4759,10 @@ dd {
     font-size: 11px;
   }
 }
+/* Account entry uses the same restrained panels and controls as the workspace. */
+.identity-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
+.identity-card { width: min(100%, 420px); padding: 32px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.identity-card h1 { margin: 24px 0 16px; font-size: 24px; }
+.identity-card form, .identity-setup form { display: grid; gap: 18px; }
+.identity-setup { padding: 24px; }
+.identity-setup p { color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
