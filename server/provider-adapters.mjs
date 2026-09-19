@@ -1,35 +1,37 @@
 const CATALOG = Object.freeze({
   github: {
     displayName: "GitHub",
-    authKind: "browser_oauth",
-    purpose: "Repositories, issues, pull requests, and checks.",
-    requiredEnvironment: ["RUMBO_GITHUB_CLIENT_ID", "RUMBO_GITHUB_CLIENT_SECRET"],
-    scopes: ["read:user", "user:email"],
-    resourcePolicy: "Repository access is selected through the GitHub App installation flow.",
+    authKind: "cli_or_token",
+    purpose: "Browse your repositories and link them to projects.",
+    requiredEnvironment: [], scopes: [], methods: ['existing', 'browser', 'token'],
+    resourcePolicy: "Uses GitHub CLI sign-in or a fine-grained access token. Repository access follows the permissions you grant.",
+    docsUrl: 'https://cli.github.com/manual/gh_auth_login', installCommand: 'brew install gh',
   },
   "google-drive": {
     displayName: "Google Drive",
     authKind: "browser_oauth",
-    purpose: "User-selected Drive files as project context.",
+    purpose: "Browse Drive file names and links as project references.",
     requiredEnvironment: ["RUMBO_GOOGLE_CLIENT_ID", "RUMBO_GOOGLE_CLIENT_SECRET"],
-    scopes: ["openid", "email", "https://www.googleapis.com/auth/drive.file"],
-    resourcePolicy: "Rumbo requests drive.file and imports only files selected with Google Picker.",
+    scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"], methods: ['browser'],
+    resourcePolicy: "Read-only file metadata. Rumbo does not read file contents, create, edit, or delete Drive files.",
+    docsUrl: 'https://developers.google.com/identity/protocols/oauth2/web-server',
   },
   codex: {
     displayName: "Codex",
     authKind: "provider_managed",
-    purpose: "Coding sessions through Codex App Server.",
+    purpose: "Run coding and analysis sessions through Codex CLI.",
     requiredEnvironment: [],
-    scopes: [],
-    resourcePolicy: "Codex App Server owns ChatGPT sign-in, credentials, history, and rate-limit state.",
+    scopes: [], methods: ['existing', 'browser'],
+    resourcePolicy: "Codex owns sign-in and credentials. Runs start only when requested. Analysis uses a read-only sandbox; coding can write in the linked project.",
+    docsUrl: 'https://developers.openai.com/codex/cli/reference/', installCommand: 'npm install -g @openai/codex',
   },
   claude: {
     displayName: "Claude",
-    authKind: "api_or_cloud",
-    purpose: "Claude Agent SDK sessions with explicit permissions.",
-    requiredEnvironment: ["ANTHROPIC_API_KEY"],
-    scopes: [],
-    resourcePolicy: "Third-party Rumbo use requires Anthropic API or a supported cloud provider; Claude subscription OAuth is not offered.",
+    authKind: "provider_managed",
+    purpose: "Run analysis sessions through Claude Code.",
+    requiredEnvironment: [], scopes: [], methods: ['existing', 'browser'],
+    resourcePolicy: "Claude Code owns sign-in and credentials. Rumbo limits tools to reading and searching. Programmatic usage can have separate billing limits under your provider plan.",
+    docsUrl: 'https://code.claude.com/docs/en/headless', installCommand: 'brew install --cask claude-code',
   },
 });
 
@@ -41,7 +43,7 @@ export function providerSetup(provider, { env = process.env, origin = "http://12
   const definition = CATALOG[provider];
   if (!definition) return null;
   const missing = definition.requiredEnvironment.filter((name) => !env[name]);
-  const callbackPath = provider === "github" ? "/api/auth/github/callback" : provider === "google-drive" ? "/api/auth/google-drive/callback" : null;
+  const callbackPath = provider === "google-drive" ? "/api/auth/google-drive/callback" : null;
   const callbackUrl = callbackPath ? new URL(callbackPath, origin).toString() : null;
   const configured = missing.length === 0;
   return {
@@ -54,12 +56,13 @@ export function providerSetup(provider, { env = process.env, origin = "http://12
     missing,
     callbackUrl,
     scopes: definition.scopes,
+    methods: definition.methods, docsUrl: definition.docsUrl, installCommand: definition.installCommand,
     resourcePolicy: definition.resourcePolicy,
-    startAllowed: false,
+    startAllowed: configured,
     startReason: configured
-      ? "Connection launch remains disabled during account-safe prototype testing. It can be enabled only from an explicit user action."
-      : `Configure ${missing.join(" and ")} in the local server environment first.`,
-    secretsPolicy: "Secret values are never returned to the browser or stored in Rumbo business tables.",
+      ? "Connect explicitly to check or sign in to your account."
+      : `Configure ${missing.join(" and ")} in the server environment, enable the Drive API, register this callback URL in Google Cloud, and restart.`,
+    secretsPolicy: "CLI credentials stay with the provider. Optional GitHub and Google tokens are stored in a private server file, never returned to the browser or exported.",
     liveAccountChecked: false,
   };
 }

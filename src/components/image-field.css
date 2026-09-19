@@ -1,0 +1,18 @@
+.image-field { display: grid; gap: 8px; }
+.image-dropzone { display: flex; gap: 16px; align-items: center; padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius-panel, 12px); background: var(--surface); }
+.image-dropzone.drag-over { border-color: var(--accent); background: var(--selected); }
+.image-dropzone small { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.image-field-preview { width: 56px; height: 56px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; flex-shrink: 0; }
+.image-field-preview img { width: 100%; height: 100%; object-fit: cover; }
+.image-crop-body { padding: 24px; display: grid; gap: 16px; }
+.image-crop-stage { position: relative; width: min(100%, 320px); aspect-ratio: 1; overflow: hidden; margin: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; cursor: grab; touch-action: none; user-select: none; }
+.image-crop-stage:active { cursor: grabbing; }
+.image-crop-stage img { position: absolute; top: 0; left: 0; max-width: none; pointer-events: none; }
+.image-crop-stage > span { display: grid; height: 100%; place-items: center; }
+.image-crop-grid { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(to right, transparent 33.1%, #ffffff25 33.1%, #ffffff25 33.4%, transparent 33.4%, transparent 66.4%, #ffffff25 66.4%, #ffffff25 66.7%, transparent 66.7%), linear-gradient(to bottom, transparent 33.1%, #ffffff25 33.1%, #ffffff25 33.4%, transparent 33.4%, transparent 66.4%, #ffffff25 66.4%, #ffffff25 66.7%, transparent 66.7%); }
+.image-crop-control { display: grid; grid-template-columns: 145px 1fr; align-items: center; gap: 12px; font-size: 14px; }
+.image-crop-control input { width: 100%; accent-color: var(--accent); }
+.project-picture { width: 24px; height: 24px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.project-heading-picture { width: 56px; height: 56px; border-radius: 12px; object-fit: cover; }
+.project-picture-edit { display: block; width: fit-content; margin: 12px 0; padding: 0; background: none; border: none; }
+@media (max-width: 540px) { .image-dropzone { flex-wrap: wrap; } .image-crop-control { grid-template-columns: 1fr; gap: 6px; } }

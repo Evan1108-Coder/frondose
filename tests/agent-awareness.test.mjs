@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServer } from 'node:http';
+import { EventEmitter } from 'node:events';
+import { createLocalApi } from '../server/local-api.mjs';
+import { captureAgentActions, agentMemories } from '../server/agent-awareness.mjs';
+
+test('agent proposals require human approval, persist scoped memory, reject stale and unsafe changes', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'rumbo-awareness-test-'));
+  let prompts = [], proposed = [{ type: 'memory.create', title: 'Writing style', content: 'Prefer concise conclusions.' }];
+  const api = createLocalApi({ dataDir: directory, integrationOptions: { env: {}, fetchImpl: () => { throw Error('No external calls'); }, execute: async (_, args) => ({ code: 0, stdout: args.includes('mcp') ? '[]' : 'Logged in' }), spawnProcess: () => {
+    const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.stdin = new EventEmitter(); child.kill = () => {};
+    child.stdin.end = prompt => { prompts.push(prompt); const nonce = prompt.match(/"nonce":"([^"]+)"/)?.[1]; queueMicrotask(() => {
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', phase: 'commentary', text: 'Checking workspace context.' } }) + '\n'));
+      child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Please review.\n```rumbo-actions\n' + JSON.stringify({ nonce, actions: proposed }) + '\n```' } }) + '\n')); child.emit('close', 0);
+    }); }; return child;
+  } } });
+  const server = createServer(api.middleware); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const db = new DatabaseSync(api.dbPath);
+  t.after(async () => { db.close(); api.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); });
+  const call = async (path, body, expected = 200) => { const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }); const result = await response.json(); assert.equal(response.status, expected, JSON.stringify(result)); return result; };
+  const workspace = (await call('/workspaces', { name: 'Awareness fixture' }, 201)).workspace;
+  const agent = (await call('/agents', { name: 'Helper', workspace_id: workspace.id, provider: 'codex' }, 201)).agent;
+  const chat = (await call('/chats', { title: 'Agent work', workspace_id: workspace.id, participant_agent_ids: [agent.id] }, 201)).chat;
+  await call('/connections/codex/connect', { method: 'existing' });
+  let count = 0;
+  const turn = async (extra = {}) => {
+    await call(`/chats/${chat.id}/turns`, { agent_id: agent.id, content: 'Help organize this workspace', client_turn_id: `awareness-fixture-${++count}`, work_mode: 'conversation', ...extra }, 201);
+    for (let i = 0; i < 50; i++) { const run = api.snapshot().runs[0]; if (run.status === 'completed') return run; await new Promise(resolve => setTimeout(resolve, 10)); }
+    throw Error('Run did not finish');
+  };
+  let run = await turn();
+  assert.match(prompts[0], /Awareness fixture/);
+  assert.equal(agentMemories(db, workspace.id, agent.id).length, 0);
+  let actions = (await call(`/agent-actions?run_id=${run.id}`)).actions;
+  assert.equal(actions.length, 1);
+  assert.ok(!api.snapshot().messages.find(message => message.sender_type === 'agent').content.includes('Checking workspace'));
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'approve' });
+  assert.equal(agentMemories(db, workspace.id, agent.id).length, 1);
+  assert.equal(agentMemories(db, workspace.id, 'other-agent').length, 0);
+  assert.equal(agentMemories(db, 'other-workspace', agent.id).length, 0);
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'approve' }, 400);
+  run = await turn(); assert.match(prompts.at(-1), /Prefer concise conclusions/);
+  await turn({ include_memory: false }); assert.ok(!prompts.at(-1).includes('Prefer concise conclusions'));
+  proposed = [{ type: 'settings.update', section: 'preferences', patch: { sendKey: 'modifier' } }];
+  run = await turn(); actions = (await call(`/agent-actions?run_id=${run.id}`)).actions;
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'approve' });
+  assert.equal(api.snapshot().settings.preferences.sendKey, 'modifier');
+  run = await turn(); actions = (await call(`/agent-actions?run_id=${run.id}`)).actions;
+  db.prepare("UPDATE settings SET value_json=? WHERE key='preferences'").run(JSON.stringify({ sendKey: 'enter', home: 'chats', weekStart: 'sunday' }));
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'approve' }, 400);
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'reject' });
+  const block = action => '```rumbo-actions\n' + JSON.stringify({ nonce: 'test', actions: [action] }) + '\n```';
+  assert.throws(() => captureAgentActions(db, run.id, block({ type: 'settings.update', section: 'agentDefaults', patch: { approvalMode: 'never' } }), 'test'));
+  assert.throws(() => captureAgentActions(db, run.id, block({ type: 'memory.create', title: 'Bad nonce', content: 'No' }), 'wrong'));
+  assert.throws(() => captureAgentActions(db, run.id, block({ type: 'record.archive', resource: 'projects', id: 'other-workspace' }), 'test'));
+  const memory = agentMemories(db, workspace.id, agent.id)[0];
+  await call(`/agent-memories/${memory.id}/forget`, { workspace_id: workspace.id, confirmed: true });
+  assert.equal(agentMemories(db, workspace.id, agent.id).length, 0);
+  const project = (await call('/projects', { workspace_id: workspace.id, name: 'Archive target' }, 201)).project;
+  proposed = [{ type: 'record.archive', resource: 'projects', id: project.id }];
+  run = await turn(); actions = (await call(`/agent-actions?run_id=${run.id}`)).actions;
+  assert.equal(api.snapshot().projects.find(item => item.id === project.id).archived_at, null);
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'approve' });
+  assert.ok(api.snapshot().projects.find(item => item.id === project.id).archived_at);
+  proposed = [{ type: 'memory.create', title: 'Disabled proposal', content: 'Must not apply' }];
+  run = await turn(); actions = (await call(`/agent-actions?run_id=${run.id}`)).actions;
+  await call('/agent-awareness', { workspace_id: workspace.id, enabled: false });
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'approve' }, 400);
+  await call(`/agent-actions/${actions[0].id}/decision`, { decision: 'reject' });
+  await turn(); assert.ok(!prompts.at(-1).includes('Workspace snapshot (reference data)'));
+});

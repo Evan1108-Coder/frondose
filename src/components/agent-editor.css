@@ -1,0 +1,69 @@
+.dialog.agent-editor {
+  width: min(100%, 660px);
+  border-radius: 12px;
+}
+
+.agent-editor .dialog-heading {
+  padding: 26px 28px 20px;
+  border-bottom: 0;
+}
+
+.agent-editor .dialog-heading h2 { font-size: 25px; font-weight: 550; }
+.agent-editor .dialog-heading p { font-size: 14px; line-height: 1.5; margin-top: 6px; }
+.agent-editor-fields { display: flex; flex-direction: column; gap: 22px; padding: 8px 28px 26px; }
+.agent-editor .field > label, .agent-provider-field legend, .agent-presets h3 { font-size: 14px; font-weight: 500; color: var(--text); }
+.agent-editor .field > small, .agent-provider-help, .agent-editor-future-note { font-size: 12px; line-height: 1.55; color: var(--muted); }
+.agent-editor .field input, .agent-editor .field textarea { font-size: 14px; background: var(--input); border-radius: 6px; }
+.agent-editor .field input { min-height: 44px; }
+.agent-editor .field textarea { min-height: 110px; line-height: 1.6; }
+.agent-editor .field input[aria-invalid="true"] { border-color: var(--danger); }
+.agent-editor .field input:disabled, .agent-editor .field textarea:disabled { opacity: .7; }
+.agent-presets h3 { margin: 0 0 10px; }
+.agent-presets h3 span { font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
+.agent-preset-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.agent-preset-grid .button { min-height: 44px; justify-content: center; font-size: 14px; border-radius: 6px; }
+.agent-preset-grid .button svg { width: 19px; height: 19px; }
+.agent-provider-field { margin: 0; padding: 0; border: 0; min-width: 0; }
+.agent-provider-field legend { padding: 0; margin-bottom: 10px; }
+.agent-provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.agent-provider-option { display: flex; align-items: center; gap: 12px; position: relative; min-height: 52px; padding: 10px 14px; background: var(--input); border: 1px solid var(--border-strong); border-radius: 6px; cursor: pointer; transition: background 120ms, border-color 120ms; font-size: 14px; }
+.agent-provider-option input { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; pointer-events: none; }
+.agent-provider-option:hover { background: var(--hover); }
+.agent-provider-option.is-selected { border-color: var(--secondary); background: var(--selected); }
+.agent-provider-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 3px; }
+.agent-provider-field:disabled .agent-provider-option { cursor: default; opacity: .7; }
+.agent-provider-option .agent-identity { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; background: none; flex-shrink: 0; }
+.agent-provider-option .agent-identity svg { width: 22px; height: 22px; }
+.agent-provider-indicator { display: grid; place-items: center; width: 19px; height: 19px; margin-left: auto; border: 1px solid var(--muted); border-radius: 9999px; flex-shrink: 0; }
+.agent-provider-indicator svg { width: 12px; height: 12px; }
+.agent-provider-option.is-selected .agent-provider-indicator { color: var(--bg); border-color: var(--text); background: var(--text); }
+.agent-provider-help { margin: 9px 0 0; }
+.agent-editor-future-note { margin: -4px 0 0; }
+.agent-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 28px; border-top: 1px solid var(--border); background: var(--elevated); border-radius: 0 0 12px 12px; position: sticky; bottom: 0; z-index: 2; }
+.agent-editor-footer > p { display: flex; align-items: flex-start; gap: 8px; max-width: 290px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.agent-editor-footer > p svg { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; }
+.agent-editor-actions, .agent-confirm-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.agent-editor-actions { flex-shrink: 0; }
+.agent-editor-actions .button { min-height: 40px; border-radius: 6px; }
+.agent-preset-confirmation { margin-top: 12px; padding: 14px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); }
+.agent-preset-confirmation strong { font-weight: 500; font-size: 14px; }
+.agent-preset-confirmation p { margin: 5px 0 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.agent-discard-confirmation { padding: 6px 28px 26px; }
+.agent-discard-confirmation > p { margin: 0 0 26px; color: var(--secondary); font-size: 14px; }
+.agent-editor .form-validation-error { margin: 0 28px 16px; }
+
+@media (max-width: 600px) {
+  .agent-editor .dialog-heading { padding: 22px 20px 18px; }
+  .agent-editor .dialog-heading h2 { font-size: 23px; }
+  .agent-editor-fields { padding: 6px 20px 24px; gap: 20px; }
+  .agent-editor-footer { padding: 16px 20px; flex-direction: column; align-items: stretch; gap: 14px; }
+  .agent-editor-footer > p { max-width: none; }
+  .agent-editor-actions .button { flex: 1; }
+  .agent-preset-grid { gap: 6px; }
+  .agent-preset-grid .button { gap: 6px; padding: 8px 5px; font-size: 13px; }
+  .agent-preset-grid .button svg { width: 16px; height: 16px; }
+  .agent-provider-option { gap: 8px; padding: 10px; }
+  .agent-discard-confirmation { padding: 6px 20px 22px; }
+  .agent-discard-confirmation .agent-confirm-actions { flex-wrap: wrap; }
+  .agent-editor .form-validation-error { margin: 0 20px 16px; }
+}

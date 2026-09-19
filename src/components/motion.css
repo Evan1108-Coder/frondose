@@ -1,0 +1,133 @@
+/* Motion explains a state change; navigation and live data never animate in. */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-feedback: 100ms;
+  --motion-popover: 160ms;
+  --motion-dialog: 200ms;
+  --motion-fade: 160ms;
+  --motion-disclosure: 200ms;
+  --motion-chevron: 160ms;
+  --motion-travel: 4px;
+  --motion-scale: .98;
+  --motion-popover-scale: .97;
+}
+
+.app-main {
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--bg), var(--surface) 34%) 0%,
+    var(--bg) 48%,
+    color-mix(in srgb, var(--bg), var(--surface) 55%) 100%);
+}
+.main-scroll { background: transparent; }
+
+.rumbo-collapse { min-width: 0; overflow: clip; }
+.rumbo-collapse[data-open="true"][style*="auto"] { overflow: visible; }
+/* Exception: this short navigation tree must move its following siblings as
+   requested. One start/end measurement, no per-frame JS or text scaling. */
+.rumbo-collapse[data-animate="true"] {
+  transition: height var(--motion-disclosure) var(--ease-out);
+}
+.rumbo-collapse[data-animate="true"][data-open="true"] { transition-delay: 20ms; }
+.rumbo-collapse-content {
+  min-height: 0;
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--motion-fade) var(--ease-out), transform var(--motion-popover) var(--ease-out);
+}
+.rumbo-collapse[data-open="false"] > .rumbo-collapse-content {
+  opacity: 0;
+  transform: translateY(calc(var(--motion-travel) * -1));
+  pointer-events: none;
+}
+.rumbo-collapse[data-open="true"] > .rumbo-collapse-content { transition-delay: 20ms; }
+
+.dialog,
+.toast { animation: none; }
+.dialog:not(.command-dialog) {
+  opacity: 1;
+  transform: none;
+  transform-origin: center;
+  transition: transform var(--motion-dialog) var(--ease-out), opacity var(--motion-fade) var(--ease-out);
+}
+.dialog-backdrop { transition: opacity var(--motion-fade) var(--ease-out); }
+.popover,
+.rumbo-select-panel,
+.rumbo-date-panel,
+.agent-menu-panel,
+.rumbo-tooltip {
+  opacity: 1;
+  transform: none;
+  transform-origin: top left;
+  transition: transform var(--motion-popover) var(--ease-out), opacity var(--motion-fade) var(--ease-out);
+}
+.create-options, .agent-menu-panel { transform-origin: top right; }
+.toast {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition: transform var(--motion-popover) var(--ease-out), opacity var(--motion-fade) var(--ease-out);
+}
+.button:not(:disabled), .icon-button:not(:disabled) {
+  transition: background-color 100ms, border-color 100ms, color 100ms, transform 60ms var(--ease-out);
+}
+:root:not([data-input-modality="keyboard"]) :is(.button, .icon-button):not(:disabled):active {
+  transform: scale(.98);
+  transition-duration: 100ms;
+}
+
+@starting-style {
+  .dialog:not(.command-dialog) { opacity: 0; transform: translateY(var(--motion-travel)) scale(var(--motion-scale)); }
+  .dialog-backdrop:not(:has(.command-dialog)) { opacity: 0; }
+  .popover, .rumbo-select-panel, .rumbo-date-panel, .agent-menu-panel, .rumbo-tooltip { opacity: 0; transform: scale(var(--motion-popover-scale)); }
+  .toast { opacity: 0; transform: translate(-50%, var(--motion-travel)); }
+}
+
+/* Frequent, keyboard-driven interactions must not wait for visual motion. */
+.command-dialog,
+.dialog-backdrop:has(.command-dialog),
+:root[data-input-modality="keyboard"] :is(.dialog, .dialog-backdrop, .popover, .rumbo-select-panel, .rumbo-date-panel, .agent-menu-panel, .rumbo-tooltip, .toast, .disclosure-chevron, .rumbo-collapse, .rumbo-collapse-content, .rumbo-select-trigger > svg, .workspace-trigger > svg) {
+  animation: none;
+  transition: none;
+}
+
+@media (max-width: 800px) {
+  .sidebar.sidebar-v2 { transition: transform 220ms var(--ease-drawer); }
+  :root[data-input-modality="keyboard"] .sidebar.sidebar-v2 { transition: none; }
+}
+
+/* Keep gentle feedback without travel, scaling, or staged layout expansion. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-travel: 0px;
+    --motion-scale: 1;
+    --motion-popover-scale: 1;
+    --motion-fade: 80ms;
+    --motion-popover: 0ms;
+    --motion-dialog: 0ms;
+    --motion-disclosure: 0ms;
+    --motion-chevron: 0ms;
+  }
+  *, *::before, *::after { scroll-behavior: auto !important; }
+  .rumbo-collapse-content { transition-delay: 0ms !important; }
+  .sidebar.sidebar-v2 { transition: none; }
+  :root :is(.button, .icon-button):not(:disabled):active { transform: none; }
+  .spin { animation: none; }
+}
+:root[data-motion="reduced"] {
+  --motion-travel: 0px;
+  --motion-scale: 1;
+  --motion-popover-scale: 1;
+  --motion-fade: 80ms;
+  --motion-popover: 0ms;
+  --motion-dialog: 0ms;
+  --motion-disclosure: 0ms;
+  --motion-chevron: 0ms;
+}
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after { scroll-behavior: auto !important; }
+:root[data-motion="reduced"] .rumbo-collapse-content { transition-delay: 0ms !important; }
+:root[data-motion="reduced"] .sidebar.sidebar-v2 { transition: none; }
+:root[data-motion="reduced"] :is(.button, .icon-button):not(:disabled):active { transform: none; }
+:root[data-motion="reduced"] .spin { animation: none; }

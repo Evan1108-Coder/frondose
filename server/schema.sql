@@ -44,6 +44,56 @@ CREATE TABLE IF NOT EXISTS projects (
   UNIQUE(workspace_id, identifier)
 );
 
+CREATE TABLE IF NOT EXISTS teams (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  icon TEXT NOT NULL DEFAULT 'users',
+  color TEXT NOT NULL DEFAULT '#8b95a5',
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'Member',
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CHECK ((team_id IS NULL) != (project_id IS NULL))
+);
+
+CREATE TABLE IF NOT EXISTS milestones (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'planned',
+  target_date TEXT,
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -116,6 +166,7 @@ CREATE TABLE IF NOT EXISTS runs (
   title TEXT NOT NULL,
   prompt TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL DEFAULT 'mock',
+  work_mode TEXT NOT NULL DEFAULT 'project',
   requires_approval INTEGER NOT NULL DEFAULT 0,
   started_at TEXT,
   finished_at TEXT,
@@ -134,6 +185,17 @@ CREATE TABLE IF NOT EXISTS run_events (
   UNIQUE(run_id, sequence)
 );
 
+CREATE TABLE IF NOT EXISTS chat_turns (
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  client_turn_id TEXT NOT NULL,
+  source_message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  UNIQUE(chat_id, client_turn_id)
+);
+
 CREATE TABLE IF NOT EXISTS approvals (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -146,6 +208,33 @@ CREATE TABLE IF NOT EXISTS approvals (
   resolved_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS agents (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'custom',
+  description TEXT NOT NULL DEFAULT '',
+  instructions TEXT NOT NULL DEFAULT '',
+  working_directory TEXT,
+  status TEXT NOT NULL DEFAULT 'available',
+  model TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '#8b95a5',
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_notes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
@@ -155,3 +244,10 @@ CREATE INDEX IF NOT EXISTS idx_chats_task ON chats(task_id);
 CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_runs_workspace ON runs(workspace_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_run_events_run ON run_events(run_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_agents_workspace ON agents(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_memory_workspace ON memory_notes(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_teams_workspace ON teams(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_members_team ON team_members(team_id);
+CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_documents_team ON documents(team_id);
+CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id);

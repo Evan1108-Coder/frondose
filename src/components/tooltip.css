@@ -1,0 +1,1 @@
+.rumbo-tooltip { z-index: 180; display: block; padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--elevated); color: var(--text); font-size: 12px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; text-align: center; pointer-events: none; }

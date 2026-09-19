@@ -1,0 +1,71 @@
+import { byUpdated, val, visible } from "./model.js";
+
+export const AGENT_PROVIDERS = {
+  codex: {
+    name: "Codex",
+    company: "OpenAI",
+    capabilities: ["Read and search", "Project edits"],
+    permissions: "Read-only or project edits",
+    description: "Code, investigate, and make changes inside a project folder.",
+  },
+  claude: {
+    name: "Claude",
+    company: "Anthropic",
+    capabilities: ["Read and search"],
+    permissions: "Read-only analysis",
+    description: "Read code, explore a project, and explain findings. Editing is not supported in Rumbo yet.",
+  },
+};
+
+const ACTIVE_RUN_STATUSES = new Set(["queued", "starting", "running", "needs_input", "paused"]);
+
+/** Connection state is saved account state, not a new authentication check. */
+export function agentReadiness(agent, connection) {
+  const provider = AGENT_PROVIDERS[agent?.provider];
+  const result = (state, label, description, action, canStartLive = false, canSimulate = true) =>
+    ({ state, label, description, action, canStartLive, canSimulate });
+  if (!agent || val(agent, "archived_at")) return result("archived", "Archived", "Restore this agent before starting a session.", "restore", false, false);
+  if (!provider) return result("unsupported", "Not supported", "This provider cannot run sessions in Rumbo yet. Choose Codex or Claude.", "configure", false, false);
+  if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
+  const state = connection?.provider === agent.provider ? connection.state : "not_connected";
+  if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
+  if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${provider.name === "Claude" ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
+  if (state === "connected" && connection.mode !== "demo" && connection.metadata?.liveAccountChecked !== false) {
+    return result("ready", "Ready", "Account connected. General chat needs no folder; project-file work requires one. Access is checked again during launch.", "start", true);
+  }
+  const description = state === "available_not_authenticated"
+    ? `${provider.name} is installed, but no account connection has been verified.`
+    : state === "probe_failed"
+      ? `Rumbo could not find a working ${provider.name} installation. Check setup in Connections.`
+      : `Connect your ${provider.name} account to start live work. You can still try an explicit simulation.`;
+  return result("needs_connection", "Connect account", description, "connect");
+}
+
+/** Names are labels, never identity: duplicate or renamed agents must not steal sessions. */
+export function runsForAgent(agent, runs = []) {
+  if (!agent?.id) return [];
+  return runs.filter((run) => val(run, "agent_id") === agent.id &&
+    (!val(agent, "workspace_id") || val(run, "workspace_id") === val(agent, "workspace_id")))
+    .sort(byUpdated);
+}
+
+export function summarizeAgent(agent, data = {}) {
+  const connection = (data.connections || []).find((item) => item.provider === agent.provider);
+  const runs = runsForAgent(agent, data.runs);
+  const inWorkspace = (item) => !val(agent, "workspace_id") || val(item, "workspace_id") === val(agent, "workspace_id");
+  const assignedTasks = visible(data.tasks).filter((task) => inWorkspace(task) && (val(task, "assignee_agent_ids") || []).includes(agent.id));
+  const chats = visible(data.chats).filter((chat) => inWorkspace(chat) && (val(chat, "participant_agent_ids") || []).includes(agent.id));
+  const projectIds = new Set([...assignedTasks, ...chats, ...runs].map((item) => val(item, "project_id")).filter(Boolean));
+  return {
+    provider: AGENT_PROVIDERS[agent.provider] || { name: agent.provider || "Unknown provider", company: "", capabilities: [], permissions: "Not supported" },
+    connection,
+    readiness: agentReadiness(agent, connection),
+    runs,
+    activeRuns: runs.filter((run) => ACTIVE_RUN_STATUSES.has(run.status)),
+    liveRuns: runs.filter((run) => run.mode === "live" && ACTIVE_RUN_STATUSES.has(run.status)),
+    latestRun: runs[0] || null,
+    projects: visible(data.projects).filter((project) => inWorkspace(project) && projectIds.has(project.id)),
+    chats,
+    assignedTasks,
+  };
+}

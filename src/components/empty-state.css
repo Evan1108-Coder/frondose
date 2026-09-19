@@ -1,0 +1,149 @@
+.empty-state.rumbo-empty {
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  min-width: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.empty-state.rumbo-empty.page-empty {
+  flex: 1;
+  min-height: 0;
+  padding: 32px 24px;
+  justify-content: center;
+}
+
+/* Fill the real remaining viewport, not a guessed pixel-height card. Headers
+   and active filters still keep their space above a centered empty result. */
+.main-scroll > .page:has(> .page-empty) {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-block: 32px;
+}
+.main-scroll > .page:has(> .page-empty):only-child {
+  width: 100%;
+}
+
+.rumbo-empty .empty-art {
+  color: var(--secondary);
+  width: 224px;
+  max-width: 100%;
+  margin-bottom: 28px;
+}
+
+.rumbo-empty .empty-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.rumbo-empty .empty-art-back {
+  opacity: 0.35;
+}
+
+.rumbo-empty .empty-art-mid {
+  opacity: 0.62;
+}
+
+.rumbo-empty .empty-copy {
+  max-width: 550px;
+}
+
+.empty-state.rumbo-empty h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(26px, 2.25vw, 32px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.empty-state.rumbo-empty p {
+  max-width: 520px;
+  margin: 18px auto 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.rumbo-empty .empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.empty-state.rumbo-empty .button {
+  margin: 0;
+  min-height: 40px;
+  padding-inline: 18px;
+}
+
+.empty-state.rumbo-empty.compact {
+  min-height: 150px;
+  padding: 24px 12px;
+  justify-content: center;
+}
+
+.rumbo-empty.compact .empty-art {
+  width: 88px;
+  margin-bottom: 12px;
+}
+
+.empty-state.rumbo-empty.compact h2 {
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: normal;
+}
+
+.empty-state.rumbo-empty.compact p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 7px;
+}
+
+.rumbo-empty.compact .empty-actions {
+  margin-top: 18px;
+}
+
+.empty-state.rumbo-empty.compact .button {
+  min-height: 36px;
+  padding-inline: 12px;
+}
+
+@media (max-width: 800px) {
+  .empty-state.rumbo-empty.page-empty {
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .empty-state.rumbo-empty.page-empty {
+    padding: 24px 8px;
+  }
+
+  .rumbo-empty .empty-art {
+    width: 184px;
+    margin-bottom: 22px;
+  }
+
+  .rumbo-empty.compact .empty-art {
+    width: 88px;
+    margin-bottom: 12px;
+  }
+
+  .empty-state.rumbo-empty h2 {
+    font-size: 25px;
+  }
+
+  .empty-state.rumbo-empty p {
+    font-size: 15px;
+  }
+}

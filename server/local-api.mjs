@@ -1,11 +1,22 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, resolve, parse as parsePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { listProviderSetups, providerSetup } from './provider-adapters.mjs';
+import { isRecord, mergeSettings, validateAvatar, validateRecord, validationError } from './validation.mjs';
+import { createIntegrationService } from './integration-service.mjs';
+import { installWorkspaceFeatures, featureSnapshot, featureRoute, recordChange, validateCustomFields } from './workspace-features.mjs';
+import { importWorkspace } from './workspace-import.mjs';
+import { createWorkbenchService } from './workbench-service.mjs';
+import { installWorkflow, workflowSnapshot, workflowRoute } from './workflow-service.mjs';
+import { installChatCollaboration, chatCollaborationSnapshot, chatCollaborationRoute, validateChatMessageContext, validateChatContextAttachments } from './chat-collaboration.mjs';
+import { installCoordination, coordinationSnapshot, coordinationRoute } from './coordination-service.mjs';
+import { installRouteTools, routeToolsSnapshot, routeToolsRoute } from './route-tools.mjs';
+import { installTeamResources, teamResourcesRoute } from './team-resources.mjs';
+import { installAgentAwareness, agentAwarenessRoute, workspaceAwareness, awarenessEnabled, actionProtocol, recordActionProtocol, captureAgentActions, agentMemories } from './agent-awareness.mjs';
 
 const API_PREFIX = '/api';
 const JSON_FIELDS = new Set([
@@ -16,24 +27,48 @@ const JSON_FIELDS = new Set([
 
 const TABLE_CONFIG = {
   workspaces: {
-    fields: ['name', 'slug', 'description', 'icon', 'color'],
+    fields: ['name', 'slug', 'description', 'icon', 'color', 'archived_at'],
     required: ['name'],
   },
   projects: {
-    fields: ['workspace_id', 'name', 'identifier', 'description', 'goal', 'status', 'icon', 'color', 'local_path', 'github_url'],
+    fields: ['workspace_id', 'team_id', 'name', 'identifier', 'description', 'goal', 'status', 'workflow_status_id', 'labels_json', 'icon', 'image_url', 'color', 'local_path', 'github_url', 'start_date', 'target_date', 'lead', 'archived_at'],
     required: ['workspace_id', 'name'],
   },
   tasks: {
-    fields: ['workspace_id', 'project_id', 'number', 'title', 'description', 'status', 'priority', 'assignee_agent_ids_json', 'labels_json', 'due_at'],
+    fields: ['workspace_id', 'project_id', 'team_id', 'number', 'title', 'description', 'status', 'workflow_status_id', 'priority', 'assignee_agent_ids_json', 'labels_json', 'due_at', 'archived_at'],
     required: ['workspace_id', 'title'],
   },
   chats: {
-    fields: ['workspace_id', 'project_id', 'task_id', 'title', 'kind', 'participant_agent_ids_json', 'pinned'],
+    fields: ['workspace_id', 'project_id', 'task_id', 'title', 'kind', 'participant_agent_ids_json', 'pinned', 'archived_at'],
     required: ['workspace_id', 'title'],
   },
   messages: {
     fields: ['chat_id', 'sender_type', 'sender_id', 'sender_name', 'content', 'kind', 'attachments_json', 'metadata_json'],
     required: ['chat_id', 'content'],
+  },
+  agents: {
+    fields: ['workspace_id', 'name', 'provider', 'description', 'instructions', 'working_directory', 'status', 'model', 'color', 'archived_at'],
+    required: ['name'],
+  },
+  memory_notes: {
+    fields: ['workspace_id', 'project_id', 'title', 'content', 'archived_at'],
+    required: ['workspace_id', 'title'],
+  },
+  teams: {
+    fields: ['workspace_id', 'name', 'description', 'icon', 'color', 'archived_at'],
+    required: ['workspace_id', 'name'],
+  },
+  team_members: {
+    fields: ['workspace_id', 'team_id', 'name', 'email', 'role', 'archived_at'],
+    required: ['workspace_id', 'team_id', 'name'],
+  },
+  documents: {
+    fields: ['workspace_id', 'team_id', 'project_id', 'title', 'content', 'archived_at'],
+    required: ['workspace_id', 'title'],
+  },
+  milestones: {
+    fields: ['workspace_id', 'project_id', 'title', 'description', 'status', 'target_date', 'archived_at'],
+    required: ['workspace_id', 'project_id', 'title'],
   },
 };
 
@@ -43,38 +78,38 @@ const PROVIDERS = {
     args: ['--version'],
     category: 'source_control',
     displayName: 'GitHub',
-    description: 'Repositories, issues, pull requests, and checks.',
+    description: 'Browse repositories and link them to projects.',
     authMethod: 'github_app_or_cli',
-    capabilities: ['repositories', 'issues', 'pull_requests', 'checks'],
-    constraints: ['Probe checks the local GitHub CLI only.', 'No login, token validation, or network request is performed.'],
+    capabilities: ['repositories'],
+    constraints: ['Probe checks the GitHub CLI only.', 'No login, token validation, or network request is performed.'],
   },
   'google-drive': {
     category: 'files',
     displayName: 'Google Drive',
-    description: 'User-selected Drive files as project context.',
+    description: 'Browse Drive file names and links as project references.',
     authMethod: 'oauth_pkce',
-    capabilities: ['selected_files', 'file_metadata', 'file_import'],
-    constraints: ['Live access requires a Google OAuth client.', 'Rumbo should request drive.file and use Google Picker.', 'Probe never opens Google sign-in.'],
+    capabilities: ['file_metadata', 'file_links'],
+    constraints: ['Live access requires a Google OAuth client.', 'Drive access reads file metadata only; file content is not imported.', 'Probe never opens Google sign-in.'],
   },
   codex: {
     executable: 'codex',
     args: ['--version'],
     category: 'agent',
     displayName: 'Codex',
-    description: 'Coding agent sessions through Codex App Server.',
+    description: 'Coding and analysis sessions through Codex CLI.',
     authMethod: 'provider_managed_chatgpt',
-    capabilities: ['chat', 'coding', 'structured_events', 'approvals'],
-    constraints: ['Probe checks the executable only.', 'Codex App Server owns login; Rumbo must not collect ChatGPT credentials.'],
+    capabilities: ['chat', 'coding', 'structured_events'],
+    constraints: ['Probe checks the executable only.', 'Codex CLI owns login; Rumbo does not collect ChatGPT passwords.'],
   },
   claude: {
     executable: 'claude',
     args: ['--version'],
     category: 'agent',
     displayName: 'Claude',
-    description: 'Claude-powered agent sessions with explicit permissions.',
-    authMethod: 'anthropic_api_or_cloud',
-    capabilities: ['chat', 'coding', 'structured_events', 'approvals'],
-    constraints: ['Third-party products must use Anthropic API or supported cloud credentials unless Anthropic grants approval.', 'Rumbo does not offer or reuse Claude subscription OAuth.', 'Probe checks the executable only.'],
+    description: 'Read-only analysis through Claude Code CLI.',
+    authMethod: 'provider_managed',
+    capabilities: ['chat', 'analysis', 'structured_events'],
+    constraints: ['Claude Code owns authentication.', 'Rumbo launches only explicitly requested CLI sessions.', 'Probe checks the executable only.'],
   },
 };
 
@@ -94,15 +129,16 @@ function dbValue(field, value) {
 function normalizeInput(resource, body) {
   const record = { ...body };
   const aliases = {
-    workspace_id: 'workspaceId', project_id: 'projectId', task_id: 'taskId', chat_id: 'chatId',
+    workspace_id: 'workspaceId', project_id: 'projectId', task_id: 'taskId', chat_id: 'chatId', team_id: 'teamId',
     local_path: 'localPath', github_url: 'githubUrl', due_at: 'dueAt', sender_type: 'senderType',
-    sender_id: 'senderId', sender_name: 'senderName', avatar_url: 'avatarUrl',
+    sender_id: 'senderId', sender_name: 'senderName', avatar_url: 'avatarUrl', archived_at: 'archivedAt', working_directory: 'workingDirectory', start_date: 'startDate', target_date: 'targetDate',
   };
   for (const [field, alias] of Object.entries(aliases)) if (record[field] === undefined && record[alias] !== undefined) record[field] = record[alias];
   if (resource === 'tasks') {
     record.assignee_agent_ids_json ??= record.assignee_agent_ids ?? record.assigneeAgentIds;
     record.labels_json ??= record.labels;
   }
+  if (resource === 'projects') record.labels_json ??= record.labels;
   if (resource === 'chats') record.participant_agent_ids_json ??= record.participant_agent_ids ?? record.participantAgentIds;
   if (resource === 'messages') {
     record.attachments_json ??= record.attachments;
@@ -121,6 +157,53 @@ function present(row) {
   return result;
 }
 function rows(statement, ...params) { return statement.all(...params).map(present); }
+
+function resolveRunContext(db, body, routeTaskId) {
+  const inputLink = (field, alias) => {
+    const provided = Object.hasOwn(body, field) || Object.hasOwn(body, alias);
+    if (Object.hasOwn(body, field) && Object.hasOwn(body, alias) && body[field] !== body[alias]) throw validationError(`Conflicting values for ${field.replaceAll('_', ' ')}.`);
+    const value = Object.hasOwn(body, field) ? body[field] : body[alias];
+    if (provided && value !== null && (typeof value !== 'string' || value.length > 2000)) throw validationError(`${field.replaceAll('_', ' ')} must be an ID or null.`);
+    return { provided, value: value || null };
+  };
+  const lookup = (table, itemId, label) => {
+    if (!itemId) return null;
+    const item = db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(itemId);
+    if (!item) throw validationError(`The selected ${label} no longer exists.`);
+    return item;
+  };
+  const projectInput = inputLink('project_id', 'projectId');
+  const taskInput = inputLink('task_id', 'taskId');
+  const chatInput = inputLink('chat_id', 'chatId');
+  const workspaceInput = inputLink('workspace_id', 'workspaceId');
+  const linkedChat = lookup('chats', chatInput.value, 'chat');
+  if (routeTaskId && linkedChat?.task_id && linkedChat.task_id !== routeTaskId) throw validationError('The selected chat belongs to a different route.');
+  const requiredTaskId = routeTaskId || linkedChat?.task_id || null;
+  if (requiredTaskId && taskInput.provided && taskInput.value !== requiredTaskId) throw validationError('Keep the route linked to this chat or session endpoint.');
+  const linkedTask = lookup('tasks', requiredTaskId || taskInput.value, 'route');
+  if (linkedTask?.project_id && linkedChat?.project_id && linkedTask.project_id !== linkedChat.project_id) throw validationError('The selected chat and route belong to different projects.');
+  const requiredProjectId = linkedTask?.project_id || linkedChat?.project_id || null;
+  if (requiredProjectId && projectInput.provided && projectInput.value !== requiredProjectId) throw validationError('Keep the project linked to the selected route or chat.');
+  const project = lookup('projects', requiredProjectId || projectInput.value, 'project');
+  const workspaceId = workspaceInput.provided ? workspaceInput.value
+    : linkedTask?.workspace_id || linkedChat?.workspace_id || project?.workspace_id || 'ws_personal';
+  const links = { workspace_id: workspaceId, project_id: project?.id || null, task_id: linkedTask?.id || null, chat_id: linkedChat?.id || null };
+  // Validate after deriving links, so inferred context gets the same workspace and relation checks.
+  validateRecord(db, 'runs', links, ['workspace_id'], Object.keys(links));
+  return { links, project, linkedTask, linkedChat, workspaceId };
+}
+
+function sessionWorkingDirectory(project, agent, requested) {
+  if (requested != null && typeof requested !== 'string') throw validationError('The working directory must be an absolute folder path.');
+  if (!project?.local_path) return requested || agent?.working_directory;
+  const normalize = (value) => {
+    if (typeof value !== 'string' || !isAbsolute(value)) throw validationError('Link an absolute project folder before starting work.');
+    try { return realpathSync(value); } catch { return resolve(value); }
+  };
+  const projectPath = normalize(project.local_path);
+  if (requested && normalize(requested) !== projectPath) throw validationError('This session must use the linked project folder. Update the project folder before choosing another directory.');
+  return projectPath;
+}
 
 function send(res, status, data, headers = {}) {
   if (res.writableEnded) return;
@@ -145,7 +228,7 @@ function allowedOrigin(origin, host) {
   if (!origin) return true;
   try {
     const url = new URL(origin);
-    return allowedLoopbackHost(url.host) && (!host || url.host === host || ['terminal.local', '127.0.0.1', 'localhost'].includes(url.hostname));
+    return url.protocol === 'http:' && allowedLoopbackHost(url.host) && url.host === host;
   } catch { return false; }
 }
 async function readBody(req, limit = 1_000_000) {
@@ -158,8 +241,11 @@ async function readBody(req, limit = 1_000_000) {
   }
   if (!chunks.length) return {};
   const raw = Buffer.concat(chunks).toString('utf8');
-  try { return JSON.parse(raw); }
+  let parsed;
+  try { parsed = JSON.parse(raw); }
   catch { throw Object.assign(new Error('Request body must be valid JSON.'), { statusCode: 400 }); }
+  if (!isRecord(parsed)) throw validationError('Request body must be a JSON object.');
+  return parsed;
 }
 
 function slugify(value) {
@@ -205,8 +291,8 @@ function safeExecutableProbe(provider) {
 }
 
 function seed(db, { demo = false } = {}) {
-  const created = '2026-08-30T08:00:00.000Z';
-  const updated = '2026-08-31T06:30:00.000Z';
+  const created = demo ? '2026-08-30T08:00:00.000Z' : now();
+  const updated = demo ? '2026-08-31T06:30:00.000Z' : created;
   db.prepare(`INSERT OR IGNORE INTO local_profile (id,name,email,avatar_url,created_at,updated_at) VALUES ('local',?,?,?,?,?)`)
     .run('You', null, null, created, updated);
   const defaultSettings = {
@@ -220,14 +306,19 @@ function seed(db, { demo = false } = {}) {
   }
 
   for (const [provider, definition] of Object.entries(PROVIDERS)) {
-    db.prepare('INSERT OR IGNORE INTO connections (id,provider,category,display_name,description,state,mode,auth_method,capabilities_json,constraints_json,metadata_json,last_probed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    db.prepare('INSERT INTO connections (id,provider,category,display_name,description,state,mode,auth_method,capabilities_json,constraints_json,metadata_json,last_probed_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET description=excluded.description,auth_method=excluded.auth_method,capabilities_json=excluded.capabilities_json,constraints_json=excluded.constraints_json')
       .run(`conn_${provider.replace('-', '_')}`, provider, definition.category, definition.displayName, definition.description, 'not_connected', 'local', definition.authMethod, JSON.stringify(definition.capabilities), JSON.stringify(definition.constraints), JSON.stringify({ liveAccountChecked: false }), null, updated);
+  }
+  for (const provider of ['codex', 'claude']) {
+    db.prepare('INSERT OR IGNORE INTO agents (id,name,provider,description,created_at,updated_at) VALUES (?,?,?,?,?,?)')
+      .run(provider, PROVIDERS[provider].displayName, provider, PROVIDERS[provider].description, created, updated);
   }
 
   if (!demo) return;
+  const newDemo = !db.prepare("SELECT 1 FROM workspaces WHERE id='ws_personal'").get();
 
   db.prepare('INSERT OR IGNORE INTO workspaces (id,name,slug,description,icon,color,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
-    .run('ws_personal', 'Northstar', 'northstar', 'Local workspace for product and engineering projects.', 'diamond', '#7c7c86', created, updated);
+    .run('ws_personal', 'Northstar', 'northstar', 'Workspace for product and engineering projects.', 'diamond', '#7c7c86', created, updated);
   db.prepare("UPDATE workspaces SET name='Northstar',slug='northstar',updated_at=? WHERE id='ws_personal' AND name='Personal'").run(updated);
   db.prepare('INSERT OR IGNORE INTO projects (id,workspace_id,name,identifier,description,goal,status,icon,color,local_path,github_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .run('proj_sourcelens', 'ws_personal', 'SourceLens', 'SOU', 'Chrome extension for concise page summaries and trustworthy source context.', 'Ship a useful, privacy-minded first version of SourceLens.', 'active', 'browser', '#8b8b96', null, 'https://github.com/example/sourcelens', created, updated);
@@ -235,7 +326,7 @@ function seed(db, { demo = false } = {}) {
   const tasks = [
     ['task_popup', 14, 'Build Chrome extension popup UI', 'Implement the compact popup states from the approved product direction.', 'in_progress', 'high', ['codex'], ['frontend', 'mvp']],
     ['task_citations', 15, 'Extract citations from the current page', 'Return normalized sources with title, host, and page location.', 'review', 'high', ['claude'], ['extension', 'data']],
-    ['task_privacy', 16, 'Document local-first privacy behavior', 'Explain what stays local and what connected providers receive.', 'ready', 'medium', [], ['docs', 'privacy']],
+    ['task_privacy', 16, 'Document workspace privacy behavior', 'Explain what stays in the workspace and what connected providers receive.', 'ready', 'medium', [], ['docs', 'privacy']],
     ['task_empty', 17, 'Design useful empty states', 'Create first-use guidance for chats, projects, and live work.', 'backlog', 'low', [], ['design']],
     ['task_focus', 18, 'Trap focus inside the extension popup', 'Keep keyboard focus within the open popup and restore it on close.', 'ready', 'medium', ['claude'], ['accessibility', 'mvp']],
   ];
@@ -250,7 +341,7 @@ function seed(db, { demo = false } = {}) {
     .run('chat_project', 'ws_personal', 'proj_sourcelens', null, 'SourceLens planning', 'project', JSON.stringify(['codex']), 0, created, updated);
   const messages = [
     ['msg_1', 'chat_popup', 'user', 'local', 'Evan', 'Build the popup UI with loading, result, and error states. Keep permissions unchanged.', 'message', '2026-08-31T06:10:00.000Z'],
-    ['msg_2', 'chat_popup', 'agent', 'codex', 'Codex', 'I’ll inspect the existing popup structure first, then implement the three states and run the local checks.', 'message', '2026-08-31T06:11:00.000Z'],
+    ['msg_2', 'chat_popup', 'agent', 'codex', 'Codex', 'I’ll inspect the existing popup structure first, then implement the three states and run the checks.', 'message', '2026-08-31T06:11:00.000Z'],
     ['msg_3', 'chat_popup', 'system', null, 'Rumbo', 'Demo run started. No provider account was contacted.', 'run_event', '2026-08-31T06:11:04.000Z'],
     ['msg_4', 'chat_project', 'user', 'local', 'Evan', 'The MVP should summarize the current page and preserve a clear source trail.', 'message', '2026-08-30T09:00:00.000Z'],
     ['msg_5', 'chat_popup', 'agent', 'claude', 'Claude', 'Review note: the popup should trap keyboard focus while open and restore focus to the trigger when it closes.', 'message', '2026-08-31T06:18:00.000Z'],
@@ -261,7 +352,7 @@ function seed(db, { demo = false } = {}) {
       .run(messageId, chatId, senderType, senderId, senderName, content, kind, '[]', '{}', timestamp, timestamp);
   }
 
-  db.prepare("UPDATE connections SET state='demo',mode='demo',updated_at=?").run(updated);
+  if (newDemo) db.prepare("UPDATE connections SET state='demo',mode='demo',updated_at=?").run(updated);
 
   db.prepare('INSERT OR IGNORE INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_name,status,title,prompt,mode,requires_approval,started_at,finished_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .run('run_demo_popup', 'ws_personal', 'proj_sourcelens', 'task_popup', 'chat_popup', 'codex', 'Codex', 'needs_input', 'Build popup UI', 'Implement the popup states.', 'demo', 1, '2026-08-31T06:11:04.000Z', null, '2026-08-31T06:11:04.000Z', updated);
@@ -286,7 +377,33 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   const db = new DatabaseSync(dbPath);
   const schemaPath = join(dirname(fileURLToPath(import.meta.url)), 'schema.sql');
   db.exec(readFileSync(schemaPath, 'utf8'));
+  for (const table of ['workspaces', 'projects', 'tasks', 'chats']) {
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some((column) => column.name === 'archived_at')) db.exec(`ALTER TABLE ${table} ADD COLUMN archived_at TEXT`);
+  }
+  if (!db.prepare('PRAGMA table_info(agents)').all().some((column) => column.name === 'working_directory')) db.exec('ALTER TABLE agents ADD COLUMN working_directory TEXT');
+  const needsAgentIdentity = !db.prepare('PRAGMA table_info(runs)').all().some((column) => column.name === 'agent_id');
+  if (needsAgentIdentity) db.exec('ALTER TABLE runs ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL');
+  const additions = {
+    projects: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', image_url: 'TEXT', start_date: 'TEXT', target_date: 'TEXT', lead: "TEXT NOT NULL DEFAULT ''", workflow_status_id: 'TEXT', labels_json: "TEXT NOT NULL DEFAULT '[]'" },
+    tasks: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', workflow_status_id: 'TEXT' },
+    runs: { source_message_id: 'TEXT REFERENCES messages(id) ON DELETE SET NULL', work_mode: "TEXT NOT NULL DEFAULT 'project'" },
+  };
+  for (const [table, columns] of Object.entries(additions)) {
+    const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
+    for (const [column, definition] of Object.entries(columns)) if (!existing.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS runs_agent_id ON runs(agent_id)');
+  installWorkspaceFeatures(db);
+  installWorkflow(db);
+  installChatCollaboration(db);
+  installTeamResources(db);
+  installCoordination(db);
+  installRouteTools(db);
+  installAgentAwareness(db);
   seed(db, { demo: seedMode === 'demo' });
+  // Historical name-only sessions intentionally remain unassigned: a name is not identity.
+  // A terminated local process cannot still own a running session after restart.
+  db.prepare("UPDATE runs SET status='interrupted',finished_at=?,updated_at=? WHERE status IN ('running','starting','queued')").run(now(), now());
   return { db, dbPath, directory };
 }
 
@@ -295,13 +412,24 @@ function snapshot(db) {
   for (const row of db.prepare('SELECT * FROM settings ORDER BY key').all()) settings[row.key] = parseJson(row.value_json, {});
   const events = rows(db.prepare('SELECT * FROM run_events ORDER BY created_at,sequence'));
   return {
+    ...featureSnapshot(db),
+    ...workflowSnapshot(db),
+    ...chatCollaborationSnapshot(db),
+    ...coordinationSnapshot(db),
+    ...routeToolsSnapshot(db),
     profile: present(db.prepare("SELECT * FROM local_profile WHERE id='local'").get()),
     settings,
     workspaces: rows(db.prepare('SELECT * FROM workspaces ORDER BY created_at')),
     projects: rows(db.prepare('SELECT * FROM projects ORDER BY updated_at DESC')),
+    teams: rows(db.prepare('SELECT * FROM teams ORDER BY name')),
+    team_members: rows(db.prepare('SELECT * FROM team_members ORDER BY name')),
+    documents: rows(db.prepare('SELECT * FROM documents ORDER BY updated_at DESC')),
+    milestones: rows(db.prepare('SELECT * FROM milestones ORDER BY target_date IS NULL, target_date, created_at')),
     tasks: rows(db.prepare('SELECT * FROM tasks ORDER BY number')),
     chats: rows(db.prepare('SELECT * FROM chats ORDER BY pinned DESC, updated_at DESC')),
     messages: rows(db.prepare('SELECT * FROM messages ORDER BY created_at')),
+    agents: rows(db.prepare('SELECT * FROM agents ORDER BY name')),
+    memory_notes: rows(db.prepare('SELECT * FROM memory_notes ORDER BY updated_at DESC')),
     runs: rows(db.prepare('SELECT * FROM runs ORDER BY created_at DESC')),
     approvals: rows(db.prepare('SELECT * FROM approvals ORDER BY created_at DESC')),
     events,
@@ -316,14 +444,32 @@ function snapshot(db) {
   };
 }
 
-export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
+export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {} } = {}) {
   let store = createDatabase(dataDir, { seedMode });
+  let workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
   let closed = false;
   const listeners = new Map();
   const runTimers = new Map();
+  const liveRuns = new Map();
+  const integration = createIntegrationService({
+    ...integrationOptions,
+    dataDir: store.directory,
+    onConnectionChange(provider, patch) {
+      if (closed) return;
+      getDb().prepare('UPDATE connections SET state=?,mode=?,metadata_json=?,last_probed_at=?,updated_at=? WHERE provider=?')
+        .run(patch.state, patch.mode || 'local', JSON.stringify(patch.metadata || {}), patch.last_probed_at || null, patch.updated_at || now(), provider);
+    },
+  });
+  if (seedMode !== 'demo') {
+    for (const provider of Object.keys(PROVIDERS)) {
+      const status = integration.status(provider);
+      getDb().prepare('UPDATE connections SET state=?,mode=?,metadata_json=?,last_probed_at=? WHERE provider=?')
+        .run(status.state, 'local', JSON.stringify(status), status.checkedAt || null, provider);
+    }
+  }
 
   function getDb() {
-    if (closed) throw new Error('Local API is closed.');
+    if (closed) throw new Error('Workspace API is closed.');
     return store.db;
   }
   function emitEvent(runId, event) {
@@ -342,26 +488,35 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
   }
   function updateRun(runId, status, finished = false) {
     const stamp = now();
-    getDb().prepare('UPDATE runs SET status=?, finished_at=CASE WHEN ? THEN ? ELSE finished_at END, updated_at=? WHERE id=?')
-      .run(status, bool(finished), stamp, stamp, runId);
+    getDb().prepare('UPDATE runs SET status=?,requires_approval=?, finished_at=CASE WHEN ? THEN ? ELSE finished_at END, updated_at=? WHERE id=?')
+      .run(status, bool(status === 'needs_input'), bool(finished), stamp, stamp, runId);
   }
   function clearRunTimers(runId) {
     for (const timer of runTimers.get(runId) || []) clearTimeout(timer);
     runTimers.delete(runId);
   }
+  function activeRunsFor(resource, itemId) {
+    if (resource === 'teams') return getDb().prepare("SELECT runs.id FROM runs LEFT JOIN projects ON projects.id=runs.project_id LEFT JOIN tasks ON tasks.id=runs.task_id WHERE (projects.team_id=? OR tasks.team_id=?) AND runs.status IN ('queued','starting','running','needs_input','paused')").all(itemId, itemId);
+    const column = { workspaces: 'workspace_id', projects: 'project_id', tasks: 'task_id', chats: 'chat_id', agents: 'agent_id' }[resource];
+    if (!column) return [];
+    return [...getDb().prepare(`SELECT id FROM runs WHERE ${column}=? AND status IN ('queued','starting','running','needs_input','paused')`).all(itemId), ...workbench.activeSessionsFor(resource, itemId)];
+  }
   function scheduleMockRun(runId, scenario) {
+    clearRunTimers(runId);
     const timers = [];
     const later = (ms, callback) => {
-      const timer = setTimeout(() => { if (!closed) callback(); }, ms);
+      const timer = setTimeout(() => {
+        if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) callback();
+      }, ms);
       timer.unref?.();
       timers.push(timer);
     };
     later(100, () => addRunEvent(runId, 'agent.message', 'Reviewed the task context', { demo: true }));
     later(220, () => addRunEvent(runId, 'work.progress', 'Prepared a proposed approach', { progress: 45, demo: true }));
     if (scenario === 'failure') {
-      later(360, () => { updateRun(runId, 'failed', true); addRunEvent(runId, 'run.failed', 'Mock run failed safely', { reason: 'simulated_failure', demo: true }); });
+      later(360, () => { updateRun(runId, 'failed', true); addRunEvent(runId, 'run.failed', 'Mock run failed safely', { reason: 'simulated_failure', demo: true }); clearRunTimers(runId); });
     } else {
-      later(420, () => { updateRun(runId, 'completed', true); addRunEvent(runId, 'run.completed', 'Mock run completed', { summary: 'Demo result ready for review.', demo: true }); });
+      later(420, () => { updateRun(runId, 'completed', true); addRunEvent(runId, 'run.completed', 'Mock run completed', { summary: 'Demo result ready for review.', demo: true }); clearRunTimers(runId); });
     }
     runTimers.set(runId, timers);
   }
@@ -373,9 +528,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
     if (req.method === 'GET' && !itemId) {
       const clauses = [];
       const values = [];
-      for (const key of ['workspace_id', 'project_id', 'task_id', 'chat_id', 'status']) {
-        if (url.searchParams.has(key)) { clauses.push(`${key}=?`); values.push(url.searchParams.get(key)); }
+      for (const key of ['workspace_id', 'project_id', 'team_id', 'task_id', 'chat_id', 'status']) {
+        if (url.searchParams.has(key) && config.fields.includes(key)) { clauses.push(`${key}=?`); values.push(url.searchParams.get(key)); }
       }
+      if (url.searchParams.has('archived') && config.fields.includes('archived_at')) clauses.push(url.searchParams.get('archived') === 'true' ? 'archived_at IS NOT NULL' : 'archived_at IS NULL');
       const order = resource === 'messages' ? 'created_at' : resource === 'tasks' ? 'number' : 'updated_at DESC';
       return send(res, 200, { [resource]: rows(db.prepare(`SELECT * FROM ${resource}${clauses.length ? ` WHERE ${clauses.join(' AND ')}` : ''} ORDER BY ${order}`), ...values) });
     }
@@ -385,36 +541,82 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
     }
     if (req.method === 'POST' && !itemId) {
       const body = normalizeInput(resource, await readBody(req));
-      const missing = config.required.filter((field) => body[field] == null || body[field] === '');
-      if (missing.length) return fail(res, 400, 'validation_error', `Missing required fields: ${missing.join(', ')}.`);
       const stamp = now();
       const record = { ...body };
-      if (resource === 'workspaces') record.slug ||= slugify(record.name);
-      if (resource === 'projects') record.identifier ||= String(record.name).replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'PRJ';
+      for (const field of config.required) if (typeof record[field] !== 'string' || !record[field].trim()) throw validationError(`${field.replaceAll('_', ' ')} is required.`);
+      if (resource === 'workspaces' && !record.slug) {
+        const base = slugify(record.name);
+        record.slug = base;
+        let suffix = 2;
+        while (db.prepare('SELECT 1 FROM workspaces WHERE slug=?').get(record.slug)) record.slug = `${base}-${suffix++}`;
+      }
+      if (resource === 'projects' && !record.identifier) {
+        const base = String(record.name).replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'PRJ';
+        record.identifier = base;
+        let suffix = 2;
+        while (db.prepare('SELECT 1 FROM projects WHERE workspace_id=? AND identifier=?').get(record.workspace_id, record.identifier)) record.identifier = `${base}${suffix++}`;
+      }
       if (resource === 'tasks' && !record.number) record.number = Number(db.prepare('SELECT COALESCE(MAX(number),0)+1 AS next FROM tasks WHERE workspace_id=?').get(record.workspace_id).next);
+      if (resource === 'tasks' && record.project_id) {
+        const project = db.prepare('SELECT team_id FROM projects WHERE id=?').get(record.project_id);
+        if (project) {
+          if (record.team_id && record.team_id !== project.team_id) throw validationError('A route uses the team assigned to its project.');
+          record.team_id = project.team_id;
+        }
+      }
       if (resource === 'messages') {
         record.sender_type ||= 'user'; record.sender_name ||= 'You'; record.kind ||= 'message';
-        db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, record.chat_id);
       }
+      validateRecord(db, resource, record, config.required, config.fields);
+      if (resource === 'messages') record.metadata_json = { ...record.metadata_json, ...validateChatContextAttachments(db, record.chat_id, { ...record.metadata_json, attachments: record.attachments_json || [] }) };
+      validateCustomFields(db, resource, record);
       const itemIdNew = id(resource.slice(0, -1));
       const fields = config.fields.filter((field) => record[field] !== undefined);
       const values = fields.map((field) => dbValue(field, record[field]));
       db.prepare(`INSERT INTO ${resource} (id,${fields.join(',')},created_at,updated_at) VALUES (?,${fields.map(() => '?').join(',')},?,?)`)
         .run(itemIdNew, ...values, stamp, stamp);
+      if (resource === 'messages') db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, record.chat_id);
       const item = present(db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemIdNew));
+      recordChange(db, resource, null, item, 'created');
       return send(res, 201, { [resource.slice(0, -1)]: item });
     }
     if ((req.method === 'PATCH' || req.method === 'PUT') && itemId) {
-      if (!db.prepare(`SELECT 1 FROM ${resource} WHERE id=?`).get(itemId)) return fail(res, 404, 'not_found', `${resource.slice(0, -1)} not found.`);
+      const current = db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId);
+      if (!current) return fail(res, 404, 'not_found', `${resource.slice(0, -1)} not found.`);
       const body = normalizeInput(resource, await readBody(req));
+      if (['tasks', 'projects'].includes(resource) && body.status !== undefined && body.workflow_status_id === undefined && body.status !== current.status) body.workflow_status_id = null;
+      if (resource === 'messages' && body.chat_id !== undefined && body.chat_id !== current.chat_id) return fail(res, 400, 'validation_error', 'A message must stay in its original conversation.');
+      if (resource === 'tasks' && (body.project_id || current.project_id)) {
+        const projectId = body.project_id !== undefined ? body.project_id : current.project_id;
+        const project = projectId ? db.prepare('SELECT team_id FROM projects WHERE id=?').get(projectId) : null;
+        if (project) {
+          if (body.team_id !== undefined && body.team_id !== project.team_id) throw validationError('A route uses the team assigned to its project.');
+          body.team_id = project.team_id;
+        }
+      }
+      if (body.workspace_id !== undefined && body.workspace_id !== current.workspace_id) return fail(res, 400, 'validation_error', 'Move linked items by creating them in the destination workspace.');
       const fields = config.fields.filter((field) => body[field] !== undefined);
       if (!fields.length) return fail(res, 400, 'validation_error', 'No supported fields were supplied.');
+      if (body.archived_at && activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop the active sessions linked to this item before archiving it.');
+      if (resource === 'projects' && body.local_path !== undefined && body.local_path !== current.local_path && workbench.activeSessionsFor(resource,itemId).length) return fail(res,409,'active_terminals','Stop this project’s Workbench terminals before changing its working folder.');
+      if (resource === 'agents' && body.provider !== undefined && body.provider !== current.provider && activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop this agent’s active sessions before changing its provider.');
+      const record = validateRecord(db, resource, { ...normalizeInput(resource, present(current)), ...body }, config.required, config.fields);
+      if (resource === 'messages') validateChatContextAttachments(db, record.chat_id, { ...record.metadata_json, attachments: record.attachments_json || [] });
+      validateCustomFields(db, resource, record);
       const stamp = now();
       db.prepare(`UPDATE ${resource} SET ${fields.map((field) => `${field}=?`).join(',')},updated_at=? WHERE id=?`)
-        .run(...fields.map((field) => dbValue(field, body[field])), stamp, itemId);
+        .run(...fields.map((field) => dbValue(field, record[field])), stamp, itemId);
+      if (resource === 'messages') db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, current.chat_id);
+      if (resource === 'tasks' && fields.includes('project_id')) {
+        db.prepare('UPDATE chats SET project_id=?,updated_at=? WHERE task_id=?').run(record.project_id, stamp, itemId);
+        db.prepare('UPDATE runs SET project_id=?,updated_at=? WHERE task_id=?').run(record.project_id, stamp, itemId);
+      }
+      if (resource === 'projects' && fields.includes('team_id')) db.prepare('UPDATE tasks SET team_id=?,updated_at=? WHERE project_id=?').run(record.team_id || null, stamp, itemId);
+      recordChange(db, resource, present(current), present(db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId)), body.archived_at ? 'archived' : 'updated');
       return send(res, 200, { [resource.slice(0, -1)]: present(db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId)) });
     }
     if (req.method === 'DELETE' && itemId) {
+      if (activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop the active sessions linked to this item before deleting it.');
       const result = db.prepare(`DELETE FROM ${resource} WHERE id=?`).run(itemId);
       return result.changes ? send(res, 200, { ok: true, id: itemId }) : fail(res, 404, 'not_found', `${resource.slice(0, -1)} not found.`);
     }
@@ -425,15 +627,53 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
     let url;
     try { url = new URL(req.url || '/', 'http://127.0.0.1'); }
     catch { return fail(res, 400, 'bad_url', 'Invalid request URL.'); }
-    if (!url.pathname.startsWith(API_PREFIX)) return next();
+    if (url.pathname !== API_PREFIX && !url.pathname.startsWith(`${API_PREFIX}/`)) return next();
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (!allowedLoopbackHost(req.headers.host)) return fail(res, 403, 'invalid_host', 'Rumbo only accepts loopback hosts.');
     if (!allowedOrigin(req.headers.origin, req.headers.host)) return fail(res, 403, 'invalid_origin', 'Cross-origin API requests are not allowed.');
+    if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && url.pathname === '/api/auth/google-drive/callback')) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return fail(res, 415, 'unsupported_media_type', 'Use application/json for API changes.');
     try {
       const db = getDb();
       const path = url.pathname.slice(API_PREFIX.length) || '/';
+      if (await integration.handle(req, res, { path, url })) return;
+      if (await workbench.handle({ req, res, path, url, readBody, send })) return;
+      if (await agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor })) return;
+      if (await workflowRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (await chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (await teamResourcesRoute({ db, req, res, path, url, readBody, send })) return;
+      if (await coordinationRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (await routeToolsRoute({ db, req, res, path, readBody, send, snapshot })) return;
+      if (await featureRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (req.method === 'POST' && path === '/import') return send(res, 201, { result: importWorkspace(db, await readBody(req, 25_000_000), TABLE_CONFIG, normalizeInput, dbValue, validateCustomFields), bootstrap: snapshot(db) });
       if (req.method === 'GET' && (path === '/bootstrap' || path === '/snapshot')) return send(res, 200, snapshot(db));
       if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true, localOnly: true, database: 'ready' });
+      if (req.method === 'GET' && path === '/export') {
+        const data = snapshot(db);
+        const workspaceId = url.searchParams.get('workspace_id');
+        if (workspaceId) {
+          if (!data.workspaces.some((item) => item.id === workspaceId)) return fail(res, 404, 'not_found', 'Workspace not found.');
+          data.workspaces = data.workspaces.filter((item) => item.id === workspaceId);
+          for (const key of ['projects', 'tasks', 'chats', 'runs', 'memory_notes', 'teams', 'team_members', 'documents', 'milestones', 'workspace_items', 'audit_log', 'route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'chat_collaboration', 'route_schedules']) data[key] = data[key].filter((item) => item.workspace_id === workspaceId);
+          data.agents = data.agents.filter((item) => !item.workspace_id || item.workspace_id === workspaceId);
+          const chatIds = new Set(data.chats.map((item) => item.id));
+          const runIds = new Set(data.runs.map((item) => item.id));
+          data.messages = data.messages.filter((item) => chatIds.has(item.chat_id));
+          data.events = data.events.filter((item) => runIds.has(item.run_id));
+          data.approvals = data.approvals.filter((item) => runIds.has(item.run_id));
+        }
+        // Exports contain business data; provider credentials remain in their private store.
+        data.connections = data.connections.map(({ provider, display_name, state }) => ({ provider, display_name, state }));
+        return send(res, 200, { format: 'rumbo.workspace', version: 1, exported_at: now(), data });
+      }
+      const chatExport = path.match(/^\/chats\/([^/]+)\/export$/);
+      if (req.method === 'GET' && chatExport) {
+        const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(chatExport[1]);
+        if (!chat) return fail(res, 404, 'not_found', 'Chat not found.');
+        const messages = rows(db.prepare('SELECT * FROM messages WHERE chat_id=? ORDER BY created_at'), chat.id);
+        const markdown = [`# ${chat.title}`, '', ...messages.flatMap((message) => [`## ${message.sender_name} · ${message.created_at}`, '', message.content, ''])].join('\n');
+        return send(res, 200, { filename: `${slugify(chat.title)}.md`, markdown });
+      }
       if (req.method === 'GET' && path === '/events') {
         const since = url.searchParams.get('since');
         const events = since
@@ -448,24 +688,26 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
 
       const nestedMessages = path.match(/^\/chats\/([^/]+)\/messages(?:\/([^/]+))?$/);
       if (nestedMessages) {
+        if (!db.prepare('SELECT 1 FROM chats WHERE id=?').get(nestedMessages[1])) return fail(res, 404, 'not_found', 'Chat not found.');
+        if (nestedMessages[2] && !db.prepare('SELECT 1 FROM messages WHERE id=? AND chat_id=?').get(nestedMessages[2], nestedMessages[1])) return fail(res, 404, 'not_found', 'Message not found in this chat.');
         url.searchParams.set('chat_id', nestedMessages[1]);
         if (req.method === 'POST') {
-          const body = await readBody(req);
-          if (!db.prepare('SELECT 1 FROM chats WHERE id=?').get(nestedMessages[1])) return fail(res, 404, 'not_found', 'Chat not found.');
-          if (typeof body.content !== 'string' || !body.content.trim()) return fail(res, 400, 'validation_error', 'Message content is required.');
+          const body = normalizeInput('messages', { ...(await readBody(req)), chat_id: nestedMessages[1] });
+          validateRecord(db, 'messages', body, TABLE_CONFIG.messages.required, TABLE_CONFIG.messages.fields);
+          body.metadata_json = { ...body.metadata_json, ...validateChatContextAttachments(db, nestedMessages[1], { ...body.metadata_json, attachments: body.attachments_json || [] }) };
           const stamp = now();
           const messageId = id('message');
           db.prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-            .run(messageId, nestedMessages[1], body.sender_type || 'user', body.sender_id || 'local', body.sender_name || 'You', body.content || '', body.kind || 'message', JSON.stringify(body.attachments || []), JSON.stringify(body.metadata || {}), stamp, stamp);
+            .run(messageId, nestedMessages[1], body.sender_type || 'user', body.sender_id || 'local', body.sender_name || 'You', body.content, body.kind || 'message', JSON.stringify(body.attachments_json || []), JSON.stringify(body.metadata_json || {}), stamp, stamp);
           db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, nestedMessages[1]);
           return send(res, 201, { message: present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId)) });
         }
         return collectionRoute(req, res, 'messages', nestedMessages[2], url);
       }
 
-      const collectionMatch = path.match(/^\/(workspaces|projects|tasks|chats|messages)(?:\/([^/]+))?$/);
+      const collectionMatch = path.match(/^\/(workspaces|projects|tasks|chats|messages|agents|memory-notes|teams|team-members|documents|milestones)(?:\/([^/]+))?$/);
       if (collectionMatch) {
-        const handled = await collectionRoute(req, res, collectionMatch[1], collectionMatch[2], url);
+        const handled = await collectionRoute(req, res, collectionMatch[1].replace('-', '_'), collectionMatch[2], url);
         if (handled !== false) return handled;
       }
 
@@ -477,18 +719,183 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
         return send(res, 200, { run, events: rows(db.prepare('SELECT * FROM run_events WHERE run_id=? ORDER BY sequence'), runId), approvals: rows(db.prepare('SELECT * FROM approvals WHERE run_id=? ORDER BY created_at'), runId) });
       }
       const taskRunMatch = path.match(/^\/tasks\/([^/]+)\/runs$/);
-      if (req.method === 'POST' && (path === '/runs' || path === '/runs/start' || taskRunMatch)) {
-        const body = await readBody(req);
+      const chatTurnMatch = path.match(/^\/chats\/([^/]+)\/turns$/);
+      if (req.method === 'POST' && (path === '/runs' || path === '/runs/start' || taskRunMatch || chatTurnMatch)) {
+        let body = await readBody(req);
+        let turn = null;
+        if (chatTurnMatch) {
+          const chatId = chatTurnMatch[1];
+          const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(chatId);
+          if (!chat) return fail(res, 404, 'not_found', 'Chat not found.');
+          if (typeof body.client_turn_id !== 'string' || !/^[A-Za-z0-9_-]{8,120}$/.test(body.client_turn_id)) throw validationError('Provide a stable client turn ID between 8 and 120 characters.');
+          if (typeof body.agent_id !== 'string' || !body.agent_id) throw validationError('Choose an agent to receive this message.');
+          const existing = db.prepare('SELECT * FROM chat_turns WHERE chat_id=? AND client_turn_id=?').get(chatId, body.client_turn_id);
+          if (existing) {
+            const message = present(db.prepare('SELECT * FROM messages WHERE id=?').get(existing.source_message_id));
+            for (const field of ['reply_to', 'context_snapshot_id']) if (body[field] !== undefined && (body[field] || null) !== (message.metadata?.[field] || null)) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different reply or context references.');
+            if (existing.agent_id !== body.agent_id || (body.source_message_id && body.source_message_id !== existing.source_message_id) || (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== message.content)) || (body.attachments !== undefined && JSON.stringify(body.attachments) !== JSON.stringify(message.attachments))) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different message.');
+            const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(existing.run_id));
+            if (body.work_mode !== undefined && body.work_mode !== run.work_mode) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different work mode.');
+            return send(res, 200, { message, run, replayed: true });
+          }
+          let source = null;
+          if (body.source_message_id !== undefined) {
+            if (typeof body.source_message_id !== 'string') throw validationError('Choose a valid message to retry.');
+            source = present(db.prepare("SELECT * FROM messages WHERE id=? AND chat_id=? AND sender_type='user'").get(body.source_message_id, chatId));
+            if (!source) throw validationError('The original user message is no longer in this chat.');
+            if (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== source.content)) throw validationError('Send edited content as a new message instead of retrying an existing message.');
+            const previous = db.prepare('SELECT status FROM runs WHERE source_message_id=? AND agent_id=? ORDER BY created_at DESC LIMIT 1').get(source.id, body.agent_id);
+            if (previous && !['failed', 'stopped', 'interrupted'].includes(previous.status)) return fail(res, 409, 'turn_not_retryable', 'This agent is already working on, or has answered, this message.');
+          }
+          const content = source?.content ?? body.content;
+          const attachments = source?.attachments ?? body.attachments ?? [];
+          if (typeof content !== 'string' || !content.trim() || content.length > 100_000) throw validationError('Write a message between 1 and 100,000 characters.');
+          if (!Array.isArray(attachments) || attachments.length > 20 || attachments.some((file) => !isRecord(file) || typeof file.name !== 'string' || typeof file.content !== 'string' || file.content.length > 100_000 || String(file.type || '').startsWith('image/') || /^data:/i.test(file.content))) throw validationError('Agent messages support up to 20 text attachments, each under 100,000 characters. Save images and other files as a note instead.');
+          if (db.prepare("SELECT 1 FROM runs WHERE chat_id=? AND agent_id=? AND status IN ('queued','starting','running','needs_input','paused')").get(chatId, body.agent_id)) return fail(res, 409, 'chat_agent_busy', 'This agent is already replying in this chat. Wait for the reply or stop its session first.');
+          const workMode = body.work_mode ?? source?.metadata?.work_mode ?? (source ? 'project' : 'conversation');
+          if (!['conversation', 'project'].includes(workMode)) throw validationError('Choose general chat or project work.');
+          if (source && workMode !== (source.metadata?.work_mode ?? 'project')) throw validationError('Retry in the original work mode, or send a new message.');
+          if (workMode === 'conversation' && (body.permission_mode ?? 'read-only') !== 'read-only') throw validationError('General chat cannot request project editing. Choose project work and link a folder.');
+          if (source) for (const field of ['reply_to', 'context_snapshot_id']) if (body[field] !== undefined && (body[field] || null) !== (source.metadata?.[field] || null)) throw validationError('Retry with the original reply and context references, or send a new message.');
+          turn = { clientId: body.client_turn_id, source, content: content.trim(), attachments, workMode, metadata: validateChatContextAttachments(db, chatId, { ...(source?.metadata || body), attachments }) };
+          body = { ...body, mode: 'live', chat_id: chatId, prompt: turn.content, permissionMode: body.permission_mode || 'read-only', title: content.trim().slice(0, 100) };
+        }
         const task = taskRunMatch ? db.prepare('SELECT * FROM tasks WHERE id=?').get(taskRunMatch[1]) : null;
         if (taskRunMatch && !task) return fail(res, 404, 'not_found', 'Task not found.');
-        const workspaceId = body.workspace_id || body.workspaceId || task?.workspace_id || 'ws_personal';
-        if (!db.prepare('SELECT 1 FROM workspaces WHERE id=?').get(workspaceId)) return fail(res, 400, 'validation_error', 'A valid workspace_id is required.');
+        if (body.mode && !['mock', 'demo', 'live'].includes(body.mode)) return fail(res, 400, 'validation_error', 'Choose a live or demo session.');
+        if (body.provider && !['codex', 'claude'].includes(body.provider)) return fail(res, 400, 'validation_error', 'Select a supported coding agent.');
+        const { links, project, linkedTask, linkedChat, workspaceId } = resolveRunContext(db, body, task?.id);
+        if (body.prompt !== undefined && (typeof body.prompt !== 'string' || body.prompt.length > 100_000)) return fail(res, 400, 'validation_error', 'Session prompt must be text up to 100,000 characters.');
+        for (const field of ['include_memory', 'includeMemory', 'include_chat', 'includeChat']) if (body[field] !== undefined && typeof body[field] !== 'boolean') throw validationError('Context selection must be true or false.');
+        if (body.title !== undefined && (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 2000)) return fail(res, 400, 'validation_error', 'Session title is required and must be under 2,000 characters.');
+        if ((body.agent_name ?? body.agentName) !== undefined && typeof (body.agent_name ?? body.agentName) !== 'string') throw validationError('Agent name must be text.');
+        const agentId = body.agent_id || body.agentId;
+        const agent = agentId ? db.prepare('SELECT * FROM agents WHERE id=?').get(agentId) : null;
+        if (agentId && (!agent || agent.archived_at || agent.status === 'paused' || (agent.workspace_id && agent.workspace_id !== workspaceId))) throw validationError('Choose an available agent in this workspace.');
+        const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(workspaceId);
+        const linkedTeams = [...new Set([project?.team_id, linkedTask?.team_id].filter(Boolean))]
+          .map((teamId) => db.prepare('SELECT archived_at FROM teams WHERE id=?').get(teamId));
+        if ([workspace, project, linkedTask, linkedChat, ...linkedTeams].some((item) => item?.archived_at)) throw validationError('Restore archived workspace items before starting a session.');
         const runId = id('run');
         const stamp = now();
-        const provider = PROVIDERS[body.provider] ? body.provider : 'codex';
+        const provider = body.provider || agent?.provider || 'codex';
+        if (!['codex', 'claude'].includes(provider)) throw validationError('Choose Codex or Claude for agent execution.');
+        if (agent && agent.provider !== provider) throw validationError('The selected agent uses a different provider.');
+        if (body.mode === 'live') {
+          const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
+          if (liveRuns.size >= (defaults.concurrentRuns || 2)) return fail(res, 409, 'concurrency_limit', 'The simultaneous session limit has been reached. Wait for a session to finish or increase the limit in Settings.');
+          if (integration.status(provider).state !== 'connected') return fail(res, 409, 'not_connected', `Connect ${PROVIDERS[provider].displayName} before starting a live session.`);
+          if (typeof body.prompt !== 'string' || !body.prompt.trim()) throw validationError('Write an instruction for the agent.');
+          const workMode = turn?.workMode ?? 'project';
+          const permissionMode = workMode === 'conversation' || defaults.approvalMode === 'read_only' ? 'read-only' : body.permissionMode || 'read-only';
+          const cwd = workMode === 'conversation' ? undefined : sessionWorkingDirectory(project, agent, body.cwd);
+          if (workMode === 'project' && (typeof cwd !== 'string' || !cwd)) throw validationError('Coding and project-file work require a linked folder. Link a project folder or set the agent’s working folder. General chat does not need one.');
+          if (turn) {
+            if (workMode === 'project') {
+            if (!isAbsolute(cwd)) throw validationError('Link an absolute project folder before sending to an agent.');
+            let actual;
+            try { actual = realpathSync(cwd); if (!statSync(actual).isDirectory()) throw new Error(); }
+            catch { throw validationError('The linked project folder does not exist.'); }
+            if ([parsePath(actual).root, homedir(), '/Users', '/System', '/Library', '/Applications', '/usr', '/etc', '/private', '/var'].includes(actual)) throw validationError('Choose a specific project folder, not your home folder or a system directory.');
+            }
+            if (!['read-only', 'workspace-write'].includes(permissionMode) || (provider === 'claude' && permissionMode !== 'read-only')) throw validationError('Choose read-only access for Claude, or read-only / project editing for Codex.');
+            db.exec('BEGIN');
+          }
+          let sourceMessage = turn?.source;
+          try {
+            if (turn && !sourceMessage) {
+              const messageId = id('message');
+              const profile = db.prepare("SELECT name FROM local_profile WHERE id='local'").get();
+              db.prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+                .run(messageId, links.chat_id, 'user', 'local', profile?.name || 'You', turn.content, 'message', JSON.stringify(turn.attachments), JSON.stringify({ ...turn.metadata, client_turn_id: turn.clientId, target_agent_id: agent.id, work_mode: workMode }), stamp, stamp);
+              sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId));
+            }
+          db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+            .run(runId, workspaceId, links.project_id, links.task_id, links.chat_id, provider, agent?.id || null, agent?.name || body.agent_name || body.agentName || PROVIDERS[provider].displayName, 'running', body.title || linkedTask?.title || 'Agent session', body.prompt, 'live', 0, stamp, stamp, stamp);
+            if (turn) {
+              db.prepare('UPDATE runs SET source_message_id=?, work_mode=? WHERE id=?').run(sourceMessage.id, workMode, runId);
+              db.prepare('INSERT INTO chat_turns (id,chat_id,client_turn_id,source_message_id,agent_id,run_id,created_at) VALUES (?,?,?,?,?,?,?)').run(id('turn'), links.chat_id, turn.clientId, sourceMessage.id, agent.id, runId, stamp);
+              db.prepare('UPDATE messages SET metadata_json=?,updated_at=? WHERE id=?').run(JSON.stringify({ ...sourceMessage.metadata, latest_run_id: runId, target_agent_id: agent.id }), stamp, sourceMessage.id);
+              db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
+              db.exec('COMMIT');
+              sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(sourceMessage.id));
+            }
+          } catch (error) { if (turn) db.exec('ROLLBACK'); throw error; }
+          const includeMemory = (body.include_memory ?? body.includeMemory) !== false;
+          const includeChat = (body.include_chat ?? body.includeChat) !== false;
+          const notes = includeMemory ? rows(db.prepare('SELECT * FROM memory_notes WHERE workspace_id=? AND archived_at IS NULL AND (project_id IS NULL OR project_id=?) ORDER BY updated_at DESC'), workspaceId, links.project_id) : [];
+          const recentMessages = includeChat && links.chat_id ? rows(db.prepare('SELECT * FROM messages WHERE chat_id=? ORDER BY created_at DESC LIMIT 20'), links.chat_id).reverse() : sourceMessage ? [sourceMessage] : [];
+          let attachmentBytesRemaining = 32_000, attachmentCount = 0;
+          const textAttachments = (message) => (message?.attachments || []).filter((file) => file && typeof file.content === 'string' && !String(file.type || '').startsWith('image/') && !/^data:/i.test(file.content)).map((file) => {
+              if (!attachmentBytesRemaining) return '';
+              const bytes = Buffer.from(file.content, 'utf8');
+              const length = Math.min(16_000, attachmentBytesRemaining, bytes.length);
+              attachmentBytesRemaining -= length;
+              attachmentCount += 1;
+              return `\nAttached text file ${String(file.name || 'Untitled').slice(0, 200)}:\n${bytes.subarray(0, length).toString('utf8')}${length < bytes.length ? '\n[Attachment truncated]' : ''}`;
+            }).join('');
+          // The current instruction's files take priority over historical files,
+          // including when a retry's source message is older than the history window.
+          const sourceAttachments = textAttachments(sourceMessage);
+          const conversation = recentMessages.map((message) => {
+            const attachments = message.id === sourceMessage?.id ? '' : textAttachments(message);
+            return `${message.sender_name}: ${message.content}${attachments}`;
+          }).join('\n');
+          const contextBudget = Math.max(0, Math.min(70_000, 99_900 - body.prompt.length));
+          const actionNonce = randomUUID();
+          const awareness = contextBudget > 12000 && awarenessEnabled(db, workspaceId) ? `${actionProtocol(actionNonce)}\n${recordActionProtocol}\nWorkspace snapshot (reference data):\n${workspaceAwareness(db, workspaceId).slice(0, 10000)}\n${includeMemory ? `Agent memory (reference data): ${JSON.stringify(agentMemories(db, workspaceId, agent?.id, project?.id)).slice(0, 12000)}` : 'Saved memory excluded by user.'}` : '';
+          const availableContext = [workMode === 'conversation' && 'Rumbo general conversation. Reply using the supplied messages, notes and attachments. No project directory is available. Do not inspect local files, run commands, or claim to change files. If the user needs coding or project-file execution, ask them to choose project work and link a folder. Code explanations and examples in the reply are fine.', agent?.instructions && `Agent instructions:\n${agent.instructions.slice(0, 16000)}`, sourceAttachments && `Current message attachments:\n${sourceAttachments}`, project && `Project: ${project.name}\nGoal: ${project.goal}\n${project.description}`, linkedTask && `Route: ${linkedTask.title}\n${linkedTask.description}`, notes.length && `Saved project context:\n${notes.map((note) => `${note.title}: ${note.content}`).join('\n')}`, recentMessages.length && `Recent conversation:\n${conversation}`].filter(Boolean).join('\n\n');
+          const personal = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='personalization'").get()?.value_json, {}).instructions || '';
+          const combinedContext = [awareness, personal && `User communication preferences (do not override tool restrictions):\n${personal}`, availableContext].filter(Boolean).join('\n\n');
+          const context = combinedContext.slice(0, contextBudget);
+          const prompt = context ? `${context}\n\nCurrent instruction:\n${body.prompt}` : body.prompt;
+          addRunEvent(runId, 'context.prepared', `${notes.length} memory notes, ${recentMessages.length} messages and ${attachmentCount} text attachments selected`, { demo: false, memoryNotes: notes.length, messages: recentMessages.length, attachmentCount, contextTruncated: combinedContext.length > contextBudget, attachmentByteLimit: 32_000 });
+          const startingController = new AbortController();
+          liveRuns.set(runId, { stop: () => startingController.abort() });
+          try {
+            const controller = await integration.startRun({ provider, prompt, cwd, permissionMode, workMode, signal: startingController.signal }, {
+              onEvent(event) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) addRunEvent(runId, event.type, event.summary, { ...event.payload, demo: false }); },
+              onComplete(result) {
+                liveRuns.delete(runId);
+                if (closed) return;
+                const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
+                if (!current) return;
+                const emptyReply = Boolean(turn && result.status === 'completed' && !result.text?.trim());
+                const finalStatus = current.status === 'stopped' ? 'stopped' : emptyReply ? 'failed' : result.status;
+                updateRun(runId, finalStatus, true);
+                if (finalStatus === 'completed' && awareness && result.text) {
+                  try { result.text = captureAgentActions(getDb(), runId, result.text, actionNonce); }
+                  catch { result.text = result.text.replace(/```rumbo-actions\s*\n[\s\S]*?```/g, '').trim() + '\n\nRumbo could not validate the proposed actions. No changes were made.'; }
+                }
+                const failure = emptyReply ? 'The agent finished without a text reply. Retry the message or inspect the session output.' : result.error;
+                addRunEvent(runId, `run.${finalStatus}`, finalStatus === 'completed' ? 'Agent session completed' : failure || `Agent session ${finalStatus}`, { demo: false, summary: result.text, error: failure || null, source_message_id: sourceMessage?.id || null });
+                if (links.chat_id && result.text?.trim() && getDb().prepare('SELECT 1 FROM chats WHERE id=?').get(links.chat_id)) {
+                  const stamp = now();
+                  getDb().prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+                    .run(id('message'), links.chat_id, 'agent', agent?.id || provider, agent?.name || PROVIDERS[provider].displayName, result.text, 'message', '[]', JSON.stringify({ run_id: runId, mode: 'live', source_message_id: sourceMessage?.id || null, reply_to: sourceMessage?.id || null, status: finalStatus }), stamp, stamp);
+                  getDb().prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
+                }
+              },
+            });
+            if (!startingController.signal.aborted && !closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) liveRuns.set(runId, controller);
+            else controller.stop();
+          } catch (error) {
+            liveRuns.delete(runId);
+            if (!closed) {
+              const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
+              if (current && current.status !== 'stopped') {
+                updateRun(runId, 'failed', true);
+                addRunEvent(runId, 'run.failed', error.message || 'Agent could not start', { demo: false });
+              }
+            }
+            if (turn && !closed) return send(res, 201, { message: sourceMessage, run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), replayed: false, error: { code: error.errorCode || error.code || 'agent_start_failed', message: error.message || 'Agent could not start.' } });
+            throw error;
+          }
+          return send(res, 201, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), demo: false, ...(turn ? { message: sourceMessage, replayed: false } : {}) });
+        }
         const needsApproval = Boolean(body.requires_approval || body.requiresApproval || body.scenario === 'approval');
-        db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(runId, workspaceId, body.project_id || body.projectId || task?.project_id || null, body.task_id || body.taskId || task?.id || null, body.chat_id || body.chatId || null, provider, body.agent_name || body.agentName || PROVIDERS[provider].displayName, needsApproval ? 'needs_input' : 'running', body.title || task?.title || 'Untitled agent run', body.prompt || '', 'mock', bool(needsApproval), stamp, stamp, stamp);
+        db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(runId, workspaceId, links.project_id, links.task_id, links.chat_id, provider, agent?.id || null, agent?.name || body.agent_name || body.agentName || PROVIDERS[provider].displayName, needsApproval ? 'needs_input' : 'running', body.title || linkedTask?.title || 'Untitled agent run', body.prompt || '', 'mock', bool(needsApproval), stamp, stamp, stamp);
         addRunEvent(runId, 'run.started', 'Mock run started', { demo: true, provider, liveAccountContacted: false });
         if (needsApproval) {
           const event = addRunEvent(runId, 'approval.requested', 'Approval required to continue the mock run', { demo: true, action: body.approval_action || 'Run a simulated check' });
@@ -502,15 +909,23 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
       const stopMatch = path.match(/^\/runs\/([^/]+)\/stop$/);
       if (req.method === 'POST' && stopMatch) {
         const runId = stopMatch[1];
-        if (!db.prepare('SELECT 1 FROM runs WHERE id=?').get(runId)) return fail(res, 404, 'not_found', 'Run not found.');
+        const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId));
+        if (!run) return fail(res, 404, 'not_found', 'Run not found.');
+        if (['completed', 'failed', 'stopped', 'interrupted'].includes(run.status)) return send(res, 200, { run });
         clearRunTimers(runId); updateRun(runId, 'stopped', true);
-        const event = addRunEvent(runId, 'run.stopped', 'Mock run stopped by user', { demo: true });
+        liveRuns.get(runId)?.stop(); liveRuns.delete(runId);
+        db.prepare("UPDATE approvals SET status='cancelled',resolved_at=? WHERE run_id=? AND status='pending'").run(now(), runId);
+        const event = addRunEvent(runId, 'run.stopped', run.mode === 'live' ? 'Stop requested by user' : 'Mock run stopped by user', { demo: run.mode !== 'live' });
         return send(res, 200, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), event });
       }
       const approveMatch = path.match(/^\/runs\/([^/]+)\/(approve|approvals\/[^/]+)$/);
       if (req.method === 'POST' && approveMatch) {
         const runId = approveMatch[1];
         const body = await readBody(req);
+        const currentRun = db.prepare('SELECT * FROM runs WHERE id=?').get(runId);
+        if (!currentRun || currentRun.status !== 'needs_input') return fail(res, 409, 'invalid_run_state', 'This session is no longer waiting for approval.');
+        if (body.decision !== undefined && !['approve', 'deny'].includes(body.decision)) return fail(res, 400, 'validation_error', 'Decision must be approve or deny.');
+        if (body.decision === undefined && typeof body.approved !== 'boolean') return fail(res, 400, 'validation_error', 'An explicit approval decision is required.');
         const approvalId = approveMatch[2].startsWith('approvals/') ? approveMatch[2].split('/')[1] : body.approval_id;
         const approval = approvalId
           ? db.prepare("SELECT * FROM approvals WHERE id=? AND run_id=? AND status='pending'").get(approvalId, runId)
@@ -520,7 +935,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
         db.prepare('UPDATE approvals SET status=?,decision_note=?,resolved_at=? WHERE id=?').run(decision, body.note || null, now(), approval.id);
         addRunEvent(runId, 'approval.resolved', `Approval ${decision}`, { demo: true, approvalId: approval.id, decision });
         if (decision === 'approved') { updateRun(runId, 'running'); scheduleMockRun(runId, body.scenario); }
-        else { updateRun(runId, 'stopped', true); addRunEvent(runId, 'run.stopped', 'Mock run stopped after approval was denied', { demo: true }); }
+        else { clearRunTimers(runId); updateRun(runId, 'stopped', true); addRunEvent(runId, 'run.stopped', 'Mock run stopped after approval was denied', { demo: true }); }
         return send(res, 200, { approval: present(db.prepare('SELECT * FROM approvals WHERE id=?').get(approval.id)), run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)) });
       }
       const eventsMatch = path.match(/^\/runs\/([^/]+)\/(events|timeline)$/);
@@ -565,9 +980,13 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
 
       if (req.method === 'GET' && (path === '/account' || path === '/profile')) return send(res, 200, { profile: present(db.prepare("SELECT * FROM local_profile WHERE id='local'").get()) });
       if ((req.method === 'PATCH' || req.method === 'PUT') && (path === '/account' || path === '/profile')) {
-        const body = await readBody(req);
+        const body = normalizeInput('profile', await readBody(req));
         const allowed = ['name', 'email', 'avatar_url'].filter((field) => body[field] !== undefined);
         if (!allowed.length) return fail(res, 400, 'validation_error', 'No supported profile fields were supplied.');
+        if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 200)) throw validationError('Your name must be between 1 and 200 characters.');
+        if (body.name) body.name = body.name.trim();
+        if (body.email !== undefined && body.email !== null && (typeof body.email !== 'string' || (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)))) throw validationError('Enter a valid email address.');
+        if (body.avatar_url !== undefined) validateAvatar(body.avatar_url);
         db.prepare(`UPDATE local_profile SET ${allowed.map((field) => `${field}=?`).join(',')},updated_at=? WHERE id='local'`).run(...allowed.map((field) => body[field]), now());
         return send(res, 200, { profile: present(db.prepare("SELECT * FROM local_profile WHERE id='local'").get()) });
       }
@@ -577,28 +996,39 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
       }
       if ((req.method === 'PATCH' || req.method === 'PUT') && path === '/settings') {
         const body = await readBody(req); const stamp = now();
-        for (const [key, value] of Object.entries(body.settings || body)) db.prepare('INSERT INTO settings (key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at').run(key, JSON.stringify(value), stamp);
-        const result = {}; for (const row of db.prepare('SELECT * FROM settings ORDER BY key').all()) result[row.key] = parseJson(row.value_json, {});
+        const current = {}; for (const row of db.prepare('SELECT * FROM settings ORDER BY key').all()) current[row.key] = parseJson(row.value_json, {});
+        const result = mergeSettings(current, body.settings || body);
+        db.exec('BEGIN');
+        try {
+          for (const [key, value] of Object.entries(result)) db.prepare('INSERT INTO settings (key,value_json,updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at').run(key, JSON.stringify(value), stamp);
+          db.exec('COMMIT');
+        } catch (error) { db.exec('ROLLBACK'); throw error; }
         return send(res, 200, { settings: result });
       }
 
-      return fail(res, 404, 'not_found', `Unknown local API route: ${path}`);
+      return fail(res, 404, 'not_found', `Unknown API route: ${path}`);
     } catch (error) {
-      if (error?.code?.startsWith('SQLITE_CONSTRAINT')) return fail(res, 409, 'conflict', 'The requested change conflicts with existing local data.', error.message);
-      return fail(res, error?.statusCode || 500, 'local_api_error', error?.message || 'Unexpected local API error.');
+      if (error?.code?.startsWith('SQLITE_CONSTRAINT') || error?.errcode === 19 || /UNIQUE constraint failed/.test(error?.message || '')) return fail(res, 409, 'conflict', 'A record with those details already exists. Choose a different name or identifier.');
+      return fail(res, error?.statusCode || 500, error?.errorCode || error?.code || 'local_api_error', error?.message || 'Unexpected API error.');
     }
   }
 
   function close() {
     if (closed) return;
+    closed = true;
+    integration.close();
+    workbench.close();
+    liveRuns.clear();
     for (const runId of runTimers.keys()) clearRunTimers(runId);
     for (const responses of listeners.values()) for (const res of responses) if (!res.writableEnded) res.end();
     listeners.clear();
     store.db.close();
-    closed = true;
   }
   function reset() {
     const directory = store.directory;
+    workbench.close();
+    for (const controller of liveRuns.values()) controller.stop();
+    liveRuns.clear();
     for (const runId of runTimers.keys()) clearRunTimers(runId);
     for (const responses of listeners.values()) {
       for (const res of responses) {
@@ -614,6 +1044,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean' } = {}) {
     rmSync(`${store.dbPath}-wal`, { force: true });
     rmSync(`${store.dbPath}-shm`, { force: true });
     store = createDatabase(directory, { seedMode });
+    workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
     closed = false;
     return snapshot(store.db);
   }
