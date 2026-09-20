@@ -1,0 +1,13 @@
+.updates-page { max-width: 1120px; margin-inline: auto; }
+.updates-privacy-note { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 24px; max-width: 740px; }
+.updates-filter-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+.updates-filter-bar > .field { flex: 1 1 145px; }
+.updates-archive-filter { display: flex; align-items: center; gap: 7px; font-size: 13px; min-height: 36px; }
+.updates-search { display: flex; flex: 1 0 100%; gap: 8px; }
+.updates-search .search-field { flex: 1; min-width: 0; }
+.updates-results { display: grid; gap: 20px; }
+.updates-results > .activity-entry { min-width: 0; }
+.updates-load-state { color: var(--muted); font-size: 13px; padding-block: 16px; text-align: center; }
+.updates-new-dialog { padding: 24px; }
+.updates-target-picker { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 20px; }
+@media (max-width: 600px) { .updates-target-picker { grid-template-columns: 1fr; } .updates-new-dialog { padding: 16px; } .updates-search { flex-wrap: wrap; } .updates-filter-bar > * { min-width: 0; } }

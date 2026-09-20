@@ -57,6 +57,7 @@ const SavedViews = lazy(() => import('./views/WorkspaceContent.jsx').then(m => (
 import { normalizeExperience, readExperience, rememberPage } from './lib/workspace-experience.js';
 const Workbench = lazy(() => import('./views/Workbench.jsx').then(module => ({ default: module.Workbench })));
 const LibraryView = lazy(() => import('./views/Library.jsx').then(module => ({ default: module.LibraryView })));
+const UpdatesView = lazy(() => import('./views/Updates.jsx').then(module => ({ default: module.UpdatesView })));
 
 function readPage() {
   return parsePage(location.hash);
@@ -201,7 +202,7 @@ export function App() {
       milestones: scoped("milestones"),
       workspace_items: scoped("workspace_items"),
       audit_log: scoped("audit_log"),
-      ...Object.fromEntries(['route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'chat_collaboration', 'route_schedules'].map(key => [key, scoped(key)])),
+      ...Object.fromEntries(['activity_entries', 'route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'chat_collaboration', 'route_schedules'].map(key => [key, scoped(key)])),
       agents: (rawData.agents ?? []).filter(
         (item) =>
           !val(item, "workspace_id") ||
@@ -384,6 +385,7 @@ export function App() {
     overview: <Home />,
     focus: <FocusView />,
     inbox: <InboxView />,
+    updates: <UpdatesView />,
     projects: <ProjectsView />,
     teams: <TeamsView />,
     tasks: <RoutesView />,

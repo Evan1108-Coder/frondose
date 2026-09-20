@@ -8,7 +8,11 @@ import { EXTENSION_TABLES, EXTENSION_PARENTS, importExtensions } from './workspa
 // provider state, personal preferences, or claims about public account access.
 export function importWorkspace(db, archive, config, normalize, dbValue, validateCustomFields) {
   if (archive.format !== 'rumbo.workspace' || archive.version !== 1 || !isRecord(archive.data)) throw validationError('Choose a version 1 Rumbo archive.');
-  const data = archive.data;
+  const originalActivity = archive.data.activity_entries;
+  if (originalActivity !== undefined && !Array.isArray(originalActivity)) throw validationError('Invalid activity list.');
+  for (const entry of originalActivity || []) if (!isRecord(entry) || !['draft', 'published'].includes(entry.publication_state || 'published')) throw validationError('Invalid activity publication state.');
+  const skippedDrafts = (originalActivity || []).filter(entry => entry.publication_state === 'draft').length;
+  const data = { ...archive.data, activity_entries: (originalActivity || []).filter(entry => entry.publication_state !== 'draft') };
   if (!Array.isArray(data.workspaces) || data.workspaces.length !== 1) throw validationError('Export and import one workspace at a time.');
   const original = data.workspaces[0];
   if (!isRecord(original) || typeof original.id !== 'string' || typeof original.name !== 'string' || !original.name.trim()) throw validationError('The archive has no valid workspace.');
@@ -89,6 +93,6 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
     for (const [table, row] of pending) validateCustomFields(db, table, row);
     importExtensions(db, data, ids, workspaceId, timestamp);
     db.exec('COMMIT');
-    return { id: workspaceId, importedRecords: count, excluded: ['connections', 'credentials', 'sessions', 'personal settings', 'folder access', 'chat bookmarks, follow-up drafts and attachment metadata'], reviewRequired: ['outputs', 'knowledge'], paused: ['work plans'] };
+    return { id: workspaceId, importedRecords: count, skipped_activity_drafts: skippedDrafts, excluded: ['connections', 'credentials', 'sessions', 'personal settings', 'folder access', 'private activity drafts, activity reactions and author privileges', 'chat bookmarks, follow-up drafts and attachment metadata'], reviewRequired: ['outputs', 'knowledge'], paused: ['work plans'] };
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }

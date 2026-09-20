@@ -5,6 +5,7 @@ export const NAV_ITEMS = [
   { id: "overview", label: "Home", key: "O" },
   { id: "focus", label: "Focus", key: "F" },
   { id: "inbox", label: "Inbox", key: "I" },
+  { id: "updates", label: "Updates", key: "U" },
   { id: "work", label: "Live work", key: "W" },
   { id: "workbench", label: "Workbench", key: "B" },
   { id: "operations", label: "Coordination", key: "D" },
@@ -21,7 +22,7 @@ export const NAV_ITEMS = [
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
-  primary: ["overview", "focus", "inbox", "work", "workbench", "operations"],
+  primary: ["overview", "focus", "inbox", "updates", "work", "workbench", "operations"],
   sections: ["favorites", "agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "library", "documents", "memory", "connections"],
 };

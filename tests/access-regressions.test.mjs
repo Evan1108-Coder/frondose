@@ -51,8 +51,8 @@ test('encoded entity identifiers cannot bypass object scope checks', async t => 
   const member = governance.command(workspaceId, 'local-owner', 'create_member', { name: 'Member' });
   governance.command(workspaceId, 'local-owner', 'grant', { member_id: member.id, permission: 'projects.read', effect: 'deny', scope_type: 'project', scope_id: project.id, reason: 'Restricted' });
   const now = new Date().toISOString();
-  db.prepare('INSERT INTO activity_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('entry', workspaceId, 'project', project.id, 'comment', null, 'user', 'local-owner', 'Owner', 'Private update', 1, null, now, now);
-  assert.throws(() => access.check({ actor: { id: member.id }, path: '/activity/%65ntry', method: 'GET', url: new URL(`http://localhost/?workspace_id=${workspaceId}`) }), /Permission/);
+  db.prepare('INSERT INTO activity_entries(id,workspace_id,target_type,target_id,update_type,parent_id,actor_type,actor_id,actor_name,content,version,archived_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('entry', workspaceId, 'project', project.id, 'comment', null, 'user', 'local-owner', 'Owner', 'Private update', 1, null, now, now);
+  assert.throws(() => access.check({ actor: { id: member.id }, path: '/activity/%65ntry', method: 'GET', url: new URL(`http://localhost/?workspace_id=${workspaceId}`) }), /Permission|unavailable/);
 });
 
 test('context snapshots cannot copy a source from a denied project directly or through a pack', async t => {

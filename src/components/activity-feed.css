@@ -5,6 +5,41 @@
 .activity-count { min-width: 28px; height: 24px; padding: 0 8px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 12px; }
 .activity-composer { position:relative; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); display: grid; gap: 10px; }
 .activity-composer-top { min-height: 32px; display: flex; align-items: center; }
+.activity-composer-top { gap: 8px; flex-wrap: wrap; }
+.activity-composer > input { width: 100%; font-weight: 550; }
+.activity-composer-actions > div, .activity-editor-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+.activity-editor-toolbar { align-items: center; }
+.activity-editor-toolbar button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 5px; color: var(--muted); font-size: 12px; }
+.activity-editor-toolbar button[aria-pressed=true] { color: var(--text); background: var(--hover); }
+.activity-editor-toolbar button:last-child { margin-left: auto; }
+.activity-editor-toolbar svg { width: 14px; height: 14px; }
+.activity-evidence-fields { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; }
+.activity-evidence-fields input { min-width: 0; }
+.activity-preview { min-height: 120px; max-height: 420px; overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+.activity-filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.activity-filter-bar .rumbo-select { width: 150px; }
+.activity-filter-bar > :last-child { flex: 1; min-width: 150px; }
+.activity-entry-title { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.activity-entry-title a { color: inherit; text-decoration: none; }
+.activity-entry-title a:hover { text-decoration: underline; }
+.activity-target { font-size: 12px; color: var(--muted); }
+.activity-health { font-size: 11px; color: var(--secondary); padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; }
+.activity-health.health-blocked, .activity-health.health-at_risk { color: var(--danger, #d66); }
+.activity-focused { outline: 1px solid var(--accent); outline-offset: 5px; border-radius: 5px; }
+.activity-entry { scroll-margin: 24px; }
+.activity-entry .document-content { min-width: 0; }
+.activity-entry .document-content > :first-child { margin-top: 0; }
+.activity-entry .document-content > :last-child { margin-bottom: 0; }
+.activity-entry-actions { flex-wrap: wrap; }
+.activity-entry-actions a { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; text-decoration: none; }
+.activity-reactions { display: flex; flex-wrap: wrap; gap: 6px; }
+.activity-reactions:empty { display: none; }
+.activity-reactions button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; color: var(--secondary); font-size: 12px; }
+.activity-reactions button[aria-pressed=true] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.activity-history { display: grid; gap: 18px; }
+.activity-history section { border-bottom: 1px solid var(--border); padding-bottom: 16px; min-width: 0; }
+.activity-history header { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); }
+.activity-retry-note { color: var(--secondary); font-size: 12px; }
 .activity-composer-top .rumbo-select { width: 150px; }
 .activity-composer textarea { width: 100%; min-height: 78px; resize: vertical; line-height: 1.55; }
 .activity-composer-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -34,3 +69,4 @@
 .activity-state svg { width: 22px; height: 22px; }
 .activity-state strong { color: var(--secondary); }
 @media (max-width: 640px) { .activity-composer-actions { align-items: stretch; flex-direction: column; } .activity-composer-actions .button { justify-content: center; } .activity-entry header time { width: 100%; margin-left: 0; } }
+@media (max-width: 640px) { .activity-evidence-fields { grid-template-columns: 1fr; } .activity-filter-bar > * { flex: 1 1 130px; min-width: 0; } .activity-replies { padding-left: 8px; margin-left: 0; } .activity-composer-actions > div { justify-content: flex-end; } }

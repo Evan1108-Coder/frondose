@@ -1,8 +1,8 @@
 const VIEWS = new Set([
   "overview", "inbox", "projects", "tasks", "chats", "work", "memory",
-  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs",
+  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates",
 ]);
-const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents"]);
+const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
 const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'resources', 'documents', 'people']);
 

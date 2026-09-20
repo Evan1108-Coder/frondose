@@ -1,6 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
+import { createActivityPolicy } from './activity-policy.mjs';
+import { getReaction, normalizeReactionColor } from '../src/lib/reaction-catalog.js';
 
 export const ACTIVITY_TYPES = Object.freeze(['progress', 'decision', 'blocker', 'risk', 'release', 'outcome', 'comment']);
 export const ACTIVITY_TARGETS = Object.freeze(['project', 'route', 'request', 'document', 'output', 'milestone', 'chat']);
@@ -47,6 +49,14 @@ export function installActivity(db) {
   );
   CREATE INDEX IF NOT EXISTS activity_entries_target ON activity_entries(workspace_id,target_type,target_id,created_at);
   CREATE INDEX IF NOT EXISTS activity_entries_parent ON activity_entries(parent_id,created_at);`);
+  const columns = new Set(db.prepare('PRAGMA table_info(activity_entries)').all().map(item => item.name));
+  for (const [name, definition] of Object.entries({ title: "TEXT NOT NULL DEFAULT ''", health: "TEXT NOT NULL DEFAULT 'none'", publication_state: "TEXT NOT NULL DEFAULT 'published'", published_at: 'TEXT', imported: 'INTEGER NOT NULL DEFAULT 0' })) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE activity_entries ADD COLUMN ${name} ${definition}`);
+  }
+  db.exec(`UPDATE activity_entries SET published_at=created_at WHERE publication_state='published' AND published_at IS NULL;
+    CREATE INDEX IF NOT EXISTS activity_entries_feed ON activity_entries(workspace_id,publication_state,published_at,id);
+    CREATE TABLE IF NOT EXISTS activity_reactions(entry_id TEXT NOT NULL REFERENCES activity_entries(id) ON DELETE CASCADE,actor_id TEXT NOT NULL,reaction_id TEXT NOT NULL,color TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,PRIMARY KEY(entry_id,actor_id,reaction_id,color));
+    CREATE TABLE IF NOT EXISTS activity_requests(workspace_id TEXT NOT NULL,actor_id TEXT NOT NULL,request_key TEXT NOT NULL,operation TEXT NOT NULL,fingerprint TEXT NOT NULL,entry_id TEXT NOT NULL REFERENCES activity_entries(id) ON DELETE CASCADE,PRIMARY KEY(workspace_id,actor_id,request_key));`);
 }
 
 export function activitySnapshot(db) {
@@ -98,9 +108,16 @@ function inputFields(db, input, current = null) {
   if (!ACTORS.has(actorType)) throw invalid('Choose a valid actor type.');
   const actorId = current?.actor_id ?? (input.actor_id == null ? null : text(input.actor_id, 'Actor ID', 200));
   const actorName = current?.actor_name ?? text(input.actor_name, 'Actor name', 160, true);
-  const content = text(input.content ?? current?.content, 'Content', 50_000, true);
+  const publication = input.publication_state ?? current?.publication_state ?? 'published';
+  if (!['published', 'draft'].includes(publication)) throw invalid('Choose draft or published.');
+  if (current?.publication_state === 'published' && publication === 'draft') throw invalid('A published update cannot become a private draft.');
+  const content = text(input.content ?? current?.content ?? '', 'Content', 50_000, publication === 'published');
+  const title = text(input.title ?? current?.title ?? '', 'Title', 200);
+  const health = input.health ?? current?.health ?? 'none';
+  if (!['none', 'on_track', 'at_risk', 'blocked'].includes(health)) throw invalid('Choose a valid health status.');
   const parentId = current?.parent_id ?? validateParent(db, input.parent_id, workspaceId, targetType, targetId);
-  return { workspace_id: workspaceId, target_type: targetType, target_id: targetId, update_type: updateType, parent_id: parentId, actor_type: actorType, actor_id: actorId, actor_name: actorName, content };
+  if (parentId && publication === 'draft') throw invalid('Replies publish directly; save drafts on root updates.');
+  return { workspace_id: workspaceId, target_type: targetType, target_id: targetId, update_type: updateType, parent_id: parentId, actor_type: actorType, actor_id: actorId, actor_name: actorName, content, title, health, publication_state: publication };
 }
 
 function currentEntry(db, entryId, workspaceId) {
@@ -109,16 +126,55 @@ function currentEntry(db, entryId, workspaceId) {
   return item;
 }
 
-export async function activityRoute({ db, req, res, path, url, readBody, send, snapshot, actor }) {
-  const match = /^\/activity(?:\/([^/]+))?$/.exec(path);
+export async function activityRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed }) {
+  const match = /^\/activity(?:\/([^/]+))?(?:\/(reactions|history))?$/.exec(path);
   if (!match) return false;
+  if (!actor?.id) throw invalid('Sign in to continue.', 401);
+  const policy = createActivityPolicy(db, allowed);
   const entryId = match[1] ? decodeURIComponent(match[1]) : null;
+  const action = match[2];
+  const present = item => policy.present(item, actor);
+  const available = (id, ws) => { const item = currentEntry(db, id, ws); if (!policy.visible(item, actor)) throw invalid('Update not found in this workspace.', 404); return item; };
+  const respond = (status, result) => send(res, status, { result: present(result), ...(snapshot ? { bootstrap: snapshot(db) } : {}) });
+  const transact = callback => { db.exec('BEGIN IMMEDIATE'); try { const result = callback(); db.exec('COMMIT'); return result; } catch (error) { db.exec('ROLLBACK'); throw error; } };
 
   if (req.method === 'GET') {
     const workspaceId = url.searchParams.get('workspace_id');
     activeWorkspace(db, workspaceId);
+    if (entryId === 'feed' && !action) {
+      const state = url.searchParams.get('publication_state') || 'published';
+      if (!['published', 'draft'].includes(state)) throw invalid('Choose published or draft updates.');
+      const limit = Number(url.searchParams.get('limit') || 30);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw invalid('Limit must be 1–100.');
+      const filters = Object.fromEntries(['target_type', 'update_type', 'health', 'q', 'project_id', 'include_archived'].map(key => [key, url.searchParams.get(key) || '']));
+      filters.q = url.searchParams.get('search') || filters.q;
+      if (filters.target_type && !ACTIVITY_TARGETS.includes(filters.target_type) || filters.update_type && !ACTIVITY_TYPES.includes(filters.update_type) || filters.health && !['none', 'on_track', 'at_risk', 'blocked'].includes(filters.health) || filters.q.length > 200) throw invalid('Invalid feed filter.');
+      const binding = JSON.stringify([workspaceId, actor.id, state, filters]);
+      let cursor = null;
+      if (url.searchParams.get('cursor')) { try { cursor = JSON.parse(Buffer.from(url.searchParams.get('cursor'), 'base64url').toString()); } catch { throw invalid('Invalid feed cursor.'); } if (!Array.isArray(cursor) || cursor.length !== 3 || cursor[0] !== binding || typeof cursor[1] !== 'string' || typeof cursor[2] !== 'string') throw invalid('This cursor belongs to a different feed.'); }
+      const clauses = ['workspace_id=?', 'publication_state=?', 'parent_id IS NULL']; const parameters = [workspaceId, state];
+      if (filters.include_archived !== 'true') clauses.push('archived_at IS NULL');
+      if (state === 'draft') { clauses.push('actor_id=?'); parameters.push(actor.id); }
+      for (const key of ['target_type', 'update_type', 'health']) if (filters[key]) { clauses.push(`${key}=?`); parameters.push(filters[key]); }
+      if (filters.q) { clauses.push("(instr(lower(title),lower(?))>0 OR instr(lower(content),lower(?))>0)"); parameters.push(filters.q, filters.q); }
+      const timeColumn = state === 'draft' ? 'created_at' : 'published_at';
+      if (cursor) { clauses.push(`(${timeColumn}<? OR (${timeColumn}=? AND id<?))`); parameters.push(cursor[1], cursor[1], cursor[2]); }
+      // Permission filtering precedes pagination, so hidden records never occupy visible slots.
+      const query = db.prepare(`SELECT * FROM activity_entries WHERE ${clauses.join(' AND ')} ORDER BY ${timeColumn} DESC,id DESC`);
+      const result = [];
+      for (const item of query.iterate(...parameters)) { if (policy.visible(item, actor) && (filters.include_archived === 'true' || policy.ancestorsActive(item)) && (!filters.project_id || policy.target(item)?.display.project_ids.includes(filters.project_id))) result.push(item); if (result.length > limit) break; }
+      const more = result.length > limit; if (more) result.pop();
+      const last = result.at(-1);
+      send(res, 200, { result: { items: result.map(present), next_cursor: more ? Buffer.from(JSON.stringify([binding, last[timeColumn], last.id])).toString('base64url') : null } }); return true;
+    }
     if (entryId) {
-      send(res, 200, { result: currentEntry(db, entryId, workspaceId) });
+      const current = available(entryId, workspaceId);
+      if (action === 'history') {
+        const changes = current.publication_state === 'draft' ? [] : db.prepare('SELECT * FROM change_log WHERE entity_type=? AND entity_id=? AND workspace_id=? ORDER BY created_at DESC,id DESC LIMIT 100').all('activity_entries', entryId, workspaceId).filter(change => policy.historyVisible(change, actor)).map(change => ({ id: change.id, entity_id: change.entity_id, entity_type: change.entity_type, workspace_id: change.workspace_id, action: change.action, created_at: change.created_at, before: change.before_json ? JSON.parse(change.before_json) : null, after: change.after_json ? JSON.parse(change.after_json) : null }));
+        send(res, 200, { result: changes }); return true;
+      }
+      if (action) return false;
+      send(res, 200, { result: present(current) });
       return true;
     }
     const targetType = url.searchParams.get('target_type');
@@ -127,32 +183,59 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
     activeTarget(db, workspaceId, targetType, targetId);
     const includeArchived = url.searchParams.get('include_archived') === 'true';
     const result = db.prepare(`SELECT * FROM activity_entries WHERE workspace_id=? AND target_type=? AND target_id=?${includeArchived ? '' : ' AND archived_at IS NULL'} ORDER BY created_at,id`).all(workspaceId, targetType, targetId);
-    send(res, 200, { result });
+    send(res, 200, { result: result.filter(item => policy.visible(item, actor) && (includeArchived || policy.ancestorsActive(item))).map(present) });
     return true;
   }
 
   if (!['POST', 'PATCH', 'DELETE'].includes(req.method)) return false;
   const body = await readBody(req);
   if (!isRecord(body)) throw invalid('Provide valid update fields.');
+  if (action === 'reactions' && req.method === 'POST' && entryId) {
+    const current = available(entryId, body.workspace_id);
+    if (!policy.capabilities(current, actor).can_react) throw invalid('You cannot react to this update.', 403);
+    const reaction = body.reaction;
+    if (!isRecord(reaction) || !['add', 'remove'].includes(body.action)) throw invalid('Choose a reaction and add or remove.');
+    let item = getReaction(reaction.id);
+    if (typeof reaction.id === 'string' && reaction.id.startsWith('custom:')) { const emoji = db.prepare("SELECT * FROM workspace_items WHERE id=? AND workspace_id=? AND kind='emoji'").get(reaction.id.slice(7), current.workspace_id); if (emoji && (!emoji.archived_at || body.action === 'remove')) item = { id: reaction.id, type: 'custom' }; }
+    const color = normalizeReactionColor(reaction.color);
+    if (!item || color === undefined || item.type !== 'icon' && color !== null) throw invalid('Choose a valid reaction from this workspace.');
+    transact(() => {
+      if (body.action === 'remove') db.prepare('DELETE FROM activity_reactions WHERE entry_id=? AND actor_id=? AND reaction_id=? AND color=?').run(current.id, actor.id, item.id, color || '');
+      else { const count = db.prepare('SELECT COUNT(*) AS n FROM activity_reactions WHERE entry_id=? AND actor_id=?').get(current.id, actor.id).n; const existing = db.prepare('SELECT 1 FROM activity_reactions WHERE entry_id=? AND actor_id=? AND reaction_id=? AND color=?').get(current.id, actor.id, item.id, color || ''); if (!existing && count >= 24) throw invalid('Use up to 24 reactions per update.'); db.prepare('INSERT OR IGNORE INTO activity_reactions VALUES(?,?,?,?,?)').run(current.id, actor.id, item.id, color || '', stamp()); }
+    }); respond(200, current); return true;
+  }
+  if (action) return false;
   if (req.method === 'POST' && entryId || req.method !== 'POST' && !entryId) return false;
 
+  const requestKey = body.idempotency_key;
+  if (requestKey !== undefined && (typeof requestKey !== 'string' || !/^[\w.-]{8,160}$/.test(requestKey))) throw invalid('Use an idempotency key of 8–160 letters, digits, dots, hyphens or underscores.');
+  const operation = `${req.method}:${entryId || 'create'}`;
+  const fingerprint = createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(body).filter(([key]) => !['idempotency_key', 'actor_id', 'actor_name', 'actor_type'].includes(key)).sort(([a], [b]) => a.localeCompare(b))))).digest('hex');
+  if (requestKey) {
+    const prior = db.prepare('SELECT * FROM activity_requests WHERE workspace_id=? AND actor_id=? AND request_key=?').get(body.workspace_id, actor.id, requestKey);
+    if (prior) { if (prior.operation !== operation || prior.fingerprint !== fingerprint) throw invalid('This retry key was used for different update content.', 409); respond(200, available(prior.entry_id, body.workspace_id)); return true; }
+  }
+  const remember = item => { if (requestKey) db.prepare('INSERT INTO activity_requests VALUES(?,?,?,?,?,?)').run(item.workspace_id, actor.id, requestKey, operation, fingerprint, item.id); };
+
   if (req.method === 'POST') {
-    const attributed = actor?.mode === 'account' ? { ...body, actor_type: 'user', actor_id: actor.id, actor_name: actor.name || 'Member' } : body;
+    const attributed = { ...body, actor_type: 'user', actor_id: actor.id, actor_name: actor.name || 'Member' };
     const values = inputFields(db, attributed);
     const time = stamp();
-    const result = { id: uid(), ...values, version: 1, archived_at: null, created_at: time, updated_at: time };
-    db.prepare('INSERT INTO activity_entries VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...Object.values(result));
-    recordChange(db, 'activity_entries', null, result, 'created');
-    send(res, 201, { result, ...(snapshot ? { bootstrap: snapshot(db) } : {}) });
+    const result = { id: uid(), ...values, version: 1, archived_at: null, created_at: time, updated_at: time, published_at: values.publication_state === 'published' ? time : null, imported: 0 };
+    const destination = policy.target(result);
+    if (!destination?.active || !policy.permitted(result, actor, 'write')) throw invalid('You cannot update this target.', 403);
+    if (!policy.ancestorsActive(result)) throw invalid('Replies need a published active parent and at most five levels.');
+    transact(() => { const fields = Object.keys(result); db.prepare(`INSERT INTO activity_entries(${fields.join(',')}) VALUES(${fields.map(() => '?').join(',')})`).run(...Object.values(result)); recordChange(db, 'activity_entries', null, result, 'created'); remember(result); });
+    respond(201, result);
     return true;
   }
 
-  const current = currentEntry(db, entryId, body.workspace_id);
-  if (actor?.mode === 'account' && current.actor_id !== actor.id) {
-    const rank = db.prepare("SELECT rank FROM governance_members WHERE workspace_id=? AND id=? AND status='active'").get(current.workspace_id, actor.id)?.rank;
-    // Moderators may hide an inappropriate update, but cannot rewrite another person's words.
-    if (!(req.method === 'DELETE' && ['Owner', 'Admin', 'Manager'].includes(rank))) throw invalid('Only the author may edit this update. A manager can archive it.', 403);
-  }
+  const current = available(entryId, body.workspace_id);
+  const restoring = req.method === 'PATCH' && Object.hasOwn(body, 'archived_at') && body.archived_at === null && Boolean(current.archived_at);
+  const archiving = req.method === 'DELETE' || body.archived_at === true;
+  const capabilities = policy.capabilities(current, actor);
+  if (!(restoring ? capabilities.can_restore : archiving ? capabilities.can_archive : capabilities.can_edit)) throw invalid('Only the author may edit; an authorized manager may archive or restore published updates.', 403);
+  if ((restoring || archiving) && Object.keys(body).some(key => !['workspace_id', 'version', 'archived_at', 'idempotency_key'].includes(key))) throw invalid('Archive and restore cannot also change update content.');
   if (body.version !== current.version) throw invalid('This update changed. Refresh it before continuing.', 409);
   const time = stamp();
   let result;
@@ -167,8 +250,12 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
     const values = inputFields(db, body, current);
     result = { ...current, ...values, version: current.version + 1, archived_at: archiving ? time : restoring ? null : current.archived_at, updated_at: time };
   }
-  db.prepare('UPDATE activity_entries SET update_type=?,content=?,version=?,archived_at=?,updated_at=? WHERE id=?').run(result.update_type, result.content, result.version, result.archived_at, result.updated_at, entryId);
-  recordChange(db, 'activity_entries', current, result, result.archived_at && !current.archived_at ? 'archived' : current.archived_at && !result.archived_at ? 'restored' : 'updated');
-  send(res, 200, { result, ...(snapshot ? { bootstrap: snapshot(db) } : {}) });
+  result.published_at = current.published_at || (result.publication_state === 'published' ? time : null);
+  transact(() => {
+    const changed = db.prepare('UPDATE activity_entries SET update_type=?,content=?,title=?,health=?,publication_state=?,published_at=?,version=?,archived_at=?,updated_at=? WHERE id=? AND version=?').run(result.update_type, result.content, result.title, result.health, result.publication_state, result.published_at, result.version, result.archived_at, result.updated_at, entryId, current.version);
+    if (changed.changes !== 1) throw invalid('This update changed. Refresh it before continuing.', 409);
+    recordChange(db, 'activity_entries', current, result, result.archived_at && !current.archived_at ? 'archived' : current.archived_at && !result.archived_at ? 'restored' : current.publication_state === 'draft' && result.publication_state === 'published' ? 'published' : 'updated'); remember(result);
+  });
+  respond(200, result);
   return true;
 }

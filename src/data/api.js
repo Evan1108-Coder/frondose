@@ -119,6 +119,16 @@ export const rumboApi = {
   listActivity: ({ workspaceId, targetType, targetId, includeArchived = false }, options) => get(`${API_ROOT}/activity?workspace_id=${encodeURIComponent(workspaceId)}&target_type=${encodeURIComponent(targetType)}&target_id=${encodeURIComponent(targetId)}${includeArchived ? '&include_archived=true' : ''}`, options),
   createActivity: (input, options) => post(`${API_ROOT}/activity`, input, options),
   updateActivity: (id, input, options) => patch(`${API_ROOT}/activity/${encodeURIComponent(id)}`, input, options),
+  getActivity: (id, { workspaceId }, options) => get(`${API_ROOT}/activity/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(workspaceId)}`, options),
+  activityHistory: (id, { workspaceId }, options) => get(`${API_ROOT}/activity/${encodeURIComponent(id)}/history?workspace_id=${encodeURIComponent(workspaceId)}`, options),
+  reactActivity: (id, input, options) => post(`${API_ROOT}/activity/${encodeURIComponent(id)}/reactions`, input, options),
+  archiveActivity: (id, input, options) => apiRequest(`${API_ROOT}/activity/${encodeURIComponent(id)}`, { ...options, method: 'DELETE', body: input }),
+  listActivityFeed: ({ workspaceId, publicationState = 'published', targetType, updateType, health, projectId, search, includeArchived = false, cursor, limit = 30 }, options) => {
+    const query = new URLSearchParams({ workspace_id: workspaceId, publication_state: publicationState, limit: String(limit) });
+    for (const [key, value] of Object.entries({ target_type: targetType, update_type: updateType, health, project_id: projectId, search, cursor })) if (value) query.set(key, value);
+    if (includeArchived) query.set('include_archived', 'true');
+    return get(`${API_ROOT}/activity/feed?${query}`, options);
+  },
   createWorkspaceItem: input => post(pathFor('workspace-items'), input),
   importWorkspace: input => post(`${API_ROOT}/import`, input),
   updateWorkspaceItem: (id, input) => patch(pathFor('workspace-items', id), input),

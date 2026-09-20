@@ -1,5 +1,5 @@
 export const BUILTIN_GROUPS = ['favorites', 'agents', 'teams', 'projects', 'chats'];
-export const SIDEBAR_TABS = ['overview', 'focus', 'inbox', 'work', 'workbench', 'operations', 'views', 'tasks', 'library', 'documents', 'memory', 'connections'];
+export const SIDEBAR_TABS = ['overview', 'focus', 'inbox', 'updates', 'work', 'workbench', 'operations', 'views', 'tasks', 'library', 'documents', 'memory', 'connections'];
 const staticIds = new Set([...BUILTIN_GROUPS, ...SIDEBAR_TABS]);
 export const entityKey = (view, id) => 'entity:' + view + ':' + id;
 export function parseEntityKey(key) {

@@ -18,11 +18,11 @@ async function fixture(run) {
   db.prepare('INSERT INTO documents(id,workspace_id,project_id,title,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('document', 'ws', 'project', 'Document', now, now);
   db.prepare('INSERT INTO milestones(id,workspace_id,project_id,title,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('milestone', 'ws', 'project', 'Milestone', now, now);
   db.prepare('INSERT INTO workspace_items VALUES (?,?,?,?,?,?,?,?,?,?)').run('request', 'ws', 'request', 'Request', '{}', 1, 1, null, now, now);
-  const call = async (method, suffix = '', body = {}, query = {}) => {
+  const call = async (method, suffix = '', body = {}, query = {}, actor = { id: 'local-owner', name: 'You', mode: 'local' }) => {
     let response;
     const url = new URL(`http://localhost/api/activity${suffix}`);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
-    const handled = await activityRoute({ db, req: { method }, res: {}, path: `/activity${suffix}`, url, readBody: async () => body, send: (_res, status, payload) => { response = { status, ...payload }; } });
+    const handled = await activityRoute({ db, actor, req: { method }, res: {}, path: `/activity${suffix}`, url, readBody: async () => body, send: (_res, status, payload) => { response = { status, ...payload }; } });
     assert.equal(handled, true); return response;
   };
   try { await run({ db, call }); } finally { db.close(); }
@@ -44,7 +44,7 @@ test('persists every update type on supported workspace-scoped targets', async (
 test('threaded replies stay on the same target and preserve actor attribution', async () => fixture(async ({ call }) => {
   const parent = (await call('POST', '', entry())).result;
   const reply = (await call('POST', '', entry('project', 'project', { parent_id: parent.id, update_type: 'comment', actor_type: 'agent', actor_id: 'agent_1', actor_name: 'Codex', content: 'Review result' }))).result;
-  assert.equal(reply.parent_id, parent.id); assert.equal(reply.actor_type, 'agent'); assert.equal(reply.actor_name, 'Codex');
+  assert.equal(reply.parent_id, parent.id); assert.equal(reply.actor_type, 'user'); assert.equal(reply.actor_name, 'You'); assert.equal(reply.actor_id, 'local-owner');
   await assert.rejects(call('POST', '', entry('route', 'route', { parent_id: parent.id })), error => error.statusCode === 404);
 }));
 

@@ -25,6 +25,10 @@ export function featureSnapshot(db) {
   };
 }
 export function recordChange(db, resource, before, after, action) {
+  if (resource === 'activity_entries') {
+    if ((after || before)?.publication_state === 'draft') return;
+    if (before?.publication_state === 'draft') before = null;
+  }
   const item = after ?? before;
   const workspaceId = item?.workspace_id ?? (resource === 'workspaces' ? item?.id : null);
   if (!workspaceId) return;

@@ -15,7 +15,7 @@ import { searchCatalog, searchExcerpt } from '../lib/search.js';
 import { describePage } from '../lib/workspace-experience.js';
 import { parsePage } from '../lib/navigation.js';
 import { featureItems } from '../lib/settings-catalog.js';
-import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban } from './icons.jsx';
+import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban, MessageSquareText } from './icons.jsx';
 import { HelpMenu } from './HelpMenu.jsx';
 import { useSidebarArrange } from './SidebarArrange.jsx';
 import { TeamIconButton } from './TeamAppearance.jsx';
@@ -24,7 +24,7 @@ import { SidebarLayout } from './SidebarLayout.jsx';
 import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 
-const NAV_ICONS = { overview: House, focus: Focus, inbox: Inbox, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+const NAV_ICONS = { overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
 
 export function Sidebar({

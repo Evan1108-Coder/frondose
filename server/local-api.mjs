@@ -795,7 +795,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await teamResourcesRoute({ db, req, res, path, url, readBody, send })) return;
       if (await coordinationRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
       if (await routeToolsRoute({ db, req, res, path, readBody, send, snapshot })) return;
-      if (await activityRoute({ db, req, res, path, url, readBody, send, snapshot, actor })) return;
+      if (await activityRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await featureRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
       if (req.method === 'POST' && path === '/import') return send(res, 201, { result: importWorkspace(db, await readBody(req, 25_000_000), TABLE_CONFIG, normalizeInput, dbValue, validateCustomFields), bootstrap: snapshot(db) });
       if (req.method === 'GET' && (path === '/bootstrap' || path === '/snapshot')) return send(res, 200, snapshot(db));

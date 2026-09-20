@@ -37,7 +37,7 @@ export function attentionItems(data, seenFailures = [], now = Date.now()) {
   return items;
 }
 export function describePage(data, page) {
-  const collection = { memory: 'memory_notes', library: 'outputs', workbench: 'projects', work: 'runs', views: 'workspace_items' }[page.view] ?? page.view;
+  const collection = { updates: 'activity_entries', memory: 'memory_notes', library: 'outputs', workbench: 'projects', work: 'runs', views: 'workspace_items' }[page.view] ?? page.view;
   const item = page.id && (data[collection] ?? []).find(i => i.id === page.id && !i.archived_at);
   if (page.id && !item && !['operations', 'library'].includes(page.view)) return null;
   return item?.title || item?.name || { overview: 'Home', work: 'Live work', tasks: 'Routes', workbench: 'Workbench', library: 'Library', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());

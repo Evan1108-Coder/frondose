@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { validateSteps } from './coordination-service.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
+import { ACTIVITY_TARGET_TABLES } from './activity-policy.mjs';
 
-export const EXTENSION_TABLES = ['route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'route_schedules'];
+export const EXTENSION_TABLES = ['route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'route_schedules', 'activity_entries'];
 export const EXTENSION_PARENTS = { route_workflows: 'tasks', project_strategies: 'projects', milestone_contracts: 'milestones' };
 const error = message => validationError(`Cannot import workspace: ${message}`);
 const txt = (value, max = 100000, fallback = '') => { value ??= fallback; if (typeof value !== 'string' || value.length > max) throw error('invalid text field.'); return value; };
@@ -53,7 +54,14 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
   for (const table of EXTENSION_TABLES) for (const row of data[table] ?? []) {
     let fields = { id: ids.get(row.id), workspace_id: workspaceId };
     const projectId = () => ref('projects',row.project_id);
-    if (table === 'route_workflows') {
+    if (table === 'activity_entries') {
+      const targetTable = ACTIVITY_TARGET_TABLES[row.target_type];
+      if (!targetTable) throw error('unsupported activity target.');
+      const target = source(targetTable, row.target_id, true);
+      if (row.target_type === 'request' && target.kind !== 'request') throw error('activity request target is not a request.');
+      const content = txt(row.content, 50000); if (!content.trim()) throw error('published updates need content.');
+      fields = { ...fields, target_type: row.target_type, target_id: ref(targetTable, row.target_id, true), update_type: choice(row.update_type, ['progress','decision','blocker','risk','release','outcome','comment']), parent_id: null, actor_type: choice(row.actor_type, ['user','agent','system']), actor_id: null, actor_name: txt(row.actor_name,160) || 'Imported author', content, title: txt(row.title,200), health: choice(row.health || 'none',['none','on_track','at_risk','blocked']), publication_state:'published', published_at:timestamp(row.published_at) || timestamp(row.created_at) || stamp, imported:1, version:1, archived_at:timestamp(row.archived_at), created_at:timestamp(row.created_at) || stamp, updated_at:stamp };
+    } else if (table === 'route_workflows') {
       source('tasks',row.id,true);
       const deps = list(row.dependency_ids), parent = ref('tasks',row.parent_task_id);
       if (deps.includes(row.id) || row.parent_task_id === row.id || new Set(deps).size !== deps.length) throw error('invalid route dependency.');
@@ -94,6 +102,15 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
       fields = { ...fields, project_id:projectId(), title:txt(row.title,200), state:'paused', steps_json:JSON.stringify(steps), version:1, created_at:stamp, updated_at:stamp };
     }
     insert(table,fields);
+  }
+  for (const entry of data.activity_entries || []) {
+    const seen = new Set([entry.id]); let current = entry;
+    while (current.parent_id) {
+      if (seen.has(current.parent_id) || seen.size >= 5) throw error('activity reply cycle or excessive depth.');
+      seen.add(current.parent_id); current = source('activity_entries', current.parent_id, true);
+      if (current.target_type !== entry.target_type || current.target_id !== entry.target_id) throw error('activity reply belongs to a different target.');
+    }
+    if (entry.parent_id) db.prepare('UPDATE activity_entries SET parent_id=? WHERE id=?').run(ref('activity_entries', entry.parent_id, true), ref('activity_entries', entry.id, true));
   }
   // Check both graphs after all rows have been imported, before the transaction commits.
   const workflows = new Map((data.route_workflows ?? []).map(row=>[row.id,row]));
