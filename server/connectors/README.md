@@ -2,6 +2,12 @@
 
 This module performs real provider API requests when its OAuth application is configured. Tests inject an HTTP transport; no test connects an actual account.
 
+## GitHub changes and review
+
+The code endpoint supports open pull requests and a pinned PR comparison with up to 200 files, 100 reviews, 100 inline comments and 100 checks. Missing checks or patches are explicitly unavailable. Private filenames are filtered. The shared viewer cannot expand context GitHub did not return.
+
+Enable `read` and select a repository to view its PRs. The separate `review_pull` action posts Comment, Approve or Request changes and can include one selected-line discussion. It requires the reviewed head SHA, optional validated path/line/side, enabled-feature permission and existing exact-target owner approval. GitHub also requires pull-request write access. A stale commit fails before POST. A network-uncertain action is not blindly replayed; inspect the provider before starting another request. Browser-tab submission keys survive page reloads, but not a closed tab/session. Tests use injected transport; live OAuth and review operations remain unverified.
+
 ## Configuration
 
 Configure server-side `RUMBO_{FAMILY}_CLIENT_ID` and `RUMBO_{FAMILY}_CLIENT_SECRET`, where FAMILY is `GITHUB`, `GOOGLE`, `LINEAR`, `JIRA`, `SLACK`, or `FIGMA`. Register `RUMBO_CONNECTION_CALLBACK_URL` exactly with each provider. The development default is `http://127.0.0.1:4174/api/connection-platform/oauth/callback`. Production must use HTTPS. Values never belong in frontend environment variables.

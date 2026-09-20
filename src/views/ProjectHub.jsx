@@ -1,5 +1,5 @@
 import { WorkflowSelect, LabelPicker } from '../components/WorkProperties.jsx';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Archive, ArrowLeft, ArrowRight, BookOpen, MessageCircle, FileText, Folder, GitBranch, GitFork, Pencil, Play, Plus } from "../components/icons.jsx";
 import { Button, Empty, PageHeader, SearchField, Select, useApp } from "../ui.jsx";
 import { rumboActions } from "../data/useRumbo.js";
@@ -12,13 +12,15 @@ import { RouteRows } from "./Projects.jsx";
 import { ProjectStrategy } from '../components/ProjectStrategy.jsx';
 import { ProjectTimeline } from '../components/ProjectTimeline.jsx';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
+import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import "./workspace-spaces.css";
 
-const TABS = [{ id: "overview", label: "Overview" }, { id: "strategy", label: "Strategy & risks" }, { id: "timeline", label: "Timeline" }, { id: "routes", label: "Routes" }, { id: "documents", label: "Documents" }, { id: "chats", label: "Chats" }, { id: "activity", label: "Activity" }];
+const TABS = [{ id: "overview", label: "Overview" }, { id: "strategy", label: "Strategy & risks" }, { id: "timeline", label: "Timeline" }, { id: "routes", label: "Routes" }, { id: "documents", label: "Documents" }, { id: "chats", label: "Chats" }, { id: 'changes', label: 'Changes' }, { id: "activity", label: "Activity" }];
 
 export function ProjectHub({ project }) {
-  const { data, edit, navigate, archive, perform } = useApp();
-  const [tab, setTab] = useState("overview");
+  const { data, edit, navigate, archive, perform, page } = useApp();
+  const [tab, setTab] = useState(page.reviewId ? 'changes' : 'overview');
+  useEffect(() => { if (page.reviewId) setTab('changes'); }, [page.reviewId]);
   const [query, setQuery] = useState("");
   const [routeStatus, setRouteStatus] = useState("all");
   const [document, setDocument] = useState(null);
@@ -43,6 +45,7 @@ export function ProjectHub({ project }) {
     <div className="space-tab-content" role="tabpanel" aria-label={TABS.find((item) => item.id === tab).label}>
       {tab === 'strategy' ? <ProjectStrategy project={project} /> : null}
       {tab === 'timeline' ? <ProjectTimeline project={project} /> : null}
+      {tab === 'changes' ? <ReviewPanel targetType="project" targetId={project.id} projectId={project.id} defaultOpen /> : null}
       {tab === "overview" ? <div className="space-overview-grid"><div className="space-overview-main">
         <section className="space-brief"><div className="section-heading"><h2>Project brief</h2><button className="text-button" onClick={() => edit("project", project)}><Pencil />Edit</button></div>{project.goal ? <DocumentContent content={project.goal} /> : <div className="space-inline-empty"><p>What are you building, and what does success look like? A clear brief keeps the work moving in the same direction.</p><button className="text-button" onClick={() => edit("project", project)}>Write a project brief <ArrowRight /></button></div>}</section>
         <MilestonesPanel projectId={project.id} />

@@ -5,6 +5,9 @@ import { parsePage, pageHash } from '../lib/navigation.js';
 import "./document-content.css";
 import { ServiceLogo } from './ServiceLogo.jsx';
 import { serviceBrand } from '../lib/service-brands.js';
+import { CodeViewer } from './CodeViewer.jsx';
+import { ChangeReview } from './ChangeReview.jsx';
+import { patchFiles } from '../lib/change-review.js';
 
 // Deliberately small Markdown subset. React escapes all text; raw HTML and
 // remote images never execute or load as a side effect of reading a document.
@@ -40,7 +43,8 @@ export function DocumentContent({ content, className = "", emojis = [] }) {
       index++;
       while (index < lines.length && !/^\s*```/.test(lines[index])) code.push(lines[index++]);
       if (index < lines.length) index++;
-      blocks.push(<div className="document-code" key={key}>{language ? <span>{language}</span> : null}<pre><code>{code.join("\n")}</code></pre></div>);
+      const source = code.join('\n'), files = /^(diff|patch)$/i.test(language) ? patchFiles(source) : [];
+      blocks.push(files.length ? <ChangeReview key={key} comparison={{ title: 'Quoted patch', base: 'Before (quoted)', head: 'After (quoted)', notice: 'Unverified patch text from this message or document, not a repository snapshot. Reading it does not apply changes.', files }} /> : <div className="document-code" key={key}>{language ? <span>{language}</span> : null}<CodeViewer content={source} label={language || 'Code block'} /></div>);
       continue;
     }
     const heading = line.match(/^(#{1,6})\s+(.+)$/);

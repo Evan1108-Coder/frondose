@@ -19,3 +19,5 @@
 .document-content .document-code pre { overflow-x: auto; margin: 0; padding: 16px; }
 .document-content .document-code code { background: transparent; padding: 0; white-space: pre; }
 .document-content .document-task-mark { display: inline-block; margin-right: 8px; }
+.document-content .code-viewer code { font: inherit; color: inherit; background: none; padding: 0; border-radius: 0; white-space: inherit; }
+.document-code > .code-viewer { border: 0; border-radius: 0; }

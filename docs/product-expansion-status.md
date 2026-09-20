@@ -4,6 +4,16 @@ Updated September 19, 2026. This is a coverage ledger for the supplied product r
 
 ## What you can use now
 
+### Shared changes and reviews (September 20, 2026)
+
+Workbench, project Changes, Routes, session/chat results, GitHub pull requests and document revision history share a file-aware comparison component. Library output and knowledge-version comparisons reuse it, and quoted Markdown patches are labeled as unverified text. Chat/document code blocks follow the same personal code appearance. File-type badges, unified/split layouts, expanded captured context, search, wrapping and whitespace filtering are supported.
+
+Repository/document review snapshots persist exact versions, line comments and per-person reviewed-file state. Project views aggregate linked snapshots; copyable links retain the snapshot ID and recheck access. Local Git supports working, staged and two-ref comparisons without changing the checkout. Eligible future live runs attempt before/after capture of the linked default Git folder; concurrent edits can be included, so this is observation rather than authorship proof. Agent follow-ups save editable chat drafts and never launch an agent automatically.
+
+GitHub supports PR patches, inline discussions, reviews and checks plus explicit Comment/Approve/Request changes submissions (including a selected line). Existing enabled-feature permissions and exact-action owner approvals apply. Stale heads are rejected; same browser-tab retries retain their request key. Real GitHub authorization and review submission remain **not live-verified**. Provider-provided absent context is not fabricated.
+
+Limits: local/PR review previews are bounded to 200 files, approximately 2 MB total patch text and 300 KB per file. Private paths, symlinks, large and binary files are excluded or explained, not silently called fully reviewed. Large visible patches render in 1,000-row increments. Snapshots/comments persist in the database but are not yet included in workspace JSON export/import. Review markers are not approvals, Git merges, or Route completion. No public deployment is implied.
+
 ### Governance and Group 1 connections
 
 Local account setup, password sign-in, session revocation, one-use copied invitation links, four management ranks, custom permission roles, individual grants/denies, team/project/connection scopes and expiry are implemented. Owner promotions and departures use owner-electorate approvals. Multi-owner destructive workspace actions and high-impact external actions require exact-target approvals. Delegated agents cannot approve requests, elevate privileges, see tokens, or act after their sponsor loses permission.

@@ -10,6 +10,7 @@ import { ReactionGlyph } from './ReactionGlyph.jsx';
 import { customEmojis } from '../lib/custom-emojis.js';
 import { getReaction, reactionKey } from '../lib/reaction-catalog.js';
 import { AgentActionReview } from './AgentActionReview.jsx';
+import { ReviewPanel } from './ReviewPanel.jsx';
 
 export function ChatRunStatus({ run, onRetry, retrying }) {
   const { data, navigate, perform } = useApp();
@@ -33,6 +34,7 @@ export function ChatRunStatus({ run, onRetry, retrying }) {
     {expanded ? <div className="chat-activity-body">{activity.length ? activity.map(item => <div className="chat-activity-item" key={item.id}><small>{item.type === 'command.output' ? 'Command' : item.type === 'files.changed' ? 'Project changes' : item.type === 'context.prepared' ? 'Context' : 'Agent activity'}</small><p>{item.summary}</p></div>) : <p>{active ? 'Preparing the agent session…' : 'No activity was recorded.'}</p>}</div> : null}
     {failed ? <details className="chat-error-details"><summary>Technical details</summary><pre>{summary}</pre></details> : null}
     <AgentActionReview run={run} />
+    {!active ? <ReviewPanel targetType="run" targetId={run.id} projectId={val(run, 'project_id')} /> : null}
     <div className="chat-run-actions">
       <Button variant="ghost" icon={ExternalLink} onClick={() => navigate('work', run.id)}>View session</Button>
       {active ? <Button variant="ghost" icon={Square} onClick={() => perform(() => rumboActions.stopRun(run.id), 'Session stopped')}>Stop</Button> : null}

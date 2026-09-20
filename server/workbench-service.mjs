@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, stat, lstat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createConnection } from 'node:net';
 import { promisify } from 'node:util';
 import { validationError } from './validation.mjs';
+import { localComparison } from './local-comparison.mjs';
 
 const exec = promisify(execFile);
 const stamp = () => new Date().toISOString();
@@ -220,6 +221,21 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
       }
     }
     const root = await rootFor(project, environmentId);
+    if (action === 'checkpoint' && method === 'GET') {
+      await requireRepositoryRoot(root);
+      const paths = [...new Set((await git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])).split('\0').filter(Boolean))];
+      const files = {}; let size = 0, limited = false;
+      for (const path of paths) {
+        try { safeRelative(path); if ((await lstat(join(root, path))).isSymbolicLink()) continue; } catch { continue; }
+        if (Object.keys(files).length >= 200 || size >= 2_000_000) { limited = true; break; }
+        try { const file = await readText(root, path); size += file.content.length; if (size > 2_000_000) { limited = true; break; } files[path] = file.content; } catch { limited = true; }
+      }
+      return { root, files, limited };
+    }
+    if (action === 'comparison' && method === 'GET') {
+      await requireRepositoryRoot(root);
+      return localComparison({ root, query: Object.fromEntries(url.searchParams), git, safeRelative, fileFor, readText });
+    }
     if (action === 'tree' && method === 'GET') return { path, entries: await listTree(root, path, prefs(project).showHiddenFiles) };
     if (action === 'file' && method === 'GET') return readText(root, path);
     if (action === 'search' && method === 'GET') {

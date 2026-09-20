@@ -6,9 +6,10 @@ import './code-fonts.css';
 import './code-viewer.css';
 
 const TOKEN = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\/.*$|#.*$|\b(?:const|let|var|function|return|class|import|from|export|async|await|if|else|for|while|new|throw|try|catch|def|in|True|False|None|true|false|null)\b|\b\d+(?:\.\d+)?\b)/g;
-function highlight(text, enabled) {
+const SQL_TOKEN = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|--.*$|\b(?:SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|INDEX|VIEW|PRIMARY|KEY|FOREIGN|REFERENCES|NOT|NULL|DEFAULT|TEXT|INTEGER|BOOLEAN|REAL|AND|OR|JOIN|ON|AS|ORDER|BY|GROUP|LIMIT|IF|EXISTS|BEGIN|COMMIT|END|CASCADE)\b|\b\d+(?:\.\d+)?\b)/gi;
+export function highlight(text, enabled, filename = '') {
   if (!enabled || text.length > 8000) return text;
-  return text.split(TOKEN).map((part, index) => index % 2 ? <span key={index} className={/^['"`]/.test(part) ? 'cv-string' : /^(\/\/|#)/.test(part) ? 'cv-comment' : /^\d/.test(part) ? 'cv-number' : 'cv-keyword'}>{part}</span> : part);
+  return text.split(/(?:\.sql$|^sql$)/i.test(filename) ? SQL_TOKEN : TOKEN).map((part, index) => index % 2 ? <span key={index} className={/^['"`]/.test(part) ? 'cv-string' : /^(\/\/|#|--)/.test(part) ? 'cv-comment' : /^\d/.test(part) ? 'cv-number' : 'cv-keyword'}>{part}</span> : part);
 }
 export function CodeViewer({ content = '', diff = false, label = 'Code preview', settings: override }) {
   const [preferences] = useCodeAppearance(), settings = override ?? preferences;
@@ -23,7 +24,7 @@ export function CodeViewer({ content = '', diff = false, label = 'Code preview',
     return <span className={`cv-line ${row.type}`}>
       {settings.lineNumbers ? <span className="cv-number-gutter" aria-hidden="true">{side === 'left' ? row.oldLine : row.newLine ?? row.oldLine}</span> : null}
       {diff && settings.diffMarkers ? <span className="cv-diff-marker" aria-hidden="true">{row.type === 'addition' ? '+' : row.type === 'deletion' ? '−' : ' '}</span> : null}
-      <code>{highlight(text, settings.syntax)}</code>
+      <code>{highlight(text, settings.syntax, label)}</code>
     </span>;
   }
   return <div className={`code-viewer ${settings.wrap ? 'cv-wrap' : ''} ${split ? 'cv-split' : ''}`} data-code-theme={settings.theme} data-code-font={settings.font} style={{ ...codeThemeStyle(settings.theme), '--code-size': `${settings.fontSize}px`, '--code-height': settings.lineHeight, '--code-tab': settings.tabSize, '--code-font': codeFontFamily(settings.font) }}>

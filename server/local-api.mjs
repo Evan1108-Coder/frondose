@@ -11,6 +11,7 @@ import { createIntegrationService } from './integration-service.mjs';
 import { installWorkspaceFeatures, featureSnapshot, featureRoute, recordChange, validateCustomFields } from './workspace-features.mjs';
 import { importWorkspace } from './workspace-import.mjs';
 import { createWorkbenchService } from './workbench-service.mjs';
+import { createChangeReviewService } from './change-review-service.mjs';
 import { installWorkflow, workflowSnapshot, workflowRoute } from './workflow-service.mjs';
 import { installChatCollaboration, chatCollaborationSnapshot, chatCollaborationRoute, validateChatMessageContext, validateChatContextAttachments } from './chat-collaboration.mjs';
 import { installCoordination, coordinationSnapshot, coordinationRoute } from './coordination-service.mjs';
@@ -522,6 +523,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     return existing || governance.requestProtectedAction(workspaceId, actor.id, { permission, scope, action, target_id: target, payload });
   }
   let workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
+  const makeReviews = () => createChangeReviewService({ db: store.db, workbench, platform: connectionPlatform, authorize: (...args) => governance.authorize(...args) });
+  let changeReviews = makeReviews();
   let closed = false;
   const listeners = new Map();
   const runTimers = new Map();
@@ -760,6 +763,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         for (const field of ['sender_type', 'sender_id', 'sender_name', 'senderType', 'senderId', 'senderName', 'chat_id', 'chatId']) delete body[field];
       }
       const accessDecision = access.check({ actor, path, method: req.method, url, body });
+      const reviewResult = await changeReviews.handle({ path, method: req.method, query: Object.fromEntries(url.searchParams), body, actor });
+      if (reviewResult) return send(res, 200, reviewResult);
       if (accessDecision?.writing && (accessDecision.destructive || req.method === 'DELETE' || body.archived_at)) {
         const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
         const directTable = TABLE_CONFIG[parts[0]] ? parts[0] : { 'workspace-items': 'workspace_items', 'team-resources': 'team_resources', 'agent-memories': 'agent_memories', activity: 'activity_entries' }[parts[0]];
@@ -1003,6 +1008,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
           const startingController = new AbortController();
           liveRuns.set(runId, { stop: () => startingController.abort() });
           try {
+            if (workMode !== 'conversation' && project?.id) await changeReviews.beginRun(runId, actor, cwd).catch(() => addRunEvent(runId, 'review.unavailable', 'Automatic change capture unavailable for this folder or access level.', { demo: false }));
             const controller = await integration.startRun({ provider, prompt, cwd, permissionMode, workMode, signal: startingController.signal }, {
               onEvent(event) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) addRunEvent(runId, event.type, event.summary, { ...event.payload, demo: false }); },
               onComplete(result) {
@@ -1013,6 +1019,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
                 const emptyReply = Boolean(turn && result.status === 'completed' && !result.text?.trim());
                 const finalStatus = current.status === 'stopped' ? 'stopped' : emptyReply ? 'failed' : result.status;
                 updateRun(runId, finalStatus, true);
+                changeReviews.finishRun(runId, actor).then(reviewId => { if (!closed && reviewId) addRunEvent(runId, 'review.captured', 'Observed changes saved for review', { review_id: reviewId, demo: false }); }).catch(() => { if (!closed) addRunEvent(runId, 'review.unavailable', 'Change capture could not finish. No complete run diff is available.', { demo: false }); });
                 if (finalStatus === 'completed' && awareness && result.text) {
                   try { result.text = captureAgentActions(getDb(), runId, result.text, actionNonce, { authorizeCapture: ({ run, proposal }) => authorizeAgentProposal(run, proposal) }); }
                   catch { result.text = result.text.replace(/```rumbo-actions\s*\n[\s\S]*?```/g, '').trim() + '\n\nRumbo could not validate the proposed actions. No changes were made.'; }
@@ -1030,6 +1037,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
             if (!startingController.signal.aborted && !closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) liveRuns.set(runId, controller);
             else controller.stop();
           } catch (error) {
+            changeReviews.discardRun(runId);
             liveRuns.delete(runId);
             if (!closed) {
               const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
@@ -1199,6 +1207,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     store = createDatabase(directory, { seedMode });
     installAccess();
     workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
+    changeReviews = makeReviews();
     closed = false;
     return snapshot(store.db);
   }

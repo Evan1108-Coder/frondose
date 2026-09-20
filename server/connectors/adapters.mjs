@@ -1,3 +1,5 @@
+import { reviewablePath } from '../review-paths.mjs';
+import { parsePatch } from '../../src/lib/change-review.js';
 // Only fixed provider hosts and authored paths reach the transport. No client-supplied URL is fetched.
 export const providerError = (code, message, statusCode = 400) => Object.assign(new Error(message), { code, statusCode });
 const segment = value => {
@@ -101,6 +103,22 @@ export function createProviderAdapter(provider, request) {
     const { resource_id } = input;
     if (provider === 'github') {
       const target = repo(resource_id);
+      if (action === 'review_pull') {
+        if (!/^\d{1,9}$/.test(input.number) || !/^[a-f0-9]{40}$/i.test(input.commit_id) || !['COMMENT', 'APPROVE', 'REQUEST_CHANGES'].includes(input.event)) throw providerError('invalid_review', 'Select a pull request, exact commit, and review decision.');
+        const pull = await gh(`/repos/${target}/pulls/${input.number}`);
+        if (pull.head.sha !== input.commit_id) throw providerError('stale_review', 'The pull request changed. Refresh the comparison before submitting.', 409);
+        let comments;
+        if (input.path) {
+          if (!reviewablePath(input.path) || !['old', 'new'].includes(input.side) || !/^\d{1,9}$/.test(String(input.line))) throw providerError('invalid_review', 'Choose a visible line in this comparison.');
+          const files = [...await gh(`/repos/${target}/pulls/${input.number}/files?per_page=100&page=1`), ...(pull.changed_files > 100 ? await gh(`/repos/${target}/pulls/${input.number}/files?per_page=100&page=2`) : [])];
+          const file = files.find(f => f.filename === input.path && reviewablePath(f.previous_filename || f.filename));
+          if (!file?.patch || file.patch.length > 300000 || !parsePatch(file.patch).some(row => row[input.side === 'old' ? 'oldLine' : 'newLine'] === Number(input.line))) throw providerError('invalid_review', 'This line is not available in the current pull request patch.');
+          const current = await gh(`/repos/${target}/pulls/${input.number}`);
+          if (current.head.sha !== input.commit_id || current.base.sha !== pull.base.sha) throw providerError('stale_review', 'The pull request changed. Refresh before submitting.', 409);
+          comments = [{ path: input.path, side: input.side === 'old' ? 'LEFT' : 'RIGHT', line: Number(input.line), body: input.body }];
+        }
+        return gh(`/repos/${target}/pulls/${input.number}/reviews`, { method: 'POST', body: { commit_id: input.commit_id, body: input.body, event: input.event, ...(comments ? { comments } : {}) } });
+      }
       if (action === 'create_issue') return gh(`/repos/${target}/issues`, { method: 'POST', body: { title: input.title, body: input.body || '' } });
       if (action === 'comment') return gh(`/repos/${target}/issues/${segment(input.number)}/comments`, { method: 'POST', body: { body: input.body } });
       if (action === 'create_pull') return gh(`/repos/${target}/pulls`, { method: 'POST', body: { title: input.title, head: input.head, base: input.base, body: input.body || '' } });
@@ -138,15 +156,35 @@ export function createProviderAdapter(provider, request) {
     if ((provider === 'figma' || provider === 'figjam') && action === 'comment') return figma(`/files/${segment(resource_id)}/comments`, { method: 'POST', body: { message: input.message } });
     throw providerError('unsupported_action', 'This provider action is not supported.');
   }
-  async function readCode({ resource_id, kind = 'tree', path = '', ref = 'HEAD', base, head }) {
+  async function readCode({ resource_id, kind = 'tree', path = '', ref = 'HEAD', base, head, number }) {
     if (!provider.startsWith('github')) throw providerError('unsupported_provider', 'Code browsing requires a GitHub connection.');
     const target = repo(resource_id);
+    if (kind === 'pulls') return gh(`/repos/${target}/pulls?state=open&per_page=100`);
+    if (kind === 'pull') {
+      if (!/^\d{1,9}$/.test(String(number))) throw providerError('invalid_pull', 'Choose a pull request number.');
+      const pull = await gh(`/repos/${target}/pulls/${number}`);
+      const [first, second, reviews, comments, checks] = await Promise.all([
+        gh(`/repos/${target}/pulls/${number}/files?per_page=100&page=1`),
+        pull.changed_files > 100 ? gh(`/repos/${target}/pulls/${number}/files?per_page=100&page=2`) : [],
+        gh(`/repos/${target}/pulls/${number}/reviews?per_page=100`),
+        gh(`/repos/${target}/pulls/${number}/comments?per_page=100`),
+        gh(`/repos/${target}/commits/${segment(pull.head.sha)}/check-runs?per_page=100`).catch(() => ({ check_runs: [], unavailable: true })),
+      ]);
+      const current = await gh(`/repos/${target}/pulls/${number}`);
+      if (current.head.sha !== pull.head.sha || current.base.sha !== pull.base.sha) throw providerError('stale_review', 'The pull request changed during loading. Refresh to compare one version.', 409);
+      let bytes = 0;
+      const files = [...first, ...second].filter(file => reviewablePath(file.filename) && reviewablePath(file.previous_filename || file.filename)).map(file => { bytes += file.patch?.length || 0; const unavailable = !file.patch ? 'GitHub supplied no text patch (binary, large, or metadata-only change).' : file.patch.length > 300000 || bytes > 2000000 ? 'Diff preview limit reached. Open this file on GitHub.' : null; return { path: file.filename, oldPath: file.previous_filename || file.filename, status: file.status, additions: file.additions, deletions: file.deletions, patch: unavailable ? '' : file.patch, unavailable }; });
+      return { source: 'github', title: `${resource_id} #${number} · ${pull.title}`, base: pull.base.sha, head: pull.head.sha, url: pull.html_url, state: pull.merged ? 'merged' : pull.state, files, limited: pull.changed_files > files.length, notice: 'GitHub supplies bounded patch context; private paths are excluded. Missing unchanged lines cannot be expanded here. Reviews and checks are limited to the first 100 records.', reviews: reviews.map(r => ({ id: r.id, state: r.state, body: r.body, author: r.user?.login, commit: r.commit_id })), comments: comments.filter(c => reviewablePath(c.path)).map(c => ({ id: c.id, path: c.path, line: c.line, side: c.side, body: c.body, author: c.user?.login, outdated: c.commit_id !== pull.head.sha || c.line == null })), checks: checks.check_runs.map(c => ({ id: c.id, name: c.name, status: c.conclusion || c.status })), checksUnavailable: Boolean(checks.unavailable) };
+    }
     if (typeof path !== 'string' || path.length > 2000 || path.split('/').some(part => ['.', '..'].includes(part)) || /[\x00-\x1f\\]/.test(path)) throw providerError('invalid_path', 'Choose a valid repository path.');
     const encodedPath = path.split('/').filter(Boolean).map(segment).join('/');
     if (kind === 'branches') return gh(`/repos/${target}/branches?per_page=100`);
     if (kind === 'compare') {
       if (!safeRef(base) || !safeRef(head)) throw providerError('invalid_ref', 'Select a base and head reference.');
-      return gh(`/repos/${target}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=100`);
+      const comparison = await gh(`/repos/${target}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=100`);
+      let bytes = 0;
+      comparison.files = (comparison.files || []).filter(file => reviewablePath(file.filename) && reviewablePath(file.previous_filename || file.filename)).map(file => { bytes += file.patch?.length || 0; return { ...file, patch: file.patch?.length > 300000 || bytes > 2000000 ? undefined : file.patch }; });
+      return comparison;
     }
     if (!safeRef(ref) || !['tree', 'file'].includes(kind)) throw providerError('invalid_ref', 'Select a valid reference and code view.');
     const data = await gh(`/repos/${target}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`);

@@ -1,3 +1,4 @@
+import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { useState } from "react";
 import { Play, Square, Terminal, ShieldCheck, Check, X, ArrowRight, Download, Clock, MessageCircle, FileText, Plus, FlaskConical } from "../components/icons.jsx";
 import { rumboActions } from "../data/useRumbo.js";
@@ -537,6 +538,7 @@ export function WorkView() {
                     <pre>{output}</pre>
                   </section>
                 ) : null}
+                <ReviewPanel targetType="run" targetId={run.id} projectId={val(run, 'project_id')} />
                 {files.length ? (
                   <section>
                     <div className="section-heading">

@@ -28,6 +28,7 @@ import { WorkflowSelect, LabelPicker, WorkLabels } from '../components/WorkPrope
 import { RouteWorkflow } from '../components/RouteWorkflow.jsx';
 import { featureItems } from '../lib/settings-catalog.js';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
+import { ReviewPanel } from '../components/ReviewPanel.jsx';
 
 export function ProjectsView() {
   const { data, page, navigate, edit } = useApp();
@@ -562,6 +563,7 @@ function RouteDetail({ route }) {
             )}
           </section>
           <ActivityFeed workspaceId={route.workspace_id} targetType="route" targetId={route.id} />
+          <ReviewPanel targetType="route" targetId={route.id} projectId={route.project_id} />
         </div>
         <aside className="detail-aside">
           <section>

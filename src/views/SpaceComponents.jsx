@@ -8,8 +8,8 @@ import { DocumentContent } from "../components/DocumentContent.jsx";
 import { SpaceArchiveDialog, WorkspaceEditor } from "../components/WorkspaceEditor.jsx";
 import { useIconColors } from '../components/IconColors.jsx';
 import { pageTeam } from '../lib/icon-colors.js';
-import { House, Route, FolderKanban, LibraryBig, NotebookPen, Users, Target, Calendar, MessageSquareText, Activity, Flag } from '../components/icons.jsx';
-const TAB_ICONS = { overview: House, routes: Route, projects: FolderKanban, resources: LibraryBig, documents: NotebookPen, people: Users, strategy: Target, timeline: Calendar, chats: MessageSquareText, activity: Activity, milestones: Flag };
+import { House, Route, FolderKanban, LibraryBig, NotebookPen, Users, Target, Calendar, MessageSquareText, Activity, Flag, GitBranch } from '../components/icons.jsx';
+const TAB_ICONS = { overview: House, routes: Route, projects: FolderKanban, resources: LibraryBig, documents: NotebookPen, people: Users, strategy: Target, timeline: Calendar, chats: MessageSquareText, activity: Activity, changes: GitBranch, milestones: Flag };
 
 export function SpaceTabs({ tabs, value, onChange, label }) {
   const { page, data } = useApp();

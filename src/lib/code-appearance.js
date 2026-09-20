@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { CODE_FONTS } from './code-fonts.js';
 import { CODE_THEMES } from './code-themes.js';
 const KEY = 'rumbo.codeAppearance.v1';
-export const CODE_DEFAULTS = Object.freeze({ theme: 'app', font: 'system', fontSize: 13, lineHeight: 1.65, tabSize: 2, wrap: false, lineNumbers: true, syntax: true, diffLayout: 'unified', diffMarkers: true });
+export const CODE_DEFAULTS = Object.freeze({ theme: 'app', font: 'system', fontSize: 13, lineHeight: 1.65, tabSize: 2, wrap: false, lineNumbers: true, syntax: true, diffLayout: 'unified', diffMarkers: true, hideWhitespace: false });
 export function normalizeCodeAppearance(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) input = {};
   const result = { ...CODE_DEFAULTS };
   for (const [key, choices] of Object.entries({ theme: CODE_THEMES.map(item => item.id), font: CODE_FONTS.map(item => item.id), diffLayout: ['unified', 'split'] })) if (choices.includes(input[key])) result[key] = input[key];
   for (const [key, min, max] of [['fontSize', 10, 24], ['lineHeight', 1.2, 2.2], ['tabSize', 2, 8]]) if (Number.isFinite(input[key])) result[key] = Math.min(max, Math.max(min, input[key]));
-  for (const key of ['wrap', 'lineNumbers', 'syntax', 'diffMarkers']) if (typeof input[key] === 'boolean') result[key] = input[key];
+  for (const key of ['wrap', 'lineNumbers', 'syntax', 'diffMarkers', 'hideWhitespace']) if (typeof input[key] === 'boolean') result[key] = input[key];
   return result;
 }
 export function readCodeAppearance() { try { return normalizeCodeAppearance(JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { return { ...CODE_DEFAULTS }; } }

@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- Shared Changes & review belongs in Workbench, GitHub, projects, Routes, run/chat results and document history. Use one file-aware viewer with language icons, unified/split layout, expandable captured context and shared code appearance. Review comments and reviewed-file state belong to immutable snapshots; never carry approval to a changed version. GitHub-provided missing context is unavailable, not invented. Run diffs are observed before/after folder changes and may include concurrent edits, not proof of agent authorship. Reading never changes Git or launches agents; follow-ups are reviewed chat drafts. External reviews require existing connection permissions, explicit submission and stale-head checks.
+
 - Teams use the searchable line-icon catalog only, not Unicode or uploaded emojis. Persist independent team color (identity marker) and icon tint; allow editing in team settings and directly from the team icon. Empty-state illustration tint is a separate browser-personal preference. Chat auto-follow is smooth by default, honors reduced motion, and pauses when reading older messages; keep ordinary wheel/touch scrolling native.
 
 - Code & reviews offers a searchable light/dark syntax palette catalog and bundled monospace fonts, shared by GitHub and Workbench source/diff previews. Serve font files locally and preserve their licenses; load only fonts actually rendered. Keep legacy preferences valid, explicit reset, and truthful separation from terminal/UI typography. Push verified task-related changes to GitHub and maintain the Rumbo Dev Linear work record as requested.

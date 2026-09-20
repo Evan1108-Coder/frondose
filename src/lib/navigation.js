@@ -35,16 +35,18 @@ export function parsePage(hash = "") {
     const projectId = SCOPED_VIEWS.has(view) ? scopes[0] ?? null : null;
     const messages = params.getAll('message');
     if (messages.length > 1 || messages.length && !validId(messages[0])) return home();
+    const reviews = params.getAll('review');
+    if (reviews.length > 1 || reviews.length && !validId(reviews[0])) return home();
     const sections = params.getAll('section');
     if (sections.length > 1 || (sections.length && !TEAM_SECTIONS.has(sections[0]))) return home();
-    return { view, id, projectId, ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(view === 'chats' && id && messages.length ? { messageId: messages[0] } : {}) };
+    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(view === 'chats' && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
     return home();
   }
 }
 
 /** Build a canonical hash while preserving a project-scoped list or detail. */
-export function pageHash(view, id = null, { projectId = null, messageId = null, section = null } = {}) {
+export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null } = {}) {
   if (!VIEWS.has(view)) return "#/overview";
   if (id !== null && !validId(id)) throw new TypeError("Invalid page identifier");
   if (projectId !== null && !validId(projectId))
@@ -52,6 +54,7 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
   const path = `#/${view}${id === null ? "" : `/${encodeURIComponent(id)}`}`;
   if (messageId !== null && !validId(messageId)) throw new TypeError('Invalid message identifier');
   const query = new URLSearchParams();
+  if (reviewId !== null) { if (!validId(reviewId)) throw new TypeError('Invalid review identifier'); query.set('review', reviewId); }
   if (section && view === 'teams' && id) {
     if (!TEAM_SECTIONS.has(section)) throw new TypeError('Invalid team section');
     query.set('section', section);

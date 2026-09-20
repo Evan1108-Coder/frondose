@@ -44,7 +44,7 @@ export function createAccessBoundary({ db, governance }) {
   }
   function check({ actor, path, method, url, body = {} }) {
     if (!actor) failure('Sign in to continue.');
-    if (path.startsWith('/governance') || path.startsWith('/connection-platform') || path.startsWith('/identity')) return;
+    if (path.startsWith('/governance') || path.startsWith('/connection-platform') || path.startsWith('/identity') || path === '/change-reviews' || path.startsWith('/change-reviews/')) return; // These services authenticate every target and source themselves.
     if (['/bootstrap', '/snapshot', '/health', '/events'].includes(path) && method === 'GET') return;
     // Existing global runner credentials and machine preferences belong to the installation owner.
     if (/^\/(?:auth|connections|settings|profile|account|reset|import)(?:\/|$)/.test(path)) {
