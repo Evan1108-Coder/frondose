@@ -62,21 +62,33 @@
 .focus-row small { color: var(--muted); font-size: 12px; }
 .focus-row svg { flex-shrink: 0; width: 18px; height: 18px; }
 .agent-detail-quick-actions { display: flex; gap: 8px; padding: 16px 22px; border-bottom: 1px solid var(--border-soft); flex-wrap: wrap; }
-/* Reference cadence: 32px rows and 14px Inter at an inferred 2x image scale. */
+/* Main-navigation cadence, normalized from the supplied 2x Linear reference.
+   Colorable rows have two real buttons: only those buttons own vertical padding. */
 .sidebar-v2 .nav-group { gap: 0; }
-.sidebar-v2 .nav-item, .sidebar-v2 .project-nav-children .nav-item { min-height: 32px; padding: 5px 10px; gap: 9px; font-size: 14px; line-height: 22px; font-weight: 450; }
-.sidebar-v2 .nav-item > svg, .sidebar-v2 .project-nav-children .nav-item > svg { width: 18px; height: 18px; }
+.sidebar-v2 .sidebar-free-layout { gap: 0; }
+.sidebar-v2 .nav-item, .sidebar-v2 .project-nav-children .nav-item { min-height: 32px; padding: 6px 8px; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: normal; }
+.sidebar-v2 .nav-item.colorable-nav { padding: 0 4px; gap: 0; }
+.sidebar-v2 .colorable-nav .nav-color-trigger { flex-basis: 28px; width: 28px; height: 32px; padding: 6px; }
+.sidebar-v2 .colorable-nav .nav-color-link { min-height: 32px; padding: 6px 4px; line-height: 20px; }
+.sidebar-v2 .nav-item > svg, .sidebar-v2 .project-nav-children .nav-item > svg, .sidebar-v2 .nav-color-trigger svg { width: 16px; height: 16px; }
+.sidebar-v2 .nav-item .nav-count { line-height: 18px; min-height: 18px; padding-block: 0; }
 .sidebar-v2 .project-nav-row, .sidebar-v2 .project-nav-name { min-height: 32px; }
-.sidebar-v2 .project-nav-name { font-size: 14px; padding-block: 4px; }
-.sidebar-v2 .section-title { font-size: 13px; font-weight: 450; }
-.sidebar-v2 .sidebar-section { margin-bottom: 24px; }
-.sidebar-v2 .project-nav-children { padding: 0 0 8px 24px; }
+.sidebar-v2 .project-nav-name { font-size: 14px; line-height: 20px; font-weight: 500; padding-block: 6px; }
+.sidebar-v2 .section-title { font-size: 13px; line-height: 20px; font-weight: 500; padding-block: 4px; }
+.sidebar-v2 .sidebar-section-heading { min-height: 28px; margin-bottom: 4px; }
+.sidebar-v2 .sidebar-section { margin-bottom: 0; }
+.sidebar-v2 .sidebar-layout-entry > .sidebar-section, .sidebar-v2 .sidebar-custom-group { margin-top: 24px; }
+.sidebar-v2 .project-nav-children { padding: 0 0 4px 20px; }
 .sidebar-v2 .nav-item, .sidebar-v2 .section-title, .sidebar-v2 .project-nav-name, .sidebar-v2 .sidebar-empty-action, .sidebar-v2 .sidebar-all-chats { transition: color 120ms ease-out, background-color 120ms ease-out; }
 .sidebar-v2 .nav-item:focus-visible, .sidebar-v2 .section-title:focus-visible, .sidebar-v2 .project-nav-name:focus-visible, .sidebar-v2 .sidebar-empty-action:focus-visible, .sidebar-v2 .sidebar-all-chats:focus-visible { color: var(--text); }
 @media (hover: hover) and (pointer: fine) {
  .sidebar-v2 .nav-item:hover, .sidebar-v2 .section-title:hover, .sidebar-v2 .project-nav-name:hover, .sidebar-v2 .sidebar-empty-action:hover, .sidebar-v2 .sidebar-all-chats:hover { color: var(--text); }
 }
-.sidebar-v2[data-spacing="compact"] .nav-item { min-height: 28px; padding-block: 3px; }
+.sidebar-v2[data-spacing="compact"] .nav-item { min-height: 28px; padding-block: 4px; }
+.sidebar-v2[data-spacing="compact"] .nav-item.colorable-nav { padding-block: 0; }
+.sidebar-v2[data-spacing="compact"] .nav-color-trigger { height: 28px; padding-block: 4px; }
+.sidebar-v2[data-spacing="compact"] .nav-color-link { min-height: 28px; padding-block: 4px; }
+.sidebar-v2[data-spacing="compact"] .sidebar-layout-entry > .sidebar-section, .sidebar-v2[data-spacing="compact"] .sidebar-custom-group { margin-top: 16px; margin-bottom: 0; }
 @media (min-width: 801px) {
  .sidebar-v2.collapsed .favorites-navigation, .sidebar-v2.collapsed .agents-navigation > .rumbo-collapse { display: none; }
  .sidebar-v2.collapsed .sidebar-utility .text-button span { display: none; }
