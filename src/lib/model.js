@@ -1,3 +1,5 @@
+import { leafRouteProgress } from './sub-routes.js';
+
 export const STATUSES = {
   backlog: "Backlog",
   ready: "Ready",
@@ -5,6 +7,7 @@ export const STATUSES = {
   review: "In review",
   blocked: "Blocked",
   done: "Done",
+  cancelled: "Cancelled",
 };
 export const PRIORITIES = {
   no_priority: "No priority",
@@ -67,16 +70,11 @@ export const dateLabel = (value) =>
     : "No due date";
 export const byUpdated = (a, b) =>
   new Date(val(b, "updated_at") ?? 0) - new Date(val(a, "updated_at") ?? 0);
-export function progress(project, tasks) {
-  const routes = visible(tasks).filter(
+export function progress(project, tasks, workflows = []) {
+  const routes = (tasks ?? []).filter(
     (task) => val(task, "project_id") === project.id,
   );
-  const done = routes.filter((task) => task.status === "done").length;
-  return {
-    total: routes.length,
-    done,
-    percent: routes.length ? Math.round((done / routes.length) * 100) : 0,
-  };
+  return leafRouteProgress(routes, workflows, tasks);
 }
 export function download(name, content, type = "application/json") {
   const url = URL.createObjectURL(

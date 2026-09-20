@@ -3,6 +3,7 @@ import { isRecord, validationError } from './validation.mjs';
 import { validateSteps } from './coordination-service.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
 import { ACTIVITY_TARGET_TABLES } from './activity-policy.mjs';
+import { routeGraph, inspectRouteGraph } from './route-hierarchy.mjs';
 
 export const EXTENSION_TABLES = ['route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'route_schedules', 'activity_entries'];
 export const EXTENSION_PARENTS = { route_workflows: 'tasks', project_strategies: 'projects', milestone_contracts: 'milestones' };
@@ -65,7 +66,8 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
       source('tasks',row.id,true);
       const deps = list(row.dependency_ids), parent = ref('tasks',row.parent_task_id);
       if (deps.includes(row.id) || row.parent_task_id === row.id || new Set(deps).size !== deps.length) throw error('invalid route dependency.');
-      fields = { ...fields, owner_name:txt(row.owner_name,120), reviewer_name:txt(row.reviewer_name,120), output_type:choice(row.output_type,['document','report','code_change','design','test_result','research','other']), parent_task_id:parent, acceptance_json:JSON.stringify(checklist(row.acceptance)), dependency_ids_json:JSON.stringify(deps.map(id=>ref('tasks',id,true))), version:1, updated_at:stamp };
+      const position = row.sibling_position ?? 0; if (!Number.isInteger(position) || position < 0 || position > 1000000) throw error('invalid sub-route order.');
+      fields = { ...fields, owner_name:txt(row.owner_name,120), reviewer_name:txt(row.reviewer_name,120), output_type:choice(row.output_type,['document','report','code_change','design','test_result','research','other']), parent_task_id:parent, acceptance_json:JSON.stringify(checklist(row.acceptance)), dependency_ids_json:JSON.stringify(deps.map(id=>ref('tasks',id,true))), version:1, updated_at:stamp, sibling_position:position };
     } else if (table === 'outputs') {
       const task = source('tasks',row.task_id), chat = source('chats',row.chat_id), message = source('messages',row.source_message_id);
       if (task && task.project_id !== row.project_id || chat && chat.project_id !== row.project_id || message && message.chat_id !== row.chat_id) throw error('output provenance does not match its project or conversation.');
@@ -119,4 +121,6 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
     const visit = (id,depth=0) => { if (depth > 500 || visiting.has(id)) throw error('route dependency cycle or excessive depth.'); if (visited.has(id)) return; visiting.add(id); const row=workflows.get(id); for (const next of parents ? row?.parent_task_id ? [row.parent_task_id] : [] : row?.dependency_ids ?? []) visit(next,depth+1); visiting.delete(id); visited.add(id); };
     workflows.forEach((_,id)=>visit(id));
   }
+  const importedGraph = routeGraph(db, workspaceId), checkedHierarchy = new Set();
+  for (const task of importedGraph.values()) if (!checkedHierarchy.has(task.id)) inspectRouteGraph(importedGraph, task).forEach(node => checkedHierarchy.add(node.id));
 }

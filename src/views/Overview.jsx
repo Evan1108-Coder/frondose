@@ -15,7 +15,7 @@ import { AccessApprovalInbox } from '../components/AccessApprovalInbox.jsx';
 
 export function ProjectRow({ project }) {
   const { data, navigate } = useApp();
-  const stats = progress(project, data.tasks);
+  const stats = progress(project, data.tasks, data.route_workflows);
   return (
     <button
       className="project-row"
@@ -34,13 +34,13 @@ export function ProjectRow({ project }) {
         </small>
       </span>
       <span className="row-meta">
-        {stats.total} {stats.total === 1 ? "route" : "routes"}
+        {stats.routeCount} {stats.routeCount === 1 ? "route" : "routes"}
       </span>
-      <span className="project-progress">
+      <span className="project-progress" title={stats.complete ? `${stats.done} of ${stats.total} active leaf Routes complete; parents are not counted twice` : 'Progress unavailable: a relationship is restricted or needs repair'}>
         <span className="progress-track">
-          <i style={{ width: `${stats.percent}%` }} />
+          <i style={{ width: `${stats.percent ?? 0}%` }} />
         </span>
-        <small>{stats.percent}%</small>
+        <small>{stats.percent === null ? '—' : `${stats.percent}%`}</small>
       </span>
       <ArrowRight className="row-arrow" />
     </button>

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { mergeSettings, validateRecord, validationError } from './validation.mjs';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
+import { guardRouteMutation } from './route-hierarchy.mjs';
+import { recordChange } from './workspace-features.mjs';
 
 const stamp = () => new Date().toISOString();
 const settingsFields = { appearance: ['theme', 'density', 'reduceMotion', 'textSize', 'underlineLinks'], preferences: ['home', 'sendKey', 'weekStart'] };
@@ -113,7 +115,7 @@ export function captureAgentActions(db, runId, text, nonce, { authorizeCapture }
   return text.replace(match[0], '').trim() || 'I have proposed changes for your review below. Nothing has been changed yet.';
 }
 
-export async function agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor = () => [], filter = value => value, authorizeProposal, executeConnectionAction }) {
+export async function agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor = () => [], filter = value => value, authorizeProposal, executeConnectionAction, actor, allowed }) {
   if (path === '/agent-awareness' && req.method === 'GET') {
     const workspaceId = url.searchParams.get('workspace_id');
     if (!db.prepare('SELECT 1 FROM workspaces WHERE id=?').get(workspaceId || '')) throw validationError('Workspace unavailable.');
@@ -193,7 +195,9 @@ export async function agentAwarenessRoute({ db, req, res, path, url, readBody, s
       } else if (proposal.type.startsWith('record.')) {
         if (activeRunsFor(proposal.resource, proposal.id).length) throw validationError('Stop linked active sessions before changing this item.');
         const patch = proposal.type === 'record.archive' ? { archived_at: stamp() } : proposal.patch;
+        if (proposal.resource === 'tasks') guardRouteMutation(db, before, { ...before, ...patch }, { actor, allowed });
         db.prepare(`UPDATE ${proposal.resource} SET ${Object.keys(patch).map(key => `${key}=?`).join(',')},updated_at=? WHERE id=?`).run(...Object.values(patch), stamp(), proposal.id);
+        recordChange(db, proposal.resource, before, db.prepare(`SELECT * FROM ${proposal.resource} WHERE id=?`).get(proposal.id), proposal.type === 'record.archive' ? 'agent-approved archive' : 'agent-approved update');
       } else {
         if (run.project_id && !db.prepare('SELECT 1 FROM projects WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(run.project_id, action.workspace_id)) throw validationError('The source project is unavailable.');
         if (!run.agent_id) throw validationError('Memory requires a named agent.');

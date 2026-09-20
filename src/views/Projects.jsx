@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, ArrowLeft, ArrowRight, Folder, Pencil, Archive, GitBranch, MessageCircle, Play, Menu, LayoutGrid, CircleCheck, Users } from "../components/icons.jsx";
+import { Plus, ArrowLeft, ArrowRight, Folder, Pencil, Archive, GitBranch, MessageCircle, Play, Menu, LayoutGrid, CircleCheck, Users, ChevronDown, ChevronRight } from "../components/icons.jsx";
 import {
   Button,
   Empty,
@@ -29,6 +29,8 @@ import { RouteWorkflow } from '../components/RouteWorkflow.jsx';
 import { featureItems } from '../lib/settings-catalog.js';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
+import { routeForestRows } from '../lib/sub-routes.js';
+import './route-hierarchy-list.css';
 
 export function ProjectsView() {
   const { data, page, navigate, edit } = useApp();
@@ -128,12 +130,15 @@ export function ProjectsView() {
 
 export function RouteRows({ routes, projectId }) {
   const { data, page, navigate, perform } = useApp();
+  const [collapsed, setCollapsed] = useState(new Set());
   const projectsById = useMemo(() => new Map(visible(data.projects).map((project) => [project.id, project])), [data.projects]);
   const teamsById = useMemo(() => new Map(visible(data.teams).map((team) => [team.id, team])), [data.teams]);
+  const routesById = useMemo(() => new Map((data.tasks ?? []).map(route => [route.id, route])), [data.tasks]);
+  const rows = useMemo(() => routeForestRows(routes, data.route_workflows, collapsed), [routes, data.route_workflows, collapsed]);
   return (
     <div className="route-table">
-      {routes.map((route) => (
-        <div className="route-row" key={route.id}>
+      {rows.map(({ route, depth, hasChildren, parentId }) => (
+        <div className="route-row" key={route.id} style={{ '--route-depth': depth }}>
           <Tooltip label={route.status === "done" ? "Reopen route" : "Mark complete"}><button
             className="route-complete"
             aria-label={
@@ -151,6 +156,8 @@ export function RouteRows({ routes, projectId }) {
           >
             <Status value={route.status} label="" />
           </button></Tooltip>
+          <div className="route-tree-title">
+          {hasChildren ? <button className="route-tree-disclosure" aria-label={`${collapsed.has(route.id) ? 'Expand' : 'Collapse'} sub-routes of ${route.title}`} aria-expanded={!collapsed.has(route.id)} onClick={() => setCollapsed(current => { const next = new Set(current); if (next.has(route.id)) next.delete(route.id); else next.add(route.id); return next; })}>{collapsed.has(route.id) ? <ChevronRight /> : <ChevronDown />}</button> : depth ? <span className="route-tree-branch" aria-hidden="true">↳</span> : null}
           <button
             className="route-title"
             onClick={() => navigate("tasks", route.id, { projectId: projectId ?? page.projectId })}
@@ -159,10 +166,11 @@ export function RouteRows({ routes, projectId }) {
               {route.title}
             </strong>
             <small>
-              {projectsById.get(val(route, "project_id"))?.name ?? teamsById.get(val(route, "team_id"))?.name ?? "Workspace"}
+              {parentId && routesById.has(parentId) ? `Sub-route of ${routesById.get(parentId).title}${routesById.get(parentId).archived_at ? ' (archived)' : ''}` : projectsById.get(val(route, "project_id"))?.name ?? teamsById.get(val(route, "team_id"))?.name ?? "Workspace"}
             </small>
             <WorkLabels item={route} />
           </button>
+          </div>
           <span className="route-status">
             <Status value={route.status} item={route} />
           </span>
@@ -217,7 +225,7 @@ export function RoutesView() {
           .toLowerCase()
           .includes(query.toLowerCase()) &&
         (status === "all" || status === "open"
-          ? status !== "open" || task.status !== "done"
+          ? status !== "open" || !['done', 'cancelled'].includes(task.status)
           : task.status === status || task.workflow_status_id === status) && (labelFilter === 'all' || task.labels?.includes(labelFilter)) &&
         (!project || val(task, "project_id") === project.id),
     )

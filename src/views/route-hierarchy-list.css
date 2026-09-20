@@ -1,0 +1,7 @@
+.route-tree-title { display: flex; flex: 1; align-items: center; min-width: 0; padding-inline-start: calc(var(--route-depth, 0) * 16px); }
+.route-tree-title .route-title { flex: 1; min-width: 0; }
+.route-tree-disclosure, .route-tree-branch { flex: 0 0 24px; width: 24px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.route-tree-disclosure { min-height: 30px; border: 0; background: transparent; border-radius: 5px; cursor: pointer; }
+.route-tree-disclosure:hover { background: var(--hover); color: var(--text); }
+.route-tree-disclosure svg { width: 15px; height: 15px; }
+@media (max-width: 600px) { .route-tree-title { padding-inline-start: calc(var(--route-depth, 0) * 8px); } }

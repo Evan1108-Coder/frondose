@@ -1,4 +1,5 @@
 import { getReaction, normalizeReactionColor } from '../src/lib/reaction-catalog.js';
+import { guardRouteMutation } from './route-hierarchy.mjs';
 
 const ENUMS = {
   projects: { status: ['planned', 'active', 'paused', 'completed', 'cancelled', 'archived'] },
@@ -110,6 +111,7 @@ export function validateRecord(db, resource, record, required, fields) {
   if (resource === 'team_members' && record.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(record.email)) throw validationError('Use a valid email address or leave it blank.');
   if (record.start_date && record.target_date && record.target_date < record.start_date) throw validationError('The target date cannot be before the start date.');
   if (['teams', 'team_members', 'documents', 'milestones', 'projects', 'tasks'].includes(resource) && !record.archived_at && Object.values(related).some((row) => row.archived_at)) throw validationError('Restore the archived workspace, team, or project before adding or editing its work.');
+  if (resource === 'tasks' && record.id) guardRouteMutation(db, db.prepare('SELECT * FROM tasks WHERE id=?').get(record.id), record);
   return record;
 }
 

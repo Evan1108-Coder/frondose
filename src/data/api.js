@@ -116,6 +116,8 @@ const entity = async (request, key) => {
 };
 
 export const rumboApi = {
+  subRoutes: (id, workspaceId, options) => get(`${API_ROOT}/sub-routes/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(workspaceId)}`, options),
+  mutateSubRoutes: (id, action, input, options) => post(`${API_ROOT}/sub-routes/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, input, options),
   listActivity: ({ workspaceId, targetType, targetId, includeArchived = false }, options) => get(`${API_ROOT}/activity?workspace_id=${encodeURIComponent(workspaceId)}&target_type=${encodeURIComponent(targetType)}&target_id=${encodeURIComponent(targetId)}${includeArchived ? '&include_archived=true' : ''}`, options),
   createActivity: (input, options) => post(`${API_ROOT}/activity`, input, options),
   updateActivity: (id, input, options) => patch(`${API_ROOT}/activity/${encodeURIComponent(id)}`, input, options),

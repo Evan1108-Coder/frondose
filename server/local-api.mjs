@@ -24,6 +24,8 @@ import { createGovernanceService, governanceRoute } from './governance-service.m
 import { createAccessBoundary } from './access-boundary.mjs';
 import { createConnectionPlatform } from './connection-platform.mjs';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
+import { subRoutesRoute } from './sub-routes-service.mjs';
+import { guardRouteMutation, guardRouteDeletion, hierarchyTransaction, routeGraph, inspectRouteGraph, authorizeRouteNodes } from './route-hierarchy.mjs';
 
 const API_PREFIX = '/api';
 const JSON_FIELDS = new Set([
@@ -505,6 +507,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const who = { id: userId };
       if (proposal.type?.startsWith('record.')) {
         access.check({ actor: who, path: `/${proposal.resource}/${proposal.id}`, method: proposal.type === 'record.archive' ? 'DELETE' : 'PATCH', url: new URL('http://localhost'), body: {} });
+        if (proposal.resource === 'tasks') { const task = store.db.prepare('SELECT * FROM tasks WHERE id=?').get(proposal.id); if (task) guardRouteMutation(store.db, task, { ...task, ...(proposal.type === 'record.archive' ? { archived_at: now() } : proposal.patch) }, { actor: who, allowed: access.allowed }); }
       } else if (proposal.type === 'settings.update') {
         if (userId !== 'local-owner') throw Object.assign(new Error('Shared installation settings require the installation owner.'), { statusCode: 403 });
       } else if (proposal.type === 'connection.action') {
@@ -600,7 +603,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     runTimers.set(runId, timers);
   }
 
-  async function collectionRoute(req, res, resource, itemId, url) {
+  async function collectionRoute(req, res, resource, itemId, url, actor) {
     const db = getDb();
     const config = TABLE_CONFIG[resource];
     if (!config) return false;
@@ -661,9 +664,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       return send(res, 201, { [resource.slice(0, -1)]: item });
     }
     if ((req.method === 'PATCH' || req.method === 'PUT') && itemId) {
-      const current = db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId);
-      if (!current) return fail(res, 404, 'not_found', `${resource.slice(0, -1)} not found.`);
       const body = normalizeInput(resource, await readBody(req));
+      const result = hierarchyTransaction(db, () => {
+      const current = db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId);
+      if (!current) throw Object.assign(validationError(`${resource.slice(0, -1)} not found.`), { statusCode: 404 });
       if (['tasks', 'projects'].includes(resource) && body.status !== undefined && body.workflow_status_id === undefined && body.status !== current.status) body.workflow_status_id = null;
       if (resource === 'messages' && body.chat_id !== undefined && body.chat_id !== current.chat_id) return fail(res, 400, 'validation_error', 'A message must stay in its original conversation.');
       if (resource === 'tasks' && (body.project_id || current.project_id)) {
@@ -683,6 +687,11 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const record = validateRecord(db, resource, { ...normalizeInput(resource, present(current)), ...body }, config.required, config.fields);
       if (resource === 'messages') validateChatContextAttachments(db, record.chat_id, { ...record.metadata_json, attachments: record.attachments_json || [] });
       validateCustomFields(db, resource, record);
+      if (resource === 'tasks') guardRouteMutation(db, current, record, { actor, allowed: access.allowed });
+      if (resource === 'projects' && fields.includes('team_id') && record.team_id !== current.team_id) {
+        const graph = routeGraph(db, current.workspace_id), visited = new Set();
+        for (const task of graph.values()) if (task.project_id === itemId && !visited.has(task.id)) { const nodes = inspectRouteGraph(graph, task); authorizeRouteNodes(nodes, { actor, allowed: access.allowed, write: true }); nodes.forEach(node => visited.add(node.id)); }
+      }
       const stamp = now();
       db.prepare(`UPDATE ${resource} SET ${fields.map((field) => `${field}=?`).join(',')},updated_at=? WHERE id=?`)
         .run(...fields.map((field) => dbValue(field, record[field])), stamp, itemId);
@@ -693,11 +702,14 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       }
       if (resource === 'projects' && fields.includes('team_id')) db.prepare('UPDATE tasks SET team_id=?,updated_at=? WHERE project_id=?').run(record.team_id || null, stamp, itemId);
       recordChange(db, resource, present(current), present(db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId)), body.archived_at ? 'archived' : 'updated');
-      return send(res, 200, { [resource.slice(0, -1)]: present(db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId)) });
+      return { [resource.slice(0, -1)]: present(db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId)) };
+      });
+      if (!res.writableEnded) return send(res, 200, result);
+      return true;
     }
     if (req.method === 'DELETE' && itemId) {
       if (activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop the active sessions linked to this item before deleting it.');
-      const result = db.prepare(`DELETE FROM ${resource} WHERE id=?`).run(itemId);
+      const result = hierarchyTransaction(db, () => { if (resource === 'tasks') guardRouteDeletion(db, itemId); return db.prepare(`DELETE FROM ${resource} WHERE id=?`).run(itemId); });
       return result.changes ? send(res, 200, { ok: true, id: itemId }) : fail(res, 404, 'not_found', `${resource.slice(0, -1)} not found.`);
     }
     return false;
@@ -779,7 +791,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (platformResult) return send(res, platformResult.statusCode, platformResult.body);
       if (await integration.handle(req, res, { path, url })) return;
       if (await workbench.handle({ req, res, path, url, readBody, send })) return;
-      if (await agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor, filter: data => access.filter(data, actor),
+      if (await agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor, actor, allowed: access.allowed, filter: data => access.filter(data, actor),
         authorizeProposal: ({ run, proposal, action }) => {
           authorizeAgentProposal(run, proposal, actor);
           if (proposal.type === 'record.archive') {
@@ -790,13 +802,14 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         },
         executeConnectionAction: ({ proposal, run, idempotency_key }) => connectionPlatform.executeForAgent(proposal.connection_id, { action: proposal.action, input: proposal.input, idempotency_key }, { agent_id: run.agent_id, sponsor: authorizeAgentProposal(run, proposal, actor) }),
       })) return;
-      if (await workflowRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (await subRoutesRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
+      if (await workflowRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
       if (await teamResourcesRoute({ db, req, res, path, url, readBody, send })) return;
       if (await coordinationRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
-      if (await routeToolsRoute({ db, req, res, path, readBody, send, snapshot })) return;
+      if (await routeToolsRoute({ db, req, res, path, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await activityRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
-      if (await featureRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (await featureRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (req.method === 'POST' && path === '/import') return send(res, 201, { result: importWorkspace(db, await readBody(req, 25_000_000), TABLE_CONFIG, normalizeInput, dbValue, validateCustomFields), bootstrap: snapshot(db) });
       if (req.method === 'GET' && (path === '/bootstrap' || path === '/snapshot')) return send(res, 200, snapshot(db));
       if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true, localOnly: true, database: 'ready' });
@@ -854,12 +867,12 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
           db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, nestedMessages[1]);
           return send(res, 201, { message: present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId)) });
         }
-        return collectionRoute(req, res, 'messages', nestedMessages[2], url);
+        return collectionRoute(req, res, 'messages', nestedMessages[2], url, actor);
       }
 
       const collectionMatch = path.match(/^\/(workspaces|projects|tasks|chats|messages|agents|memory-notes|teams|team-members|documents|milestones)(?:\/([^/]+))?$/);
       if (collectionMatch) {
-        const handled = await collectionRoute(req, res, collectionMatch[1].replace('-', '_'), collectionMatch[2], url);
+        const handled = await collectionRoute(req, res, collectionMatch[1].replace('-', '_'), collectionMatch[2], url, actor);
         if (handled !== false) return handled;
       }
 

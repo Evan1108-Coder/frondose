@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
+import { assertRouteLink, authorizeRouteNodes } from './route-hierarchy.mjs';
 const bad = (text, code = 400) => Object.assign(validationError(text), { statusCode: code });
 const text = (v,max=200) => { if (typeof v !== 'string' || !v.trim() || v.length > max) throw bad(`Provide text between 1 and ${max} characters.`); return v.trim(); };
 const date = value => { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value) throw bad('Choose a valid date.'); return value; };
@@ -17,16 +18,19 @@ export function installRouteTools(db) {
   CREATE TABLE IF NOT EXISTS route_tool_requests(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,fingerprint TEXT NOT NULL,result_json TEXT NOT NULL);`);
 }
 export function routeToolsSnapshot(db) { return { route_schedules:db.prepare('SELECT * FROM route_schedules ORDER BY next_date').all() }; }
-function cloneRoute(db,source,title,parentId=null,dueAt=null) {
+function cloneRoute(db,source,title,parentId=null,dueAt=null,options={}) {
   const id=`task_${randomUUID().replaceAll('-','')}`, stamp=iso();
   const number=db.prepare('SELECT COALESCE(MAX(number),0)+1 n FROM tasks WHERE workspace_id=?').get(source.workspace_id).n;
   db.prepare('INSERT INTO tasks(id,workspace_id,project_id,team_id,number,title,description,status,priority,labels_json,assignee_agent_ids_json,due_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,source.workspace_id,source.project_id,source.team_id,number,title,source.description,'ready',source.priority,source.labels_json,'[]',dueAt,stamp,stamp);
+  const task = db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
+  authorizeRouteNodes([source, task], { ...options, write: true });
+  assertRouteLink(db, task, parentId, options);
   const agreement=db.prepare('SELECT * FROM route_workflows WHERE id=?').get(source.id);
   const criteria=JSON.parse(agreement?.acceptance_json || '[]').map(c=>({...c,id:randomUUID(),done:false}));
   db.prepare('INSERT INTO route_workflows(id,workspace_id,owner_name,reviewer_name,output_type,parent_task_id,acceptance_json,dependency_ids_json,version,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,source.workspace_id,agreement?.owner_name || '',agreement?.reviewer_name || '',agreement?.output_type || 'document',parentId,JSON.stringify(criteria),'[]',1,stamp);
   const result=db.prepare('SELECT * FROM tasks WHERE id=?').get(id); recordChange(db,'tasks',null,result,'created'); return result;
 }
-export async function routeToolsRoute({db,req,res,path,readBody,send,snapshot}) {
+export async function routeToolsRoute({db,req,res,path,readBody,send,snapshot,actor,allowed}) {
   if (!path.startsWith('/route-tools/')) return false;
   const match=path.match(/^\/route-tools\/(?:schedules\/([\w-]+)(?:\/(generate))?|([\w-]+)\/(duplicate|split|schedule))$/);
   if (!match || !['POST','PATCH'].includes(req.method)) return false;
@@ -34,11 +38,21 @@ export async function routeToolsRoute({db,req,res,path,readBody,send,snapshot}) 
   if (!isRecord(body)) throw bad('Provide valid route options.');
   let result, status=200;
   const mutation=action === 'duplicate' || action === 'split' || action === 'schedule' || generate;
-  const key=mutation ? text(body.request_id,100) : null;
+  const rawKey=mutation ? text(body.request_id,100) : null;
   const fingerprint=createHash('sha256').update(JSON.stringify([path,body])).digest('hex');
-  if (key) { const replay=db.prepare('SELECT * FROM route_tool_requests WHERE id=?').get(key); if (replay) { if (replay.fingerprint !== fingerprint) throw bad('This request ID was already used for different work.',409); send(res,200,{result:JSON.parse(replay.result_json),bootstrap:snapshot(db),replayed:true});return true; } }
-  db.exec('BEGIN');
+  db.exec('BEGIN IMMEDIATE');
   try {
+    const sourceId = scheduleId ? db.prepare('SELECT source_task_id FROM route_schedules WHERE id=?').get(scheduleId)?.source_task_id : taskId;
+    const authorizedSource = activeRoute(db, sourceId);
+    authorizeRouteNodes([authorizedSource], {actor,allowed,write:true});
+    // Old unbound request IDs cannot be replayed as another authenticated actor.
+    const key=rawKey ? createHash('sha256').update(JSON.stringify([actor?.id || 'internal-test',authorizedSource.workspace_id,sourceId,rawKey])).digest('hex') : null;
+    if (key) { const replay=db.prepare('SELECT * FROM route_tool_requests WHERE id=?').get(key); if (replay) {
+      if (replay.fingerprint !== fingerprint) throw bad('This request ID was already used for different work.',409);
+      const saved=JSON.parse(replay.result_json);
+      for (const resultId of saved.task_ids || []) { const task=db.prepare('SELECT * FROM tasks WHERE id=? AND workspace_id=?').get(resultId,authorizedSource.workspace_id); if(!task) throw bad('The previous result is no longer available.',404); authorizeRouteNodes([task],{actor,allowed,write:true}); }
+      db.exec('COMMIT'); send(res,200,{result:saved,bootstrap:snapshot(db),replayed:true});return true;
+    } }
     let workspaceId;
     if (scheduleId) {
       const schedule=db.prepare('SELECT * FROM route_schedules WHERE id=?').get(scheduleId); if (!schedule) throw bad('Schedule not found.',404);
@@ -47,7 +61,7 @@ export async function routeToolsRoute({db,req,res,path,readBody,send,snapshot}) 
       if (generate && req.method === 'POST') {
         if (schedule.state !== 'active' || schedule.next_date > iso().slice(0,10)) throw bad('Only an active, due schedule can create a route.',409);
         const source=activeRoute(db,schedule.source_task_id);
-        const route=cloneRoute(db,source,`${schedule.name} · ${schedule.next_date}`,null,`${schedule.next_date}T23:59:59.000Z`);
+        const route=cloneRoute(db,source,`${schedule.name} · ${schedule.next_date}`,null,`${schedule.next_date}T23:59:59.000Z`,{actor,allowed});
         const next=new Date(`${schedule.next_date}T00:00:00Z`); next.setUTCDate(next.getUTCDate()+schedule.interval_days);
         db.prepare('UPDATE route_schedules SET next_date=?,last_task_id=?,generated_count=generated_count+1,version=version+1,updated_at=? WHERE id=?').run(next.toISOString().slice(0,10),route.id,iso(),scheduleId);
         result={task_ids:[route.id],schedule:db.prepare('SELECT * FROM route_schedules WHERE id=?').get(scheduleId)};
@@ -69,7 +83,7 @@ export async function routeToolsRoute({db,req,res,path,readBody,send,snapshot}) 
       } else {
         const titles=action === 'split' ? body.titles : [body.title];
         if (!Array.isArray(titles) || titles.length < (action==='split'?2:1) || titles.length > 12) throw bad('Split into 2–12 named routes.');
-        result={task_ids:titles.map(title=>cloneRoute(db,source,text(title),action==='split'?taskId:null).id)};
+        result={task_ids:titles.map(title=>cloneRoute(db,source,text(title),action==='split'?taskId:null,null,{actor,allowed}).id)};
       }
       status=201;
     }

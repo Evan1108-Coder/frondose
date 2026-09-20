@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { RESOURCE_TYPES, matchingRoutes } from '../src/lib/settings-catalog.js';
 import { isRecord, validationError, validateAvatar } from './validation.mjs';
 import { emojiShortcode } from '../src/lib/custom-emojis.js';
+import { guardRouteMutation } from './route-hierarchy.mjs';
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
 const decode = row => row ? { ...row, payload: JSON.parse(row.payload_json), payload_json: undefined } : null;
@@ -85,7 +86,7 @@ export function validateCustomFields(db, resource, record) {
     record.status = status.payload.category;
   }
 }
-export async function featureRoute({ db, req, res, path, url, readBody, send, snapshot }) {
+export async function featureRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed }) {
   if (!path.startsWith('/workspace-items') && !path.startsWith('/history/')) return false;
   if (path.startsWith('/history/')) {
     if (req.method !== 'GET') return false;
@@ -104,7 +105,7 @@ export async function featureRoute({ db, req, res, path, url, readBody, send, sn
     activeWorkspace(db, current.workspace_id);
     if (current.archived_at) throw validationError('Restore this item first.');
     if (body.version !== current.version) throw Object.assign(validationError('This item changed. Refresh and review it before continuing.'), { statusCode: 409 });
-    const result = executeAction(db, current, body, snapshot);
+    const result = executeAction(db, current, body, snapshot, { actor, allowed });
     send(res, 200, { result, bootstrap: snapshot(db) }); return true;
   }
   if (req.method !== 'POST' && req.method !== 'PATCH') return false;
@@ -144,13 +145,13 @@ export async function featureRoute({ db, req, res, path, url, readBody, send, sn
   } catch (error) { db.exec('ROLLBACK'); throw error; }
   send(res, current ? 200 : 201, { result: next, bootstrap: snapshot(db) }); return true;
 }
-function executeAction(db, item, body, snapshot) {
+function executeAction(db, item, body, snapshot, options = {}) {
   const p = payloadFor(db, item.kind, item.payload, item.workspace_id);
   const time = stamp();
   if (body.action === 'preview-rule' && item.kind === 'automation') {
     return { matches: matchingRoutes(snapshot(db), p).filter(t => t.workspace_id === item.workspace_id).map(t => ({ id: t.id, title: t.title, status: t.status })) };
   }
-  db.exec('BEGIN');
+  db.exec('BEGIN IMMEDIATE');
   try {
     let result;
     if (body.action === 'merge-label' && item.kind.endsWith('_label')) {
@@ -173,6 +174,7 @@ function executeAction(db, item, body, snapshot) {
       // A preview is an explicit concurrency boundary: do not mutate new matches.
       if (!Array.isArray(body.ids) || JSON.stringify([...body.ids].sort()) !== JSON.stringify(matches.map(t => t.id).sort())) throw validationError('Matching routes changed. Preview the rule again.');
       for (const task of matches) {
+        guardRouteMutation(db, task, { ...task, status: p.to }, options);
         db.prepare('UPDATE tasks SET status=?,workflow_status_id=NULL,updated_at=? WHERE id=?').run(p.to, time, task.id);
         recordChange(db, 'tasks', task, { ...task, status: p.to, workflow_status_id: null }, 'rule applied');
       }

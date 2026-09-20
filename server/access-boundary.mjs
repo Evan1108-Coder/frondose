@@ -1,4 +1,5 @@
 import { createActivityPolicy } from './activity-policy.mjs';
+import { routeGraph, routeScope, inspectRouteGraph, relatedRouteNodes } from './route-hierarchy.mjs';
 const failure = message => { throw Object.assign(new Error(message), { statusCode: 403, code: 'access_denied' }); };
 const TABLES = { workspaces: 'workspaces', projects: 'projects', tasks: 'tasks', chats: 'chats', messages: 'messages', agents: 'agents', 'memory-notes': 'memory_notes', teams: 'teams', 'team-members': 'team_members', documents: 'documents', milestones: 'milestones', runs: 'runs', 'workspace-items': 'workspace_items', 'team-resources': 'team_resources', activity: 'activity_entries', 'agent-actions': 'agent_action_requests', 'agent-memories': 'agent_memories' };
 const AREA = { workspaces: 'workspace', projects: 'projects', tasks: 'routes', chats: 'chats', messages: 'chats', agents: 'agents', 'memory-notes': 'documents', teams: 'workspace', 'team-members': 'members', documents: 'documents', milestones: 'projects', runs: 'agents', 'workspace-items': 'workspace', 'team-resources': 'documents', activity: 'workspace', 'agent-actions': 'agents', 'agent-memories': 'agents' };
@@ -54,7 +55,7 @@ export function createAccessBoundary({ db, governance }) {
   }
   function check({ actor, path, method, url, body = {} }) {
     if (!actor) failure('Sign in to continue.');
-    if (path.startsWith('/governance') || path.startsWith('/connection-platform') || path.startsWith('/identity') || path === '/change-reviews' || path.startsWith('/change-reviews/')) return; // These services authenticate every target and source themselves.
+    if (path.startsWith('/governance') || path.startsWith('/connection-platform') || path.startsWith('/identity') || path.startsWith('/sub-routes/') || path === '/change-reviews' || path.startsWith('/change-reviews/')) return; // These services authenticate every target and source themselves.
     if (['/bootstrap', '/snapshot', '/health', '/events'].includes(path) && method === 'GET') return;
     // Existing global runner credentials and machine preferences belong to the installation owner.
     if (/^\/(?:auth|connections|settings|profile|account|reset|import)(?:\/|$)/.test(path)) {
@@ -78,7 +79,7 @@ export function createAccessBoundary({ db, governance }) {
     if (collection === 'chat-collaboration') { table = 'chats'; item = row(table, parts[1]); collection = 'chats'; }
     if (collection === 'route-tools') { table = parts[1] === 'schedules' ? 'route_schedules' : 'tasks'; item = row(table, parts[1] === 'schedules' ? parts[2] : parts[1]); collection = 'tasks'; }
     if (collection === 'coordination') { table = 'work_plans'; item = row(table, parts[2]); collection = 'projects'; }
-    if (collection === 'history') { const change = db.prepare('SELECT * FROM change_log WHERE entity_id=? LIMIT 1').get(parts[1]); table = change?.entity_type; item = change ? row(table, change.entity_id) || change : row('activity_entries', parts[1]); collection = table === 'activity_entries' || item?.target_type ? 'activity' : table === 'workspace_items' ? 'workspace-items' : 'documents'; }
+    if (collection === 'history') { const change = db.prepare('SELECT * FROM change_log WHERE entity_id=? LIMIT 1').get(parts[1]); table = change?.entity_type; item = change ? row(table, change.entity_id) || change : row('activity_entries', parts[1]); collection = table === 'activity_entries' || item?.target_type ? 'activity' : table === 'route_workflows' || table === 'tasks' ? 'tasks' : table === 'workspace_items' ? 'workspace-items' : 'documents'; }
     if (collection === 'activity') {
       if (item?.target_type && !activity.visible(item, actor)) failure('This update is unavailable.');
       const targetType = item?.target_type || body.target_type || url.searchParams.get('target_type');
@@ -175,6 +176,21 @@ export function createAccessBoundary({ db, governance }) {
         if (ws && !accessible.has(ws)) return false;
         const actualTable = key === 'result' ? inferTable(item) : key;
         if (item.entity_type === 'activity_entries') return (key !== 'audit_log' || allowed(ws, actor, 'audit.read', scope(item, 'change_log'))) && activity.historyVisible(item, actor, options);
+        if (item.entity_type === 'tasks') {
+          const current = row('tasks', item.entity_id);
+          if (!current || !allowed(current.workspace_id, actor, 'routes.read', routeScope(current))) return false;
+          const historic = Object.hasOwn(item, 'before') || Object.hasOwn(item, 'before_json') ? item : row('change_log', item.id) || item;
+          for (const state of [historic.before, historic.after, historic.before_json && JSON.parse(historic.before_json), historic.after_json && JSON.parse(historic.after_json)].filter(Boolean)) if (!allowed(state.workspace_id || current.workspace_id, actor, 'routes.read', routeScope(state))) return false;
+        }
+        if (item.entity_type === 'route_workflows') {
+          const current = row('tasks', item.entity_id);
+          if (!current || !allowed(current.workspace_id, actor, 'routes.read', routeScope(current))) return false;
+          const historic = Object.hasOwn(item, 'before') || Object.hasOwn(item, 'before_json') ? item : row('change_log', item.id) || item;
+          for (const state of [historic.before, historic.after, historic.before_json && JSON.parse(historic.before_json), historic.after_json && JSON.parse(historic.after_json)].filter(Boolean)) {
+            const ids = [state.parent_task_id, ...(state.dependency_ids || JSON.parse(state.dependency_ids_json || '[]'))].filter(Boolean);
+            if (ids.some(id => { const task = row('tasks', id); return !task || !allowed(task.workspace_id, actor, 'routes.read', routeScope(task)); })) return false;
+          }
+        }
         if (actualTable === 'activity_entries' || item.target_type && item.content !== undefined) return activity.visible(item, actor, options);
         if (actualTable === 'workspace_items' && !legacyAllowed(item, actor)) return false;
         if (item.entity_type === 'workspace_items') {
@@ -190,6 +206,28 @@ export function createAccessBoundary({ db, governance }) {
       }).map(item => key === 'activity_entries' ? activity.present(item, actor) : filter(item, actor, options));
     }
     if (data.profile && actor.mode === 'account') result.profile = { id: actor.id, name: actor.name, email: actor.email, avatar_url: null };
+    if (Array.isArray(result.route_workflows)) {
+      const graphs = new Map(), contexts = new Map();
+      const graphFor = ws => { if (!graphs.has(ws)) graphs.set(ws, routeGraph(db, ws)); return graphs.get(ws); };
+      const visibleTask = task => Boolean(task && allowed(task.workspace_id, actor, 'routes.read', routeScope(task)));
+      // Parents can have children without their own workflow record. Emit a
+      // read-only default so rollups can distinguish unknown from complete.
+      const existing = new Set(result.route_workflows.map(item => item.id));
+      for (const task of result.tasks || []) if (!existing.has(task.id) && [...graphFor(task.workspace_id).values()].some(item => item.parent_task_id === task.id)) result.route_workflows.push({ id: task.id, workspace_id: task.workspace_id, parent_task_id: null, owner_name: '', reviewer_name: '', output_type: 'document', acceptance: [], dependency_ids: [], version: 0, updated_at: task.updated_at, sibling_position: 0, synthetic: true });
+      result.route_workflows = result.route_workflows.map(item => {
+        const graph = graphFor(item.workspace_id), task = graph.get(item.id); let context = contexts.get(item.id);
+        if (!context) {
+          let nodes = task ? [task] : [], invalid = false;
+          try { if (task) nodes = inspectRouteGraph(graph, task); } catch { invalid = true; try { nodes = relatedRouteNodes(graph, task); } catch { nodes = [...graph.values()]; } }
+          context = { nodes, invalid }; for (const node of nodes) contexts.set(node.id, context);
+        }
+        const { nodes, invalid } = context;
+        const directParent = item.parent_task_id ? row('tasks', item.parent_task_id) : null;
+        const refs = [...nodes, ...(directParent ? [directParent] : []), ...nodes.flatMap(node => node.dependency_ids.map(id => row('tasks', id)))];
+        const restricted = refs.some(node => !visibleTask(node));
+        return { ...item, parent_task_id: directParent && visibleTask(directParent) ? item.parent_task_id : null, dependency_ids: (item.dependency_ids || []).filter(id => visibleTask(row('tasks', id))), hierarchy_restricted: restricted, hierarchy_invalid: invalid };
+      });
+    }
     if (actor.id !== 'local-owner' && result.settings) result.settings = {};
     return result;
   }

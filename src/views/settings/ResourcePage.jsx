@@ -9,6 +9,7 @@ import { visible, relative } from '../../lib/model.js';
 import { ImageField } from '../../components/ImageField.jsx';
 import { isEmojiImage, emojiShortcode } from '../../lib/custom-emojis.js';
 import { ActivityFeed } from '../../components/ActivityFeed.jsx';
+import { leafRouteProgress } from '../../lib/sub-routes.js';
 
 export function ResourcePage({ kind, allowCreate = true }) {
   const { data, workspace, perform, notify, navigate, startSession } = useApp();
@@ -29,10 +30,10 @@ export function ResourcePage({ kind, allowCreate = true }) {
     const labelCollection = kind === 'route_label' ? data.tasks : data.projects;
     const usage = kind.endsWith('_label') ? labelCollection.filter(row => !row.archived_at && row.labels?.some(l => l === item.id || l === item.name)).length : null;
     const routes = kind === 'goal' ? matchingRoutes(data, { project_ids: payload.project_ids }).filter(t => payload.project_ids.length && payload.project_ids.includes(t.project_id)) : [];
-    const done = routes.filter(t => t.status === 'done').length;
+    const routeProgress = leafRouteProgress(routes, data.route_workflows, data.tasks);
     return <article className={`resource-row resource-${spec.layout}`} key={item.id}>
       <div className="resource-name">{payload.color ? <i className="resource-dot" style={{ background: payload.color }} /> : kind === 'emoji' ? <span className="resource-emoji">{isEmojiImage(payload.symbol) ? <img src={payload.symbol} alt={item.name} width="28" height="28" /> : payload.symbol}</span> : <FileText />}<div><strong>{item.name}</strong><small>{payload.group || (payload.state ? pretty(payload.state) : `Updated ${relative(item.updated_at)}`)}</small></div></div>
-      <div className="resource-summary">{kind === 'goal' ? <><span>{done} of {routes.length} routes complete</span><progress value={done} max={routes.length || 1} /></> : <p>{payload.description || payload.content || (payload.agent_ids ? `${payload.agent_ids.length} agents` : payload.category ? pretty(payload.category) : '—')}</p>}</div>
+      <div className="resource-summary">{kind === 'goal' ? routeProgress.complete ? <><span>{routeProgress.done} of {routeProgress.total} active leaf Routes complete</span><progress value={routeProgress.done} max={routeProgress.total || 1} /></> : <span>Progress unavailable: restricted or invalid hierarchy</span> : <p>{payload.description || payload.content || (payload.agent_ids ? `${payload.agent_ids.length} agents` : payload.category ? pretty(payload.category) : '—')}</p>}</div>
       {usage !== null ? <span className="resource-usage">{usage} {kind === 'route_label' ? 'route' : 'project'}{usage === 1 ? '' : 's'}</span> : null}
       <div className="resource-actions">{archived ? <Button icon={RotateCcw} onClick={() => perform(() => update(item, { archived_at: null }), 'Restored')}>Restore</Button> : <>
         {actions[kind] ? <Button onClick={() => launchAction(item)}>{kind === 'request' && payload.route_id ? 'Open route' : actions[kind]}</Button> : null}
