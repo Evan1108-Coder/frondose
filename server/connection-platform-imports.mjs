@@ -3,7 +3,7 @@ import { providerError as fail } from './connectors/adapters.mjs';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const now = () => new Date().toISOString();
-const TARGETS = { route: { table: 'tasks', title: 'title', text: 'description', permission: 'routes.edit' }, project: { table: 'projects', title: 'name', text: 'description', permission: 'projects.edit' }, document: { table: 'documents', title: 'title', text: 'content', permission: 'documents.edit' } };
+const TARGETS = { route: { table: 'tasks', title: 'title', text: 'description', permission: 'routes.edit', read: 'routes.read' }, project: { table: 'projects', title: 'name', text: 'description', permission: 'projects.edit', read: 'projects.read' }, document: { table: 'documents', title: 'title', text: 'content', permission: 'documents.edit', read: 'documents.read' } };
 
 export function installConnectionImports(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS platform_object_links (
@@ -36,6 +36,28 @@ export function createConnectionImports({ db, check, audit, get }) {
     const team = row.team_id || (row.project_id ? db.prepare('SELECT * FROM projects WHERE id=?').get(row.project_id)?.team_id : null);
     if (team !== connection.scope_id || targetType === 'project' && row.team_id !== connection.scope_id) throw fail('scope_required', 'The linked Rumbo object is outside this connection’s team.', 403);
   };
+  const activeDestination = (table, id, connection) => {
+    const row = db.prepare(`SELECT * FROM ${table} WHERE id=? AND workspace_id=?`).get(id, connection.workspace_id);
+    if (!row || row.archived_at) throw fail('target_unavailable', 'The destination is archived or unavailable.', 409);
+    return row;
+  };
+  // The connection grant never substitutes for access to the native destination.
+  // The fourth check argument changes only scope, never workspace or connection identity.
+  const authorizeTarget = async (actor, connection, row, targetType, write = true) => {
+    if (row.archived_at) throw fail('target_unavailable', 'The destination is archived or unavailable.', 409);
+    const project = targetType === 'project' && row.id ? activeDestination('projects', row.id, connection)
+      : row.project_id ? activeDestination('projects', row.project_id, connection) : null;
+    const teamId = project?.team_id || row.team_id;
+    if (teamId) activeDestination('teams', teamId, connection);
+    checkTargetScope(connection, row, targetType);
+    const scope = project ? { scope_type: 'project', scope_id: project.id }
+      : teamId ? { scope_type: 'team', scope_id: teamId }
+        : { scope_type: 'workspace', scope_id: connection.workspace_id };
+    await check(actor, connection, 'workspace.read', scope);
+    if (project) await check(actor, connection, 'projects.read', scope);
+    await check(actor, connection, TARGETS[targetType].read, scope);
+    if (write) await check(actor, connection, TARGETS[targetType].permission, scope);
+  };
   const writeValues = (target, id, values) => db.prepare(`UPDATE ${target.table} SET ${target.title}=?,${target.text}=?,updated_at=? WHERE id=?`).run(values.title, values.text, now(), id);
   const source = (connection, objectId) => {
     const object = db.prepare('SELECT * FROM platform_external_objects WHERE id=? AND connection_id=?').get(objectId, connection.id);
@@ -45,14 +67,14 @@ export function createConnectionImports({ db, check, audit, get }) {
   async function importObject(connectionId, input, actor) {
     const connection = get(connectionId), target = TARGETS[input?.target_type];
     if (!target || typeof input.object_id !== 'string') throw fail('invalid_import', 'Choose an external object and a Rumbo target type.');
-    await check(actor, connection, 'connections.import'); await check(actor, connection, target.permission);
+    await check(actor, connection, 'connections.import');
     const object = source(connection, input.object_id), content = JSON.parse(object.content);
     const values = { title: object.title.slice(0, 500), text: `${textContent(content.fields || content).slice(0, 90000)}${object.url ? `\n\nSource: ${object.url}` : ''}`.trim() };
     const externalHash = digest(values), existing = db.prepare('SELECT * FROM platform_object_links WHERE object_id=? AND target_type=?').get(object.id, input.target_type);
     if (existing) {
       const row = db.prepare(`SELECT * FROM ${target.table} WHERE id=? AND workspace_id=?`).get(existing.target_id, connection.workspace_id);
       if (!row || row.archived_at) throw fail('target_unavailable', 'The linked Rumbo object is archived or unavailable.', 409);
-      checkTargetScope(connection, row, input.target_type);
+      await authorizeTarget(actor, connection, row, input.target_type);
       const local = targetValues(row, target), localHash = digest(local);
       if (externalHash === existing.external_hash) return { status: 'unchanged', link: existing };
       if (localHash !== existing.imported_hash) {
@@ -65,8 +87,8 @@ export function createConnectionImports({ db, check, audit, get }) {
       db.exec('BEGIN'); try { writeValues(target, existing.target_id, values); db.prepare('UPDATE platform_object_links SET imported_hash=?,external_hash=?,updated_at=? WHERE id=?').run(externalHash, externalHash, now(), existing.id); db.exec('COMMIT'); } catch (error) { db.exec('ROLLBACK'); throw error; }
       audit(connection, actor, 'import_updated', { target_type: input.target_type, target_id: existing.target_id }); return { status: 'updated', target_type: input.target_type, target_id: existing.target_id };
     }
-    if (input.project_id && !db.prepare('SELECT id FROM projects WHERE id=? AND workspace_id=?').get(input.project_id, connection.workspace_id)) throw fail('invalid_project', 'Choose a project in this workspace.');
-    if (input.team_id && !db.prepare('SELECT id FROM teams WHERE id=? AND workspace_id=?').get(input.team_id, connection.workspace_id)) throw fail('invalid_team', 'Choose a team in this workspace.');
+    if (input.project_id) activeDestination('projects', input.project_id, connection);
+    if (input.team_id) activeDestination('teams', input.team_id, connection);
     if (input.target_type === 'document' && Boolean(input.project_id) === Boolean(input.team_id)) throw fail('document_scope', 'Select either a project or a team for the document.');
     // A team-scoped connection cannot create native content outside that team.
     if (connection.scope_type === 'team') {
@@ -75,6 +97,13 @@ export function createConnectionImports({ db, check, audit, get }) {
       if (input.project_id) { const project = db.prepare('SELECT * FROM projects WHERE id=?').get(input.project_id); if (project.team_id !== connection.scope_id) throw fail('scope_required', 'Import into a project in this connection’s team.', 403); }
       else if (input.target_type === 'route') throw fail('scope_required', 'Select a project in this connection’s team.', 403);
     }
+    // Imported projects currently belong directly to the workspace; Routes only
+    // persist project_id, while documents persist a project or team destination.
+    const destination = input.target_type === 'project' ? {} : {
+      project_id: input.project_id || null,
+      ...(input.target_type === 'document' ? { team_id: input.team_id || null } : {}),
+    };
+    await authorizeTarget(actor, connection, destination, input.target_type);
     const id = `${input.target_type}_${randomUUID()}`, linkId = randomUUID(), date = now();
     db.exec('BEGIN'); try {
       if (input.target_type === 'project') db.prepare('INSERT INTO projects(id,workspace_id,name,identifier,description,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id, connection.workspace_id, values.title, `EXT${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`, values.text, date, date);
@@ -85,16 +114,35 @@ export function createConnectionImports({ db, check, audit, get }) {
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     audit(connection, actor, 'import_created', { object_id: object.id, target_type: input.target_type, target_id: id }); return { status: 'created', target_type: input.target_type, target_id: id, link_id: linkId };
   }
-  async function conflicts(id, actor) { const connection = get(id); await check(actor, connection, 'connections.read'); return db.prepare("SELECT conflicts.*,objects.resource_id FROM platform_sync_conflicts conflicts JOIN platform_object_links links ON links.id=conflicts.link_id JOIN platform_external_objects objects ON objects.id=links.object_id WHERE conflicts.connection_id=? AND conflicts.state='open' ORDER BY conflicts.created_at DESC").all(id).filter(row => connection.settings.selected_resources.includes(row.resource_id)).map(row => ({ ...row, local_value: JSON.parse(row.local_value), external_value: JSON.parse(row.external_value) })); }
+  async function conflicts(id, actor) {
+    const connection = get(id); await check(actor, connection, 'connections.read');
+    const rows = db.prepare("SELECT conflicts.*,objects.resource_id,links.target_type,links.target_id FROM platform_sync_conflicts conflicts JOIN platform_object_links links ON links.id=conflicts.link_id JOIN platform_external_objects objects ON objects.id=links.object_id WHERE conflicts.connection_id=? AND conflicts.state='open' ORDER BY conflicts.created_at DESC").all(id);
+    const visible = [];
+    for (const row of rows) {
+      if (!connection.settings.selected_resources.includes(row.resource_id)) continue;
+      const target = TARGETS[row.target_type];
+      if (!target) continue;
+      try {
+        const current = activeDestination(target.table, row.target_id, connection);
+        await authorizeTarget(actor, connection, current, row.target_type, false);
+      } catch (error) {
+        if ([403, 404, 409].includes(error.statusCode)) continue;
+        throw error;
+      }
+      visible.push({ ...row, local_value: JSON.parse(row.local_value), external_value: JSON.parse(row.external_value) });
+    }
+    return visible;
+  }
   async function resolve(id, input, actor) {
     const connection = get(id); await check(actor, connection, 'connections.import');
     if (!['keep_local', 'use_external'].includes(input?.resolution)) throw fail('invalid_resolution', 'Choose which version to keep.');
     const conflict = db.prepare("SELECT * FROM platform_sync_conflicts WHERE id=? AND connection_id=? AND state='open'").get(input.conflict_id, id);
     if (!conflict || conflict.local_hash !== input.expected_local_hash) throw fail('stale_conflict', 'Reload this conflict before resolving it.', 409);
-    const link = db.prepare('SELECT * FROM platform_object_links WHERE id=?').get(conflict.link_id), target = TARGETS[link.target_type]; await check(actor, connection, target.permission);
+    const link = db.prepare('SELECT * FROM platform_object_links WHERE id=?').get(conflict.link_id), target = TARGETS[link.target_type];
     const current = db.prepare(`SELECT * FROM ${target.table} WHERE id=? AND workspace_id=?`).get(link.target_id, connection.workspace_id);
-    if (!current || current.archived_at || digest(targetValues(current, target)) !== conflict.local_hash) throw fail('stale_conflict', 'The Rumbo object changed again. Import again to review the latest conflict.', 409);
-    checkTargetScope(connection, current, link.target_type);
+    if (!current || current.archived_at) throw fail('target_unavailable', 'The destination is archived or unavailable.', 409);
+    await authorizeTarget(actor, connection, current, link.target_type);
+    if (digest(targetValues(current, target)) !== conflict.local_hash) throw fail('stale_conflict', 'The Rumbo object changed again. Import again to review the latest conflict.', 409);
     source(connection, link.object_id);
     db.exec('BEGIN'); try {
       if (input.resolution === 'use_external') writeValues(target, link.target_id, JSON.parse(conflict.external_value));

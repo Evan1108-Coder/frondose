@@ -132,3 +132,17 @@
   .docs-article-feedback { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { .docs-card { transition: none; } }
+.docs-connection-illustration { margin: 32px 0 40px; }
+.docs-connection-illustration .cp-preview { background: linear-gradient(145deg, var(--hover), var(--surface)); }
+.docs-connection-illustration .cp-preview-window { min-height: 268px; }
+.docs-connection-illustration .cp-preview-caption { font-size: 11px; line-height: 1.6; margin: 13px 0 0; }
+.docs-connection-illustration .cp-preview-chat p { font-size: 11px; line-height: 1.6; margin: 0; }
+.docs-connection-illustration .cp-preview-slide p { font-size: 10px; line-height: 1.6; margin: 14px 0; }
+.docs-connection-illustration .cp-preview-workflow { list-style: none; padding: 0; margin: 0; }
+.docs-connection-illustration figcaption { text-align: center; color: var(--muted); font-size: 11px; margin: 14px 0; line-height: 1.6; }
+.docs-provider-sources { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; }
+.docs-provider-sources > span { width: 100%; color: var(--muted); }
+.docs-provider-sources a { display: inline-flex; gap: 6px; align-items: center; color: var(--text); text-decoration: none; }
+.docs-provider-sources a:hover { text-decoration: underline; }
+.docs-provider-sources svg { width: 13px; height: 13px; }
+@media (max-width: 1000px) { .docs-connection-illustration .cp-workflow-grid { grid-template-columns: 1fr; } }

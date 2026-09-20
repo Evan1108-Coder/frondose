@@ -150,6 +150,20 @@
 .cp-account-panel .cp-note { background: transparent; border-left: 2px solid var(--border); border-block: 0; border-right: 0; border-radius: 0; padding: 0 0 0 16px; }
 .cp-account-panel .cp-note h3 { margin: 0 0 8px; font-size: 13px; }
 .cp-account-panel > .button { margin-top: 12px; }
+.cp-setup-diagnostics { margin-block: 20px; font-size: 13px; line-height: 1.65; }
+.cp-setup-diagnostics summary { cursor: pointer; color: var(--text); }
+.cp-setup-diagnostics > div { margin-block: 18px; }
+.cp-setup-diagnostics strong, .cp-setup-diagnostics small { display: block; }
+.cp-setup-diagnostics small { margin-top: 8px; color: var(--muted); }
+.cp-setup-diagnostics code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12px; }
+.cp-setup-diagnostics ul { padding-left: 18px; }
+.cp-setup-diagnostics a { display: inline-flex; align-items: center; gap: 8px; }
+.cp-setup-diagnostics a svg { width: 15px; height: 15px; }
+.cp-saved-resources { border: 1px solid var(--border); border-radius: 9px; padding: 16px; margin-block: 18px; }
+.cp-saved-resources h3 { margin-top: 0; }
+.cp-saved-resources .cp-action-row:last-child { border-bottom: 0; }
+.cp-saved-resources .cp-action-row > div { min-width: 0; }
+.cp-verification { overflow-wrap: anywhere; }
 .cp-settings-panel .cp-tabs { padding-inline: 24px; gap: 24px; }
 .cp-settings-panel .cp-tabs button { min-height: 48px; }
 .cp-settings-content { padding: 24px; min-height: 220px; min-width: 0; }

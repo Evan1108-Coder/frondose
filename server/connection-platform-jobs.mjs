@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
 import { providerError as fail } from './connectors/adapters.mjs';
+import { connectionReadOptions, effectiveReadOptions } from './connectors/read-options.mjs';
 
 const now = () => new Date().toISOString();
 const signedEqual = (actual, expected) => typeof actual === 'string' && actual.length === expected.length && timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
@@ -18,22 +19,29 @@ export function createConnectionJobs({ db, env, check, get, sync, imports, audit
   CREATE TABLE IF NOT EXISTS platform_webhook_deliveries (
     connection_id TEXT NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
     delivery_id TEXT NOT NULL,received_at TEXT NOT NULL,PRIMARY KEY(connection_id,delivery_id));`);
+  if (!db.prepare('PRAGMA table_info(platform_sync_jobs)').all().some(column => column.name === 'read_options')) db.exec("ALTER TABLE platform_sync_jobs ADD COLUMN read_options TEXT NOT NULL DEFAULT '{}'");
   // Cached reads are safe to retry after a server restart. Writes never use this queue.
   db.prepare("UPDATE platform_sync_jobs SET state='pending' WHERE state='running'").run();
   let processing = false, closed = false;
   const supported = provider => ['github', 'linear', 'slack'].includes(CONNECTOR_CATALOG[provider]?.auth_family);
   const secretFor = provider => env[`RUMBO_${CONNECTOR_CATALOG[provider].auth_family.toUpperCase()}_WEBHOOK_SECRET`];
-  const insert = (id, resource_id, kind, actor, cursor = null) => {
-    const existing = db.prepare("SELECT id FROM platform_sync_jobs WHERE connection_id=? AND resource_id=? AND kind=? AND COALESCE(cursor,'')=COALESCE(?,'') AND state IN ('pending','running')").get(id, resource_id, kind, cursor);
+  const configuredKinds = connection => CONNECTOR_CATALOG[connection.provider].sync_kinds.filter(kind => {
+    try { connectionReadOptions(connection.provider, connection.settings.read_options || {}, kind); return true; }
+    catch (error) { if (error.code === 'invalid_read_options') return false; throw error; }
+  });
+  const insert = (id, resource_id, kind, actor, cursor = null, readOptions) => {
+    const connection = get(id), options = JSON.stringify(connectionReadOptions(connection.provider, readOptions ?? connection.settings.read_options ?? {}, kind));
+    const existing = db.prepare("SELECT id FROM platform_sync_jobs WHERE connection_id=? AND resource_id=? AND kind=? AND COALESCE(cursor,'')=COALESCE(?,'') AND read_options=? AND state IN ('pending','running')").get(id, resource_id, kind, cursor, options);
     if (existing) return existing.id;
-    const jobId = randomUUID(); db.prepare('INSERT INTO platform_sync_jobs(id,connection_id,resource_id,kind,cursor,actor_json,next_attempt_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(jobId, id, resource_id, kind, cursor, JSON.stringify(actor), Date.now(), now(), now()); return jobId;
+    const jobId = randomUUID(); db.prepare('INSERT INTO platform_sync_jobs(id,connection_id,resource_id,kind,cursor,actor_json,next_attempt_at,created_at,updated_at,read_options) VALUES(?,?,?,?,?,?,?,?,?,?)').run(jobId, id, resource_id, kind, cursor, JSON.stringify(actor), Date.now(), now(), now(), options); return jobId;
   };
   async function enqueue(id, input, actor) {
     const connection = get(id); await check(actor, connection, 'connections.sync');
     if (!connection.settings.selected_resources.includes(input?.resource_id)) throw fail('resource_not_selected', 'Select a resource in connection settings first.', 403);
     const kind = input.kind || CONNECTOR_CATALOG[connection.provider].sync_kinds[0];
     if (!CONNECTOR_CATALOG[connection.provider].sync_kinds.includes(kind)) throw fail('invalid_kind', 'Choose a supported sync type.');
-    return { id: insert(id, input.resource_id, kind, actor), state: 'pending' };
+    const options = effectiveReadOptions(connection.provider, connection.settings.read_options, input, kind);
+    return { id: insert(id, input.resource_id, kind, actor, null, options), state: 'pending' };
   }
   async function policy(id, actor, input) {
     const connection = get(id); await check(actor, connection, input ? 'connections.manage' : 'connections.view');
@@ -78,7 +86,7 @@ export function createConnectionJobs({ db, env, check, get, sync, imports, audit
     const actor = JSON.parse(cfg.actor_json); await check(actor, connection, 'connections.sync');
     const requested = family === 'github' ? event.repository?.full_name : family === 'slack' ? event.event?.channel : event.data?.teamId;
     const selected = connection.settings.selected_resources.filter(resource => !requested || resource === requested);
-    db.exec('BEGIN'); try { db.prepare('INSERT INTO platform_webhook_deliveries VALUES(?,?,?)').run(id, delivery, now()); for (const resource of selected) for (const kind of CONNECTOR_CATALOG[connection.provider].sync_kinds) insert(id, resource, kind, actor); db.exec('COMMIT'); } catch (error) { db.exec('ROLLBACK'); throw error; }
+    db.exec('BEGIN'); try { db.prepare('INSERT INTO platform_webhook_deliveries VALUES(?,?,?)').run(id, delivery, now()); for (const resource of selected) for (const kind of configuredKinds(connection)) insert(id, resource, kind, actor); db.exec('COMMIT'); } catch (error) { db.exec('ROLLBACK'); throw error; }
     audit(connection, actor, 'webhook_received', { delivery_id: delivery, queued_resources: selected.length }); return { accepted: true, queued_resources: selected.length };
   }
   async function tick() {
@@ -88,23 +96,23 @@ export function createConnectionJobs({ db, env, check, get, sync, imports, audit
         const connection = get(row.connection_id), actor = JSON.parse(row.actor_json);
         db.prepare('UPDATE platform_sync_policies SET next_reconcile_at=? WHERE connection_id=?').run(Date.now() + row.reconcile_minutes * 60000, connection.id);
         if (connection.state !== 'connected') continue;
-        try { await check(actor, connection, 'connections.sync'); for (const resource of connection.settings.selected_resources) for (const kind of CONNECTOR_CATALOG[connection.provider].sync_kinds) insert(connection.id, resource, kind, actor); }
+        try { await check(actor, connection, 'connections.sync'); for (const resource of connection.settings.selected_resources) for (const kind of configuredKinds(connection)) insert(connection.id, resource, kind, actor); }
         catch { audit(connection, actor, 'scheduled_sync_denied'); }
       }
       const job = db.prepare("SELECT * FROM platform_sync_jobs WHERE state='pending' AND next_attempt_at<=? ORDER BY next_attempt_at LIMIT 1").get(Date.now());
       if (!job) return;
       db.prepare("UPDATE platform_sync_jobs SET state='running',attempts=attempts+1,updated_at=? WHERE id=?").run(now(), job.id);
       try {
-        const actor = JSON.parse(job.actor_json), result = await sync(job.connection_id, { resource_id: job.resource_id, kind: job.kind, cursor: job.cursor || undefined }, actor);
+        const actor = JSON.parse(job.actor_json), readOptions = connectionReadOptions(get(job.connection_id).provider, JSON.parse(job.read_options)), result = await sync(job.connection_id, { resource_id: job.resource_id, kind: job.kind, cursor: job.cursor || undefined, ...readOptions }, actor);
         if (closed) return;
         db.prepare("UPDATE platform_sync_jobs SET state='completed',last_error=NULL,updated_at=? WHERE id=?").run(now(), job.id);
-        if (result.cursor && result.cursor !== job.cursor) insert(job.connection_id, job.resource_id, job.kind, actor, result.cursor);
+        if (result.cursor && result.cursor !== job.cursor) insert(job.connection_id, job.resource_id, job.kind, actor, result.cursor, readOptions);
         const policy = db.prepare('SELECT auto_update_imports FROM platform_sync_policies WHERE connection_id=?').get(job.connection_id);
         if (policy?.auto_update_imports) for (const link of db.prepare('SELECT links.* FROM platform_object_links links JOIN platform_external_objects objects ON objects.id=links.object_id WHERE links.connection_id=? AND objects.resource_id=?').all(job.connection_id, job.resource_id)) await imports.importObject(job.connection_id, { object_id: link.object_id, target_type: link.target_type }, actor);
       } catch (error) {
         if (closed) return;
         const permanent = [400, 403, 404, 409].includes(error.statusCode), exhausted = job.attempts + 1 >= 5;
-        db.prepare('UPDATE platform_sync_jobs SET state=?,next_attempt_at=?,last_error=?,updated_at=? WHERE id=?').run(permanent || exhausted ? 'failed' : 'pending', Date.now() + Math.min(3600000, 30000 * 2 ** job.attempts), error.code ? error.message : 'Synchronization failed. Review the connection and retry.', now(), job.id);
+        db.prepare('UPDATE platform_sync_jobs SET state=?,next_attempt_at=?,last_error=?,updated_at=? WHERE id=?').run(permanent || exhausted ? 'failed' : 'pending', Date.now() + Math.max(error.retryAfterMs || 0, Math.min(3600000, 30000 * 2 ** job.attempts)), error.code ? error.message : 'Synchronization failed. Review the connection and retry.', now(), job.id);
       }
     } finally { processing = false; }
   }

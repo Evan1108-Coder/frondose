@@ -17,7 +17,21 @@ const providers = [
   ['figma', 'Figma', 'Design', 'figma', [action('comment', 'Comment on file', [field('resource_id', 'File key'), field('message', 'Comment', true, 'textarea')])], ['file', 'comments', 'versions'], 'Paste a Figma file URL or file: followed by its key. Public Figma OAuth apps cannot list all files or folders; select files explicitly.'],
   ['figjam', 'FigJam', 'Design', 'figma', [action('comment', 'Comment on board', [field('resource_id', 'File key'), field('message', 'Comment', true, 'textarea')])], ['file', 'comments', 'versions'], 'Use file: followed by the board key from its Figma URL. The REST API reads boards and comments; arbitrary board editing is not available.'],
 ];
-export const CONNECTOR_CATALOG = Object.fromEntries(providers.map(([id, name, category, auth_family, actions, sync_kinds, resource_hint]) => [id, { id, name, category, auth_family, actions, sync_kinds, features: [common, ...actions.map(({ id, label, risk }) => ({ id, label, risk }))], resource_hint }]));
+const extensions = {
+  'github-actions': { kinds: ['jobs'], actions: [action('rerun_workflow', 'Rerun workflow', [field('resource_id', 'Repository (owner/name)'), field('run_id', 'Completed run ID')], 'consequential')], fields: [{ ...field('run_id', 'Workflow run ID'), kind: 'jobs' }] },
+  'github-packages': { kinds: ['versions'], fields: [{ ...field('package_type', 'Package ecosystem', false), options: ['container', 'npm', 'maven', 'rubygems', 'docker', 'nuget'] }, { ...field('package_name', 'Package name'), kind: 'versions' }] },
+  'google-drive': { kinds: ['children'] },
+  'google-sheets': { actions: [action('update_range', 'Update cell range (RAW values)', [field('resource_id', 'Spreadsheet ID'), field('range', 'Exact A1 range, e.g. Sheet1!A1:C3'), field('values', 'Rows as JSON array', true, 'json')], 'consequential')], fields: [field('range', 'Read range (default A1:Z200)', false)] },
+  'google-slides': { actions: [action('add_text_slide', 'Add a text slide', [field('resource_id', 'Presentation ID'), field('title', 'Slide title'), field('text', 'Slide body', true, 'textarea')])] },
+  jira: { kinds: ['transitions'], actions: [action('transition_issue', 'Transition issue', [field('resource_id', 'Site ID:project key'), field('issue_id', 'Issue key'), field('transition_id', 'Available transition ID')], 'consequential')], fields: [{ ...field('issue_id', 'Issue key'), kind: 'transitions' }] },
+  slack: { kinds: ['thread'], fields: [{ ...field('thread_ts', 'Thread parent timestamp'), kind: 'thread' }] },
+  figma: { kinds: ['nodes'], fields: [{ ...field('node_ids', 'Node IDs (comma-separated)'), kind: 'nodes' }, { ...field('version_id', 'File version ID', false), kind: 'file' }, { ...field('version_id', 'Node version ID', false), kind: 'nodes' }] },
+  figjam: { kinds: ['nodes'], fields: [{ ...field('node_ids', 'Node IDs (comma-separated)'), kind: 'nodes' }, { ...field('version_id', 'Board version ID', false), kind: 'file' }, { ...field('version_id', 'Node version ID', false), kind: 'nodes' }] },
+};
+export const CONNECTOR_CATALOG = Object.fromEntries(providers.map(([id, name, category, auth_family, baseActions, baseKinds, resource_hint]) => {
+  const extension = extensions[id] || {}, actions = [...baseActions, ...(extension.actions || [])], sync_kinds = [...baseKinds, ...(extension.kinds || [])];
+  return [id, { id, name, category, auth_family, actions, sync_kinds, read_fields: extension.fields || [], features: [common, ...actions.map(({ id, label, risk }) => ({ id, label, risk }))], resource_hint }];
+}));
 export const OAUTH_PROVIDERS = {
   github: { authorize: 'https://github.com/login/oauth/authorize', token: 'https://github.com/login/oauth/access_token', scopes: 'repo read:org read:packages workflow', pkce: true },
   google: { authorize: 'https://accounts.google.com/o/oauth2/v2/auth', token: 'https://oauth2.googleapis.com/token', scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly', pkce: true },

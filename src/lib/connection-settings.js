@@ -1,3 +1,5 @@
+import { CONNECTOR_CATALOG } from '../../server/connectors/catalog.mjs';
+
 const EFFECTS = Object.freeze(['read', 'draft', 'write', 'publish', 'destroy']);
 const TAB_ORDER = Object.freeze(['overview', 'resources', 'mappings', 'rules', 'agents', 'context', 'commands', 'notifications', 'security', 'activity']);
 const CONNECTION_STATES = new Set(['not_connected', 'connecting', 'connected', 'probe_failed', 'error']);
@@ -126,7 +128,9 @@ const PROVIDER_COMMANDS = Object.freeze({
 const provider = (id, displayName, implementation, baseConnection, options = {}) => Object.freeze({
   id, displayName, implementation, baseConnection,
   category: options.category ?? 'Tools',
-  boundary: options.boundary,
+  // This descriptor serves the legacy machine-account editor, not OAuth account readiness.
+  boundary: CONNECTOR_CATALOG[id] ? `Workspace Connections supports ${CONNECTOR_CATALOG[id].features.map(feature => feature.label.toLowerCase()).join(', ')}. Configure OAuth and selected resources there. This machine-account editor and its command suggestions do not enable those workspace operations.` : options.boundary,
+  workspaceCapabilities: Object.freeze(CONNECTOR_CATALOG[id]?.features.map(feature => feature.id) || []),
   implementedCapabilities: Object.freeze(options.implementedCapabilities ?? []),
   unavailableCapabilities: Object.freeze(options.unavailableCapabilities ?? []),
   settingsSections: Object.freeze(options.settingsSections ?? TAB_ORDER.slice(1)),

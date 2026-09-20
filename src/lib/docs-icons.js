@@ -1,5 +1,5 @@
 import {
-  SquareSlash, MessageCircleReply, PlugZap,
+  SquareSlash, MessageCircleReply, PlugZap, SquareTerminal, NotebookTabs,
   Landmark, Crown, ContactRound, ScanEye, Hourglass, Vote, ShieldAlert, BadgeInfo, KeySquare, ClipboardList, UserRoundKey, LogOut, GitPullRequest, Workflow, PackageOpen, HardDrive, FilePenLine, Sheet, Presentation, ChartNoAxesGantt, SquareKanban, Hash, Component, StickyNote, RefreshCw, GitCompareArrows, Wrench, CodeXml,
   Compass, Building2, NotebookPen, Navigation, Focus, Search, PanelsTopLeft, Users, LibraryBig, FolderKanban, Milestone, Route, Handshake, Tags, CalendarSync, Network, MessagesSquare, MessageSquareLock, TextSearch, MessageSquareMore, Bot, Radar, Brain, WandSparkles, Activity, PanelsLeftBottom, FileSearch, GitBranch, Terminal, ShieldCheck, FileText, BookOpenCheck, Camera, Package, PackageCheck, Cable, Cloud, Map, SlidersHorizontal, PanelLeft, Keyboard, ArrowDownUp, Fence, Blocks, Braces, FlaskConical, Bell, ScrollText, Image, Sun, KeyRound, Boxes, ListStart, Layers, ListOrdered, Send, Inbox, Target, Newspaper, UsersRound, Smile, Archive, History, Gauge, ReceiptText, Webhook, LockKeyhole, CircleHelp, Settings2, Unplug, SearchX, AppWindow, Scan, Bug, ClipboardCheck, PenTool, Telescope, CalendarDays, ListFilter, GitMerge, FolderLock, BotMessageSquare, BookMarked, Rocket, ArchiveRestore, WifiOff, MessageSquarePlus, FolderSearch, GitFork, Gavel, FolderHeart, ClipboardCopy, Repeat2, ShieldQuestionMark, BadgeCheck, CircleDollarSign, ChartNoAxesCombined, PencilRuler, Folders, ListChecks
 } from 'lucide';
@@ -7,6 +7,8 @@ import {
 // Explicit editorial choices: each article keeps its own semantic visual identity.
 // Named imports keep unused library geometry out of the Docs bundle.
 export const DOC_ARTICLE_ICONS = Object.freeze({
+  'connection-codex': { iconName: 'SquareTerminal', iconNode: SquareTerminal },
+  'connection-claude': { iconName: 'NotebookTabs', iconNode: NotebookTabs },
   'slash-commands': { iconName: 'SquareSlash', iconNode: SquareSlash },
   'updates-replies': { iconName: 'MessageCircleReply', iconNode: MessageCircleReply },
   'delegated-connection-actions': { iconName: 'PlugZap', iconNode: PlugZap },

@@ -1,5 +1,6 @@
 import { reviewablePath } from '../review-paths.mjs';
 import { parsePatch } from '../../src/lib/change-review.js';
+import { randomUUID } from 'node:crypto';
 // Only fixed provider hosts and authored paths reach the transport. No client-supplied URL is fetched.
 export const providerError = (code, message, statusCode = 400) => Object.assign(new Error(message), { code, statusCode });
 const segment = value => {
@@ -13,6 +14,28 @@ const object = (id, title, kind, url, content, updated_at) => ({ external_id: St
 const resource = (id, name, type, url) => ({ id: String(id), name, type, url: webUrl(url) });
 const adf = text => ({ type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
 const page = (items, cursor = null) => ({ items, cursor });
+const numericId = value => { if (!/^\d{1,20}$/.test(String(value || ''))) throw providerError('invalid_identifier', 'Enter a numeric provider identifier.'); return String(value); };
+const boundedText = (value, label, max = 10000) => { if (typeof value !== 'string' || !value.trim() || value.length > max || /\u0000/.test(value)) throw providerError('invalid_field', `${label} is required and must be at most ${max} characters.`); return value; };
+const packageName = value => {
+  const name = boundedText(value, 'Package name', 300);
+  if (name === '.' || name === '..' || /[\x00-\x1f?#\\]/.test(name)) throw providerError('invalid_package_name', 'Enter a valid package name.');
+  return encodeURIComponent(name);
+};
+const sheetValues = input => {
+  let values;
+  try { values = typeof input === 'string' ? JSON.parse(input) : input; } catch { throw providerError('invalid_rows', 'Enter rows as a JSON array.'); }
+  if (!Array.isArray(values) || !values.length || values.length > 1000 || values.some(row => !Array.isArray(row) || !row.length || row.length > 100 || row.some(x => !['string', 'number', 'boolean'].includes(typeof x) || typeof x === 'number' && !Number.isFinite(x))) || JSON.stringify(values).length > 200000) throw providerError('invalid_rows', 'Enter 1–1,000 rows, up to 100 columns, of simple values (200 KB maximum).');
+  return values;
+};
+const exactRange = value => {
+  const text = boundedText(value, 'Exact A1 range', 500);
+  const match = text.match(/^(?:(?:'(?:[^']|'')+'|[^'!:\r\n]+)!)?\$?([A-Z]{1,3})\$?([1-9]\d{0,6})(?::\$?([A-Z]{1,3})\$?([1-9]\d{0,6}))?$/);
+  const column = name => [...name].reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0);
+  if (!match) throw providerError('invalid_range', 'Use an exact A1 cell or bounded rectangular range.');
+  const height = Number(match[4] || match[2]) - Number(match[2]) + 1, width = column(match[3] || match[1]) - column(match[1]) + 1;
+  if (height < 1 || height > 1000 || width < 1 || width > 100) throw providerError('invalid_range', 'Select at most 1,000 rows and 100 columns, in forward order.');
+  return { text, height, width };
+};
 
 export function createProviderAdapter(provider, request) {
   const gh = (path, options) => request(`https://api.github.com${path}`, { ...options, headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...options?.headers } });
@@ -22,7 +45,7 @@ export function createProviderAdapter(provider, request) {
     if (result.errors?.length) throw providerError('provider_rejected', 'Linear rejected this request. Check fields and permissions.', 422);
     return result.data;
   };
-  const slack = async (method, body = {}) => { const data = await request(`https://slack.com/api/${method}`, { method: 'POST', body }); if (!data.ok) throw providerError('provider_rejected', `Slack could not complete the action (${String(data.error || 'unknown_error').replace(/[^a-z_]/g, '').slice(0, 80)}).`, 422); return data; };
+  const slack = async (method, body = {}, read = false) => { const data = await request(`https://slack.com/api/${method}${read ? `?${new URLSearchParams(body)}` : ''}`, read ? {} : { method: 'POST', body }); if (!data.ok) throw providerError('provider_rejected', `Slack could not complete the action (${String(data.error || 'unknown_error').replace(/[^a-z_]/g, '').slice(0, 80)}).`, 422); return data; };
   const figma = (path, options) => request(`https://api.figma.com/v1${path}`, options);
   const jira = (id, path, options) => request(`https://api.atlassian.com/ex/jira/${segment(id)}/rest/api/3${path}`, options);
   const jiraResource = id => { const [site, project, ...rest] = String(id).split(':'); if (!site || !project || rest.length || !/^[A-Za-z0-9_-]+$/.test(project)) throw providerError('invalid_resource', 'Select a Jira site and project.'); return [site, project]; };
@@ -60,9 +83,22 @@ export function createProviderAdapter(provider, request) {
     throw providerError('unsupported_provider', 'Provider is not supported.');
   }
 
-  async function sync({ resource_id, kind, cursor, range = 'A1:Z200', package_type = 'container' }) {
+  async function sync({ resource_id, kind, cursor, range = 'A1:Z200', package_type = 'container', package_name, run_id, issue_id, node_ids, version_id, thread_ts }) {
     if (provider.startsWith('github')) {
-      const target = repo(resource_id), p = Math.max(1, Number(cursor) || 1);
+      const target = repo(resource_id), p = Math.max(1, Math.min(10000, Math.floor(Number(cursor) || 1)));
+      if (provider === 'github-actions' && kind === 'jobs') {
+        const data = await gh(`/repos/${target}/actions/runs/${numericId(run_id)}/jobs?filter=latest&per_page=100&page=${p}`);
+        return page((data.jobs || []).map(job => object(job.id, job.name, 'jobs', job.html_url, job, job.completed_at || job.started_at)), data.jobs?.length === 100 ? String(p + 1) : null);
+      }
+      if (provider === 'github-packages' && kind === 'versions') {
+        if (!['container', 'npm', 'maven', 'rubygems', 'docker', 'nuget'].includes(package_type)) throw providerError('invalid_package_type', 'Choose a supported package ecosystem.');
+        const name = packageName(package_name), repository = await gh(`/repos/${target}`);
+        const path = `/${repository.owner?.type === 'Organization' ? 'orgs' : 'users'}/${segment(resource_id.split('/')[0])}/packages/${segment(package_type)}/${name}`;
+        const pkg = await gh(path);
+        if (pkg.repository?.full_name?.toLowerCase() !== resource_id.toLowerCase()) throw providerError('resource_scope', 'This package is not linked to the selected repository.', 403);
+        const versions = await gh(`${path}/versions?state=active&per_page=100&page=${p}`);
+        return page(versions.map(version => object(version.id, `${package_name} · ${version.name}`, 'versions', version.html_url, { ...version, package_name, package_type }, version.updated_at)), versions.length === 100 ? String(p + 1) : null);
+      }
       if (kind === 'packages' && !['container', 'npm', 'maven', 'rubygems', 'docker', 'nuget'].includes(package_type)) throw providerError('invalid_package_type', 'Choose a supported package ecosystem.');
       const packageOwner = kind === 'packages' ? await gh(`/repos/${target}`) : null;
       const path = kind === 'runs' ? `/repos/${target}/actions/runs` : kind === 'workflows' ? `/repos/${target}/actions/workflows` : kind === 'packages' ? `/${packageOwner?.owner?.type === 'Organization' ? 'orgs' : 'users'}/${segment(resource_id.split('/')[0])}/packages?package_type=${segment(package_type)}` : `/repos/${target}/${kind}`;
@@ -73,6 +109,13 @@ export function createProviderAdapter(provider, request) {
     }
     if (provider === 'google-drive') {
       const data = await google('www', `/drive/v3/files/${segment(resource_id)}?fields=id,name,mimeType,description,webViewLink,modifiedTime,size,parents`);
+      if (kind === 'children') {
+        if (data.mimeType !== 'application/vnd.google-apps.folder') throw providerError('not_a_folder', 'Select a Drive folder to read its immediate children.');
+        const escaped = String(resource_id).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+        const query = new URLSearchParams({ q: `'${escaped}' in parents and trashed=false`, pageSize: '100', fields: 'nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime,parents)', ...(cursor ? { pageToken: cursor } : {}) });
+        const children = await google('www', `/drive/v3/files?${query}`);
+        return page((children.files || []).map(file => object(file.id, file.name, 'children', file.webViewLink, file, file.modifiedTime)), children.nextPageToken || null);
+      }
       return page([object(data.id, data.name, 'file', data.webViewLink, data, data.modifiedTime)]);
     }
     if (provider === 'google-docs') { const data = await google('docs', `/v1/documents/${segment(resource_id)}?includeTabsContent=true`); return page([object(data.documentId, data.title, 'document', `https://docs.google.com/document/d/${segment(resource_id)}/edit`, data)]); }
@@ -86,15 +129,33 @@ export function createProviderAdapter(provider, request) {
     }
     if (provider === 'jira') {
       const [site, project] = jiraResource(resource_id);
+      if (kind === 'transitions') {
+        const issue = segment(issue_id), existing = await jira(site, `/issue/${issue}?fields=project`);
+        if (existing.fields?.project?.key !== project) throw providerError('resource_scope', 'This issue is outside the selected project.', 403);
+        const result = await jira(site, `/issue/${issue}/transitions?expand=transitions.fields`);
+        return page((result.transitions || []).map(transition => object(`${issue_id}:${transition.id}`, `${issue_id} · ${transition.name}`, 'transitions', null, { ...transition, issue_id })));
+      }
       const params = new URLSearchParams({ jql: `project = "${project}" ORDER BY updated DESC`, maxResults: '100', fields: 'summary,description,status,assignee,priority,updated,project' }); if (cursor) params.set('nextPageToken', cursor);
       const data = await jira(site, `/search/jql?${params}`);
       return page((data.issues || []).map(x => object(x.id, x.fields?.summary, 'issues', null, { ...x, site }, x.fields?.updated)), data.nextPageToken || null);
     }
-    if (provider === 'slack') { const data = await slack('conversations.history', { channel: resource_id, limit: 100, ...(cursor ? { cursor } : {}) }); return page((data.messages || []).map(x => object(x.ts, x.text?.slice(0, 120), 'message', null, x)), data.response_metadata?.next_cursor || null); }
+    if (provider === 'slack') {
+      if (kind === 'thread' && (typeof thread_ts !== 'string' || !/^\d{1,20}\.\d{1,10}$/.test(thread_ts))) throw providerError('invalid_thread', 'Enter the Slack parent message timestamp.');
+      // Commercial apps outside Slack Marketplace have a 15-item history limit.
+      const data = await slack(kind === 'thread' ? 'conversations.replies' : 'conversations.history', { channel: resource_id, limit: 15, ...(kind === 'thread' ? { ts: thread_ts } : {}), ...(cursor ? { cursor } : {}) }, true);
+      return page((data.messages || []).map(x => object(x.ts, x.text?.slice(0, 120), kind === 'thread' ? 'thread' : 'message', null, x)), data.response_metadata?.next_cursor || null);
+    }
     if (provider === 'figma' || provider === 'figjam') {
-      const suffix = kind === 'comments' ? '/comments' : kind === 'versions' ? '/versions' : '?depth=4';
+      if (kind === 'nodes') {
+        const ids = typeof node_ids === 'string' ? [...new Set(node_ids.split(',').map(id => id.trim()))] : [];
+        if (!ids.length || ids.length > 50 || ids.some(id => !/^\d{1,20}:\d{1,20}$/.test(id))) throw providerError('invalid_nodes', 'Enter up to 50 comma-separated Figma node IDs, such as 1:2.');
+        const query = new URLSearchParams({ ids: ids.join(','), depth: '4', ...(version_id ? { version: boundedText(version_id, 'Version ID', 200) } : {}) });
+        const data = await figma(`/files/${segment(resource_id)}/nodes?${query}`);
+        return page(ids.filter(id => data.nodes?.[id]).map(id => object(`${id}${version_id ? `@${version_id}` : ''}`, data.nodes[id].document?.name || id, 'nodes', `https://www.figma.com/file/${segment(resource_id)}?node-id=${encodeURIComponent(id)}`, { ...data.nodes[id], node_id: id, version: data.version || version_id || null })));
+      }
+      const suffix = kind === 'comments' ? '/comments' : kind === 'versions' ? '/versions' : `?${new URLSearchParams({ depth: '4', ...(version_id ? { version: boundedText(version_id, 'Version ID', 200) } : {}) })}`;
       const data = await figma(`/files/${segment(resource_id)}${suffix}`);
-      const rows = kind === 'comments' ? data.comments : kind === 'versions' ? data.versions : [{ ...data, id: resource_id }];
+      const rows = kind === 'comments' ? data.comments : kind === 'versions' ? data.versions : [{ ...data, id: `${resource_id}${version_id ? `@${version_id}` : ''}` }];
       return page((rows || []).map(x => object(x.id, x.name || x.label || x.message?.slice(0, 120), kind, `https://www.figma.com/file/${segment(resource_id)}`, x, x.lastModified || x.created_at)));
     }
   }
@@ -127,6 +188,7 @@ export function createProviderAdapter(provider, request) {
       const target = repo(resource_id);
       if (action === 'dispatch_workflow') return gh(`/repos/${target}/actions/workflows/${segment(input.workflow_id)}/dispatches`, { method: 'POST', body: { ref: input.ref } });
       if (action === 'cancel_run') return gh(`/repos/${target}/actions/runs/${segment(input.run_id)}/cancel`, { method: 'POST', body: {} });
+      if (action === 'rerun_workflow') return gh(`/repos/${target}/actions/runs/${numericId(input.run_id)}/rerun`, { method: 'POST', body: {} });
     }
     if (provider === 'google-drive' && action === 'create_folder') return google('www', '/drive/v3/files', { method: 'POST', body: { name: input.name, mimeType: 'application/vnd.google-apps.folder', parents: [resource_id] } });
     if (provider === 'google-docs') {
@@ -135,11 +197,23 @@ export function createProviderAdapter(provider, request) {
     }
     if (provider === 'google-sheets') {
       if (action === 'create_spreadsheet') return google('sheets', '/v4/spreadsheets', { method: 'POST', body: { properties: { title: input.title } } });
+      if (action === 'update_range') {
+        const range = exactRange(input.range), values = sheetValues(input.values);
+        if (values.length > range.height || values.some(row => row.length > range.width)) throw providerError('invalid_rows', 'Values must fit inside the reviewed range.');
+        return google('sheets', `/v4/spreadsheets/${segment(resource_id)}/values/${encodeURIComponent(range.text)}?valueInputOption=RAW&includeValuesInResponse=true`, { method: 'PUT', body: { range: range.text, majorDimension: 'ROWS', values } });
+      }
       if (action === 'append_rows') { const values = typeof input.values === 'string' ? JSON.parse(input.values) : input.values; if (!Array.isArray(values) || values.length > 1000 || values.some(row => !Array.isArray(row) || row.length > 100 || row.some(x => !['string', 'number', 'boolean'].includes(typeof x)))) throw providerError('invalid_rows', 'Enter at most 1,000 rows of simple values.'); return google('sheets', `/v4/spreadsheets/${segment(resource_id)}/values/${encodeURIComponent(input.range)}:append?valueInputOption=RAW`, { method: 'POST', body: { values } }); }
     }
     if (provider === 'google-slides') {
       if (action === 'create_presentation') return google('slides', '/v1/presentations', { method: 'POST', body: { title: input.title } });
       if (action === 'add_slide') return google('slides', `/v1/presentations/${segment(resource_id)}:batchUpdate`, { method: 'POST', body: { requests: [{ createSlide: { slideLayoutReference: { predefinedLayout: 'BLANK' } } }] } });
+      if (action === 'add_text_slide') {
+        const title = boundedText(input.title, 'Slide title', 500), text = boundedText(input.text, 'Slide body', 10000), id = `rumbo_${randomUUID().replaceAll('-', '')}`;
+        return google('slides', `/v1/presentations/${segment(resource_id)}:batchUpdate`, { method: 'POST', body: { requests: [
+          { createSlide: { objectId: id, slideLayoutReference: { predefinedLayout: 'TITLE_AND_BODY' }, placeholderIdMappings: [{ layoutPlaceholder: { type: 'TITLE', index: 0 }, objectId: `${id}_title` }, { layoutPlaceholder: { type: 'BODY', index: 0 }, objectId: `${id}_body` }] } },
+          { insertText: { objectId: `${id}_title`, text: title, insertionIndex: 0 } }, { insertText: { objectId: `${id}_body`, text, insertionIndex: 0 } },
+        ] } });
+      }
     }
     if (provider === 'linear') {
       if (action !== 'create_issue') { const current = await linear('query($id:String!){issue(id:$id){team{id}}}', { id: input.issue_id }); if (current.issue?.team?.id !== resource_id) throw providerError('resource_scope', 'This issue is outside the selected team.', 403); }
@@ -149,6 +223,16 @@ export function createProviderAdapter(provider, request) {
     }
     if (provider === 'jira') {
       const [site, project] = jiraResource(resource_id);
+      if (action === 'transition_issue') {
+        const issue = segment(input.issue_id), transitionId = numericId(input.transition_id);
+        const existing = await jira(site, `/issue/${issue}?fields=project`);
+        if (existing.fields?.project?.key !== project) throw providerError('resource_scope', 'This issue is outside the selected project.', 403);
+        const result = await jira(site, `/issue/${issue}/transitions?expand=transitions.fields`);
+        const transition = result.transitions?.find(item => String(item.id) === transitionId);
+        if (!transition) throw providerError('transition_unavailable', 'This transition is no longer available. Refresh issue transitions.', 409);
+        if (Object.values(transition.fields || {}).some(field => field.required)) throw providerError('transition_fields_required', 'This transition requires additional fields. Complete it in Jira.', 409);
+        return jira(site, `/issue/${issue}/transitions`, { method: 'POST', body: { transition: { id: transitionId } } });
+      }
       if (action === 'create_issue') return jira(site, '/issue', { method: 'POST', body: { fields: { project: { key: project }, summary: input.title, issuetype: { id: input.issue_type }, ...(input.description ? { description: adf(input.description) } : {}) } } });
       if (action === 'comment') { const existing = await jira(site, `/issue/${segment(input.issue_id)}?fields=project`); if (existing.fields?.project?.key !== project) throw providerError('resource_scope', 'This issue is outside the selected project.', 403); return jira(site, `/issue/${segment(input.issue_id)}/comment`, { method: 'POST', body: { body: adf(input.body) } }); }
     }

@@ -1,64 +1,75 @@
-# Local connections and agent sessions
+# Connection setup and verification
 
-Rumbo stores workspace data locally. A live session sends the instruction and selected project context to its AI provider. A connection is never checked or signed in merely because you open Rumbo. Automated tests substitute processes and network responses; they do not use real Codex or Claude accounts.
+In-app Docs has an illustrated guide for every one of the 14 catalog entries, plus synchronization, conflicts, recovery, governance and shared review. Registration, opening an authorization website, token exchange, identity verification and a successful resource operation are distinct stages. Do not report one as proof of the next.
 
-## What works
+## Machine accounts versus workspace connections
 
-| Connection | Sign-in | Available work |
+Machine accounts belong to installed command-line tools. Codex and Claude Code use their official sign-in flows. The older GitHub CLI/token and metadata-only Drive endpoints remain separate compatibility paths. A machine account is not automatically a workspace-wide platform grant. Never scrape CLI credential files or place their contents in workspace records.
+
+The workspace connection platform (`server/connection-platform.mjs`) encrypts tokens with AES-256-GCM and enforces selected resources, workspace/team/project scope, enabled features, protected-action approval and write idempotency. Operator client secrets remain server-side and credentials are excluded from ordinary workspace exports. Legacy machine-connection storage has a different security model; do not describe all account storage as encrypted workspace OAuth storage.
+
+| OAuth family | Workspace entries | Environment prefix |
 | --- | --- | --- |
-| Codex | Existing Codex CLI account or provider browser sign-in | Live analysis; optional edits inside the selected working folder; streamed messages, command results, file-change events and stop |
-| Claude | Existing Claude Code account or provider browser sign-in | Live analysis with file-read and search tools; streamed messages and stop |
-| GitHub | Existing GitHub CLI account, browser sign-in, or fine-grained personal access token | List accessible repositories, follow repository links and attach a repository URL to a project |
-| Google Drive | Registered Google OAuth client and browser consent | List file metadata and open file links; no file-content download or editing |
+| GitHub | GitHub, Actions, Packages | `RUMBO_GITHUB` |
+| Google | Drive, Docs, Sheets, Slides | `RUMBO_GOOGLE` |
+| Linear | Linear | `RUMBO_LINEAR` |
+| Atlassian | Jira | `RUMBO_JIRA` |
+| Slack | Slack | `RUMBO_SLACK` |
+| Figma | Figma, FigJam | `RUMBO_FIGMA` |
 
-## Codex
+Configure each prefix's `_CLIENT_ID` and `_CLIENT_SECRET` outside Git. Never use `VITE_` for secrets: those values can enter browser bundles. Set `RUMBO_CONNECTION_CALLBACK_URL` to the exact provider-registered callback. Its default is `http://127.0.0.1:4174/api/connection-platform/oauth/callback`, which is **not accepted by every provider**. Inspect readiness and scopes before opening authorization. Do not expose an unprotected development server to make redirects work.
 
-Install the official CLI (`npm install -g @openai/codex`) so `codex` is on the local server's PATH. In Connections, choose existing sign-in to explicitly check `codex login status`, or browser sign-in to start `codex login`. Rumbo never collects a ChatGPT password. Eligibility and limits come from the account authenticated in Codex; connecting does not import ChatGPT's conversation history. See the [official Codex CLI reference](https://developers.openai.com/codex/cli/reference/).
+## Registration and local testing
 
-Start a live session after selecting a project folder and writing an instruction. Analysis is the default. Editing requires selecting `workspace-write`; it is unavailable when Rumbo's global agent setting forces read-only work. Rumbo disables additional writable roots, tool network access, hooks, connected apps, automatic subagents and discovered MCP servers for the run. It checks the MCP configuration locally first and fails clearly if it cannot verify it. Provider authentication and model requests still require network access. See the [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+### GitHub, Actions and Packages
 
-## Claude
+Register Rumbo's OAuth app and callback. GitHub supports loopback development redirects; public launch is not required. Organization restrictions, SSO and repository permissions still apply. Existing CLI sign-in remains a machine-account alternative, not automatic workspace OAuth. See [GitHub OAuth](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
 
-Install a current Claude Code release (`brew install --cask claude-code` on macOS). Rumbo requires a version supporting `--restricted` (2.1.248 or later); unsupported flags fail rather than silently removing restrictions. Existing sign-in calls `claude auth status`; browser sign-in starts `claude auth login`.
+GitHub reads selected repository issues, pull requests, commits and source, and supports explicit issue/pull creation, comments and reviews. Actions reads workflow/run/job references and supports reviewed dispatch, rerun and cancellation. Packages reads package metadata and active versions: choose an ecosystem/package name and expect repository-linked results, not every package owned by an organization. Package metadata documents OAuth/classic tokens with `read:packages`; do not assume all fine-grained tokens support it. See [workflow endpoints](https://docs.github.com/en/rest/actions/workflows) and [package endpoints](https://docs.github.com/en/rest/packages/packages).
 
-Rumbo uses print mode with bare/restricted startup, only `Read`, `Glob` and `Grep` tools, explicit MCP denial, and a 12-turn limit. Shell execution and editing are unavailable in this adapter. Your account must allow programmatic use; its allowance and billing can differ from interactive Claude usage. See [Claude's CLI reference](https://code.claude.com/docs/en/cli-reference) and [programmatic usage documentation](https://code.claude.com/docs/en/headless).
+### Google Drive, Docs, Sheets and Slides
 
-## GitHub
+Create Google's OAuth client/consent screen, enable Drive discovery and each product API, and add development test users. Registered localhost callbacks work before public launch. External testing refresh tokens for these scopes expire after seven days. Broad Drive read/metadata scopes are restricted: public verification and, for server storage/transmission, a security assessment can apply. Narrow `drive.file` access needs a matching explicit-file-selection workflow; it cannot silently replace broad discovery. See [web OAuth](https://developers.google.com/identity/protocols/oauth2/web-server), [token lifetime](https://developers.google.com/identity/protocols/oauth2) and [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
 
-Install GitHub CLI (`brew install gh`) to use existing or browser sign-in. The browser option starts GitHub CLI's device authorization; any code and instructions appear in the connection's sign-in progress. Existing sign-in explicitly fetches the authenticated account. Alternatively, paste a fine-grained token limited to the repositories you need. Rumbo validates it before saving it. This version does not create branches, issues, commits or pull requests on your behalf. See [GitHub CLI sign-in](https://cli.github.com/manual/gh_auth_login) and [the repository-list API](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user).
+Drive reads selected-item metadata or immediate folder children, not arbitrary file bodies or recursive folders. Docs reads structure and supports create/append. Sheets reads an exact bounded A1 range (default `A1:Z200`, maximum 20,000 cells), creates workbooks, appends rows and updates reviewed cell ranges with RAW values. Slides reads presentation structure, creates presentations, and adds blank or title-and-body text slides. These are not complete editor replacements; read ranges and write destinations are separate. Queued jobs snapshot their read options rather than adopting later setting changes.
 
-## Google Drive
+### Linear
 
-Google requires an OAuth app registration before Rumbo can offer its consent screen:
+Register a Rumbo OAuth app with its callback; localhost development is documented. OAuth access/refresh tokens expire and rotate. Select external Linear teams separately from Rumbo visibility scope. Read issues/projects and explicitly create/update/comment. Native imports retain provenance and conflicts but are not unrestricted two-way sync. See [Linear OAuth](https://linear.app/developers/oauth-2-0-authentication).
 
-1. Create a Google Cloud project, enable the Google Drive API, and configure its consent screen. For a testing app, add your Google account as a test user.
-2. Create a **Web application** OAuth client. Register exactly the callback shown in Rumbo's Connections setup, for example `http://127.0.0.1:4174/api/auth/google-drive/callback`. Hostname and port must match the running server.
-3. Supply `RUMBO_GOOGLE_CLIENT_ID` and `RUMBO_GOOGLE_CLIENT_SECRET` in the server process environment, then restart that server. Keep these values out of Git. Variables with a `VITE_` prefix are unsuitable for secrets because they can be bundled into browser code.
-4. Choose browser sign-in in Rumbo and complete Google's consent screen.
+### Jira Cloud
 
-The requested scope is `drive.metadata.readonly`. It can list file names, types, modification times and links across the authorized account; it is not a selected-file content permission. Google may require verification for wider distribution. The implementation uses expiring, single-use OAuth state, PKCE, a local callback, and token refresh. See [Google's OAuth setup](https://developers.google.com/identity/protocols/oauth2/web-server) and [Drive scopes](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
+Register the operator-owned Atlassian 3LO app and exact callback. New apps are creator-private until sharing is enabled; unapproved shared apps show a warning. Discover sites, then projects, preserving the `site ID:project key` identity. Read transitions for a scoped issue and apply an available transition explicitly; stale transitions or those needing additional fields are rejected. Required custom fields can exceed the adapter's create-issue fields. Do not collect customer API tokens or require customers to register personal 3LO apps as a public fallback: Atlassian disallows those patterns. See [Atlassian 3LO requirements](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/).
 
-## Local behavior and limits
+### Slack
 
-- A session's explicit working-folder choice overrides its linked project's folder, then the agent's default folder. Choose a specific project directory. Rumbo rejects filesystem root, your home folder and broad system directories. Each run displays the actual resolved working folder.
-- Stopping sends termination to the local process group, then forces termination after three seconds if needed. Already completed edits are not rolled back. Sessions stop after 30 minutes; a follow-up is a new run.
-- Disconnect forgets the connection in Rumbo. It does not log out another application's CLI or revoke the provider account globally. Stop active sessions separately. Google access can also be revoked in the account's third-party access settings.
-- Optional GitHub tokens and Google access/refresh tokens are kept in `.rumbo/integrations.private.json`, with owner-only `0600` file permissions. This is not encrypted storage. They are excluded from bootstrap data and workspace exports; known credential strings are redacted from captured provider output.
-- Live output, instructions, selected text attachments and results are local business data and can appear in a workspace export. Do not put secrets in prompts or project files just because the credentials store is private.
-- Keep the server bound to loopback. There is no multi-user authentication layer or support for exposing this local server publicly.
+Register the app's bot scopes and an **HTTPS** OAuth callback. Ordinary HTTP localhost is invalid. An accepted HTTPS development endpoint and test workspace can support testing before launch without exposing an unprotected Rumbo server. Invite the bot to selected channels; personal visibility is not bot membership. See [OAuth installation](https://docs.slack.dev/authentication/installing-with-oauth/).
 
-## API shapes for the UI
+Read selected channel Messages or a Thread using its parent message timestamp (`thread_ts`), then send reviewed channel/thread messages separately. Both read kinds request 15 messages per page and use cursor pagination. Bot tokens need the appropriate public/private channel history scopes and membership; this connection does not assume personal-user visibility. New commercially distributed non-Marketplace apps can be limited to one request per minute for both history and replies. Honor retry timing. Signed events need separate operator webhook configuration. See [history limits](https://docs.slack.dev/reference/methods/conversations.history/) and [thread replies/scopes](https://docs.slack.dev/reference/methods/conversations.replies/).
 
-Provider IDs are `codex`, `claude`, `github`, and `google-drive`.
+### Figma and FigJam
 
-| Request | Result |
-| --- | --- |
-| `GET /api/connections/setup` | `{ setups, accountSafe: true }`; capability descriptions only |
-| `GET /api/connections/:provider/setup` | `{ setup, accountSafe: true }`; includes methods, missing configuration, docs, install command and cached connection |
-| `POST /api/connections/:provider/connect` with `{ method, token? }` | `{ connection, authorizationUrl?, message? }`; methods are `existing`, `browser`, or GitHub-only `token` |
-| `GET /api/connections/:provider/status` | `{ connection }`; cached status with optional `auth: { status, output, startedAt }` |
-| `POST /api/connections/:provider/check` | `{ connection }`; explicitly validates sign-in |
-| `POST /api/connections/:provider/disconnect` | `{ connection, message }` |
-| `GET /api/connections/:provider/resources?pageToken=...` | `{ resources: [{ id, name, url, kind, updatedAt, ... }], nextPageToken }` for GitHub/Drive |
+Configure the operator's Figma OAuth app. Draft supports creator/admin tests, private publication supports its associated organization/team, and public OAuth publication requires Figma review. Use a provider-accepted callback rather than assuming a universal localhost exception. Select files/boards by URL or `file:key`; universal team/project enumeration is not available to public OAuth apps. See [Figma OAuth](https://developers.figma.com/docs/rest-api/oauth-apps/).
 
-Connections use `not_connected`, `connecting`, or `connected`. Browser auth progress may be `running`, `complete`, `failed`, `expired`, or `cancelled`. Errors use `{ error: { code, message } }`; a setup problem must not be displayed as a successful connection.
+Read file information, comments, versions or up to 50 explicitly selected nodes. File/node reads can be pinned to a version ID. Explicit comments are supported; arbitrary node/board editing is not. Figma keeps one access token per app/user; refresh invalidates an older token, so independently held Figma/FigJam grants can require reconnection. Personal tokens are documented for personal tooling, not a replacement for Rumbo's public app review. See [authentication alternatives](https://developers.figma.com/docs/rest-api/authentication/).
+
+## Codex and Claude Code
+
+Install the official runner on the server machine and let it own sign-in. Codex supports ChatGPT and API-key authentication, with distinct billing/policy boundaries. Keep local execution out of untrusted public environments. See [Codex authentication](https://learn.chatgpt.com/docs/auth).
+
+Claude uses its unmodified CLI and provider-owned authentication. Rumbo's adapter is restricted file-read/search analysis, not general editing or shell execution. Unsupported restrictions fail visibly. Never collect/intermediate Claude.ai session tokens; users use their own authorized credentials. See [Claude authentication](https://code.claude.com/docs/en/authentication) and [credential/hosting rules](https://code.claude.com/docs/en/legal-and-compliance).
+
+Runs start explicitly. General chat can run without a project folder; file access requires a chosen folder. Stop does not undo completed edits. Shared review records observed changes on supported runs, not sole agent authorship. Preparing a follow-up is a draft, not a new run.
+
+## Verification checklist
+
+1. Confirm registration, callback scheme/path, enabled APIs and scopes without exposing secrets.
+2. Record whether authorization opens; separately test cancellation, expiry, state mismatch and replay.
+3. Complete consent only with an authorized test account. Verify token exchange and actual identity.
+4. Select a disposable resource, read it, verify source identity and payload, and check pagination/bounds.
+5. Test denied resources and roles: provider permissions, selected resources and Rumbo permissions must all apply.
+6. Test writes only on explicitly approved disposable targets; verify the provider-side result. Never blindly retry uncertain delivery.
+7. Verify refresh, revoked access, reconnect and disconnect. Keep tokens out of logs, browser errors and exports.
+8. Record fixture tests separately from live-provider checks. Automated tests must not invoke real Codex/Claude accounts or paid runs.
+
+Without configured operator apps and user consent, fixture tests validate contracts but cannot certify real login. Report missing registration, callback infrastructure, provider review and account permissions separately; most are not inherently blocked on Rumbo's public launch.

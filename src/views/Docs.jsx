@@ -7,6 +7,9 @@ import { DOC_GROUPS, DOC_ARTICLES } from '../lib/docs-content.js';
 import { articleMarkdown, articleText, searchDocs } from '../lib/docs-utils.js';
 import { UiIcon } from '../components/icons.jsx';
 import { DOC_ARTICLE_ICONS } from '../lib/docs-icons.js';
+import { ConnectionPreview } from '../components/ConnectionPreview.jsx';
+import { CONNECTION_PREVIEWS } from '../lib/connection-previews.js';
+import './connection-platform.css';
 import './docs.css';
 
 const GROUP_ICONS = { 'getting-started': Compass, workspace: Users, 'projects-routes': GitBranch, 'chats-agents': Bot, workbench: Terminal, knowledge: LibraryBig, integrations: Plug, settings: Settings, workflows: Workflow, developers: Code };
@@ -18,8 +21,17 @@ function useRenderedTheme() {
   return theme;
 }
 function DocsScreenshot({ name, theme, caption }) {
+  const { page } = useApp();
+  const article = DOC_ARTICLES.find(item => item.id === page.id);
+  if (article?.connectionProvider) return <ConnectionIllustration article={article} />;
   if (!SCREENSHOTS.has(name)) return null;
   return <figure className="docs-screenshot"><img src={`/docs/${name}-${theme}.png`} alt={`${caption} in Rumbo, ${theme} theme`} loading="lazy" width={name === 'settings' ? 1440 : 1088} height={name === 'settings' ? 980 : 912} /><figcaption>{caption} · Example workspace</figcaption></figure>;
+}
+function ConnectionIllustration({ article }) {
+  const previews = CONNECTION_PREVIEWS[article.connectionProvider];
+  if (!previews) return null;
+  const provider = { id: article.connectionProvider, name: article.title.replace(/ in Rumbo$/, '') };
+  return <figure className="docs-connection-illustration"><div className="cp-workflow-grid">{previews.map(preview => <ConnectionPreview key={preview.title} provider={provider} preview={preview} />)}</div><figcaption>Illustrated workflow examples · not screenshots or live account data</figcaption><div className="docs-provider-sources" aria-label="Official provider references"><span>Provider references</span>{article.sources?.map(source => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">{source.label}<ArrowRight aria-hidden="true" /></a>)}</div></figure>;
 }
 function ArticleCard({ article, onOpen }) {
   return <button className="docs-card" onClick={() => onOpen(article.id)}><span className="docs-card-symbol"><ArticleIcon article={article} /></span><strong>{article.title}</strong><p>{article.description}</p><span className="docs-card-link">Read guide<ArrowRight /></span></button>;

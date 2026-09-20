@@ -30,7 +30,8 @@ test('connection catalog covers the requested providers and states implementatio
     ['codex', 'claude', 'github', 'google-drive'],
   );
   assert.match(CONNECTION_PROVIDERS.github.boundary, /not/);
-  assert.match(CONNECTION_PROVIDERS['google-drive'].boundary, /metadata/);
+  assert.match(CONNECTION_PROVIDERS['google-drive'].boundary, /Workspace Connections supports/);
+  assert.ok(CONNECTION_PROVIDERS['google-drive'].workspaceCapabilities.includes('create_folder'));
   assert.deepEqual(CONNECTION_PROVIDERS.slack.unavailableCapabilities, ['authentication', 'all_external_operations']);
 });
 
@@ -132,7 +133,7 @@ test('progressive tabs distinguish locked live setup from metadata previews', ()
   assert.equal(connected.notifications, 'preview');
   const planned = connectionSettingsTabs('figma', { connectionState: 'connected' });
   assert.equal(planned.find(item => item.id === 'resources').state, 'preview');
-  assert.match(planned.find(item => item.id === 'resources').reason, /No Figma authentication/);
+  assert.match(planned.find(item => item.id === 'resources').reason, /Configure OAuth and selected resources there/);
   assert.deepEqual(connectionSettingsTabs('unknown'), []);
 });
 
