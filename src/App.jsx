@@ -1,4 +1,5 @@
 import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
+import { IconColorsProvider } from './components/IconColors.jsx';
 import {
   Component,
   lazy,
@@ -404,6 +405,7 @@ export function App() {
   const currentTeam = page.view === 'teams' ? visible(data.teams).find(team => team.id === page.id) : null;
   return (
     <AppContext.Provider value={context}>
+      <IconColorsProvider>
       <div className={`rumbo-app ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
         <a
           href="#main-content"
@@ -525,6 +527,7 @@ export function App() {
           </div>
         ) : null}
       </div>
+      </IconColorsProvider>
     </AppContext.Provider>
   );
 }

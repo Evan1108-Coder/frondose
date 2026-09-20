@@ -1,8 +1,10 @@
 import { Children, cloneElement } from 'react';
 import { ChevronRight, ChevronDown, Ellipsis } from './icons.jsx';
 import { parseEntityKey } from '../lib/sidebar-layout.js';
+import { useIconColors } from './IconColors.jsx';
 
 export function SidebarLayout({ children, organization, arrange, renderTab, renderEntity, updateOrganization, customizeSidebar }) {
+  const { colorsFor, editColors } = useIconColors();
   const builtins = new Map();
   Children.forEach(children, child => { if (child?.props?.['data-layout-id']) builtins.set(child.props['data-layout-id'], child); });
   const renderEntry = (key, container = 'root') => {
@@ -12,7 +14,7 @@ export function SidebarLayout({ children, organization, arrange, renderTab, rend
     if (group) node = <section className="sidebar-custom-group">
       <div className="sidebar-section-heading" {...arrange.bind({ id: key, title: group.name })}>
         <button className="section-disclosure" aria-label={`${group.collapsed ? 'Expand' : 'Collapse'} ${group.name}`} aria-expanded={!group.collapsed} onClick={() => updateOrganization({ ...organization, layout: { ...organization.layout, groups: organization.layout.groups.map(g => g.id === key ? { ...g, collapsed: !g.collapsed } : g) } })}><ChevronRight morphTo={group.collapsed ? ChevronRight : ChevronDown} /></button>
-        <span className="section-title">{group.name}</span><button aria-label={`Edit ${group.name} group`} onClick={customizeSidebar}><Ellipsis /></button>
+        <button className="section-title" style={{ color: colorsFor(group.id).label || undefined }} aria-label={`Change ${group.name} group colors`} onClick={() => editColors({ id: group.id, label: `Group · ${group.name}` })}>{group.name}</button><button aria-label={`Edit ${group.name} group`} onClick={customizeSidebar}><Ellipsis /></button>
       </div>
       {!group.collapsed ? <div className="sidebar-custom-children">{group.items.map(id => renderEntry(id, key))}</div> : null}
       {arrange.dragging || !group.items.length ? <div className="sidebar-custom-drop" {...arrange.drop(key)}>Drop tabs into {group.name}</div> : null}

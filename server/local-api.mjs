@@ -61,7 +61,7 @@ const TABLE_CONFIG = {
     required: ['workspace_id', 'title'],
   },
   teams: {
-    fields: ['workspace_id', 'name', 'description', 'icon', 'color', 'icon_color', 'archived_at'],
+    fields: ['workspace_id', 'name', 'description', 'icon', 'color', 'icon_color', 'tab_icon_color', 'empty_icon_color', 'tab_label_color', 'archived_at'],
     required: ['workspace_id', 'name'],
   },
   team_members: {
@@ -398,13 +398,14 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   const needsAgentIdentity = !db.prepare('PRAGMA table_info(runs)').all().some((column) => column.name === 'agent_id');
   if (needsAgentIdentity) db.exec('ALTER TABLE runs ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL');
   const additions = {
-    teams: { icon_color: "TEXT NOT NULL DEFAULT ''" },
+    teams: { icon_color: "TEXT NOT NULL DEFAULT ''", tab_icon_color: "TEXT NOT NULL DEFAULT 'team'", empty_icon_color: "TEXT NOT NULL DEFAULT 'team'", tab_label_color: "TEXT NOT NULL DEFAULT 'global'" },
     projects: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', image_url: 'TEXT', start_date: 'TEXT', target_date: 'TEXT', lead: "TEXT NOT NULL DEFAULT ''", workflow_status_id: 'TEXT', labels_json: "TEXT NOT NULL DEFAULT '[]'" },
     tasks: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', workflow_status_id: 'TEXT' },
     runs: { source_message_id: 'TEXT REFERENCES messages(id) ON DELETE SET NULL', work_mode: "TEXT NOT NULL DEFAULT 'project'" },
   };
   for (const [table, columns] of Object.entries(additions)) {
     const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
+    if (table === 'teams' && !existing.has('tab_icon_color')) db.prepare("UPDATE teams SET color='' WHERE lower(color)='#8b95a5'").run();
     for (const [column, definition] of Object.entries(columns)) if (!existing.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
   db.exec('CREATE INDEX IF NOT EXISTS runs_agent_id ON runs(agent_id)');
@@ -618,6 +619,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const body = normalizeInput(resource, await readBody(req));
       const stamp = now();
       const record = { ...body };
+      if (resource === 'teams' && record.color === undefined) record.color = '';
       for (const field of config.required) if (typeof record[field] !== 'string' || !record[field].trim()) throw validationError(`${field.replaceAll('_', ' ')} is required.`);
       if (resource === 'workspaces' && !record.slug) {
         const base = slugify(record.name);

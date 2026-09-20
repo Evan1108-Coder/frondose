@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TeamIcon, TeamIconButton } from '../../components/TeamAppearance.jsx';
+import { ColorableNavItem, useIconColors } from '../../components/IconColors.jsx';
 import { DisplayPreferences } from './DisplayPreferences.jsx';
 import { ServiceLogo } from '../../components/ServiceLogo.jsx';
 import { Button, Dialog, ErrorMessage, Field, Select, Toggle, Empty, useApp, useAsync } from '../../ui.jsx';
@@ -27,6 +28,7 @@ const ICONS = { Personal: Settings, Routes: FileText, Projects: FileText, 'Agent
 const PAGE_ICONS = { awareness: Database, preferences: SlidersHorizontal, profile: CircleUser, appearance: Paintbrush, 'home-attention': Focus, notifications: Bell, 'code-reviews': Code, 'personal-security': KeyRound, accounts: UserRoundCog, personalization: Sparkles, 'route-labels': Tag, 'project-labels': Tags, 'route-templates': ListChecks, 'project-templates': PanelsTopLeft, 'route-workflow': Route, 'project-statuses': Waypoints, repeating: TimerReset, intake: Inbox, updates: Flag, agents: Bot, collections: Shapes, presets: ScrollText, context: BookOpen, permissions: ShieldCheck, workbench: Terminal, coordination: Network, 'output-policy': Package, queue: ListOrdered, handoffs: GitFork, automations: Workflow, chats: MessageSquareText, documents: NotebookPen, views: SquareStack, requests: Radio, goals: Target, reviews: ClipboardCheck, emojis: Smile, integrations: Cable, workspace: FolderKanban, teams: Users, members: UserRound, security: ShieldUser, applications: AppWindow, api: Webhook, billing: ReceiptText, usage: Gauge, retention: ArchiveRestore, storage: Download, audit: History };
 export function SettingsCenter() {
   const { data, page, navigate, workspace } = useApp();
+  const { colorsFor } = useIconColors();
   const [query, setQuery] = useState('');
   const sections = SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id, label, group })));
   const teamId = page.id?.startsWith('team:') ? page.id.slice(5) : null;
@@ -41,9 +43,9 @@ export function SettingsCenter() {
       <nav aria-label="Settings sections">{SETTINGS_GROUPS.map(([group, items]) => {
         const filtered = items.filter(([id, label]) => `${group} ${label}`.toLowerCase().includes(query.toLowerCase()));
         const Icon = ICONS[group];
-        return filtered.length ? <section key={group}><h2>{group}</h2>{filtered.map(([id, label]) => { const PageIcon = PAGE_ICONS[id] ?? Icon; return <button key={id} className={section.id === id ? 'active' : ''} aria-current={section.id === id ? 'page' : undefined} onClick={() => navigate('settings', id)}><PageIcon /><span>{label}</span></button>; })}</section> : null;
+        return filtered.length ? <section key={group}><h2>{group}</h2>{filtered.map(([id, label]) => { const PageIcon = PAGE_ICONS[id] ?? Icon; return <ColorableNavItem key={id} colorId={`settings:${id}`} icon={PageIcon} label={label} className={section.id === id ? 'active' : ''} aria-current={section.id === id ? 'page' : undefined} onClick={() => navigate('settings', id)} />; })}</section> : null;
       })}
-        {teams.length ? <section><h2>Your teams</h2>{teams.filter(t => t.name.toLowerCase().includes(query.toLowerCase())).map(t => <button key={t.id} className={teamId === t.id ? 'active' : ''} onClick={() => navigate('settings', `team:${t.id}`)}><TeamIcon team={t} /><span>{t.name}</span></button>)}</section> : null}
+        {teams.length ? <section><h2>Your teams</h2>{teams.filter(t => t.name.toLowerCase().includes(query.toLowerCase())).map(t => <button key={t.id} className={teamId === t.id ? 'active' : ''} onClick={() => navigate('settings', `team:${t.id}`)}><TeamIcon team={t} /><span style={{ color: colorsFor(`team:${t.id}:identity`, t).label || undefined }}>{t.name}</span></button>)}</section> : null}
         {!sections.some(s => `${s.group} ${s.label}`.toLowerCase().includes(query.toLowerCase())) && !teams.some(t => t.name.toLowerCase().includes(query.toLowerCase())) ? <p className="settings-no-results">No matching settings</p> : null}
       </nav>
     </aside>

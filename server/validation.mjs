@@ -40,6 +40,10 @@ export function validateAvatar(value) {
 
 export function validateRecord(db, resource, record, required, fields) {
   if (resource === 'teams') {
+    for (const [key, allowed] of Object.entries({ tab_icon_color: ['team', 'global'], empty_icon_color: ['team', 'global'], tab_label_color: ['global', 'icon', 'neutral'] })) if (record[key] !== undefined) {
+      if (typeof record[key] !== 'string' || (!allowed.includes(record[key]) && !normalizeReactionColor(record[key]))) throw validationError('Choose an inheritance option or a six-digit hex color.');
+      record[key] = normalizeReactionColor(record[key]) || record[key];
+    }
     if (record.icon !== undefined && record.icon !== 'users' && getReaction(record.icon)?.type !== 'icon') throw validationError('Choose a team icon from the icon catalog. Emojis are not supported.');
     for (const key of ['color', 'icon_color']) if (record[key] !== undefined) {
       if (typeof record[key] !== 'string' || normalizeReactionColor(record[key]) === undefined) throw validationError('Use a six-digit hex color, or reset to the theme default.');

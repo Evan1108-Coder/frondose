@@ -6,10 +6,15 @@ import { dateLabel, download, relative, val } from "../lib/model.js";
 import { documentFilename, MILESTONE_STATUSES, ownerDocuments } from "../lib/workspace-spaces.js";
 import { DocumentContent } from "../components/DocumentContent.jsx";
 import { SpaceArchiveDialog, WorkspaceEditor } from "../components/WorkspaceEditor.jsx";
+import { useIconColors } from '../components/IconColors.jsx';
+import { pageTeam } from '../lib/icon-colors.js';
 import { House, Route, FolderKanban, LibraryBig, NotebookPen, Users, Target, Calendar, MessageSquareText, Activity, Flag } from '../components/icons.jsx';
 const TAB_ICONS = { overview: House, routes: Route, projects: FolderKanban, resources: LibraryBig, documents: NotebookPen, people: Users, strategy: Target, timeline: Calendar, chats: MessageSquareText, activity: Activity, milestones: Flag };
 
 export function SpaceTabs({ tabs, value, onChange, label }) {
+  const { page, data } = useApp();
+  const { colorsFor, editColors } = useIconColors();
+  const team = pageTeam(page, data);
   const ref = useRef(null);
   useEffect(() => {
     const container = ref.current, selected = container?.querySelector('[aria-selected="true"]');
@@ -29,7 +34,14 @@ export function SpaceTabs({ tabs, value, onChange, label }) {
     const current = tabs.findIndex((tab) => tab.id === value);
     const next = event.key === "ArrowRight" ? (current + 1) % tabs.length : event.key === "ArrowLeft" ? (current + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
     if (next !== null) { event.preventDefault(); onChange(tabs[next].id); ref.current?.querySelectorAll('[role="tab"]')[next]?.focus(); }
-  }}>{tabs.map((tab) => { const Icon = TAB_ICONS[tab.id]; return <button key={tab.id} type="button" role="tab" aria-selected={value === tab.id} tabIndex={value === tab.id ? 0 : -1} className={value === tab.id ? "active" : ""} onClick={() => onChange(tab.id)}>{Icon ? <Icon size={16} aria-hidden="true" /> : null}{tab.label}{tab.count ? <span>{tab.count}</span> : null}</button>; })}</div>;
+  }}>{tabs.map((tab) => {
+    const Icon = TAB_ICONS[tab.id];
+    const section = page.view === 'projects' ? ({ overview: 'projects', routes: 'tasks' }[tab.id] || tab.id) : tab.id;
+    const id = `${page.view === 'teams' ? 'team' : 'project'}:${page.id}:${section}`;
+    const colors = colorsFor(id, team);
+    const edit = event => { event.preventDefault(); editColors({ id, team, label: tab.label }); };
+    return <button key={tab.id} type="button" role="tab" aria-selected={value === tab.id} tabIndex={value === tab.id ? 0 : -1} className={value === tab.id ? 'active' : ''} onContextMenu={edit} onClick={event => event.target.closest('.space-tab-color-icon') ? edit(event) : onChange(tab.id)}>{Icon ? <span className="space-tab-color-icon" style={{ color: colors.icon || undefined }} title="Change tab colors"><Icon size={16} aria-hidden="true" /></span> : null}<span className="space-tab-color-label" style={{ color: colors.label || undefined }}>{tab.label}</span>{tab.count ? <span>{tab.count}</span> : null}</button>;
+  })}</div>;
 }
 
 export function DocumentsPanel({ projectId, teamId }) {

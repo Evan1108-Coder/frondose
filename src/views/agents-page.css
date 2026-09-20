@@ -2,7 +2,7 @@
 .agents-page .page-heading { margin-bottom: 28px; }
 .agents-page .page-heading h1 { font-size: 32px; letter-spacing: -.02em; }
 .agents-page .page-heading p { max-width: 640px; font-size: 15px; }
-.agent-identity { flex: 0 0 40px; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 12px; color: var(--secondary); background: var(--surface); }
+.agent-identity { flex: 0 0 40px; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; color: var(--secondary); background: transparent; }
 .agent-identity svg { width: 22px; height: 22px; }
 .agent-identity.compact { flex-basis: 24px; width: 24px; height: 24px; border: 0; background: none; }
 .agent-identity.compact svg { width: 22px; height: 22px; }

@@ -4,6 +4,7 @@ import { teamAppearance } from '../lib/team-appearance.js';
 import { ReactionGlyph } from './ReactionGlyph.jsx';
 import ReactionPicker from './ReactionPicker.jsx';
 import { ColorChoice } from './ColorChoice.jsx';
+import { ColorPolicyChoice } from './ColorPolicyChoice.jsx';
 import { rumboActions } from '../data/useRumbo.js';
 import { useApp, useAsync } from '../ui.jsx';
 import './team-appearance.css';
@@ -27,6 +28,10 @@ export function TeamAppearanceFields({ value, onChange }) {
   return <section className="team-appearance-fields" aria-label="Team appearance"><div className="team-appearance-preview"><button type="button" className="team-icon-button large" aria-label="Choose team icon" onClick={() => setOpen(true)}><TeamIcon team={value} size={32} /></button><div><strong>Team identity</strong><p>Choose a line icon. Team color and icon color are independent.</p></div></div>
     <ColorChoice label="Team color" value={appearance.color} onChange={color => onChange({ color })} />
     <ColorChoice label="Icon color" value={appearance.icon_color} onChange={icon_color => onChange({ icon_color })} />
+    <ColorPolicyChoice label="Team tab icons" value={appearance.tab_icon_color} options={[[ 'team', 'Follow team color (otherwise global)'], ['global', 'Follow global tab icon color']]} onChange={tab_icon_color => onChange({ tab_icon_color })} />
+    <ColorPolicyChoice label="Team tab names" value={appearance.tab_label_color} options={[[ 'global', 'Follow global tab name color'], ['icon', 'Match each tab icon'], ['neutral', 'Theme default (neutral)']]} onChange={tab_label_color => onChange({ tab_label_color })} />
+    <ColorPolicyChoice label="Team empty states" value={appearance.empty_icon_color} options={[[ 'team', 'Follow team color (otherwise global)'], ['global', 'Follow global empty-state color']]} onChange={empty_icon_color => onChange({ empty_icon_color })} />
+    <p>Empty-state illustrations, headings, and descriptions share this color. Individual tab overrides take priority over team settings.</p>
     {open ? createPortal(<ReactionPicker iconsOnly title="Choose team icon" initialColor={appearance.icon_color} selected={[{ id: appearance.icon, color: appearance.icon_color || null }]} onClose={() => setOpen(false)} onSelect={icon => { onChange({ icon: icon.id, icon_color: icon.color || '' }); setOpen(false); }} />, document.body) : null}
   </section>;
 }

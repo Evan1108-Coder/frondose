@@ -1,5 +1,4 @@
 .team-identity-icon { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; vertical-align: middle; }
-.team-identity-icon::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--team-color); right: -3px; bottom: -2px; box-shadow: 0 0 0 2px var(--surface); }
 .team-icon-button { display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; flex-shrink: 0; padding: 7px; color: var(--secondary); }
 .team-icon-button:hover { background: var(--hover); }
 .team-icon-button.large { width: 58px; height: 58px; border: 1px solid var(--border); }
@@ -23,3 +22,32 @@
 .empty-color-preview svg { width: 170px; height: 120px; }
 .project-nav-row > .team-icon-button { padding: 4px; }
 @media (max-width: 600px) { .color-choice { flex-direction: column; gap: 10px; } }
+.icon-color-scope { display: contents; }
+.space-tabs button > .space-tab-color-icon, .space-tabs button > .space-tab-color-label { display: inline-flex; align-items: center; background: none; padding: 0; margin: 0; border-radius: 0; font: inherit; }
+.color-policy-choice > label { display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 14px; }
+.color-policy-choice select { max-width: 100%; border: 1px solid var(--border); padding: 8px; border-radius: 7px; background: var(--surface); color: var(--text); }
+.tab-color-editor { display: grid; gap: 22px; padding: 24px; }
+.tab-color-editor p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.tab-color-preview { display: flex; gap: 14px; align-items: center; padding: 20px; background: var(--hover); border-radius: 10px; }
+.tab-color-preview > span { font-size: 30px; }
+.sidebar-v2 .colorable-nav, .settings-rail nav .colorable-nav { display: flex; align-items: center; gap: 0; padding: 0 5px; min-width: 0; }
+.colorable-nav .nav-color-trigger { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 32px; padding: 4px; border-radius: 5px; color: inherit; }
+.colorable-nav .nav-color-trigger:hover { background: var(--hover); }
+.colorable-nav .nav-color-trigger svg { width: 18px; height: 18px; }
+.colorable-nav .nav-color-link { display: flex; align-items: center; flex: 1; min-width: 0; padding: 5px; gap: 8px; color: inherit; text-align: left; font: inherit; }
+.colorable-nav .nav-color-link > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-rail nav .colorable-nav .nav-color-trigger { width: 28px; padding: 4px; }
+.settings-rail nav .colorable-nav .nav-color-link { width: auto; padding: 5px; }
+.settings-rail nav .colorable-nav.active { color: var(--text); background: var(--selected); }
+.settings-rail nav .colorable-nav:hover { background: var(--hover); }
+.empty-state.rumbo-empty .empty-copy > h2 { color: var(--empty-copy-color, var(--text)); }
+.empty-state.rumbo-empty .empty-copy > p { color: var(--empty-copy-color, var(--muted)); }
+.tab-colors-settings { margin-top: 26px; }
+.tab-colors-settings > input { width: 100%; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; }
+.tab-colors-list { max-height: 320px; overflow: auto; margin-top: 12px; }
+.tab-colors-list > button { display: flex; align-items: center; width: 100%; padding: 10px; gap: 10px; text-align: left; border-radius: 6px; }
+.tab-colors-list > button:hover { background: var(--hover); }
+.tab-colors-list i { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+.tab-colors-list small { margin-left: auto; color: var(--muted); white-space: nowrap; }
+@media (min-width: 801px) { .sidebar.collapsed .colorable-nav .nav-color-link { display: none; } }
+@media (max-width: 600px) { .color-policy-choice > label { align-items: flex-start; flex-direction: column; } .tab-color-editor { padding: 16px; } }

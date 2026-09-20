@@ -44,6 +44,8 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
     const pending = [];
     for (const table of tables) for (const source of data[table] ?? []) {
       const row = normalize(table, source);
+      if (table === 'teams' && source.tab_icon_color === undefined && row.color?.toLowerCase() === '#8b95a5') row.color = '';
+      if (table === 'teams' && row.color === undefined) row.color = '';
       row.id = ids.get(source.id);
       if (table !== 'messages') row.workspace_id = workspaceId;
       for (const field of ['team_id', 'project_id', 'task_id', 'chat_id', 'workflow_status_id']) if (row[field]) row[field] = remap(row[field]);

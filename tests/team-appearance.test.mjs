@@ -4,17 +4,56 @@ import { teamAppearance } from '../src/lib/team-appearance.js';
 import { ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
 import { normalizeDisplayPreferences } from '../src/lib/display-preferences.js';
 import { createChatFollower, nearChatBottom } from '../src/lib/chat-scroll.js';
+import { groupColorDefaults, resolveNavColors, resolveTeamColor, normalizeTabColors, pageTeam } from '../src/lib/icon-colors.js';
 
 test('team identity accepts every bundled line icon but never emoji or arbitrary markup', () => {
   for (const { id } of ICON_REACTIONS) assert.equal(teamAppearance({ icon: id }).icon, id);
   for (const icon of ['users', '😀', 'custom:test', 'emoji:smile', '<svg onload=alert(1)>', undefined]) assert.equal(teamAppearance({ icon }).icon, 'icon:users');
-  assert.deepEqual(teamAppearance({ icon: 'icon:rocket', color: '#FF0000', icon_color: '#00FF00' }), { icon: 'icon:rocket', color: '#ff0000', icon_color: '#00ff00' });
+  assert.deepEqual(teamAppearance({ icon: 'icon:rocket', color: '#FF0000', icon_color: '#00FF00' }), { icon: 'icon:rocket', color: '#ff0000', icon_color: '#00ff00', tab_icon_color: 'team', empty_icon_color: 'team', tab_label_color: 'global' });
   assert.equal(teamAppearance({ color: 'url(x)', icon_color: 'red' }).icon_color, '');
 });
 test('display defaults enable smooth following and sanitize personal icon colors', () => {
-  assert.deepEqual(normalizeDisplayPreferences(), { emptyIconColor: '', smoothChatScroll: true });
-  assert.deepEqual(normalizeDisplayPreferences({ emptyIconColor: '#AABBCC', smoothChatScroll: false }), { emptyIconColor: '#aabbcc', smoothChatScroll: false });
-  assert.deepEqual(normalizeDisplayPreferences({ emptyIconColor: 'url(x)', smoothChatScroll: 'false' }), { emptyIconColor: '', smoothChatScroll: true });
+  const defaults = { emptyIconColor: '', tabIconColor: '', tabLabelColor: 'neutral', tabColors: {}, smoothChatScroll: true };
+  assert.deepEqual(normalizeDisplayPreferences(), defaults);
+  assert.deepEqual(normalizeDisplayPreferences({ emptyIconColor: '#AABBCC', smoothChatScroll: false }), { ...defaults, emptyIconColor: '#aabbcc', smoothChatScroll: false });
+  assert.deepEqual(normalizeDisplayPreferences({ emptyIconColor: 'url(x)', smoothChatScroll: 'false' }), defaults);
+});
+
+test('tab color precedence is explicit, live and independent from label policy', () => {
+  const global = { tabIconColor: '#112233', tabLabelColor: 'neutral' };
+  const team = { color: '#aabbcc', tab_icon_color: 'team', tab_label_color: 'icon' };
+  assert.deepEqual(resolveNavColors(global), { icon: '#112233', label: '' });
+  assert.deepEqual(resolveNavColors(global, team), { icon: '#aabbcc', label: '#aabbcc' });
+  assert.deepEqual(resolveNavColors(global, team, { icon: '#ff0000' }), { icon: '#ff0000', label: '#ff0000' });
+  assert.deepEqual(resolveNavColors(global, team, { icon: 'global', label: '#00ff00' }), { icon: '#112233', label: '#00ff00' });
+  assert.deepEqual(resolveNavColors({ ...global, tabIconColor: '#445566' }, team, { icon: 'global', label: 'global' }), { icon: '#445566', label: '' });
+  assert.equal(resolveNavColors(global, { ...team, tab_label_color: 'neutral' }).label, '');
+  assert.equal(resolveNavColors(global, { ...team, tab_icon_color: 'global' }).icon, '#112233');
+  assert.equal(resolveNavColors(global, { color: '#8b95a5' }).icon, '#112233');
+  assert.equal(resolveNavColors(global, { color: '#8b95a5', tab_icon_color: 'team' }).icon, '#8b95a5');
+});
+test('empty-state color and team page scope are independent from navigation', () => {
+  const team = { id: 't', color: '#aabbcc', empty_icon_color: 'global' };
+  assert.equal(resolveTeamColor(team, 'empty_icon_color', '#123456'), '#123456');
+  assert.equal(resolveTeamColor({ ...team, empty_icon_color: 'team' }, 'empty_icon_color', '#123456'), '#aabbcc');
+  const data = { settings: { theme: 'dark' }, teams: [team], projects: [{ id: 'p', team_id: 't' }], chats: [{ id: 'c', project_id: 'p' }] };
+  for (const page of [{ view: 'teams', id: 't' }, { view: 'projects', id: 'p' }, { view: 'chats', id: 'c' }, { view: 'tasks', projectId: 'p' }, { view: 'settings', id: 'team:t' }]) assert.equal(pageTeam(page, data), team);
+  assert.equal(pageTeam({ view: 'overview' }, data), undefined);
+  assert.equal(pageTeam({ view: 'settings', id: 'appearance' }, data), undefined);
+});
+test('personal tab colors validate every value and keep workspace identities separate', () => {
+  const input = JSON.parse('{"__proto__":{"icon":"#ffffff"},"w1/main:overview":{"icon":"#AABBCC","label":"icon"},"w2/main:overview":{"icon":"url(x)","label":"red"}}');
+  const output = normalizeTabColors(input);
+  assert.equal(Object.hasOwn(output, '__proto__'), false);
+  assert.deepEqual(output['w1/main:overview'], { icon: '#aabbcc', label: 'icon' });
+  assert.deepEqual(output['w2/main:overview'], { icon: 'inherit', label: 'inherit' });
+});
+test('custom-group defaults cascade, but explicit tab choices win', () => {
+  const global = { tabIconColor: '#112233', tabLabelColor: 'neutral' };
+  const group = groupColorDefaults({ icon: '#ff0000', label: 'icon' });
+  assert.deepEqual(resolveNavColors(global, group), { icon: '#ff0000', label: '#ff0000' });
+  assert.deepEqual(resolveNavColors(global, group, { icon: 'global', label: 'neutral' }), { icon: '#112233', label: '' });
+  assert.deepEqual(resolveNavColors(global, groupColorDefaults()), resolveNavColors(global));
 });
 
 function harness(enabled = true) {

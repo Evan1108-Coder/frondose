@@ -32,16 +32,19 @@ test('team icons and independent colors validate and round-trip through workspac
   const created = await request('/api/teams', { method: 'POST', body: { workspace_id: 'ws_personal', name: 'Identity QA', icon: 'icon:rocket', color: '#FF0000', icon_color: '#00FF00' } });
   const team = created.team;
   assert.equal(team.icon, 'icon:rocket'); assert.equal(team.color, '#ff0000'); assert.equal(team.icon_color, '#00ff00');
-  for (const patch of [{ icon: '😀' }, { icon: 'custom:upload' }, { icon: '<svg />' }, { icon_color: 'red' }, { color: 'url(x)' }, { icon_color: null }]) {
+  for (const patch of [{ tab_icon_color: '' }, { empty_icon_color: 'url(x)' }, { tab_label_color: null }, { tab_label_color: 'team' }, { icon: '😀' }, { icon: 'custom:upload' }, { icon: '<svg />' }, { icon_color: 'red' }, { color: 'url(x)' }, { icon_color: null }]) {
     const response = await rawRequest(`/api/teams/${team.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
     assert.equal(response.status, 400, JSON.stringify(patch));
   }
+  await request(`/api/teams/${team.id}`, { method: 'PATCH', body: { tab_icon_color: 'global', empty_icon_color: '#AA00FF', tab_label_color: 'icon' } });
   const archive = await request('/api/export?workspace_id=ws_personal');
   const imported = await request('/api/import', { method: 'POST', body: archive });
   const copy = imported.bootstrap.teams.find(t => t.workspace_id === imported.result.id && t.name === 'Identity QA');
   assert.equal(copy.icon, team.icon); assert.equal(copy.color, team.color); assert.equal(copy.icon_color, team.icon_color);
+  assert.equal(copy.tab_icon_color, 'global'); assert.equal(copy.empty_icon_color, '#aa00ff'); assert.equal(copy.tab_label_color, 'icon');
   const legacy = await request('/api/teams', { method: 'POST', body: { workspace_id: 'ws_personal', name: 'Legacy identity', icon: 'users' } });
   assert.equal(legacy.team.icon_color, '');
+  assert.equal(legacy.team.color, ''); assert.equal(legacy.team.tab_icon_color, 'team'); assert.equal(legacy.team.tab_label_color, 'global');
   const reset = await request(`/api/teams/${team.id}`, { method: 'PATCH', body: { icon_color: '', color: '' } });
   assert.equal(reset.team.icon_color, ''); assert.equal(reset.team.color, '');
 });
@@ -52,11 +55,17 @@ test('an existing database gains icon colors without changing legacy team identi
   try {
     const path = local.dbPath; local.close();
     const db = new DatabaseSync(path);
-    db.exec("ALTER TABLE teams DROP COLUMN icon_color; INSERT INTO teams(id,workspace_id,name,icon,color,created_at,updated_at) VALUES('old-team','ws_personal','Original','users','#aabbcc','2026-09-01','2026-09-01')");
+    db.exec("ALTER TABLE teams DROP COLUMN icon_color; ALTER TABLE teams DROP COLUMN tab_icon_color; ALTER TABLE teams DROP COLUMN empty_icon_color; ALTER TABLE teams DROP COLUMN tab_label_color; INSERT INTO teams(id,workspace_id,name,icon,color,created_at,updated_at) VALUES('old-team','ws_personal','Original','users','#aabbcc','2026-09-01','2026-09-01'),('gray-team','ws_personal','Untouched','users','#8b95a5','2026-09-01','2026-09-01')");
     db.close();
     local = createLocalApi({ dataDir: directory });
     const team = local.snapshot().teams.find(t => t.id === 'old-team');
     assert.equal(team.icon, 'users'); assert.equal(team.color, '#aabbcc'); assert.equal(team.icon_color, '');
+    assert.equal(team.tab_icon_color, 'team');
+    assert.equal(local.snapshot().teams.find(t => t.id === 'gray-team').color, '');
+    local.close();
+    const updated = new DatabaseSync(path); updated.prepare("UPDATE teams SET color='#8b95a5' WHERE id='gray-team'").run(); updated.close();
+    local = createLocalApi({ dataDir: directory });
+    assert.equal(local.snapshot().teams.find(t => t.id === 'gray-team').color, '#8b95a5', 'deliberately chosen gray survives later starts');
   } finally { local.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
