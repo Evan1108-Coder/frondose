@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- Code & reviews offers a searchable light/dark syntax palette catalog and bundled monospace fonts, shared by GitHub and Workbench source/diff previews. Serve font files locally and preserve their licenses; load only fonts actually rendered. Keep legacy preferences valid, explicit reset, and truthful separation from terminal/UI typography. Push verified task-related changes to GitHub and maintain the Rumbo Dev Linear work record as requested.
+
 - Connection detail refinement: primary Connect/Reauthorize (or runner account management) lives at the header’s right, with an honest setup link when blocked. Two large, provider-specific, noninteractive product previews precede Overview; native rendering keeps them sharp and theme-aware. Account scope/access and working settings remain below. Do not use generated mockups as interactive UI or claim the examples are live data.
 
 - My Emojis uses workspace-scoped image uploads in Settings → Emojis (PNG/JPEG/WebP with crop/preview and bounded stored raster data). Reactions reference the saved emoji ID; messages use named shortcodes. Archived emojis remain readable in history but disappear from new selections. No uploaded SVG or external image URLs for custom emojis.

@@ -1,0 +1,834 @@
+[
+  {
+    "id": "andromeeda",
+    "label": "Andromeeda",
+    "tone": "dark",
+    "colors": {
+      "bg": "#23262E",
+      "fg": "#d5ced9",
+      "comment": "#8d8e95",
+      "keyword": "#cd5fef",
+      "string": "#96e072",
+      "number": "#f39c12"
+    }
+  },
+  {
+    "id": "ayu-dark",
+    "label": "Ayu Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#10141c",
+      "fg": "#bfbdb6",
+      "comment": "#77818c",
+      "keyword": "#ff8f40",
+      "string": "#aad94c",
+      "number": "#d2a6ff"
+    }
+  },
+  {
+    "id": "ayu-light",
+    "label": "Ayu Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#fcfcfc",
+      "fg": "#5c6166",
+      "comment": "#707173",
+      "keyword": "#af5d23",
+      "string": "#5e7d00",
+      "number": "#8665a8"
+    }
+  },
+  {
+    "id": "ayu-mirage",
+    "label": "Ayu Mirage",
+    "tone": "dark",
+    "colors": {
+      "bg": "#242936",
+      "fg": "#cccac2",
+      "comment": "#8793a3",
+      "keyword": "#ffa659",
+      "string": "#d5ff80",
+      "number": "#dfbfff"
+    }
+  },
+  {
+    "id": "catppuccin-frappe",
+    "label": "Catppuccin Frappé",
+    "tone": "dark",
+    "colors": {
+      "bg": "#303446",
+      "fg": "#c6d0f5",
+      "comment": "#949cbb",
+      "keyword": "#ca9ee6",
+      "string": "#a6d189",
+      "number": "#ef9f76"
+    }
+  },
+  {
+    "id": "catppuccin-latte",
+    "label": "Catppuccin Latte",
+    "tone": "light",
+    "colors": {
+      "bg": "#eff1f5",
+      "fg": "#4c4f69",
+      "comment": "#696c7d",
+      "keyword": "#8839ef",
+      "string": "#327c21",
+      "number": "#b84908"
+    }
+  },
+  {
+    "id": "catppuccin-macchiato",
+    "label": "Catppuccin Macchiato",
+    "tone": "dark",
+    "colors": {
+      "bg": "#24273a",
+      "fg": "#cad3f5",
+      "comment": "#939ab7",
+      "keyword": "#c6a0f6",
+      "string": "#a6da95",
+      "number": "#f5a97f"
+    }
+  },
+  {
+    "id": "catppuccin-mocha",
+    "label": "Catppuccin Mocha",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1e1e2e",
+      "fg": "#cdd6f4",
+      "comment": "#9399b2",
+      "keyword": "#cba6f7",
+      "string": "#a6e3a1",
+      "number": "#fab387"
+    }
+  },
+  {
+    "id": "dark-plus",
+    "label": "Dark Plus",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1E1E1E",
+      "fg": "#d4d4d4",
+      "comment": "#6a9955",
+      "keyword": "#569cd6",
+      "string": "#ce9178",
+      "number": "#b5cea8"
+    }
+  },
+  {
+    "id": "dracula-soft",
+    "label": "Dracula Theme Soft",
+    "tone": "dark",
+    "colors": {
+      "bg": "#282A36",
+      "fg": "#f6f6f4",
+      "comment": "#8f929c",
+      "keyword": "#f286c4",
+      "string": "#e7ee98",
+      "number": "#bf9eee"
+    }
+  },
+  {
+    "id": "dracula",
+    "label": "Dracula Theme",
+    "tone": "dark",
+    "colors": {
+      "bg": "#282A36",
+      "fg": "#f8f8f2",
+      "comment": "#8592b8",
+      "keyword": "#ff79c6",
+      "string": "#f1fa8c",
+      "number": "#bd93f9"
+    }
+  },
+  {
+    "id": "everforest-dark",
+    "label": "Everforest Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#2d353b",
+      "fg": "#d3c6aa",
+      "comment": "#94a098",
+      "keyword": "#e67e80",
+      "string": "#dbbc7f",
+      "number": "#d699b6"
+    }
+  },
+  {
+    "id": "everforest-light",
+    "label": "Everforest Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#fdf6e3",
+      "fg": "#5c6a72",
+      "comment": "#6b7369",
+      "keyword": "#c64442",
+      "string": "#916800",
+      "number": "#a74f8c"
+    }
+  },
+  {
+    "id": "github-dark-default",
+    "label": "GitHub Dark Default",
+    "tone": "dark",
+    "colors": {
+      "bg": "#0d1117",
+      "fg": "#e6edf3",
+      "comment": "#8b949e",
+      "keyword": "#ff7b72",
+      "string": "#a5d6ff",
+      "number": "#79c0ff"
+    }
+  },
+  {
+    "id": "github-dark-dimmed",
+    "label": "GitHub Dark Dimmed",
+    "tone": "dark",
+    "colors": {
+      "bg": "#22272e",
+      "fg": "#adbac7",
+      "comment": "#848f9b",
+      "keyword": "#f47067",
+      "string": "#96d0ff",
+      "number": "#6cb6ff"
+    }
+  },
+  {
+    "id": "github-dark-high-contrast",
+    "label": "GitHub Dark High Contrast",
+    "tone": "dark",
+    "colors": {
+      "bg": "#0a0c10",
+      "fg": "#f0f3f6",
+      "comment": "#bdc4cc",
+      "keyword": "#ff9492",
+      "string": "#addcff",
+      "number": "#91cbff"
+    }
+  },
+  {
+    "id": "github-dark",
+    "label": "GitHub Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#24292e",
+      "fg": "#e1e4e8",
+      "comment": "#8c939a",
+      "keyword": "#f97583",
+      "string": "#9ecbff",
+      "number": "#79b8ff"
+    }
+  },
+  {
+    "id": "github-light-default",
+    "label": "GitHub Light Default",
+    "tone": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "fg": "#1f2328",
+      "comment": "#6e7781",
+      "keyword": "#cf222e",
+      "string": "#0a3069",
+      "number": "#0550ae"
+    }
+  },
+  {
+    "id": "github-light-high-contrast",
+    "label": "GitHub Light High Contrast",
+    "tone": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "fg": "#0e1116",
+      "comment": "#66707b",
+      "keyword": "#a0111f",
+      "string": "#032563",
+      "number": "#023b95"
+    }
+  },
+  {
+    "id": "github-light",
+    "label": "GitHub Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#fff",
+      "fg": "#24292e",
+      "comment": "#6a737d",
+      "keyword": "#d73a49",
+      "string": "#032f62",
+      "number": "#005cc5"
+    }
+  },
+  {
+    "id": "gruvbox-dark-hard",
+    "label": "Gruvbox Dark Hard",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1d2021",
+      "fg": "#ebdbb2",
+      "comment": "#958677",
+      "keyword": "#fb4934",
+      "string": "#b8bb26",
+      "number": "#d3869b"
+    }
+  },
+  {
+    "id": "gruvbox-dark-medium",
+    "label": "Gruvbox Dark Medium",
+    "tone": "dark",
+    "colors": {
+      "bg": "#282828",
+      "fg": "#ebdbb2",
+      "comment": "#9a8c7e",
+      "keyword": "#fb5743",
+      "string": "#b8bb26",
+      "number": "#d3869b"
+    }
+  },
+  {
+    "id": "gruvbox-dark-soft",
+    "label": "Gruvbox Dark Soft",
+    "tone": "dark",
+    "colors": {
+      "bg": "#32302f",
+      "fg": "#ebdbb2",
+      "comment": "#a29689",
+      "keyword": "#fc6958",
+      "string": "#b8bb26",
+      "number": "#d3869b"
+    }
+  },
+  {
+    "id": "gruvbox-light-hard",
+    "label": "Gruvbox Light Hard",
+    "tone": "light",
+    "colors": {
+      "bg": "#f9f5d7",
+      "fg": "#3c3836",
+      "comment": "#786c60",
+      "keyword": "#9d0006",
+      "string": "#76710e",
+      "number": "#8f3f71"
+    }
+  },
+  {
+    "id": "gruvbox-light-medium",
+    "label": "Gruvbox Light Medium",
+    "tone": "light",
+    "colors": {
+      "bg": "#fbf1c7",
+      "fg": "#3c3836",
+      "comment": "#786c60",
+      "keyword": "#9d0006",
+      "string": "#736e0d",
+      "number": "#8f3f71"
+    }
+  },
+  {
+    "id": "gruvbox-light-soft",
+    "label": "Gruvbox Light Soft",
+    "tone": "light",
+    "colors": {
+      "bg": "#f2e5bc",
+      "fg": "#3c3836",
+      "comment": "#6e6257",
+      "keyword": "#9d0006",
+      "string": "#6d680d",
+      "number": "#8f3f71"
+    }
+  },
+  {
+    "id": "horizon-bright",
+    "label": "Horizon Bright",
+    "tone": "light",
+    "colors": {
+      "bg": "#FDF0ED",
+      "fg": "#222222",
+      "comment": "#726d6c",
+      "keyword": "#8a31b9",
+      "string": "#222222",
+      "number": "#d13017"
+    }
+  },
+  {
+    "id": "horizon",
+    "label": "Horizon",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1C1E26",
+      "fg": "#eeeeee",
+      "comment": "#86878b",
+      "keyword": "#a96ec9",
+      "string": "#eeeeee",
+      "number": "#db887a"
+    }
+  },
+  {
+    "id": "houston",
+    "label": "Houston",
+    "tone": "dark",
+    "colors": {
+      "bg": "#17191e",
+      "fg": "#eef0f9",
+      "comment": "#909299",
+      "keyword": "#54b9ff",
+      "string": "#ffd493",
+      "number": "#ffd493"
+    }
+  },
+  {
+    "id": "kanagawa-dragon",
+    "label": "Kanagawa Dragon",
+    "tone": "dark",
+    "colors": {
+      "bg": "#181616",
+      "fg": "#c5c9c5",
+      "comment": "#7a837a",
+      "keyword": "#8992a7",
+      "string": "#8a9a7b",
+      "number": "#a292a3"
+    }
+  },
+  {
+    "id": "kanagawa-lotus",
+    "label": "Kanagawa Lotus",
+    "tone": "light",
+    "colors": {
+      "bg": "#F2ECBC",
+      "fg": "#545464",
+      "comment": "#6b695c",
+      "keyword": "#624c83",
+      "string": "#596e3e",
+      "number": "#9d506a"
+    }
+  },
+  {
+    "id": "kanagawa-wave",
+    "label": "Kanagawa Wave",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1F1F28",
+      "fg": "#dcd7ba",
+      "comment": "#8b8a83",
+      "keyword": "#957fb8",
+      "string": "#98bb6c",
+      "number": "#d27e99"
+    }
+  },
+  {
+    "id": "laserwave",
+    "label": "LaserWave",
+    "tone": "dark",
+    "colors": {
+      "bg": "#27212e",
+      "fg": "#ffffff",
+      "comment": "#91889b",
+      "keyword": "#ffffff",
+      "string": "#b4dce7",
+      "number": "#b381c5"
+    }
+  },
+  {
+    "id": "light-plus",
+    "label": "Light Plus",
+    "tone": "light",
+    "colors": {
+      "bg": "#FFFFFF",
+      "fg": "#000000",
+      "comment": "#008000",
+      "keyword": "#0000ff",
+      "string": "#a31515",
+      "number": "#098658"
+    }
+  },
+  {
+    "id": "material-theme-darker",
+    "label": "Material Theme Darker",
+    "tone": "dark",
+    "colors": {
+      "bg": "#212121",
+      "fg": "#eeffff",
+      "comment": "#8c8c8c",
+      "keyword": "#89ddff",
+      "string": "#c3e88d",
+      "number": "#f78c6c"
+    }
+  },
+  {
+    "id": "material-theme-lighter",
+    "label": "Material Theme Lighter",
+    "tone": "light",
+    "colors": {
+      "bg": "#FAFAFA",
+      "fg": "#65737a",
+      "comment": "#65737a",
+      "keyword": "#297d83",
+      "string": "#627c3c",
+      "number": "#b95235"
+    }
+  },
+  {
+    "id": "material-theme-ocean",
+    "label": "Material Theme Ocean",
+    "tone": "dark",
+    "colors": {
+      "bg": "#0F111A",
+      "fg": "#babed8",
+      "comment": "#797d8a",
+      "keyword": "#89ddff",
+      "string": "#c3e88d",
+      "number": "#f78c6c"
+    }
+  },
+  {
+    "id": "material-theme-palenight",
+    "label": "Material Theme Palenight",
+    "tone": "dark",
+    "colors": {
+      "bg": "#292D3E",
+      "fg": "#babed8",
+      "comment": "#9196b2",
+      "keyword": "#89ddff",
+      "string": "#c3e88d",
+      "number": "#f78c6c"
+    }
+  },
+  {
+    "id": "material-theme",
+    "label": "Material Theme",
+    "tone": "dark",
+    "colors": {
+      "bg": "#263238",
+      "fg": "#eeffff",
+      "comment": "#8c9da5",
+      "keyword": "#89ddff",
+      "string": "#c3e88d",
+      "number": "#f78c6c"
+    }
+  },
+  {
+    "id": "min-dark",
+    "label": "Min Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1f1f1f",
+      "fg": "#b392f0",
+      "comment": "#818890",
+      "keyword": "#f97583",
+      "string": "#9db1c5",
+      "number": "#f8f8f8"
+    }
+  },
+  {
+    "id": "min-light",
+    "label": "Min Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "fg": "#212121",
+      "comment": "#747576",
+      "keyword": "#d32f2f",
+      "string": "#2b5581",
+      "number": "#1976d2"
+    }
+  },
+  {
+    "id": "monokai",
+    "label": "Monokai",
+    "tone": "dark",
+    "colors": {
+      "bg": "#272822",
+      "fg": "#f8f8f2",
+      "comment": "#94907d",
+      "keyword": "#fa4c8b",
+      "string": "#e6db74",
+      "number": "#ae81ff"
+    }
+  },
+  {
+    "id": "night-owl-light",
+    "label": "Night Owl Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#FBFBFB",
+      "fg": "#403f53",
+      "comment": "#6e7380",
+      "keyword": "#994cc3",
+      "string": "#4470cb",
+      "number": "#aa0982"
+    }
+  },
+  {
+    "id": "night-owl",
+    "label": "Night Owl",
+    "tone": "dark",
+    "colors": {
+      "bg": "#011627",
+      "fg": "#d6deeb",
+      "comment": "#738585",
+      "keyword": "#c792ea",
+      "string": "#ecc48d",
+      "number": "#f78c6c"
+    }
+  },
+  {
+    "id": "nord",
+    "label": "Nord",
+    "tone": "dark",
+    "colors": {
+      "bg": "#2e3440",
+      "fg": "#d8dee9",
+      "comment": "#949daf",
+      "keyword": "#81a1c1",
+      "string": "#a3be8c",
+      "number": "#b691af"
+    }
+  },
+  {
+    "id": "one-dark-pro",
+    "label": "One Dark Pro",
+    "tone": "dark",
+    "colors": {
+      "bg": "#282c34",
+      "fg": "#abb2bf",
+      "comment": "#8f939c",
+      "keyword": "#c678dd",
+      "string": "#98c379",
+      "number": "#d19a66"
+    }
+  },
+  {
+    "id": "one-light",
+    "label": "One Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#FAFAFA",
+      "fg": "#383a42",
+      "comment": "#707175",
+      "keyword": "#a626a4",
+      "string": "#40813f",
+      "number": "#986801"
+    }
+  },
+  {
+    "id": "plastic",
+    "label": "Plastic",
+    "tone": "dark",
+    "colors": {
+      "bg": "#21252B",
+      "fg": "#a9b2c3",
+      "comment": "#878c95",
+      "keyword": "#e06c75",
+      "string": "#98c379",
+      "number": "#56b6c2"
+    }
+  },
+  {
+    "id": "poimandres",
+    "label": "Poimandres",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1b1e28",
+      "fg": "#a6accd",
+      "comment": "#83879b",
+      "keyword": "#a6accd",
+      "string": "#5de4c7",
+      "number": "#5de4c7"
+    }
+  },
+  {
+    "id": "red",
+    "label": "Red",
+    "tone": "dark",
+    "colors": {
+      "bg": "#390000",
+      "fg": "#f8f8f8",
+      "comment": "#e7c0c0",
+      "keyword": "#f23737",
+      "string": "#cd8d8d",
+      "number": "#b07070"
+    }
+  },
+  {
+    "id": "rose-pine-dawn",
+    "label": "Rosé Pine Dawn",
+    "tone": "light",
+    "colors": {
+      "bg": "#faf4ed",
+      "fg": "#575279",
+      "comment": "#726e7c",
+      "keyword": "#286983",
+      "string": "#986622",
+      "number": "#9c5e5b"
+    }
+  },
+  {
+    "id": "rose-pine-moon",
+    "label": "Rosé Pine Moon",
+    "tone": "dark",
+    "colors": {
+      "bg": "#232136",
+      "fg": "#e0def4",
+      "comment": "#8b889e",
+      "keyword": "#4895b4",
+      "string": "#f6c177",
+      "number": "#ea9a97"
+    }
+  },
+  {
+    "id": "rose-pine",
+    "label": "Rosé Pine",
+    "tone": "dark",
+    "colors": {
+      "bg": "#191724",
+      "fg": "#e0def4",
+      "comment": "#848098",
+      "keyword": "#5089a0",
+      "string": "#f6c177",
+      "number": "#ebbcba"
+    }
+  },
+  {
+    "id": "slack-dark",
+    "label": "Slack Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#222222",
+      "fg": "#e6e6e6",
+      "comment": "#6a9955",
+      "keyword": "#569cd6",
+      "string": "#ce9178",
+      "number": "#b5cea8"
+    }
+  },
+  {
+    "id": "slack-ochin",
+    "label": "Slack Ochin",
+    "tone": "light",
+    "colors": {
+      "bg": "#FFF",
+      "fg": "#000000",
+      "comment": "#357b42",
+      "keyword": "#7b30d0",
+      "string": "#a44185",
+      "number": "#174781"
+    }
+  },
+  {
+    "id": "snazzy-light",
+    "label": "Snazzy Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#FAFBFC",
+      "fg": "#565869",
+      "comment": "#70737e",
+      "keyword": "#b94d8c",
+      "string": "#916d00",
+      "number": "#c64743"
+    }
+  },
+  {
+    "id": "solarized-dark",
+    "label": "Solarized Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#002B36",
+      "fg": "#839496",
+      "comment": "#829298",
+      "keyword": "#859900",
+      "string": "#2aa198",
+      "number": "#dd639e"
+    }
+  },
+  {
+    "id": "solarized-light",
+    "label": "Solarized Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#FDF6E3",
+      "fg": "#5d7279",
+      "comment": "#677171",
+      "keyword": "#677700",
+      "string": "#217d76",
+      "number": "#c8337c"
+    }
+  },
+  {
+    "id": "synthwave-84",
+    "label": "Synthwave '84",
+    "tone": "dark",
+    "colors": {
+      "bg": "#262335",
+      "fg": "#eeeeee",
+      "comment": "#848bbd",
+      "keyword": "#fede5d",
+      "string": "#eeeeee",
+      "number": "#f97e72"
+    }
+  },
+  {
+    "id": "tokyo-night",
+    "label": "Tokyo Night",
+    "tone": "dark",
+    "colors": {
+      "bg": "#1a1b26",
+      "fg": "#a9b1d6",
+      "comment": "#7d839e",
+      "keyword": "#bb9af7",
+      "string": "#9ece6a",
+      "number": "#ff9e64"
+    }
+  },
+  {
+    "id": "vesper",
+    "label": "Vesper",
+    "tone": "dark",
+    "colors": {
+      "bg": "#101010",
+      "fg": "#ffffff",
+      "comment": "#7d7d7d",
+      "keyword": "#a0a0a0",
+      "string": "#99ffe4",
+      "number": "#ffc799"
+    }
+  },
+  {
+    "id": "vitesse-black",
+    "label": "Vitesse Black",
+    "tone": "dark",
+    "colors": {
+      "bg": "#000",
+      "fg": "#afaca2",
+      "comment": "#6d7a6d",
+      "keyword": "#4d9375",
+      "string": "#c98a7d",
+      "number": "#4c9a91"
+    }
+  },
+  {
+    "id": "vitesse-dark",
+    "label": "Vitesse Dark",
+    "tone": "dark",
+    "colors": {
+      "bg": "#121212",
+      "fg": "#cecabe",
+      "comment": "#738073",
+      "keyword": "#4d9375",
+      "string": "#c98a7d",
+      "number": "#4c9a91"
+    }
+  },
+  {
+    "id": "vitesse-light",
+    "label": "Vitesse Light",
+    "tone": "light",
+    "colors": {
+      "bg": "#ffffff",
+      "fg": "#393a34",
+      "comment": "#707970",
+      "keyword": "#1e754f",
+      "string": "#a76152",
+      "number": "#2f798a"
+    }
+  }
+]

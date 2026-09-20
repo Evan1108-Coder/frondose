@@ -13,4 +13,14 @@
 .cv-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-width: 640px; }.cv-pair > .cv-line { min-width: 0; overflow: auto; }.cv-pair > :first-child { border-right: 1px solid var(--border); }
 .cv-limit { margin: 0; padding: 12px; color: var(--muted); border-top: 1px solid var(--border); font-size: 12px; }
 .code-settings-preview { margin: 24px 0; }.code-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.code-catalog { margin-bottom: 20px; }
+.code-catalog-heading h2 { margin: 0 0 8px; font-size: 16px; }
+.code-catalog-heading p, .code-catalog-column small, .code-catalog-notes { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.code-catalog-column { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.code-palette-swatches { display: flex; gap: 5px; }
+.code-palette-swatches span { width: 24px; height: 24px; border: 1px solid var(--border); border-radius: 6px; }
+.code-font-specimen { padding: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: auto; font-size: 13px; }
+.code-font-specimen span { display: block; margin-bottom: 8px; color: var(--muted); font: 12px var(--font-sans, sans-serif); }
+.code-font-specimen code { font: inherit; white-space: nowrap; }
+.code-catalog-notes { margin: 18px 0 0; }
 .cp-code-file { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 10px 12px; background: transparent; border: 0; border-bottom: 1px solid var(--border-soft); color: var(--text); cursor: pointer; }.cp-code-file:hover { background: var(--hover); }.cp-code-file svg { width: 18px; height: 18px; color: var(--muted); }

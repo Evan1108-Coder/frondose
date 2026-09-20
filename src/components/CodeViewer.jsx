@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import { diffRows, splitDiffRows, useCodeAppearance } from '../lib/code-appearance.js';
+import { codeFontFamily } from '../lib/code-fonts.js';
+import { codeThemeStyle } from '../lib/code-themes.js';
+import './code-fonts.css';
 import './code-viewer.css';
 
 const TOKEN = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\/.*$|#.*$|\b(?:const|let|var|function|return|class|import|from|export|async|await|if|else|for|while|new|throw|try|catch|def|in|True|False|None|true|false|null)\b|\b\d+(?:\.\d+)?\b)/g;
@@ -23,7 +26,7 @@ export function CodeViewer({ content = '', diff = false, label = 'Code preview',
       <code>{highlight(text, settings.syntax)}</code>
     </span>;
   }
-  return <div className={`code-viewer ${settings.wrap ? 'cv-wrap' : ''} ${split ? 'cv-split' : ''}`} data-code-theme={settings.theme} style={{ '--code-size': `${settings.fontSize}px`, '--code-height': settings.lineHeight, '--code-tab': settings.tabSize, '--code-font': settings.font === 'system' ? 'ui-monospace, SFMono-Regular, Menlo, monospace' : `${settings.font}, monospace` }}>
+  return <div className={`code-viewer ${settings.wrap ? 'cv-wrap' : ''} ${split ? 'cv-split' : ''}`} data-code-theme={settings.theme} data-code-font={settings.font} style={{ ...codeThemeStyle(settings.theme), '--code-size': `${settings.fontSize}px`, '--code-height': settings.lineHeight, '--code-tab': settings.tabSize, '--code-font': codeFontFamily(settings.font) }}>
     <div className="cv-scroll" role="region" aria-label={label} tabIndex={0}>{displayRows.map((row, index) => split ? <div className="cv-pair" key={index}>{line(row.left, 'left')}{line(row.right, 'right')}</div> : <div key={index}>{line(row)}</div>)}</div>
     {limited ? <p className="cv-limit">Preview limited to 6,000 lines. Open the original file for the complete source.</p> : null}
   </div>;
