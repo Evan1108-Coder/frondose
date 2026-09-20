@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { RESOURCE_TYPES, matchingRoutes } from '../src/lib/settings-catalog.js';
-import { isRecord, validationError } from './validation.mjs';
+import { isRecord, validationError, validateAvatar } from './validation.mjs';
+import { emojiShortcode } from '../src/lib/custom-emojis.js';
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
 const decode = row => row ? { ...row, payload: JSON.parse(row.payload_json), payload_json: undefined } : null;
@@ -38,7 +39,11 @@ export function payloadFor(db, kind, input, workspaceId, { allowArchived = false
   const fields = RESOURCE_TYPES[kind]?.fields;
   if (!fields) throw validationError('Unknown workspace resource.');
   const result = {};
-  for (const key of Object.keys(input)) if (!Object.hasOwn(fields, key) && key !== 'route_id') throw validationError(`Unknown field: ${key}.`);
+  for (const key of Object.keys(input)) if (!Object.hasOwn(fields, key) && key !== 'route_id' && !(kind === 'emoji' && key === 'shortcode')) throw validationError(`Unknown field: ${key}.`);
+  if (kind === 'emoji' && input.shortcode !== undefined) {
+    if (typeof input.shortcode !== 'string' || !/^[a-z0-9_-]{1,160}$/.test(input.shortcode)) throw validationError('Invalid emoji shortcode.');
+    result.shortcode = input.shortcode;
+  }
   for (const [key, field] of Object.entries(fields)) {
     const value = input[key] ?? (field.type === 'refs' ? [] : field.type === 'choice' ? field.options[0] : field.type === 'color' ? '#93949c' : '');
     if (field.type === 'refs') {
@@ -51,6 +56,10 @@ export function payloadFor(db, kind, input, workspaceId, { allowArchived = false
       if (kind === 'queue' && value.length > 1) throw validationError('A work brief supports one project and one agent.');
     } else {
       if (typeof value !== 'string' || value.length > (field.max ?? (field.type === 'textarea' ? 50000 : 500))) throw validationError(`${field.label} is invalid or too long.`);
+      if (field.type === 'image') {
+        if (value.startsWith('data:')) validateAvatar(value);
+        else if (!value || value.length > 24 || /[<>:/]/.test(value)) throw validationError('Upload a PNG, JPEG, or WebP emoji image.');
+      }
       if (field.type === 'choice' && !field.options.includes(value)) throw validationError(`Choose a valid ${field.label.toLowerCase()}.`);
       if (field.type === 'color' && !/^#[\da-f]{6}$/i.test(value)) throw validationError('Choose a six-digit hex color.');
     }
@@ -105,6 +114,13 @@ export async function featureRoute({ db, req, res, path, url, readBody, send, sn
   const name = body.name ?? current?.name;
   if (typeof name !== 'string' || !name.trim() || name.length > 160) throw validationError('Name must be 1–160 characters.');
   const payload = payloadFor(db, kind, body.payload ?? current?.payload ?? {}, workspaceId, { allowArchived: Boolean(body.archived_at) });
+  if (kind === 'emoji') {
+    // Keep old messages stable when the display name changes. Reserve archived codes too.
+    payload.shortcode = current ? emojiShortcode(current).slice(1, -1) : name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+    if (!current && !/[a-z0-9]/.test(payload.shortcode)) throw validationError('Include a letter or number in the emoji name for its shortcode.');
+    const others = db.prepare("SELECT * FROM workspace_items WHERE workspace_id=? AND kind='emoji' AND id<>?").all(workspaceId, itemId ?? '').map(decode);
+    if (others.some(item => emojiShortcode(item) === `:${payload.shortcode}:`)) throw validationError('This emoji shortcode is already in use, including archived emojis. Choose a different name.');
+  }
   if (current?.payload.route_id) payload.route_id = current.payload.route_id;
   const archived = body.archived_at === undefined ? current?.archived_at ?? null : body.archived_at;
   if (archived !== null && (typeof archived !== 'string' || !Number.isFinite(Date.parse(archived)))) throw validationError('Invalid archive date.');

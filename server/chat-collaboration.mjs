@@ -123,8 +123,13 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
     switch (body.action) {
       case 'reaction': {
         messageInChat(db, chat.id, body.message_id);
-        const item = getReaction(body.reaction_id), color = normalizeReactionColor(body.color);
-        if (!item || color === undefined || item.type === 'emoji' && color !== null) throw validationError('Choose a supported reaction and icon color.');
+        let item = getReaction(body.reaction_id);
+        if (typeof body.reaction_id === 'string' && body.reaction_id.startsWith('custom:')) {
+          const row = db.prepare("SELECT id, archived_at FROM workspace_items WHERE id=? AND workspace_id=? AND kind='emoji'").get(body.reaction_id.slice(7), chat.workspace_id);
+          if (row && (!row.archived_at || body.enabled === false)) item = { id: body.reaction_id, type: 'custom' };
+        }
+        const color = normalizeReactionColor(body.color);
+        if (!item || color === undefined || item.type !== 'icon' && color !== null) throw validationError('Choose a supported reaction and icon color.');
         if (typeof body.enabled !== 'boolean') throw validationError('Choose whether this reaction is selected.');
         const reaction = { id: item.id, color, created_at: stamp() };
         const values = (current.reactions[body.message_id] || []).filter(value => reactionKey(value) !== reactionKey(reaction));

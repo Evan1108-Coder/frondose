@@ -33,6 +33,15 @@ async function fixture(fn) {
   finally { db.close(); await rm(dir, { recursive: true, force: true }); }
 }
 
+test('custom reactions enforce workspace ownership, archival and tint restrictions', () => fixture(async ({ db, call, now }) => {
+  for (const [id, workspace, archived] of [['mine', 'ws', null], ['foreign-emoji', 'other', null], ['old', 'ws', now]]) db.prepare('INSERT INTO workspace_items VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, workspace, 'emoji', id, JSON.stringify({ symbol: '🎉' }), 0, 1, archived, now, now);
+  await call('reaction', { message_id: 'm1', reaction_id: 'custom:mine', enabled: true });
+  assert.match(db.prepare('SELECT payload_json FROM chat_collaboration WHERE chat_id=?').get('c').payload_json, /custom:mine/);
+  for (const reaction_id of ['custom:foreign-emoji', 'custom:missing', 'custom:old']) await assert.rejects(call('reaction', { message_id: 'm1', reaction_id, enabled: true }));
+  await assert.rejects(call('reaction', { message_id: 'm1', reaction_id: 'custom:mine', color: '#ffffff', enabled: true }));
+  await call('reaction', { message_id: 'm1', reaction_id: 'custom:mine', enabled: false });
+}));
+
 test('bookmarks persist, reject stale changes, and cannot reference another chat', async () => fixture(async ({ db, call }) => {
   await call('bookmark', { message_id: 'm1', enabled: true });
   assert.deepEqual(chatCollaborationSnapshot(db).chat_collaboration[0].bookmarks, ['m1']);

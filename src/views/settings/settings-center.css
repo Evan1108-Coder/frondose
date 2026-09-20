@@ -12,17 +12,7 @@
 .settings-search svg { width: 16px; color: var(--muted); }
 .settings-search input { border: 0; background: transparent; padding: 8px 0; min-width: 0; width: 100%; font-size: 13px; }
 .settings-rail nav { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; overscroll-behavior: contain; scrollbar-width: thin; }
-.settings-rail nav {
-  --settings-top-fade: 0px;
-  scroll-padding-top: 28px;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--settings-top-fade));
-  mask-image: linear-gradient(to bottom, transparent, #000 var(--settings-top-fade));
-}
-/* Keep focused controls fully legible, including when scrolling with a keyboard. */
-.settings-rail nav:focus-within { -webkit-mask-image: none; mask-image: none; }
-@media (forced-colors: active) {
-  .settings-rail nav { -webkit-mask-image: none; mask-image: none; }
-}
+.settings-rail nav { scroll-padding-top: 28px; }
 .settings-rail nav section { margin: 24px 0 0; }
 .settings-rail nav h2 { font-size: 13px; line-height: 22px; font-weight: 450; color: var(--muted); margin: 0 10px 5px; }
 .settings-rail nav button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 5px 10px; margin: 0; color: var(--muted); font-size: 14px; line-height: 22px; font-weight: 450; border: 0; border-radius: 6px; background: transparent; text-align: left; transition: background 120ms, color 120ms; }

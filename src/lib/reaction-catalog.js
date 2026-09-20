@@ -53,7 +53,7 @@ export const EMOJI_REACTIONS = Object.freeze(Object.entries(EMOJI_GROUPS).flatMa
 })));
 export const REACTION_CATALOG = [...ICON_REACTIONS, ...EMOJI_REACTIONS];
 const catalog = new Map(REACTION_CATALOG.map(item => [item.id, item]));
-export function getReaction(id) { return catalog.get(id); }
+export function getReaction(id, custom = []) { return catalog.get(id) ?? custom.find(item => item.id === id); }
 export const REACTION_COLORS = Object.freeze([
   ['Default', null], ['Slate', '#94a3b8'], ['Indigo', '#818cf8'], ['Cyan', '#22d3ee'], ['Green', '#4ade80'], ['Yellow', '#facc15'], ['Orange', '#fb923c'], ['Pink', '#f472b6'], ['Red', '#f87171'],
 ].map(([name, value]) => ({ name, value })));

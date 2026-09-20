@@ -36,8 +36,14 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
       const id = messageId(oldId), seen = new Set();
       reactions[id] = list(values, 24).map(value => {
         if (!isRecord(value)) throw error('invalid reaction.');
-        const item = getReaction(value.id), color = normalizeReactionColor(value.color);
-        if (!item || color === undefined || item.type === 'emoji' && color !== null) throw error('unknown reaction or invalid icon color.');
+        let item = getReaction(value.id);
+        if (typeof value.id === 'string' && value.id.startsWith('custom:')) {
+          const original = source('workspace_items', value.id.slice(7), true);
+          if (original.kind !== 'emoji') throw error('custom reaction must reference an emoji.');
+          item = { id: `custom:${ids.get(original.id)}`, type: 'custom' };
+        }
+        const color = normalizeReactionColor(value.color);
+        if (!item || color === undefined || item.type !== 'icon' && color !== null) throw error('unknown reaction or invalid icon color.');
         const result = { id: item.id, color, created_at: timestamp(value.created_at) || stamp };
         const key = reactionKey(result); if (seen.has(key)) throw error('duplicate reaction.'); seen.add(key); return result;
       });

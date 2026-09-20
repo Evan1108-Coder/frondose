@@ -4,7 +4,8 @@ import { rumboActions, refreshRumbo } from '../data/useRumbo.js';
 import { apiRequest } from '../data/api.js';
 import { Button, Dialog, Empty, ErrorMessage, Field, IconButton, ProviderIcon, SearchField, Select, Toggle, useApp } from '../ui.jsx';
 import { UiIcon, PinOff, Check, Copy } from '../components/icons.jsx';
-import { reactionKey } from '../lib/reaction-catalog.js';
+import { customEmojis } from '../lib/custom-emojis.js';
+import { getReaction, reactionKey } from '../lib/reaction-catalog.js';
 import { Form } from '../components/Form.jsx';
 import { ChatMessage, ChatRunStatus } from '../components/ChatMessage.jsx';
 import { AgentMemoryPanel } from '../components/AgentMemoryPanel.jsx';
@@ -101,6 +102,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const [searchOpen, setSearchOpen] = useState(false), [search, setSearch] = useState(''), [atBottom, setAtBottom] = useState(true), [retrying, setRetrying] = useState(null);
   const [threadId, setThreadId] = useState(null), [bookmarksOnly, setBookmarksOnly] = useState(false), [messageOptions, setMessageOptions] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false), [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [emojiPicker, setEmojiPicker] = useState(false);
   const [reactionMessage, setReactionMessage] = useState(null), [reactionPending, setReactionPending] = useState(null), [reactionError, setReactionError] = useState(null);
   const reacting = useRef(false);
   const [composeDialog, setComposeDialog] = useState(null), [actionTitle, setActionTitle] = useState(''), [destination, setDestination] = useState('');
@@ -420,6 +422,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
           <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider)).canStartLive ? '' : ' · Not ready'}</option>)}</Select>
           {agent ? <Select aria-label="Agent access" value={composer.permission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
+          <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton>
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
           <IconButton label="Select context sources" onClick={() => setContextOpen(true)}><BookOpen /></IconButton>
           <IconButton label="Save follow-up draft without sending" disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={queueDraft}><Clock /></IconButton>
@@ -460,6 +463,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
       <Button icon={GitBranch} onClick={() => { edit('task', null, { title: messageOptions.content.slice(0, 90), description: `${messageOptions.content}\n\nSource: ${messageLink(chat.id, messageOptions.id)}`, project_id: project?.id }); setMessageOptions(null); }}>Create route from message</Button>
       <Button icon={BookOpen} onClick={() => { edit('memory', null, { title: `From ${chat.title}`, content: `${messageOptions.content}\n\nSource: ${messageLink(chat.id, messageOptions.id)}`, project_id: project?.id }); setMessageOptions(null); }}>Save message to memory</Button>
     </div></Dialog> : null}
+    {emojiPicker ? <Suspense fallback={null}><ReactionPicker emojiOnly title="Insert emoji" onClose={() => setEmojiPicker(false)} onSelect={value => { const item = getReaction(value.id, customEmojis(data.workspace_items, chat.workspace_id)); if (!item) return; const start = inputRef.current?.selectionStart ?? composer.text.length, end = inputRef.current?.selectionEnd ?? start; const text = item.shortcode ?? item.glyph; change({ text: composer.text.slice(0, start) + text + composer.text.slice(end) }); setEmojiPicker(false); requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(start + text.length, start + text.length); }); }} /></Suspense> : null}
     {reactionMessage ? <Suspense fallback={<Dialog title="Loading reactions" onClose={() => setReactionMessage(null)}><div className="dialog-body">Preparing the icon and emoji library…</div></Dialog>}><ReactionPicker onClose={() => setReactionMessage(null)} onSelect={reaction => reactTo(reactionMessage, reaction)} selected={messageReactions(reactionMessage.id)} busy={Boolean(reactionPending) || actionBusy} error={reactionError} /></Suspense> : null}
     {composeDialog && composeDialog.type !== 'drafts' ? <Dialog title={composeDialog.type === 'branch' ? 'Branch conversation' : composeDialog.type === 'move' ? 'Move conversation' : composeDialog.type === 'output' ? 'Create output' : 'Create project document'} subtitle={composeDialog.type === 'branch' ? 'History through this message becomes reference notes in a new chat. The original stays unchanged. Provider sessions and running work are not resumed or copied.' : composeDialog.type === 'move' ? 'The old Route link is removed. Future sends use the destination project’s context. Existing messages, attachments, and snapshots stay in the history.' : 'Preserve this message as a reusable result with a link to its source.'} onClose={() => { if (!actionBusy) setComposeDialog(null); }}><Form onSubmit={submitAction}><div className="dialog-body chat-action-form"><ErrorMessage error={collaborationError} />
       {composeDialog.type !== 'move' ? <Field label="Title"><input required maxLength={160} value={actionTitle} onChange={event => setActionTitle(event.target.value)} autoFocus /></Field> : null}

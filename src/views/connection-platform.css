@@ -73,11 +73,52 @@
 .cp-detail-page .cp-detail-heading p { max-width: 680px; font-size: 15px; line-height: 1.65; }
 .cp-detail-page .cp-pill { display: inline-flex; margin-top: 14px; padding: 4px 9px; border-radius: 6px; white-space: normal; line-height: 1.5; }
 .cp-overview { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
-.cp-overview-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 24px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 500; }
+.cp-detail-heading > .cp-header-action { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; padding-top: 3px; max-width: 220px; }
+.cp-detail-identity { min-width: 0; }
+.cp-header-action > .button { min-height: 42px; white-space: nowrap; }
+.cp-setup-link { border: 0; background: none; padding: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: 11px; line-height: 1.6; text-align: right; }
+.cp-overview-bar { display: flex; align-items: center; gap: 48px; padding: 24px 24px 0; font-size: 13px; font-weight: 500; }
+.cp-overview-bar > div { display: grid; gap: 8px; }
+.cp-overview-bar small { text-transform: uppercase; color: var(--muted); letter-spacing: .06em; font-size: 10px; }
 .cp-overview-bar a { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; }
 .cp-overview-bar svg { width: 15px; height: 15px; }
 .cp-workflows { margin: 0; padding: 24px 24px 0; }
 .cp-workflow-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.cp-preview { min-width: 0; border-radius: 9px; padding: 20px 16px 12px; background: var(--hover); border: 1px solid var(--border); }
+.cp-preview-window { min-height: 270px; border: 1px solid var(--border); background: var(--bg); border-radius: 7px; box-shadow: 0 8px 22px #00000012; overflow: hidden; }
+.cp-preview-chrome { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding: 10px 12px; font-size: 10px; font-weight: 550; }
+.cp-preview-chrome .service-logo { width: 17px; height: 17px; flex: 0 0 17px; }
+.cp-preview-chrome .service-logo img { width: 100%; height: 100%; object-fit: contain; }
+.cp-preview-chrome small { margin-left: auto; color: var(--muted); font-size: 9px; }
+.cp-preview-content { padding: 16px 14px; }
+.cp-preview-title { font-size: 13px; font-weight: 600; margin-bottom: 15px; line-height: 1.5; }
+.cp-preview-lines { display: grid; gap: 0; font-size: 11px; color: var(--muted); }
+.cp-preview-lines > span { padding: 9px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; line-height: 1.5; }
+.cp-preview-lines svg { width: 13px; height: 13px; flex: 0 0 13px; }
+.cp-preview-caption { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 13px 0 0; }
+.cp-preview-code-lines { font-size: 10px; line-height: 2; overflow-wrap: anywhere; }
+.cp-preview-code-lines > div { display: flex; gap: 12px; }
+.cp-preview-code-lines span { color: var(--muted); width: 12px; flex-shrink: 0; }
+.cp-preview-code-lines code { white-space: pre-wrap; color: var(--accent); }
+.cp-preview-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.cp-preview-table th, .cp-preview-table td { padding: 11px 7px; border: 1px solid var(--border); text-align: left; }
+.cp-preview-table th { background: var(--surface); font-weight: 550; }
+.cp-preview-slide { padding: 28px 17px; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 4px; margin-top: 24px; }
+.cp-preview-slide strong { font-size: 19px; letter-spacing: -.4px; }
+.cp-preview-slide p { font-size: 10px; color: var(--muted); margin: 14px 0; }
+.cp-preview-slide small { color: var(--muted); font-size: 9px; }
+.cp-preview-board { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 10px 4px; }
+.cp-preview-board span { padding: 18px 10px; border: 1px solid var(--border); background: var(--surface); font-size: 11px; line-height: 1.5; box-shadow: 2px 3px 0 var(--border); }
+.cp-preview-design { display: flex; gap: 8px; height: 45px; margin-bottom: 10px; }
+.cp-preview-design span { flex: 1; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+.cp-preview-design span:first-child { border-top: 4px solid var(--accent); }
+.cp-preview-chat > div { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0; padding: 9px; border-radius: 5px; background: var(--surface); }
+.cp-preview-chat svg { flex: 0 0 13px; height: 13px; color: var(--muted); margin-top: 2px; }
+.cp-preview-chat p { font-size: 11px; line-height: 1.6; margin: 0; }
+.cp-preview-workflow { list-style: none; margin: 0; padding: 0; font-size: 11px; }
+.cp-preview-workflow li { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.cp-preview-workflow span { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--accent); }
+@media (max-width: 1100px) { .cp-detail-page .cp-detail-heading { display: grid; grid-template-columns: 68px minmax(0, 1fr); } .cp-detail-heading > .cp-header-action { grid-column: 2; max-width: none; align-items: flex-start; } }
 .cp-workflow { position: relative; min-width: 0; padding: 22px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); }
 .cp-workflow-source { display: flex; align-items: center; gap: 12px; }
 .cp-workflow-source .service-logo { width: 34px; height: 34px; flex-shrink: 0; border-radius: 7px; padding: 5px; background: white; border: 1px solid #e3e4e5; }
@@ -129,7 +170,7 @@
   .cp-workflow-grid { grid-template-columns: 1fr; }
   .cp-workflow { padding: 18px; }
   .cp-workflow-destination { margin-left: 66px; }
-  .cp-detail-page .cp-detail-heading { gap: 16px; }
+  .cp-detail-page .cp-detail-heading { gap: 16px; grid-template-columns: 52px minmax(0, 1fr); }
   .cp-detail-page .cp-detail-heading > .service-logo { width: 52px; height: 52px; flex-basis: 52px; padding: 8px; }
   .cp-detail-page .cp-detail-heading h1 { font-size: 26px; }
   .cp-overview-bar, .cp-overview-copy, .cp-account-panel, .cp-settings-content, .cp-runner-settings > div { padding: 18px; }

@@ -1,0 +1,12 @@
+/* Mask existing surfaces, so fades match every theme without overlay hit targets. */
+[data-scroll-fade] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--scroll-fade-top), #000 calc(100% - var(--scroll-fade-bottom)), transparent), linear-gradient(to right, transparent, #000 var(--scroll-fade-left), #000 calc(100% - var(--scroll-fade-right)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--scroll-fade-top), #000 calc(100% - var(--scroll-fade-bottom)), transparent), linear-gradient(to right, transparent, #000 var(--scroll-fade-left), #000 calc(100% - var(--scroll-fade-right)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+/* Never dim a focused editor, control, or its focus ring. */
+[data-scroll-fade]:focus-visible, [data-scroll-fade]:has(:focus-visible) { -webkit-mask-image: none; mask-image: none; }
+@media (forced-colors: active) {
+  [data-scroll-fade] { -webkit-mask-image: none; mask-image: none; }
+}

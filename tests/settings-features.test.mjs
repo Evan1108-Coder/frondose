@@ -34,7 +34,7 @@ test('settings catalog has unique pages, typed resource editors, and two week st
 });
 test('all workspace resource types persist, revise, archive and restore without provider calls', async () => fixture(async ({ item, call, api }) => {
   for (const [kind, spec] of Object.entries(RESOURCE_TYPES)) {
-    const record = await item(kind, spec.title);
+    const record = await item(kind, spec.title, kind === 'emoji' ? { symbol: '🎉' } : {});
     const revised = (await call(`/workspace-items/${record.id}`, { version: record.version, name: `${record.name} revised` }, 'PATCH')).result;
     assert.equal(revised.version, 2);
     await call(`/workspace-items/${record.id}`, { version: 1, name: 'stale' }, 'PATCH', 409);
@@ -53,6 +53,15 @@ test('custom workflow stages preserve lifecycle semantics and block unsafe remov
   assert.equal(api.snapshot().tasks[0].workflow_status_id, null);
   await call(`/workspace-items/${custom.id}`, { version: 1, archived_at: new Date().toISOString() }, 'PATCH');
   await call('/projects', { workspace_id: workspace.id, name: 'Wrong status', status: 'active', workflow_status_id: custom.id }, 'POST', 400);
+}));
+test('emoji shortcodes remain stable after rename and cannot collide with active or archived codes', async () => fixture(async ({ call, item, workspace }) => {
+  const emoji = await item('emoji', 'Party Time', { symbol: '🎉' });
+  assert.equal(emoji.payload.shortcode, 'party-time');
+  const renamed = (await call(`/workspace-items/${emoji.id}`, { version: emoji.version, name: 'Celebrate' }, 'PATCH')).result;
+  assert.equal(renamed.payload.shortcode, 'party-time');
+  await call('/workspace-items', { workspace_id: workspace.id, kind: 'emoji', name: 'Party-Time', payload: { symbol: '🎈' } }, 'POST', 400);
+  await call(`/workspace-items/${emoji.id}`, { version: renamed.version, archived_at: new Date().toISOString() }, 'PATCH');
+  await call('/workspace-items', { workspace_id: workspace.id, kind: 'emoji', name: 'Party Time', payload: { symbol: '🎈' } }, 'POST', 400);
 }));
 test('labels and resource references reject cross-workspace and invalid kinds', async () => fixture(async ({ call, item, workspace }) => {
   const other = (await call('/workspaces', { name: 'Other' })).workspace;

@@ -4,6 +4,7 @@ import { CONNECTOR_CATALOG } from '../server/connectors/catalog.mjs';
 import { CONNECTION_PRESENTATION, connectionPresentation } from '../src/lib/connection-presentation.js';
 import { DOC_ARTICLES } from '../src/lib/docs-content.js';
 import { serviceBrand } from '../src/lib/service-brands.js';
+import { CONNECTION_PREVIEWS } from '../src/lib/connection-previews.js';
 
 test('every shipped connection has distinct presentation, two workflows, a brand and valid guide', () => {
   const ids = ['codex', 'claude', ...Object.keys(CONNECTOR_CATALOG)];
@@ -17,6 +18,11 @@ test('every shipped connection has distinct presentation, two workflows, a brand
     assert.ok(content.boundary.length > 60, id);
     descriptions.add(content.description);
     assert.equal(content.flows.length, 2, id);
+    assert.equal(CONNECTION_PREVIEWS[id]?.length, 2, `${id} needs two tailored previews`);
+    for (const preview of CONNECTION_PREVIEWS[id]) {
+      assert.ok(preview.kind && preview.title && preview.note);
+      assert.ok(preview.lines.length >= 3);
+    }
     for (const flow of content.flows) for (const key of ['source', 'destination', 'detail', 'icon']) assert.ok(flow[key], `${id}:${key}`);
     assert.ok(serviceBrand(id)?.src, `${id} needs a bundled brand`);
     assert.ok(DOC_ARTICLES.some(article => article.id === (content.guide ?? `connection-${id}`)), `${id} guide`);

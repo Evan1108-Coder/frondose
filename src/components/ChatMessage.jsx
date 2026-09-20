@@ -7,6 +7,7 @@ import { rumboActions } from '../data/useRumbo.js';
 import { useEffect, useRef, useState } from 'react';
 import { Check } from './icons.jsx';
 import { ReactionGlyph } from './ReactionGlyph.jsx';
+import { customEmojis } from '../lib/custom-emojis.js';
 import { getReaction, reactionKey } from '../lib/reaction-catalog.js';
 import { AgentActionReview } from './AgentActionReview.jsx';
 
@@ -70,10 +71,10 @@ export function ChatMessage({ message, chat, project, run, onRetry, retrying, on
       </header>
       {replyMessage ? <button className="chat-reply-reference" onClick={() => onJump?.(replyMessage.id)}><MessageCircle /><span>Reply to {val(replyMessage, 'sender_name')}: {replyMessage.content?.slice(0, 140)}</span></button> : null}
       {message.metadata?.delivery === 'branch_reference' ? <p className="chat-reference-label">Copied reference · no agent was run</p> : null}
-      <DocumentContent content={message.content} />
+      <DocumentContent content={message.content} emojis={customEmojis(data.workspace_items, chat.workspace_id, true)} />
       {reactions.length ? <div className="chat-reactions" role="group" aria-label="Message reactions">{reactions.map(reaction => {
-        const item = getReaction(reaction.id); if (!item) return null;
-        return <button key={reactionKey(reaction)} type="button" aria-label={`Remove ${item.name} reaction${reaction.color ? ` (${reaction.color})` : ''}`} aria-pressed="true" disabled={reactionBusy} onClick={() => onToggleReaction?.(reaction)}><ReactionGlyph id={reaction.id} color={reaction.color} size={17} /><span>1</span></button>;
+        const item = getReaction(reaction.id, customEmojis(data.workspace_items, chat.workspace_id, true)); if (!item) return null;
+        return <button key={reactionKey(reaction)} type="button" aria-label={`Remove ${item.name} reaction${reaction.color ? ` (${reaction.color})` : ''}`} aria-pressed="true" disabled={reactionBusy} onClick={() => onToggleReaction?.(reaction)}><ReactionGlyph item={item} id={reaction.id} color={reaction.color} size={17} /><span>1</span></button>;
       })}<button type="button" className="chat-add-reaction" aria-label="Add another reaction" onClick={onReact}><Plus /></button></div> : null}
       {replyCount || message.metadata?.context_snapshot_id ? <div className="chat-message-footnotes">{replyCount ? <button onClick={onThread}><MessageCircle />{replyCount} {replyCount === 1 ? 'reply' : 'replies'}</button> : null}{message.metadata?.context_snapshot_id ? <button onClick={onContext}><FileText />Inspect selected context</button> : null}</div> : null}
       {message.attachments?.length ? <div className="chat-file-list">{message.attachments.filter(file => file && typeof file.name === 'string').map((file, index) => <div className="chat-file" key={`${file.name}-${index}`}>

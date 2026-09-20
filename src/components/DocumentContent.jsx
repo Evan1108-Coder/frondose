@@ -1,3 +1,4 @@
+import { isEmojiImage } from '../lib/custom-emojis.js';
 import { Fragment } from "react";
 import { safeUrl } from "../lib/model.js";
 import { parsePage, pageHash } from '../lib/navigation.js';
@@ -7,7 +8,7 @@ import { serviceBrand } from '../lib/service-brands.js';
 
 // Deliberately small Markdown subset. React escapes all text; raw HTML and
 // remote images never execute or load as a side effect of reading a document.
-function Inline({ text }) {
+function Inline({ text, emojis = [] }) {
   const tokens = String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|\[[^\]\n]+\]\([^\s)]+\))/g);
   return tokens.map((token, index) => {
     if (token.startsWith("`") && token.endsWith("`")) return <code key={index}>{token.slice(1, -1)}</code>;
@@ -20,11 +21,12 @@ function Inline({ text }) {
       if (pageHash(page.view,page.id).split('?')[0] === base) return <a key={index} href={link[2]}>{link[1]}</a>;
     }
     if (link && safeUrl(link[2])) return <a key={index} href={safeUrl(link[2])} target="_blank" rel="noreferrer noopener">{serviceBrand(null, link[2]) ? <ServiceLogo url={link[2]} className="inline-service-logo" /> : null}{link[1]}</a>;
-    return <Fragment key={index}>{token}</Fragment>;
+    const parts = token.split(/(:[a-z0-9_-]+:)/g);
+    return <Fragment key={index}>{parts.map((part, position) => { const emoji = emojis.find(item => item.shortcode === part); return emoji && isEmojiImage(emoji.glyph) ? <img key={position} src={emoji.glyph} alt={part} title={emoji.name} width="22" height="22" style={{ objectFit: 'contain', verticalAlign: 'middle', display: 'inline-block' }} /> : part; })}</Fragment>;
   });
 }
 
-export function DocumentContent({ content, className = "" }) {
+export function DocumentContent({ content, className = "", emojis = [] }) {
   const lines = String(content ?? "").replaceAll("\r\n", "\n").split("\n");
   const blocks = [];
   let index = 0;
@@ -44,7 +46,7 @@ export function DocumentContent({ content, className = "" }) {
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       const Tag = `h${Math.min(heading[1].length + 1, 6)}`;
-      blocks.push(<Tag key={key}><Inline text={heading[2]} /></Tag>);
+      blocks.push(<Tag key={key}><Inline emojis={emojis} text={heading[2]} /></Tag>);
       index++;
       continue;
     }
@@ -52,7 +54,7 @@ export function DocumentContent({ content, className = "" }) {
     if (/^>\s?/.test(line)) {
       const quote = [];
       while (index < lines.length && /^>\s?/.test(lines[index])) quote.push(lines[index++].replace(/^>\s?/, ""));
-      blocks.push(<blockquote key={key}><Inline text={quote.join("\n")} /></blockquote>);
+      blocks.push(<blockquote key={key}><Inline emojis={emojis} text={quote.join("\n")} /></blockquote>);
       continue;
     }
     const list = line.match(/^\s*(?:([-*+])|(\d+)\.)\s+(.+)$/);
@@ -63,7 +65,7 @@ export function DocumentContent({ content, className = "" }) {
         const item = lines[index].match(/^\s*(?:([-*+])|(\d+)\.)\s+(.+)$/);
         if (!item || Boolean(item[2]) !== ordered) break;
         const check = item[3].match(/^\[([ xX])\]\s+(.+)$/);
-        items.push(<li key={index}>{check ? <><span className="document-task-mark" aria-label={check[1] === " " ? "Unchecked" : "Checked"}>{check[1] === " " ? "☐" : "☑"}</span><Inline text={check[2]} /></> : <Inline text={item[3]} />}</li>);
+        items.push(<li key={index}>{check ? <><span className="document-task-mark" aria-label={check[1] === " " ? "Unchecked" : "Checked"}>{check[1] === " " ? "☐" : "☑"}</span><Inline emojis={emojis} text={check[2]} /></> : <Inline emojis={emojis} text={item[3]} />}</li>);
         index++;
       }
       blocks.push(ordered ? <ol key={key} start={Number(list[2])}>{items}</ol> : <ul key={key}>{items}</ul>);
@@ -72,7 +74,7 @@ export function DocumentContent({ content, className = "" }) {
     const paragraph = [line];
     index++;
     while (index < lines.length && lines[index].trim() && !/^(#{1,6}\s|>\s?|\s*```|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[index])) paragraph.push(lines[index++]);
-    blocks.push(<p key={key}><Inline text={paragraph.join("\n")} /></p>);
+    blocks.push(<p key={key}><Inline emojis={emojis} text={paragraph.join("\n")} /></p>);
   }
   return <div className={`document-content ${className}`}>{blocks}</div>;
 }

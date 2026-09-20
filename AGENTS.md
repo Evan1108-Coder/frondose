@@ -10,6 +10,12 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- Connection detail refinement: primary Connect/Reauthorize (or runner account management) lives at the header’s right, with an honest setup link when blocked. Two large, provider-specific, noninteractive product previews precede Overview; native rendering keeps them sharp and theme-aware. Account scope/access and working settings remain below. Do not use generated mockups as interactive UI or claim the examples are live data.
+
+- My Emojis uses workspace-scoped image uploads in Settings → Emojis (PNG/JPEG/WebP with crop/preview and bounded stored raster data). Reactions reference the saved emoji ID; messages use named shortcodes. Archived emojis remain readable in history but disappear from new selections. No uploaded SVG or external image URLs for custom emojis.
+
+- September 20 universal scroll fades: every overflowing auto/scroll surface uses shared, theme-independent edge fades in both axes, proportional to hidden content. Clear the corresponding fade at a boundary and all masks when content fits. Preserve focus visibility, forced-colors access, nested scrolling, dynamic content, and resize behavior; never add an input-blocking overlay.
+
 - September 20 connection details: all providers share a branded header, provider-specific workflow illustrations and overview, account/access setup, then organized settings. Keep official service marks and theme-aware native diagrams; label illustrations as non-live data. Preserve the real capability/action handlers and separate machine runner accounts from workspace OAuth. Do not imply configuring a connection authorizes it or enables unimplemented features.
 
 - September 20: settings navigation fades subtly beneath its fixed search area as items scroll off the top. Remove the fade at scroll start; preserve theme colors, keyboard focus visibility, and forced-colors accessibility.

@@ -26,19 +26,6 @@ const PAGE_ICONS = { awareness: Database, preferences: SlidersHorizontal, profil
 export function SettingsCenter() {
   const { data, page, navigate, workspace } = useApp();
   const [query, setQuery] = useState('');
-  const navigationRef = useRef(null);
-  useEffect(() => {
-    const navigation = navigationRef.current;
-    if (!navigation) return;
-    // Keep this visual-only scroll state out of React's render loop.
-    const updateFade = () => navigation.style.setProperty('--settings-top-fade', `${Math.min(24, Math.max(0, navigation.scrollTop))}px`);
-    navigation.addEventListener('scroll', updateFade, { passive: true });
-    const observer = new ResizeObserver(updateFade);
-    observer.observe(navigation);
-    for (const child of navigation.children) observer.observe(child);
-    updateFade();
-    return () => { navigation.removeEventListener('scroll', updateFade); observer.disconnect(); };
-  }, [query, data.teams]);
   const sections = SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id, label, group })));
   const teamId = page.id?.startsWith('team:') ? page.id.slice(5) : null;
   const section = sections.find(s => s.id === page.id) ?? { id: page.id === 'archive' ? 'archive' : teamId ? page.id : 'preferences', label: teamId ? 'Team settings' : page.id === 'archive' ? 'Archive' : 'Preferences', group: teamId ? 'Your teams' : 'Personal' };
@@ -49,7 +36,7 @@ export function SettingsCenter() {
       <button className="settings-back" onClick={() => navigate('overview')}><ArrowLeft />Back to workspace</button>
       <div className="settings-search"><Search /><input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={e => setQuery(e.target.value)} /></div>
       <div className="settings-mobile-jump"><Select aria-label="Settings page" value={section.id} onChange={v => navigate('settings', v)}>{sections.map(s => <option key={s.id} value={s.id}>{s.group} · {s.label}</option>)}</Select></div>
-      <nav ref={navigationRef} aria-label="Settings sections">{SETTINGS_GROUPS.map(([group, items]) => {
+      <nav aria-label="Settings sections">{SETTINGS_GROUPS.map(([group, items]) => {
         const filtered = items.filter(([id, label]) => `${group} ${label}`.toLowerCase().includes(query.toLowerCase()));
         const Icon = ICONS[group];
         return filtered.length ? <section key={group}><h2>{group}</h2>{filtered.map(([id, label]) => { const PageIcon = PAGE_ICONS[id] ?? Icon; return <button key={id} className={section.id === id ? 'active' : ''} aria-current={section.id === id ? 'page' : undefined} onClick={() => navigate('settings', id)}><PageIcon /><span>{label}</span></button>; })}</section> : null;
