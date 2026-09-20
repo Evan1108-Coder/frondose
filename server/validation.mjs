@@ -1,3 +1,5 @@
+import { getReaction, normalizeReactionColor } from '../src/lib/reaction-catalog.js';
+
 const ENUMS = {
   projects: { status: ['planned', 'active', 'paused', 'completed', 'cancelled', 'archived'] },
   tasks: { status: ['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled'], priority: ['no_priority', 'low', 'medium', 'high', 'urgent'] },
@@ -37,6 +39,13 @@ export function validateAvatar(value) {
 }
 
 export function validateRecord(db, resource, record, required, fields) {
+  if (resource === 'teams') {
+    if (record.icon !== undefined && record.icon !== 'users' && getReaction(record.icon)?.type !== 'icon') throw validationError('Choose a team icon from the icon catalog. Emojis are not supported.');
+    for (const key of ['color', 'icon_color']) if (record[key] !== undefined) {
+      if (typeof record[key] !== 'string' || normalizeReactionColor(record[key]) === undefined) throw validationError('Use a six-digit hex color, or reset to the theme default.');
+      record[key] = normalizeReactionColor(record[key]) ?? '';
+    }
+  }
   for (const field of required) {
     if (typeof record[field] !== 'string' || !record[field].trim()) throw validationError(`${field.replaceAll('_', ' ')} is required.`);
     record[field] = record[field].trim();

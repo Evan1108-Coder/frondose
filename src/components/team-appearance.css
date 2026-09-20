@@ -1,0 +1,25 @@
+.team-identity-icon { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; vertical-align: middle; }
+.team-identity-icon::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--team-color); right: -3px; bottom: -2px; box-shadow: 0 0 0 2px var(--surface); }
+.team-icon-button { display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; flex-shrink: 0; padding: 7px; color: var(--secondary); }
+.team-icon-button:hover { background: var(--hover); }
+.team-icon-button.large { width: 58px; height: 58px; border: 1px solid var(--border); }
+.team-heading-title { display: inline-flex; align-items: center; gap: 10px; }
+.team-appearance-fields { display: grid; gap: 20px; padding: 16px 0; }
+.team-appearance-preview { display: flex; align-items: center; gap: 14px; }
+.team-appearance-preview p { font-size: 12px; color: var(--muted); margin: 5px 0 0; }
+.color-choice { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 12px 0; }
+.color-choice-controls { display: grid; gap: 10px; max-width: 100%; }
+.color-choice .reaction-swatches { flex-wrap: wrap; }
+.color-choice-custom { display: flex; align-items: center; gap: 8px; }
+.color-choice-custom input { width: 140px; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); background: var(--surface); border-radius: 6px; }
+.color-choice-custom button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; }
+.color-choice-custom button:disabled { opacity: .45; }
+.color-choice small { color: var(--muted); }
+.empty-illustration { color: var(--empty-icon-color, var(--secondary)); }
+.display-preferences { padding: 20px; margin: 24px 0; }
+.display-preferences h2 { font-size: 15px; }
+.display-preferences p { font-size: 13px; color: var(--muted); margin: 10px 0; line-height: 1.6; }
+.empty-color-preview { display: grid; place-items: center; padding: 14px; background: var(--hover); border-radius: 10px; margin: 16px 0; }
+.empty-color-preview svg { width: 170px; height: 120px; }
+.project-nav-row > .team-icon-button { padding: 4px; }
+@media (max-width: 600px) { .color-choice { flex-direction: column; gap: 10px; } }

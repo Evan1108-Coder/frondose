@@ -18,6 +18,7 @@ import { featureItems } from '../lib/settings-catalog.js';
 import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban } from './icons.jsx';
 import { HelpMenu } from './HelpMenu.jsx';
 import { useSidebarArrange } from './SidebarArrange.jsx';
+import { TeamIconButton } from './TeamAppearance.jsx';
 import { SidebarLayout } from './SidebarLayout.jsx';
 import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
@@ -281,6 +282,7 @@ export function Sidebar({
             const item = visible(data[view] ?? []).find(item => item.id === id);
             if (!item || isSidebarHidden(organization, view, id)) return null;
             const Icon = NAV_ICONS[view];
+            if (view === 'teams') return <div className="project-nav-row" {...entityBinding(view, item)}><TeamIconButton team={item} size={19} /><button className="project-nav-name" onClick={() => go(view, id)}><span>{item.name}</span></button></div>;
             return <button className="nav-item" {...entityBinding(view, item)} onClick={() => go(view, id)}><Icon /><span>{item.name || item.title}</span></button>;
           }}>
           <div className="nav-group main-nav">
@@ -311,7 +313,7 @@ export function Sidebar({
               {teams.map(team => <div className="sidebar-project sidebar-team-group" key={team.id}>
                 <div {...entityBinding("teams", team)} className={`project-nav-row ${page.view === 'teams' && page.id === team.id ? 'current-project' : ''}`}>
                   <button className="project-disclosure" aria-expanded={Boolean(preferences.teams[team.id])} aria-label={`${preferences.teams[team.id] ? 'Collapse' : 'Expand'} team ${team.name}`} aria-controls={`team-navigation-${team.id}`} onClick={() => setPreferences(current => ({ ...current, teams: { ...current.teams, [team.id]: !current.teams[team.id] } }))}><ChevronRight morphTo={preferences.teams[team.id] ? ChevronDown : ChevronRight} interactive={false} /></button>
-                  <Tooltip label={team.name}><button className="project-nav-name" onClick={() => go('teams', team.id)}><Users /><span>{team.name}</span></button></Tooltip>{optionsButton('teams', team)}
+                  <TeamIconButton team={team} size={19} /><Tooltip label={team.name}><button className="project-nav-name" onClick={() => go('teams', team.id)}><span>{team.name}</span></button></Tooltip>{optionsButton('teams', team)}
                 </div>
                 <Collapse className="project-nav-children" id={`team-navigation-${team.id}`} open={Boolean(preferences.teams[team.id])}>
                   {[['overview', 'Overview', House], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['people', 'People', Users]].map(([section, label, Icon]) => {

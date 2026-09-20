@@ -1,0 +1,32 @@
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { teamAppearance } from '../lib/team-appearance.js';
+import { ReactionGlyph } from './ReactionGlyph.jsx';
+import ReactionPicker from './ReactionPicker.jsx';
+import { ColorChoice } from './ColorChoice.jsx';
+import { rumboActions } from '../data/useRumbo.js';
+import { useApp, useAsync } from '../ui.jsx';
+import './team-appearance.css';
+
+export function TeamIcon({ team, size = 20 }) {
+  const appearance = teamAppearance(team);
+  return <span className="team-identity-icon" data-team-icon={appearance.icon} style={{ '--team-color': appearance.color || 'var(--muted)' }}><ReactionGlyph id={appearance.icon} color={appearance.icon_color} size={size} /></span>;
+}
+
+export function TeamIconButton({ team, size = 24 }) {
+  const [open, setOpen] = useState(false);
+  const { busy, error, execute, setError } = useAsync();
+  const { notify } = useApp();
+  const value = teamAppearance(team);
+  return <><button type="button" className="team-icon-button" aria-label={`Change ${team.name} icon`} title="Change team icon and icon color" onClick={event => { event.stopPropagation(); setError(null); setOpen(true); }}><TeamIcon team={team} size={size} /></button>{open ? createPortal(<ReactionPicker iconsOnly title="Choose team icon" initialColor={value.icon_color} selected={[{ id: value.icon, color: value.icon_color || null }]} busy={busy} error={error} onClose={() => !busy && setOpen(false)} onSelect={icon => execute(async () => { await rumboActions.updateTeam(team.id, { icon: icon.id, icon_color: icon.color || '' }); setOpen(false); notify('Team icon updated'); })} />, document.body) : null}</>;
+}
+
+export function TeamAppearanceFields({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const appearance = teamAppearance(value);
+  return <section className="team-appearance-fields" aria-label="Team appearance"><div className="team-appearance-preview"><button type="button" className="team-icon-button large" aria-label="Choose team icon" onClick={() => setOpen(true)}><TeamIcon team={value} size={32} /></button><div><strong>Team identity</strong><p>Choose a line icon. Team color and icon color are independent.</p></div></div>
+    <ColorChoice label="Team color" value={appearance.color} onChange={color => onChange({ color })} />
+    <ColorChoice label="Icon color" value={appearance.icon_color} onChange={icon_color => onChange({ icon_color })} />
+    {open ? createPortal(<ReactionPicker iconsOnly title="Choose team icon" initialColor={appearance.icon_color} selected={[{ id: appearance.icon, color: appearance.icon_color || null }]} onClose={() => setOpen(false)} onSelect={icon => { onChange({ icon: icon.id, icon_color: icon.color || '' }); setOpen(false); }} />, document.body) : null}
+  </section>;
+}

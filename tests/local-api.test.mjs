@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { EventEmitter } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -26,6 +27,38 @@ async function request(path, { method = "GET", body } = {}) {
 async function rawRequest(path, options = {}) {
   return fetch(`${baseUrl}${path}`, options);
 }
+
+test('team icons and independent colors validate and round-trip through workspace archives', async () => {
+  const created = await request('/api/teams', { method: 'POST', body: { workspace_id: 'ws_personal', name: 'Identity QA', icon: 'icon:rocket', color: '#FF0000', icon_color: '#00FF00' } });
+  const team = created.team;
+  assert.equal(team.icon, 'icon:rocket'); assert.equal(team.color, '#ff0000'); assert.equal(team.icon_color, '#00ff00');
+  for (const patch of [{ icon: '😀' }, { icon: 'custom:upload' }, { icon: '<svg />' }, { icon_color: 'red' }, { color: 'url(x)' }, { icon_color: null }]) {
+    const response = await rawRequest(`/api/teams/${team.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    assert.equal(response.status, 400, JSON.stringify(patch));
+  }
+  const archive = await request('/api/export?workspace_id=ws_personal');
+  const imported = await request('/api/import', { method: 'POST', body: archive });
+  const copy = imported.bootstrap.teams.find(t => t.workspace_id === imported.result.id && t.name === 'Identity QA');
+  assert.equal(copy.icon, team.icon); assert.equal(copy.color, team.color); assert.equal(copy.icon_color, team.icon_color);
+  const legacy = await request('/api/teams', { method: 'POST', body: { workspace_id: 'ws_personal', name: 'Legacy identity', icon: 'users' } });
+  assert.equal(legacy.team.icon_color, '');
+  const reset = await request(`/api/teams/${team.id}`, { method: 'PATCH', body: { icon_color: '', color: '' } });
+  assert.equal(reset.team.icon_color, ''); assert.equal(reset.team.color, '');
+});
+
+test('an existing database gains icon colors without changing legacy team identity', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'rumbo-team-migration-'));
+  let local = createLocalApi({ dataDir: directory, seedMode: 'demo' });
+  try {
+    const path = local.dbPath; local.close();
+    const db = new DatabaseSync(path);
+    db.exec("ALTER TABLE teams DROP COLUMN icon_color; INSERT INTO teams(id,workspace_id,name,icon,color,created_at,updated_at) VALUES('old-team','ws_personal','Original','users','#aabbcc','2026-09-01','2026-09-01')");
+    db.close();
+    local = createLocalApi({ dataDir: directory });
+    const team = local.snapshot().teams.find(t => t.id === 'old-team');
+    assert.equal(team.icon, 'users'); assert.equal(team.color, '#aabbcc'); assert.equal(team.icon_color, '');
+  } finally { local.close(); await rm(directory, { recursive: true, force: true }); }
+});
 
 before(async () => {
   dataDir = await mkdtemp(join(tmpdir(), "rumbo-api-test-"));

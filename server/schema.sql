@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS teams (
   description TEXT NOT NULL DEFAULT '',
   icon TEXT NOT NULL DEFAULT 'users',
   color TEXT NOT NULL DEFAULT '#8b95a5',
+  icon_color TEXT NOT NULL DEFAULT '',
   archived_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

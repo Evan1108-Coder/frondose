@@ -7,6 +7,8 @@ import { DateField } from "./DateField.jsx";
 import { DocumentContent } from "./DocumentContent.jsx";
 import { MILESTONE_STATUSES } from "../lib/workspace-spaces.js";
 import "../views/workspace-spaces.css";
+import { TeamAppearanceFields } from './TeamAppearance.jsx';
+import { teamAppearance } from '../lib/team-appearance.js';
 
 const ENTITY = {
   team: { label: "team", action: "Team" },
@@ -20,7 +22,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
   const entity = ENTITY[kind];
   const [initial] = useState(() => {
     const base = item ?? defaults;
-    return { title: base.title ?? base.name ?? "", description: base.description ?? "", content: base.content ?? "", email: base.email ?? "", role: base.role ?? "", status: base.status ?? "planned", target_date: base.target_date ?? "" };
+    return { title: base.title ?? base.name ?? "", description: base.description ?? "", content: base.content ?? "", email: base.email ?? "", role: base.role ?? "", status: base.status ?? "planned", target_date: base.target_date ?? "", ...teamAppearance(base) };
   });
   const [form, setForm] = useState(initial);
   const [preview, setPreview] = useState(false);
@@ -36,7 +38,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
     await execute(async () => {
       if (!form.title.trim()) throw new Error("Please enter a name or title.");
       let input = { workspace_id: workspace?.id };
-      if (kind === "team") input = { ...input, name: form.title.trim(), description: form.description };
+      if (kind === "team") input = { ...input, name: form.title.trim(), description: form.description, ...teamAppearance(form) };
       if (kind === "teamMember") input = { ...input, team_id: item?.team_id ?? defaults.team_id, name: form.title.trim(), email: form.email.trim() || null, role: form.role.trim() };
       if (kind === "document") input = { ...input, team_id: item?.team_id ?? defaults.team_id ?? null, project_id: item?.project_id ?? defaults.project_id ?? null, title: form.title.trim(), content: form.content };
       if (kind === "milestone") input = { ...input, project_id: item?.project_id ?? defaults.project_id, title: form.title.trim(), description: form.description, status: form.status, target_date: form.target_date || null };
@@ -50,6 +52,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
   return <Dialog className={`space-editor ${kind === "document" ? "document-editor" : ""}`} wide={kind === "document"} title={discarding ? "Discard your changes?" : `${item ? "Edit" : "New"} ${entity.label}`} subtitle={discarding ? "Your changes have not been saved." : kind === "teamMember" ? "Directory entry only. No invitation or account access is created." : kind === "document" ? "Keep decisions, plans, and working knowledge in this space." : workspace?.name} onClose={close}>
     {discarding ? <div className="space-discard"><p>Keep editing, or close without saving these changes.</p><div className="space-editor-actions"><Button onClick={onClose}>Discard changes</Button><Button variant="primary" ref={keepRef} onClick={() => setDiscarding(false)}>Keep editing</Button></div></div> : <Form onSubmit={submit} className="entity-form">
       <div className="form-fields">
+        {kind === 'team' ? <TeamAppearanceFields value={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} /> : null}
         <Field label={["team", "teamMember"].includes(kind) ? "Name" : "Title"}><input autoFocus required maxLength={200} value={form.title} onChange={(event) => change("title", event.target.value)} placeholder={{ team: "e.g. Product", teamMember: "Full name", document: "Name this document", milestone: "A meaningful checkpoint" }[kind]} /></Field>
         {["team", "milestone"].includes(kind) ? <Field label="Description"><textarea rows={4} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder={kind === "team" ? "What does this team work on?" : "What should be true when this is complete?"} /></Field> : null}
         {kind === "teamMember" ? <><Field label="Role"><input value={form.role} maxLength={200} onChange={(event) => change("role", event.target.value)} placeholder="e.g. Product lead" /></Field><Field label="Email" hint="Optional contact information. Rumbo will not send an email."><input type="email" value={form.email} onChange={(event) => change("email", event.target.value)} placeholder="name@example.com" /></Field></> : null}

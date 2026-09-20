@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- Teams use the searchable line-icon catalog only, not Unicode or uploaded emojis. Persist independent team color (identity marker) and icon tint; allow editing in team settings and directly from the team icon. Empty-state illustration tint is a separate browser-personal preference. Chat auto-follow is smooth by default, honors reduced motion, and pauses when reading older messages; keep ordinary wheel/touch scrolling native.
+
 - Code & reviews offers a searchable light/dark syntax palette catalog and bundled monospace fonts, shared by GitHub and Workbench source/diff previews. Serve font files locally and preserve their licenses; load only fonts actually rendered. Keep legacy preferences valid, explicit reset, and truthful separation from terminal/UI typography. Push verified task-related changes to GitHub and maintain the Rumbo Dev Linear work record as requested.
 
 - Connection detail refinement: primary Connect/Reauthorize (or runner account management) lives at the header’s right, with an honest setup link when blocked. Two large, provider-specific, noninteractive product previews precede Overview; native rendering keeps them sharp and theme-aware. Account scope/access and working settings remain below. Do not use generated mockups as interactive UI or claim the examples are live data.

@@ -1,3 +1,4 @@
+import { useChatFollow } from '../lib/use-chat-follow.js';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, PanelLeft, X, Link, FileText, GitFork, Clock } from "../components/icons.jsx";
 import { rumboActions, refreshRumbo } from '../data/useRumbo.js';
@@ -99,7 +100,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const [, render] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
   const [slashIndex, setSlashIndex] = useState(0), [commandLibraryOpen, setCommandLibraryOpen] = useState(false), [commandQuery, setCommandQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false), [search, setSearch] = useState(''), [atBottom, setAtBottom] = useState(true), [retrying, setRetrying] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false), [search, setSearch] = useState(''), [retrying, setRetrying] = useState(null);
   const [threadId, setThreadId] = useState(null), [bookmarksOnly, setBookmarksOnly] = useState(false), [messageOptions, setMessageOptions] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false), [selectedIds, setSelectedIds] = useState(() => new Set());
   const [emojiPicker, setEmojiPicker] = useState(false);
@@ -130,7 +131,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const connectedProviders = (data.connections || []).filter(item => item.status === 'connected' || item.connected).map(item => item.provider);
   const slashVisible = composer.text.trimStart().startsWith('/') && !composer.text.trimStart().startsWith('//') && !composer.text.includes('\n');
   const slashResults = slashVisible ? searchCommands(composer.text.trimStart().slice(1), { context: 'chat' }).slice(0, 10) : [];
-  const scrollToEnd = () => { if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; setAtBottom(true); };
+  const { atBottom, scrollToEnd, setFollowing: setAtBottom } = useChatFollow(listRef, `${messages.length}:${runs.map(run => run.status).join(',')}:${search}`, data.settings?.appearance?.reduceMotion);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     function followLink() {
@@ -140,7 +141,6 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     followLink(); window.addEventListener('hashchange', followLink);
     return () => window.removeEventListener('hashchange', followLink);
   }, [chat.id, messages.length]);
-  useEffect(() => { if (atBottom) scrollToEnd(); }, [messages.length, runs.map(run => run.status).join(','), search]);
   useEffect(() => {
     if (!inputRef.current) return;
     inputRef.current.style.height = 'auto';
@@ -398,7 +398,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     {threadId ? <div className="chat-thread-banner"><MessageCircle /><span>Thread · {inThread.length - 1} replies</span><button onClick={() => { setThreadId(null); change({ replyTo: null }); }}>Back to conversation</button></div> : null}
     {searchOpen ? <div className="chat-message-search"><SearchField label="Search messages in conversation" placeholder="Find a message…" value={search} onChange={setSearch} /><span>{search ? `${shownMessages.length} results` : 'Search this conversation'}</span></div> : null}
     {selectionMode ? <div className="chat-selection-bar" role="region" aria-label="Selected messages"><strong aria-live="polite">{selectedMessages.length} selected</strong><button onClick={() => setSelectedIds(new Set(shownMessages.map(message => message.id)))}>Select visible</button><Button variant="ghost" icon={Copy} disabled={!selectedMessages.length} onClick={() => perform(async () => { await navigator.clipboard.writeText(chatMarkdown(chat, selectedMessages)); notify(`${selectedMessages.length} messages copied`); })}>Copy</Button><Button variant="ghost" icon={Download} disabled={!selectedMessages.length} onClick={() => { download('selected-messages.md', chatMarkdown(chat, selectedMessages), 'text/markdown'); notify('Selected messages exported'); }}>Export</Button><IconButton label="Cancel message selection" onClick={stopSelection}><X /></IconButton></div> : null}
-    <div className="chat-thread-messages" ref={listRef} onScroll={event => { const el = event.currentTarget; setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 100); }}>
+    <div className="chat-thread-messages" ref={listRef} tabIndex={0} aria-label="Chat messages">
       {shownMessages.length ? <div className="chat-message-flow">{shownMessages.map(message => <ChatMessage key={message.id} message={message} chat={chat} project={project} run={index.runsByMessage.get(message.id)} onRetry={index.runsByMessage.has(message.id) ? () => retry(message, index.runsByMessage.get(message.id)) : undefined} retrying={retrying === index.runsByMessage.get(message.id)?.id} onPreview={setPreview} bookmarked={bookmarks.has(message.id)} onBookmark={() => perform(() => collaborationAction('bookmark', { message_id: message.id, enabled: !bookmarks.has(message.id) }))} onReply={() => reply(message)} onOptions={() => setMessageOptions(message)} replyMessage={messages.find(item => item.id === message.metadata?.reply_to)} onJump={jump} replyCount={replies.get(message.id) || 0} onThread={() => { setThreadId(message.id); setBookmarksOnly(false); setSearch(''); reply(message); }} onContext={() => inspectContext(message.metadata.context_snapshot_id)} selectionMode={selectionMode} selected={selectedIds.has(message.id)} onSelect={() => toggleSelection(message)} reactions={messageReactions(message.id)} reactionBusy={Boolean(reactionPending) || actionBusy} onReact={() => { setReactionError(null); setReactionMessage(message); }} onToggleReaction={reaction => reactTo(message, reaction)} />)}
         {orphan && !search ? <ChatRunStatus run={orphan} /> : null}
       </div> : <Empty compact kind={search || bookmarksOnly ? 'search' : 'chats'} title={bookmarksOnly ? 'Keep important messages close' : search ? 'No matching messages' : 'A shared place to think'} description={bookmarksOnly ? 'Bookmark a decision or useful answer from its message actions.' : search ? 'Try another word or clear the search.' : 'Ask a connected agent to work, or save a note for later. Your project and route stay linked here.'} action={search ? 'Clear search' : undefined} onAction={() => setSearch('')} />}

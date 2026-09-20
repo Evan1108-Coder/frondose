@@ -1,3 +1,4 @@
+import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
 import {
   Component,
   lazy,
@@ -84,6 +85,7 @@ function usePreference(key, fallback) {
 }
 
 export function App() {
+  useGlobalDisplayPreferences();
   // Include onboarding and error/loading screens, not only the workspace sidebar.
   useEffect(trackInputModality, []);
   const rawData = useRumboData(),

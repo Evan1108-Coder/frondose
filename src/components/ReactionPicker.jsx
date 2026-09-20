@@ -8,12 +8,12 @@ import './reaction-picker.css';
 
 /** Reusable for reactions and future entity icon selection. Values are stable
  * catalog IDs + an optional six-digit tint, never arbitrary SVG or markup. */
-export default function ReactionPicker({ onSelect, onClose, selected = [], busy = false, error, title = 'Add reaction', emojiOnly = false }) {
+export default function ReactionPicker({ onSelect, onClose, selected = [], busy = false, error, title = 'Add reaction', emojiOnly = false, iconsOnly = false, initialColor = null }) {
   const { data, workspace, navigate } = useApp();
   const mine = useMemo(() => customEmojis(data.workspace_items, workspace.id), [data.workspace_items, workspace.id]);
-  const tabs = emojiOnly ? [['emoji', 'Emojis'], ['custom', 'My Emojis']] : [['icon', 'Icons'], ['emoji', 'Emojis'], ['custom', 'My Emojis']];
-  const [tab, setTab] = useState(emojiOnly ? 'emoji' : 'icon'), [query, setQuery] = useState(''), [category, setCategory] = useState('All');
-  const [color, setColor] = useState(null), [custom, setCustom] = useState(false), [hex, setHex] = useState('#818cf8'), [highlighted, setHighlighted] = useState(null);
+  const tabs = iconsOnly ? [['icon', 'Icons']] : emojiOnly ? [['emoji', 'Emojis'], ['custom', 'My Emojis']] : [['icon', 'Icons'], ['emoji', 'Emojis'], ['custom', 'My Emojis']];
+  const [tab, setTab] = useState(emojiOnly && !iconsOnly ? 'emoji' : 'icon'), [query, setQuery] = useState(''), [category, setCategory] = useState('All');
+  const [color, setColor] = useState(normalizeReactionColor(initialColor) ?? null), [custom, setCustom] = useState(false), [hex, setHex] = useState(normalizeReactionColor(initialColor) || '#818cf8'), [highlighted, setHighlighted] = useState(null);
   const [focusedId, setFocusedId] = useState(null);
   const source = tab === 'icon' ? ICON_REACTIONS : tab === 'custom' ? mine : EMOJI_REACTIONS;
   const categories = useMemo(() => ['All', ...new Set(source.map(item => item.category))], [source]);
@@ -40,6 +40,6 @@ export default function ReactionPicker({ onSelect, onClose, selected = [], busy 
       return <button key={item.id} type="button" tabIndex={index === focusIndex ? 0 : -1} aria-label={item.name} aria-pressed={picked} disabled={busy || tab === 'icon' && custom && !customValid} onMouseEnter={() => setHighlighted(item)} onFocus={() => { setHighlighted(item); setFocusedId(item.id); }} onClick={() => onSelect(value)}><ReactionGlyph {...value} item={item} size={24} />{picked ? <span className="reaction-picked"><Check interactive={false} /></span> : null}</button>;
     })}</div>{!items.length ? <p className="reaction-no-results">No matching {tab === 'icon' ? 'icons' : 'emojis'}. Try another word or category.</p> : null}</div>
     {tab === 'custom' ? <p className="reaction-no-results">Upload images in <button type="button" onClick={() => { onClose(); navigate('settings', 'emojis'); }}>Settings → Emojis</button>. Type their :name: shortcode in messages.</p> : null}
-    <footer className="reaction-picker-footer"><span>{highlighted?.shortcode || highlighted?.name || `${items.length} ${tab === 'icon' ? 'icons' : 'emojis'}`}</span><small>{highlighted?.category || (emojiOnly ? 'Choose one to insert' : 'Choose one to react')}</small></footer>
+    <footer className="reaction-picker-footer"><span>{highlighted?.shortcode || highlighted?.name || `${items.length} ${tab === 'icon' ? 'icons' : 'emojis'}`}</span><small>{highlighted?.category || (iconsOnly ? 'Choose an icon' : emojiOnly ? 'Choose one to insert' : 'Choose one to react')}</small></footer>
   </Dialog>;
 }

@@ -61,7 +61,7 @@ const TABLE_CONFIG = {
     required: ['workspace_id', 'title'],
   },
   teams: {
-    fields: ['workspace_id', 'name', 'description', 'icon', 'color', 'archived_at'],
+    fields: ['workspace_id', 'name', 'description', 'icon', 'color', 'icon_color', 'archived_at'],
     required: ['workspace_id', 'name'],
   },
   team_members: {
@@ -398,6 +398,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   const needsAgentIdentity = !db.prepare('PRAGMA table_info(runs)').all().some((column) => column.name === 'agent_id');
   if (needsAgentIdentity) db.exec('ALTER TABLE runs ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL');
   const additions = {
+    teams: { icon_color: "TEXT NOT NULL DEFAULT ''" },
     projects: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', image_url: 'TEXT', start_date: 'TEXT', target_date: 'TEXT', lead: "TEXT NOT NULL DEFAULT ''", workflow_status_id: 'TEXT', labels_json: "TEXT NOT NULL DEFAULT '[]'" },
     tasks: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', workflow_status_id: 'TEXT' },
     runs: { source_message_id: 'TEXT REFERENCES messages(id) ON DELETE SET NULL', work_mode: "TEXT NOT NULL DEFAULT 'project'" },
