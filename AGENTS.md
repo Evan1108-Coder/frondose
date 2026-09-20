@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- September 20 connection details: all providers share a branded header, provider-specific workflow illustrations and overview, account/access setup, then organized settings. Keep official service marks and theme-aware native diagrams; label illustrations as non-live data. Preserve the real capability/action handlers and separate machine runner accounts from workspace OAuth. Do not imply configuring a connection authorizes it or enables unimplemented features.
+
 - September 20: settings navigation fades subtly beneath its fixed search area as items scroll off the top. Remove the fade at scroll start; preserve theme colors, keyboard focus visibility, and forced-colors accessibility.
 
 - September 19 Group 1: workspace OAuth connections are separate from existing machine/CLI accounts. Always show actual setup readiness; users authorize on provider sites, while operator app registration is a prerequisite. Encrypt new tokens, select resources explicitly, recheck authority on execution and queued work, preserve write idempotency through approvals, and never blindly retry uncertain writes. Native imports retain provenance and detect title/text conflicts; do not claim arbitrary two-way sync or full external-product editor parity.

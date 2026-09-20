@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiRequest, rumboApi } from '../data/api.js';
 import { refreshRumbo } from '../data/useRumbo.js';
 import { Button, Dialog, ErrorMessage, Field, PageHeader, SearchField, Select, useApp } from '../ui.jsx';
@@ -7,6 +7,8 @@ import { ServiceLogo } from '../components/ServiceLogo.jsx';
 import { ArrowLeft, ArrowRight, Check, ExternalLink, Plug, Settings, ShieldCheck } from '../components/icons.jsx';
 import { ConnectionDialog } from './Connections.jsx';
 import { GitHubCodeBrowser } from '../components/GitHubCodeBrowser.jsx';
+import { ConnectionOverview } from '../components/ConnectionOverview.jsx';
+import { connectionPresentation } from '../lib/connection-presentation.js';
 import { safeUrl } from '../lib/model.js';
 import './connection-platform.css';
 
@@ -37,7 +39,7 @@ export function ConnectionPlatformView() {
   const connected = provider => connections.some(item => item.provider === provider && ['connected', 'ready'].includes(item.state)) || legacy.some(item => item.provider === provider && item.state === 'connected');
   const filtered = catalog.filter(item => (category === 'all' || item.category === category || (category === 'enabled' && connected(item.id))) && `${item.name} ${item.category} ${item.description ?? ''} ${item.features?.map(feature => feature.label).join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const provider = catalog.find(item => item.id === selected);
-  return <main className="page connection-platform">
+  return <main className={`page connection-platform${provider ? ' cp-detail-page' : ''}`}>
     {provider ? <ProviderDetail key={`${workspace.id}:${provider.id}`} provider={provider} connections={connections.filter(item => item.provider === provider.id)} onBack={() => setSelected(null)} onChange={refresh} /> : <>
       <PageHeader title="Connections" description="Connect your tools to the projects, conversations, and people doing the work." />
       <div className="cp-search"><SearchField value={query} onChange={setQuery} placeholder="Search connections and capabilities…" /><Select label="Category" value={category} onChange={setCategory}><option value="all">All connections</option><option value="enabled">Connected</option>{[...new Set(catalog.map(item => item.category))].map(item => <option key={item} value={item}>{readable(item)}</option>)}</Select></div>
@@ -45,8 +47,8 @@ export function ConnectionPlatformView() {
       {error ? <Button onClick={() => setRevision(value => value + 1)}>Try again</Button> : null}
       {loading ? <p className="cp-empty" role="status">Loading connections…</p> : !filtered.length ? <p className="cp-empty">No connections match your search.</p> : <div className="cp-grid">{filtered.map(item => <button className="cp-card" key={item.id} onClick={() => setSelected(item.id)}>
         <div className="cp-card-heading"><ServiceLogo name={item.id} /><span><strong>{item.name}</strong><small>{connected(item.id) ? 'Connected' : readable(item.category)}</small></span>{connected(item.id) ? <Check className="cp-connected" /> : null}</div>
-        <p>{item.description || (item.execution === 'existing_runner' ? 'Bring an agent into chats and project work. Configure its account, context, and execution preferences.' : item.features?.slice(0, 3).map(feature => feature.label).join(', ')) || item.resource_hint}</p>
-        <div className="cp-card-footer"><span>{item.execution === 'existing_runner' ? 'Agent account & execution' : `${item.features?.length ?? 0} capabilities`}</span><ArrowRight /></div>
+        <p>{connectionPresentation(item).description}</p>
+        <div className="cp-card-footer"><span>{item.execution === 'existing_runner' ? 'Agent account & execution' : `${item.features?.length ?? 0} ${item.features?.length === 1 ? 'capability' : 'capabilities'}`}</span><ArrowRight /></div>
       </button>)}</div>}
       <div className="cp-footnote"><ShieldCheck /><span>Choose which resources and features each connection shares with Rumbo. Account permissions are managed in workspace settings.</span></div>
     </>}
@@ -55,7 +57,13 @@ export function ConnectionPlatformView() {
 
 function ProviderDetail({ provider, connections, onBack, onChange }) {
   const { workspace, data } = useApp();
-  const [tab, setTab] = useState('overview'), [accountId, setAccountId] = useState(connections[0]?.id ?? '');
+  const [tab, setTab] = useState('features'), [accountId, setAccountId] = useState(connections[0]?.id ?? '');
+  const accountRef = useRef(null);
+  const presentation = connectionPresentation(provider);
+  const runner = provider.execution === 'existing_runner';
+  const tabs = ['features', 'resources', 'agents', ...(provider.id === 'github' ? ['code'] : []), 'sync', 'actions', 'activity'];
+  const tabLabels = { features: 'Capabilities', resources: 'Resources', agents: 'Agent access', code: 'Code', sync: 'Sync', actions: 'Actions', activity: 'Activity' };
+  const focusAccount = () => { accountRef.current?.scrollIntoView({ block: 'start' }); accountRef.current?.focus({ preventScroll: true }); };
   const [busy, setBusy] = useState(false), [error, setError] = useState(null), [notice, setNotice] = useState('');
   const [legacyDialog, setLegacyDialog] = useState(false), [setup, setSetup] = useState(null);
   const [scope, setScope] = useState('workspace'), [teamId, setTeamId] = useState(''), [disconnect, setDisconnect] = useState(false);
@@ -76,21 +84,35 @@ function ProviderDetail({ provider, connections, onBack, onChange }) {
   const requirements = Array.isArray(provider.setup_required) ? provider.setup_required : provider.setup_required ? [provider.setup_required] : [];
   return <>
     <Button icon={ArrowLeft} variant="ghost" onClick={onBack}>All connections</Button>
-    <header className="cp-detail-heading"><ServiceLogo name={provider.id} /><div><h1>{provider.name}</h1><p>{provider.description ?? provider.resource_hint}</p></div><span className="cp-pill">{readable(connection?.state ?? existing?.state ?? 'not_connected')}</span></header>
+    <header className="cp-detail-heading"><ServiceLogo name={provider.id} /><div><h1>{provider.name}</h1><p>{presentation.description}</p><span className="cp-pill">{!runner && !connection && existing?.state === 'connected' ? 'Existing account connected · workspace OAuth not connected' : readable(connection?.state ?? existing?.state ?? 'not_connected')}</span></div></header>
     <ErrorMessage error={error} />{notice ? <p className="cp-notice" role="status">{notice}</p> : null}
-    {connections.length > 1 ? <Select label="Connected account" value={connection?.id ?? ''} onChange={setAccountId}>{connections.map(item => <option key={item.id} value={item.id}>{item.account_label ?? item.id}</option>)}</Select> : null}
-    <div className="cp-tabs" role="tablist" aria-label={`${provider.name} configuration`}>{(provider.execution === 'existing_runner' ? ['overview'] : ['overview', 'features', 'resources', 'agents', ...(provider.id === 'github' ? ['code'] : []), 'sync', 'actions', 'activity']).map(item => <button key={item} role="tab" aria-selected={tab === item} onClick={() => setTab(item)}>{readable(item)}</button>)}</div>
-    <section role="tabpanel" className="cp-detail-body">
-      {tab === 'overview' ? <>
-        <div className="cp-section-head"><div><h2>Account & access</h2><p>Authorize an account, then select the resources Rumbo can use.</p></div>{established.has(provider.id) ? <Button icon={Settings} onClick={openLegacy}>Manage existing account</Button> : null}</div>
-        {connection ? <dl className="cp-facts"><div><dt>Account</dt><dd>{connection.account_label ?? 'Awaiting authorization'}</dd></div><div><dt>Scope</dt><dd>{readable(connection.scope_type)}{connection.scope_id ? ` · ${data.teams?.find(item => item.id === connection.scope_id)?.name ?? connection.scope_id}` : ''}</dd></div><div><dt>Last synchronized</dt><dd>{stamp(connection.last_sync_at)}</dd></div></dl> : <div className="cp-form-grid"><Select label="Connection scope" value={scope} onChange={setScope}><option value="workspace">Workspace</option><option value="team">Team</option></Select>{scope === 'team' ? <Select label="Team" value={teamId} onChange={setTeamId}><option value="">Choose a team</option>{data.teams?.filter(item => item.workspace_id === workspace.id && !item.archived_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}</div>}
+    <ConnectionOverview provider={provider} presentation={presentation} />
+    <section className="cp-account-section cp-detail-body" aria-labelledby="connection-account-title" ref={accountRef} tabIndex={-1}>
+      <div className="cp-section-heading"><h2 id="connection-account-title">Account & access</h2><p>{runner ? 'Manage the provider account used by your local runner.' : 'Choose the account and scope, then authorize access at the provider.'}</p></div>
+      <div className="cp-account-panel">
+        {connections.length > 1 ? <Select label="Connected account" value={connection?.id ?? ''} onChange={setAccountId}>{connections.map(item => <option key={item.id} value={item.id}>{item.account_label ?? item.id}</option>)}</Select> : null}
+        {connection ? <dl className="cp-facts"><div><dt>Account</dt><dd>{connection.account_label ?? 'Awaiting authorization'}</dd></div><div><dt>Scope</dt><dd>{readable(connection.scope_type)}{connection.scope_id ? ` · ${(connection.scope_type === 'workspace' ? workspace.name : data.teams?.find(item => item.id === connection.scope_id)?.name) ?? connection.scope_id}` : ''}</dd></div><div><dt>Last synchronized</dt><dd>{stamp(connection.last_sync_at)}</dd></div></dl> : !runner ? <div className="cp-form-grid"><Select label="Connection scope" value={scope} onChange={setScope}><option value="workspace">Workspace</option><option value="team">Team</option></Select>{scope === 'team' ? <Select label="Team" value={teamId} onChange={setTeamId}><option value="">Choose a team</option>{data.teams?.filter(item => item.workspace_id === workspace.id && !item.archived_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select> : null}</div> : <p>Sign in and inspect readiness without starting an agent session.</p>}
         {requirements.length ? <div className="cp-note"><h3>Authorization setup</h3><ul>{requirements.map((item, index) => <li key={index}>{typeof item === 'string' ? item : item.message ?? item.label ?? JSON.stringify(item)}</li>)}</ul></div> : null}
-        {provider.execution !== 'existing_runner' ? <div className="cp-actions"><Button icon={ExternalLink} variant="primary" busy={busy} disabled={!provider.configured || (!connection && scope === 'team' && !teamId)} onClick={connect}>{connection?.state === 'connected' ? 'Reauthorize' : `Connect ${provider.name}`}</Button>{connection ? <Button onClick={() => setDisconnect(true)}>Disconnect</Button> : null}</div> : <p className="cp-note">Use Manage existing account to sign in and configure the working {provider.name} runner. Agent profiles, instructions, and execution permissions remain in Agents.</p>}
-        {!provider.configured ? <p className="muted">Provider authorization must be configured by the Rumbo operator before this connection can sign in.</p> : null}
+        <div className="cp-actions">{!runner ? <><Button icon={ExternalLink} variant="primary" busy={busy} disabled={!provider.configured || (!connection && scope === 'team' && !teamId)} onClick={connect}>{connection?.state === 'connected' ? 'Reauthorize' : `Connect ${provider.name}`}</Button>{connection ? <Button disabled={busy} onClick={() => setDisconnect(true)}>Disconnect</Button> : null}</> : null}{established.has(provider.id) ? <Button icon={Settings} variant={runner ? 'primary' : undefined} onClick={openLegacy}>Manage existing account</Button> : null}</div>
+        {!provider.configured && !requirements.length ? <p className="muted">Provider authorization must be configured by the Rumbo operator before this connection can sign in.</p> : null}
         {!connection && provider.execution !== 'existing_runner' ? <Button busy={busy} disabled={scope === 'team' && !teamId} onClick={() => run(async () => { const record = await mutate('/connections', { workspace_id: workspace.id, provider: provider.id, scope_type: scope, ...(scope === 'team' ? { scope_id: teamId } : {}) }); setAccountId(record.id); setTab('features'); }, 'Connection configuration created. Authorize an account before using provider resources.')}>Configure capabilities first</Button> : null}
         {connection?.last_error ? <p className="cp-note" role="status">{typeof connection.last_error === 'string' ? connection.last_error : connection.last_error.message}</p> : null}
-        <a className="cp-guide-link" href={`#/docs/connection-${provider.id}`}>Read the {provider.name} guide <ArrowRight /></a>
-      </> : connection ? tab === 'code' ? <GitHubCodeBrowser connection={connection} /> : <ConnectionContent key={`${connection.id}:${tab}`} tab={tab} connection={connection} provider={provider} run={run} busy={busy} /> : <div className="cp-empty"><Plug /><h2>Connect an account first</h2><p>Features, resources, synchronization, and actions become available for the account you authorize.</p><Button onClick={() => setTab('overview')}>Account setup</Button></div>}
+      </div>
+    </section>
+    <section className="cp-settings-section cp-detail-body" aria-labelledby="connection-settings-title">
+      <div className="cp-section-heading"><h2 id="connection-settings-title">{runner ? 'Agent settings' : 'Connection settings'}</h2><p>{runner ? 'Keep account setup separate from how each agent works.' : `Control how ${provider.name} participates in your workspace.`}</p></div>
+      {runner ? <div className="cp-runner-settings"><div><strong>Account & execution preferences</strong><p>Inspect sign-in, supported settings, and provider readiness.</p><Button icon={Settings} onClick={openLegacy}>Manage existing account</Button></div><div><strong>Agent profiles & instructions</strong><p>Choose context, instructions, and execution permissions for each agent.</p><a className="cp-guide-link" href="#/agents">Open agents <ArrowRight /></a></div></div> : <div className="cp-settings-panel">
+        <div className="cp-tabs" role="tablist" aria-label={`${provider.name} configuration`}>{tabs.map(item => <button key={item} id={`connection-tab-${item}`} role="tab" aria-controls="connection-settings-panel" aria-selected={tab === item} tabIndex={tab === item ? 0 : -1} onClick={() => setTab(item)} onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const index = tabs.indexOf(item);
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+          setTab(tabs[next]); event.currentTarget.parentElement.children[next]?.focus();
+        }}>{tabLabels[item]}</button>)}</div>
+        <div role="tabpanel" id="connection-settings-panel" aria-labelledby={`connection-tab-${tab}`} tabIndex={0} className="cp-settings-content">
+          {connection ? tab === 'code' ? <GitHubCodeBrowser key={connection.id} connection={connection} /> : <ConnectionContent key={`${connection.id}:${tab}`} tab={tab} connection={connection} provider={provider} run={run} busy={busy} /> : tab === 'features' ? <><h3>Available capabilities</h3><p>Create a configuration to choose capabilities. Authorization is still required before they can be used.</p><ul className="cp-capability-preview">{provider.features?.map(feature => <li key={feature.id}><Check /><span>{feature.label}</span></li>)}</ul><Button onClick={focusAccount}>Account setup</Button></> : <div className="cp-empty"><Plug /><h3>Set up an account first</h3><p>Configure this connection above, then authorize it to use provider resources and actions.</p><Button onClick={focusAccount}>Account setup</Button></div>}
+        </div>
+      </div>}
     </section>
     {legacyDialog ? <ConnectionDialog provider={provider.id} setup={setup} onClose={() => { setLegacyDialog(false); onChange().catch(setError); }} /> : null}
     {disconnect ? <DisconnectDialog connection={connection} provider={provider} busy={busy} onClose={() => setDisconnect(false)} onDisconnect={input => run(() => mutate(`/connections/${connection.id}/disconnect`, input))} /> : null}
@@ -116,7 +138,7 @@ function ConnectionContent({ tab, connection, provider, run, busy }) {
   }, [base, tab]);
   const save = settings => run(() => mutate(`${base}/settings`, settings, 'PATCH'), 'Connection settings saved.');
   return <><ErrorMessage error={error} />
-    {tab === 'features' ? <><h2>Enabled capabilities</h2><p>Choose the features available to people and agents with permission to use this connection.</p><div className="cp-feature-list">{provider.features?.map(feature => <label className="cp-feature" key={feature.id}><input type="checkbox" checked={features.includes(feature.id)} onChange={event => setFeatures(current => event.target.checked ? [...current, feature.id] : current.filter(item => item !== feature.id))} /><span><strong>{feature.label}</strong><small>{feature.description ?? readable(feature.risk)}</small></span></label>)}</div><Button variant="primary" busy={busy} onClick={() => save({ enabled_features: features })}>Save capabilities</Button></> : null}
+    {tab === 'features' ? <><h2>Enabled capabilities</h2><p>Choose the features available to people and agents with permission to use this connection.</p><div className="cp-feature-list">{provider.features?.map(feature => <label className="cp-feature" key={feature.id}><input type="checkbox" checked={features.includes(feature.id)} onChange={event => setFeatures(current => event.target.checked ? [...current, feature.id] : current.filter(item => item !== feature.id))} /><span><strong>{feature.label}</strong><small>{feature.description ?? (feature.id === 'read' ? provider.resource_hint : ({ write: 'Makes an explicit change at the provider.', communication: 'Sends a message after required approval.', consequential: 'Requires review before provider-side execution.', destructive: 'Requires approval before changing external work.' }[feature.risk] ?? readable(feature.risk)))}</small></span></label>)}</div><Button variant="primary" busy={busy} onClick={() => save({ enabled_features: features })}>Save capabilities</Button></> : null}
     {tab === 'agents' ? <><h2>Agent access</h2><p>Choose which agents may use this connection. Their delegated permissions, selected resources, enabled features, and approval rules still apply.</p><label className="cp-feature"><input type="checkbox" checked={agentAccess} onChange={event => setAgentAccess(event.target.checked)} /><span><strong>Allow selected agents to use this connection</strong><small>Agents receive permitted context and actions. Authorization tokens and secrets remain private.</small></span></label><div className="cp-feature-list">{data.agents.filter(agent => !agent.archived_at && (!agent.workspace_id || agent.workspace_id === workspace.id)).map(agent => <label key={agent.id} className="cp-feature"><input type="checkbox" disabled={!agentAccess} checked={agentIds.includes(agent.id)} onChange={event => setAgentIds(current => event.target.checked ? [...current, agent.id] : current.filter(id => id !== agent.id))} /><span><strong>{agent.name}</strong><small>{agent.provider}</small></span></label>)}</div><Button busy={busy} variant="primary" onClick={() => save({ agent_access: agentAccess, allowed_agent_ids: agentIds })}>Save agent access</Button><p><a href="#/settings/security">Review workspace roles and permissions</a></p></> : null}
     {tab === 'resources' ? <>
       <div className="cp-section-head"><div><h2>Selected resources</h2><p>{provider.resource_hint}</p></div><Button busy={busy} onClick={() => save({ selected_resources: selected })}>Save selection</Button></div>
@@ -133,7 +155,7 @@ function ConnectionContent({ tab, connection, provider, run, busy }) {
       <ImportConflicts base={base} busy={busy} run={run} revision={`${records.length}:${importRevision}`} />
       {importObject ? <ImportDialog object={importObject} data={data} workspace={workspace} onClose={() => setImportObject(null)} busy={busy} onImport={input => run(async () => { const result = await mutate(`${base}/import`, { object_id: importObject.id, ...input }); setImportRevision(current => current + 1); await refreshRumbo(); return result; })} /> : null}
     </> : null}
-    {tab === 'actions' ? <><h2>Actions</h2><p>Run provider actions with the same resource and access rules used by agents.</p><div className="cp-action-list">{provider.actions?.map(item => <div className="cp-action-row" key={item.id}><div><strong>{item.label}</strong><small>{item.description ?? readable(item.risk)}{!features.includes(item.id) ? ' · Enable in Features' : ''}</small></div><Button disabled={busy || !features.includes(item.id)} onClick={() => setAction(item)}>Open</Button></div>)}</div>{action ? <ActionDialog action={action} connectionId={connection.id} busy={busy} onClose={() => setAction(null)} onRun={(input, key) => run(() => mutate(`${base}/actions`, { action: action.id, input, idempotency_key: key }))} /> : null}</> : null}
+    {tab === 'actions' ? <><h2>Actions</h2><p>Run provider actions with the same resource and access rules used by agents.</p><div className="cp-action-list">{provider.actions?.map(item => <div className="cp-action-row" key={item.id}><div><strong>{item.label}</strong><small>{item.description ?? readable(item.risk)}{!features.includes(item.id) ? ' · Enable in Capabilities' : ''}</small></div><Button disabled={busy || !features.includes(item.id)} onClick={() => setAction(item)}>Open</Button></div>)}</div>{action ? <ActionDialog action={action} connectionId={connection.id} busy={busy} onClose={() => setAction(null)} onRun={(input, key) => run(() => mutate(`${base}/actions`, { action: action.id, input, idempotency_key: key }))} /> : null}</> : null}
     {tab === 'activity' ? <><h2>Connection activity</h2><p>Authorization, configuration, synchronization, and provider actions.</p><RecordList records={records} loading={loading} empty="No activity recorded for this connection." /></> : null}
   </>;
 }
