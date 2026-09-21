@@ -2,7 +2,7 @@ import { useLayoutEffect, useState } from "react";
 
 // Panels stay inside their owning dialog for focus containment, while fixed
 // placement lets them escape a scrolling form without getting clipped.
-export function usePopupPosition(open, anchor, { width, height = 320 } = {}) {
+export function usePopupPosition(open, anchor, { width, height = 320, portal = false } = {}) {
   const [position, setPosition] = useState(null);
   useLayoutEffect(() => {
     if (!open || !anchor.current) return;
@@ -24,7 +24,9 @@ export function usePopupPosition(open, anchor, { width, height = 320 } = {}) {
       let originY = 0;
       // Transforms (mobile sidebar / dialog entry) and backdrop filters create
       // containing blocks even for position:fixed descendants.
-      for (let parent = anchor.current.parentElement; parent; parent = parent.parentElement) {
+      // Body portals escape scroll masks and use viewport coordinates, not the
+      // transformed sidebar/dialog containing block of their trigger.
+      for (let parent = portal ? null : anchor.current.parentElement; parent; parent = parent.parentElement) {
         const style = getComputedStyle(parent);
         if (style.transform !== "none" || style.perspective !== "none" || style.filter !== "none" || (style.backdropFilter && style.backdropFilter !== "none") || /paint|layout|strict|content/.test(style.contain) || /transform|perspective|filter/.test(style.willChange)) {
           const bounds = parent.getBoundingClientRect();
@@ -65,6 +67,6 @@ export function usePopupPosition(open, anchor, { width, height = 320 } = {}) {
       window.visualViewport?.removeEventListener("scroll", schedule);
       observer.disconnect();
     };
-  }, [open, anchor, width, height]);
+  }, [open, anchor, width, height, portal]);
   return position;
 }

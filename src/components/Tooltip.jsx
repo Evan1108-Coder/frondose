@@ -1,4 +1,5 @@
 import { cloneElement, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePopupPosition } from "./usePopupPosition.js";
 import "./tooltip.css";
 
@@ -7,7 +8,7 @@ export function Tooltip({ label, children, delay = 350 }) {
   const anchor = useRef(null);
   const timer = useRef(null);
   const [visible, setVisible] = useState(false);
-  const position = usePopupPosition(visible, anchor, { width: Math.min(280, String(label ?? "").length * 7 + 24), height: 80 });
+  const position = usePopupPosition(visible, anchor, { width: Math.min(280, String(label ?? "").length * 7 + 24), height: 80, portal: true });
   function hide() {
     clearTimeout(timer.current);
     setVisible(false);
@@ -15,7 +16,7 @@ export function Tooltip({ label, children, delay = 350 }) {
   function schedule() {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      if (label && anchor.current?.getAttribute("aria-expanded") !== "true") setVisible(true);
+      if (label && anchor.current?.isConnected && !anchor.current.closest('[inert]') && anchor.current.getAttribute("aria-expanded") !== "true") setVisible(true);
     }, delay);
   }
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -42,7 +43,8 @@ export function Tooltip({ label, children, delay = 350 }) {
     onPointerEnter: (event) => { props.onPointerEnter?.(event); if (event.pointerType !== "touch") schedule(); },
     onPointerLeave: (event) => { props.onPointerLeave?.(event); hide(); },
     onPointerDown: (event) => { props.onPointerDown?.(event); hide(); },
+    onClick: (event) => { props.onClick?.(event); hide(); },
     onFocus: (event) => { props.onFocus?.(event); schedule(); },
     onBlur: (event) => { props.onBlur?.(event); hide(); },
-  })}{visible ? <span role="tooltip" id={id} className="rumbo-tooltip" style={position ?? { visibility: "hidden" }}>{label}</span> : null}</>;
+  })}{visible ? createPortal(<span role="tooltip" id={id} className="rumbo-tooltip" style={position ?? { visibility: "hidden" }}>{label}</span>, document.body) : null}</>;
 }

@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- September 21 team options: the sidebar team's three-dot dialog includes a direct Team settings destination for that exact team. Tooltips must escape scroll-fade masks without disabling fades; viewport-positioned overlays must not inherit transformed sidebar coordinates.
+
 - September 20 Sub-routes: keep children as ordinary Routes with explicit parent links, exact workspace/project/team scope, sibling order, and at most five levels. New children never inherit completed acceptance or start agents. Use leaf-only progress, separate archived/cancelled work, and show unknown progress when related work is restricted or invalid. Archiving affects only the selected record; recover parents before children, and block deleting parents that still have children. Reparenting, retries, imports, rules, and approved agent proposals must preserve the same hierarchy and permission checks. Legacy invalid links require an explicit repair rather than silent data loss.
 
 - September 20 Updates: one permission-aware activity store spans projects, Routes, requests, documents, outputs, milestones, and chats. Drafts are author-private and excluded from shared backups and published history. Publishing is one-way; revisions keep server-owned attribution. Imported published history does not grant the recorded author editing rights. The workspace feed supports filtered, bounded pages and stable thread links; mentions never send notifications or launch agents. Preserve older settings notes as explicitly historical records, not silent duplicates.
