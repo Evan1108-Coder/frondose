@@ -9,11 +9,11 @@ import { SpaceArchiveDialog, WorkspaceEditor } from "../components/WorkspaceEdit
 import { useIconColors } from '../components/IconColors.jsx';
 import { pageTeam } from '../lib/icon-colors.js';
 import { House, Route, FolderKanban, LibraryBig, NotebookPen, Users, Target, Calendar, MessageSquareText, Activity, Flag, GitBranch } from '../components/icons.jsx';
-const TAB_ICONS = { overview: House, routes: Route, projects: FolderKanban, resources: LibraryBig, documents: NotebookPen, people: Users, strategy: Target, timeline: Calendar, chats: MessageSquareText, activity: Activity, changes: GitBranch, milestones: Flag };
+const TAB_ICONS = { overview: House, routes: Route, projects: FolderKanban, resources: LibraryBig, documents: NotebookPen, people: Users, strategy: Target, timeline: Calendar, chats: MessageSquareText, updates: MessageSquareText, activity: Activity, changes: GitBranch, milestones: Flag };
 
 export function SpaceTabs({ tabs, value, onChange, label }) {
   const { page, data } = useApp();
-  const { colorsFor, editColors } = useIconColors();
+  const { colorsFor } = useIconColors();
   const team = pageTeam(page, data);
   const ref = useRef(null);
   useEffect(() => {
@@ -39,8 +39,7 @@ export function SpaceTabs({ tabs, value, onChange, label }) {
     const section = page.view === 'projects' ? ({ overview: 'projects', routes: 'tasks' }[tab.id] || tab.id) : tab.id;
     const id = `${page.view === 'teams' ? 'team' : 'project'}:${page.id}:${section}`;
     const colors = colorsFor(id, team);
-    const edit = event => { event.preventDefault(); editColors({ id, team, label: tab.label }); };
-    return <button key={tab.id} type="button" role="tab" aria-selected={value === tab.id} tabIndex={value === tab.id ? 0 : -1} className={value === tab.id ? 'active' : ''} onContextMenu={edit} onClick={event => event.target.closest('.space-tab-color-icon') ? edit(event) : onChange(tab.id)}>{Icon ? <span className="space-tab-color-icon" style={{ color: colors.icon || undefined }} title="Change tab colors"><Icon size={16} aria-hidden="true" /></span> : null}<span className="space-tab-color-label" style={{ color: colors.label || undefined }}>{tab.label}</span>{tab.count ? <span>{tab.count}</span> : null}</button>;
+    return <button key={tab.id} type="button" role="tab" aria-selected={value === tab.id} tabIndex={value === tab.id ? 0 : -1} className={value === tab.id ? 'active' : ''} onClick={() => onChange(tab.id)}>{Icon ? <span className="space-tab-color-icon" style={{ color: colors.icon || undefined }}><Icon size={16} aria-hidden="true" /></span> : null}<span className="space-tab-color-label" style={{ color: colors.label || undefined }}>{tab.label}</span>{tab.count ? <span>{tab.count}</span> : null}</button>;
   })}</div>;
 }
 

@@ -77,6 +77,10 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
       validateRecord(db, table, { ...row, archived_at: row.archived_at ?? timestamp }, config[table].required, config[table].fields);
       const fields = config[table].fields.filter(f => row[f] !== undefined);
       db.prepare(`INSERT INTO ${table} (id,${fields.join(',')},created_at,updated_at) VALUES (?,${fields.map(() => '?').join(',')},?,?)`).run(row.id, ...fields.map(f => dbValue(f, row[f])), timestamp, timestamp);
+      if (['projects', 'tasks'].includes(table) && source.reported_progress != null) {
+        if (!Number.isInteger(source.reported_progress) || source.reported_progress < 0 || source.reported_progress > 100) throw validationError('Invalid reported progress.');
+        db.prepare(`UPDATE ${table} SET reported_progress=? WHERE id=?`).run(source.reported_progress, row.id);
+      }
       if (table === 'tasks' || table === 'projects') pending.push([table, row]);
     }
     for (const source of data.workspace_items ?? []) {

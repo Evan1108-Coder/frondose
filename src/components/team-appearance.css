@@ -32,7 +32,8 @@
 .tab-color-preview > span { font-size: 30px; }
 .sidebar-v2 .colorable-nav, .settings-rail nav .colorable-nav { display: flex; align-items: center; gap: 0; padding: 0 5px; min-width: 0; }
 .colorable-nav .nav-color-trigger { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 32px; padding: 4px; border-radius: 5px; color: inherit; }
-.colorable-nav .nav-color-trigger:hover { background: var(--hover); }
+.sidebar-v2 .colorable-nav:hover, .sidebar-v2 .colorable-nav:focus-visible, .settings-rail nav .colorable-nav:focus-visible { background: var(--hover); }
+.colorable-nav .nav-color-trigger, .colorable-nav .nav-color-link { background: transparent; }
 .colorable-nav .nav-color-trigger svg { width: 18px; height: 18px; }
 .colorable-nav .nav-color-link { display: flex; align-items: center; flex: 1; min-width: 0; padding: 5px; gap: 8px; color: inherit; text-align: left; font: inherit; }
 .colorable-nav .nav-color-link > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

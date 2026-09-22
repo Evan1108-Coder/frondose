@@ -9,8 +9,8 @@ import { SETTINGS_GROUPS } from '../lib/settings-catalog.js';
 import './team-appearance.css';
 
 const IconColorsContext = createContext(null);
-export const TEAM_TABS = [['overview', 'Overview'], ['routes', 'Routes'], ['projects', 'Projects'], ['resources', 'Resources'], ['documents', 'Documents'], ['people', 'People']];
-export const PROJECT_TABS = [['projects', 'Overview'], ['workbench', 'Workbench'], ['tasks', 'Routes'], ['chats', 'Chats'], ['library', 'Outputs'], ['memory', 'Memory'], ['strategy', 'Strategy & risks'], ['timeline', 'Timeline'], ['documents', 'Documents'], ['activity', 'Activity']];
+export const TEAM_TABS = [['overview', 'Overview'], ['routes', 'Routes'], ['projects', 'Projects'], ['resources', 'Resources'], ['documents', 'Documents'], ['updates', 'Updates'], ['people', 'People']];
+export const PROJECT_TABS = [['projects', 'Overview'], ['workbench', 'Workbench'], ['tasks', 'Routes'], ['chats', 'Chats'], ['library', 'Outputs'], ['memory', 'Memory'], ['strategy', 'Strategy & risks'], ['timeline', 'Timeline'], ['documents', 'Documents'], ['updates', 'Updates'], ['changes', 'Changes'], ['activity', 'Activity']];
 export function useIconColors() { return useContext(IconColorsContext); }
 
 export function IconColorsProvider({ children }) {
@@ -42,15 +42,14 @@ export function IconColorsProvider({ children }) {
   return <IconColorsContext.Provider value={{ settings, colorsFor, getOverride, editColors: item => { setError(null); setEditing(item); } }}><div className="icon-color-scope" style={{ '--empty-icon-color': emptyColor || 'var(--secondary)', '--empty-copy-color': emptyColor || undefined }}>{children}</div>{editing ? createPortal(<Dialog title={`${editing.label} colors`} subtitle="Personal to this browser and workspace. The tab’s icon shape stays unchanged." onClose={() => setEditing(null)}><div className="tab-color-editor"><div className="tab-color-preview"><span style={{ color: preview.icon || 'var(--secondary)' }}>◇</span><strong style={{ color: preview.label || 'var(--text)' }}>{editing.label}</strong></div><ColorPolicyChoice label="Tab icon color" value={getOverride(editing.id).icon || 'inherit'} options={[[ 'inherit', editingTeam ? 'Follow team settings' : editingGroup ? 'Follow group settings' : 'Follow global tab icon color'], ...(editingTeam || editingGroup ? [['global', 'Follow global tab icon color']] : [])]} onChange={icon => update(editing.id, { icon })} /><ColorPolicyChoice label="Tab name color" value={getOverride(editing.id).label || 'inherit'} options={[[ 'inherit', editingTeam ? 'Follow team settings' : editingGroup ? 'Follow group settings' : 'Follow global tab name color'], ...(editingTeam || editingGroup ? [['global', 'Follow global tab name color']] : []), ['icon', 'Match this tab icon'], ['neutral', 'Theme default (neutral)']]} onChange={label => update(editing.id, { label })} /><p>Changes save immediately. “Follow” options update automatically when the source color changes.</p><ErrorMessage error={error} />{editing.onNavigate ? <button type="button" className="button secondary" onClick={() => { editing.onNavigate(); setEditing(null); }}>Open tab</button> : null}</div></Dialog>, document.body) : null}</IconColorsContext.Provider>;
 }
 
-/** Separate sibling buttons: color editing never accidentally navigates. */
+/** One navigation target; appearance editing is deliberately confined to Settings. */
 export function ColorableNavItem({ colorId, team, icon: Icon, label, title, children, compact = false, className = '', onClick, ...props }) {
-  const { colorsFor, editColors } = useIconColors();
+  const { colorsFor } = useIconColors();
   const colors = colorsFor(colorId, team);
   const current = props['aria-current'];
   const accessibleName = props['aria-label'] || label;
   delete props['aria-current']; delete props['aria-label'];
-  const edit = event => { event.preventDefault(); event.stopPropagation(); editColors({ id: colorId, team, label: accessibleName, onNavigate: onClick }); };
-  return <div {...props} className={`nav-item colorable-nav ${className}`} data-color-id={colorId}><button type="button" className="nav-color-trigger" style={{ color: colors.icon || undefined }} aria-label={compact ? accessibleName : `Change ${accessibleName} colors`} aria-current={compact ? current : undefined} title={compact ? 'Open tab · right-click for colors' : 'Change icon and name colors'} onContextMenu={compact ? edit : undefined} onClick={compact ? onClick : edit}><Icon /></button><button type="button" className="nav-color-link" aria-label={accessibleName} aria-current={current} style={{ color: colors.label || undefined }} onClick={onClick}><span>{label}</span>{children}</button></div>;
+  return <button {...props} type="button" className={`nav-item colorable-nav ${className}`} data-color-id={colorId} aria-label={accessibleName} aria-current={current} title={title} onClick={onClick}><span className="nav-color-trigger" style={{ color: colors.icon || undefined }} aria-hidden="true"><Icon /></span><span className="nav-color-link" style={{ color: colors.label || undefined }}><span>{label}</span>{children}</span></button>;
 }
 
 export function TabColorsSettings() {
@@ -65,5 +64,5 @@ export function TabColorsSettings() {
     ...data.projects.filter(p => !p.archived_at).flatMap(project => PROJECT_TABS.map(([id, label]) => ({ id: `project:${project.id}:${id}`, label: `${project.name} · ${label}`, team: data.teams.find(t => t.id === project.team_id) }))),
     ...SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id: `settings:${id}`, label: `Settings · ${group} · ${label}` }))),
   ];
-  return <section className="tab-colors-settings"><h3>Individual tabs</h3><p>Click a navigation icon or choose a tab here. Overrides apply only to this workspace in your browser.</p><input aria-label="Find a tab color setting" placeholder="Find a tab…" value={query} onChange={e => setQuery(e.target.value)} /><div className="tab-colors-list">{entries.filter(e => e.label.toLowerCase().includes(query.toLowerCase())).map(entry => { const colors = colorsFor(entry.id, entry.team); return <button type="button" key={entry.id} onClick={() => editColors(entry)}><i style={{ background: colors.icon || 'var(--secondary)' }} /><span style={{ color: colors.label || undefined }}>{entry.label}</span><small>Edit colors</small></button>; })}</div></section>;
+  return <section className="tab-colors-settings"><h3>Individual tabs</h3><p>Tabs follow their team or global colors by default. Choose a tab here to customize it. Overrides apply only to this workspace in your browser.</p><input aria-label="Find a tab color setting" placeholder="Find a tab…" value={query} onChange={e => setQuery(e.target.value)} /><div className="tab-colors-list">{entries.filter(e => e.label.toLowerCase().includes(query.toLowerCase())).map(entry => { const colors = colorsFor(entry.id, entry.team); return <button type="button" key={entry.id} onClick={() => editColors(entry)}><i style={{ background: colors.icon || 'var(--secondary)' }} /><span style={{ color: colors.label || undefined }}>{entry.label}</span><small>Edit colors</small></button>; })}</div></section>;
 }

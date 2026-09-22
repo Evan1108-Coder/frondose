@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { changeContext } from './change-context.mjs';
+import { timelineRoute } from './timeline-service.mjs';
 import { mkdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, parse as parsePath } from 'node:path';
@@ -715,7 +717,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     return false;
   }
 
-  async function middleware(req, res, next = () => {}) {
+  function middleware(req, res, next = () => {}) {
+    return changeContext.run({}, () => handleRequest(req, res, next));
+  }
+  async function handleRequest(req, res, next = () => {}) {
     let url;
     try { url = new URL(req.url || '/', 'http://127.0.0.1'); }
     catch { return fail(res, 400, 'bad_url', 'Invalid request URL.'); }
@@ -729,6 +734,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const db = getDb();
       const path = url.pathname.slice(API_PREFIX.length) || '/';
       const actor = identity.resolve(req);
+      Object.assign(changeContext.getStore(), { actor, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Rumbo' });
       if (path.startsWith('/connection-platform/webhooks/') && req.method === 'POST') {
         await readBody(req);
         const result = await connectionPlatform.handle({ method: req.method, path, rawBody: req.rumboRawBody, headers: req.headers });
@@ -775,6 +781,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         for (const field of ['sender_type', 'sender_id', 'sender_name', 'senderType', 'senderId', 'senderName', 'chat_id', 'chatId']) delete body[field];
       }
       const accessDecision = access.check({ actor, path, method: req.method, url, body });
+      if (await timelineRoute({ db, req, res, path, url, send, actor, allowed: access.allowed, filter: value => access.filter(value, actor) })) return;
       const reviewResult = await changeReviews.handle({ path, method: req.method, query: Object.fromEntries(url.searchParams), body, actor });
       if (reviewResult) return send(res, 200, reviewResult);
       if (accessDecision?.writing && (accessDecision.destructive || req.method === 'DELETE' || body.archived_at)) {

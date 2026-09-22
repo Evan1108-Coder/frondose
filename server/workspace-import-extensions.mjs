@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import { validateUpdateAttachments, validateUpdateChanges } from './update-fields.mjs';
 import { isRecord, validationError } from './validation.mjs';
 import { validateSteps } from './coordination-service.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
+import { emojiShortcode } from '../src/lib/custom-emojis.js';
 import { ACTIVITY_TARGET_TABLES } from './activity-policy.mjs';
 import { routeGraph, inspectRouteGraph } from './route-hierarchy.mjs';
 
@@ -19,6 +21,16 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 // Runs, connections and permissions never come back to life during a restore.
 // Imported approvals remain historical records; new outputs require review.
 export function importExtensions(db, data, ids, workspaceId, stamp) {
+  // Restored shortcodes must remain unambiguous, including archived images and
+  // legacy records whose code is derived from their name. This runs inside the
+  // import transaction, so a collision rolls back the entire new workspace.
+  const emojiCodes = new Set();
+  for (const item of data.workspace_items ?? []) if (item.kind === 'emoji') {
+    const code = emojiShortcode(item).slice(1, -1);
+    if (!/^[a-z0-9_-]{1,160}$/.test(code) || !/[a-z0-9]/.test(code)) throw error('invalid emoji shortcode.');
+    if (emojiCodes.has(code)) throw error('duplicate emoji shortcode, including archived emojis.');
+    emojiCodes.add(code);
+  }
   const collections = new Map(Object.entries(data).filter(([,rows]) => Array.isArray(rows)).map(([key,rows]) => [key, new Map(rows.map(row => [row.id,row]))]));
   const source = (table,id, required = false) => { if (!id && !required) return null; const item = collections.get(table)?.get(id); if (!item || !ids.has(id)) throw error(`missing ${table} reference.`); return item; };
   const ref = (table,id, required = false) => source(table,id,required) ? ids.get(id) : null;
@@ -61,7 +73,8 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
       const target = source(targetTable, row.target_id, true);
       if (row.target_type === 'request' && target.kind !== 'request') throw error('activity request target is not a request.');
       const content = txt(row.content, 50000); if (!content.trim()) throw error('published updates need content.');
-      fields = { ...fields, target_type: row.target_type, target_id: ref(targetTable, row.target_id, true), update_type: choice(row.update_type, ['progress','decision','blocker','risk','release','outcome','comment']), parent_id: null, actor_type: choice(row.actor_type, ['user','agent','system']), actor_id: null, actor_name: txt(row.actor_name,160) || 'Imported author', content, title: txt(row.title,200), health: choice(row.health || 'none',['none','on_track','at_risk','blocked']), publication_state:'published', published_at:timestamp(row.published_at) || timestamp(row.created_at) || stamp, imported:1, version:1, archived_at:timestamp(row.archived_at), created_at:timestamp(row.created_at) || stamp, updated_at:stamp };
+      fields = { ...fields, target_type: row.target_type, target_id: ref(targetTable, row.target_id, true), update_type: choice(row.update_type, ['progress','decision','blocker','risk','release','outcome','comment']), parent_id: null, actor_type: choice(row.actor_type, ['user','agent','system']), actor_id: null, actor_name: txt(row.actor_name,160) || 'Imported author', content, title: txt(row.title,200), health: choice(row.health || 'none',['none','on_track','at_risk','blocked']), publication_state:'published', published_at:timestamp(row.published_at) || timestamp(row.created_at) || stamp, imported:1, version:1, archived_at:timestamp(row.archived_at), created_at:timestamp(row.created_at) || stamp, updated_at:stamp,
+        attachments_json: validateUpdateAttachments(JSON.parse(row.attachments_json || '[]')), work_changes_json: validateUpdateChanges(JSON.parse(row.work_changes_json || '{}'), row.target_type, Boolean(row.parent_id)) };
     } else if (table === 'route_workflows') {
       source('tasks',row.id,true);
       const deps = list(row.dependency_ids), parent = ref('tasks',row.parent_task_id);

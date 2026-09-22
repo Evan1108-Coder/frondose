@@ -5,7 +5,7 @@ import { pageHash, parsePage } from "../src/lib/navigation.js";
 const home = { view: "overview", id: null, projectId: null };
 
 test('team section deep links preserve the selected tab', () => {
-  for (const section of ['overview', 'routes', 'projects', 'resources', 'documents', 'people']) {
+  for (const section of ['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people']) {
     assert.deepEqual(parsePage(pageHash('teams', 'team_1', { section })), { view: 'teams', id: 'team_1', projectId: null, section });
   }
   assert.deepEqual(parsePage('#/teams/team_1?section=invalid'), home);

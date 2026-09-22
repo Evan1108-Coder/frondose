@@ -33,8 +33,35 @@ export function createChangeReviewService({ db, workbench, platform, authorize }
     return { row, projectId, scope };
   }
   function scopeQuery(review) { return { workspace_id: review.workspace_id, target_type: review.target_type, target_id: review.target_id }; }
+  function documentRevision(source, query, actor, info) {
+    const history = query.target_type === 'document' && db.prepare("SELECT * FROM change_log WHERE id=? AND workspace_id=? AND entity_type='documents' AND entity_id=?").get(source.revision_id || '', query.workspace_id, query.target_id);
+    if (!history) throw validationError('Choose a saved document revision.');
+    // A readable current document does not grant access to text captured in its
+    // former project/team. Recheck both sides on previews and saved snapshot reads.
+    for (const json of [history.before_json, history.after_json]) {
+      if (!json) continue;
+      const state = JSON.parse(json);
+      if (!state) continue;
+      if (state.workspace_id && state.workspace_id !== query.workspace_id) throw validationError('This document revision is unavailable.');
+      const projectId = Object.hasOwn(state, 'project_id') ? state.project_id : info.row.project_id;
+      const teamId = Object.hasOwn(state, 'team_id') ? state.team_id : info.row.team_id;
+      const scopes = [];
+      if (projectId) {
+        if (!db.prepare('SELECT 1 FROM projects WHERE id=? AND workspace_id=?').get(projectId, query.workspace_id)) throw validationError('This document revision is unavailable.');
+        scopes.push({ scope_type: 'project', scope_id: projectId });
+      }
+      if (teamId) scopes.push({ scope_type: 'team', scope_id: teamId });
+      for (const scope of scopes.length ? scopes : [{}]) {
+        authorize(query.workspace_id, actor.id, 'workspace.read', scope);
+        if (scope.scope_type === 'project') authorize(query.workspace_id, actor.id, 'projects.read', scope);
+        authorize(query.workspace_id, actor.id, 'documents.read', scope);
+      }
+    }
+    return history;
+  }
   async function sourceAccess(source, query, actor, info) {
     if (source.kind === 'local' || source.kind === 'run') authorize(query.workspace_id, actor.id, 'workbench.read', info.scope);
+    if (source.kind === 'document') documentRevision(source, query, actor, info);
     if (source.kind === 'github') {
       const connections = await platform.list(query.workspace_id, actor);
       const connection = connections.find(item => item.id === source.connection_id && item.provider === 'github');
@@ -55,8 +82,7 @@ export function createChangeReviewService({ db, workbench, platform, authorize }
       const result = await platform.code(source.connection_id, { resource_id: source.resource_id, kind: 'pull', number: source.number }, actor);
       comparison = { ...result, source: 'github', fingerprint: hash({ connection: source.connection_id, repository: source.resource_id, base: result.base, head: result.head, files: result.files }) };
     } else if (source.kind === 'document' && query.target_type === 'document') {
-      const history = db.prepare("SELECT * FROM change_log WHERE id=? AND workspace_id=? AND entity_type='documents' AND entity_id=?").get(source.revision_id, query.workspace_id, query.target_id);
-      if (!history) throw validationError('Choose a saved document revision.');
+      const history = documentRevision(source, query, actor, info);
       const before = JSON.parse(history.before_json || '{}'), after = JSON.parse(history.after_json || '{}');
       const patch = textPatch(`${before.title || ''}\n\n${before.content || ''}`, `${after.title || ''}\n\n${after.content || ''}`);
       comparison = { source: 'document', title: history.name, base: 'Before saved revision', head: history.created_at, files: [{ path: 'document.md', patch, status: history.action }], notice: 'This compares the text before and after this saved revision. It never restores or edits the document.', fingerprint: hash({ revision: history.id, patch }) };

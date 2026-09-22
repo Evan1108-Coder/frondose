@@ -47,11 +47,11 @@ async function fixture(fn) {
   const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git('init', '-b', 'master'); await writeFile(join(root, 'index.js'), 'const x = 1;\n'); git('add', 'index.js'); git('-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','Initial');
   const wb = createWorkbenchService({ db, dataDir: join(dir, 'storage') });
-  let deny = '';
-  const service = createChangeReviewService({ db, workbench: wb, platform: { list: async () => [] }, authorize: (ws, actor, permission) => { if (permission === deny || ws !== 'ws' || actor !== 'owner') throw new Error('access denied'); } });
+  let deny = '', deniedScope = '';
+  const service = createChangeReviewService({ db, workbench: wb, platform: { list: async () => [] }, authorize: (ws, actor, permission, scope) => { if (permission === deny || deniedScope && scope?.scope_id === deniedScope || ws !== 'ws' || actor !== 'owner') throw new Error('access denied'); } });
   const actor = { id: 'owner', name: 'Test Owner' }, scope = { workspace_id: 'ws', target_type: 'project', target_id: 'project' };
   const call = async (path = '', method = 'GET', body = {}, query = scope) => (await service.handle({ path: `/change-reviews${path}`, method, body, query, actor })).result;
-  try { await fn({ root, dir, db, git, service, actor, scope, call, deny: value => { deny = value; } }); }
+  try { await fn({ root, dir, db, git, service, actor, scope, call, deny: value => { deny = value; }, denyScope: value => { deniedScope = value; } }); }
   finally { wb.close(); db.close(); await rm(dir, { recursive: true, force: true }); }
 }
 test('local review snapshots are immutable, scoped, stale-safe and line-bound', async () => fixture(async ({ root, dir, git, scope, call, deny }) => {
@@ -92,6 +92,32 @@ test('document revision compares saved history and run capture excludes pre-exis
   assert.match(saved.comparison.files[0].patch,/-Pre-existing/); assert.match(saved.comparison.files[0].patch,/\+After agent/);
   assert.equal(saved.source.kind,'run'); assert.equal((await call()).length,1);
   assert.equal((await call(`/${id}/refresh`, 'POST', {})).immutable, true);
+}));
+
+test('document reviews recheck both historical scopes for previews and every saved-snapshot operation', async () => fixture(async ({ db, call, denyScope }) => {
+  db.exec("INSERT INTO projects VALUES('private','ws',NULL,NULL)");
+  const current = { workspace_id: 'ws', project_id: 'project', team_id: null, title: 'Public document', content: 'Current text' };
+  for (const [id, before, after, blockedScope] of [
+    ['old-project', { ...current, project_id: 'private', content: 'Private before' }, current, 'private'],
+    ['new-project', current, { ...current, project_id: 'private', content: 'Private after' }, 'private'],
+    ['old-team', { ...current, project_id: null, team_id: 'private-team', content: 'Private team before' }, current, 'private-team'],
+    ['new-team', current, { ...current, project_id: null, team_id: 'private-team', content: 'Private team after' }, 'private-team'],
+  ]) {
+    db.prepare('INSERT INTO change_log VALUES(?,?,?,?,?,?,?,?,?)').run(id, 'ws', 'documents', 'doc', 'Document revision', JSON.stringify(before), JSON.stringify(after), new Date().toISOString(), 'updated');
+    const query = { workspace_id: 'ws', target_type: 'document', target_id: 'doc', source: { kind: 'document', revision_id: id } };
+    const comparison = await call('/compare', 'POST', query);
+    const saved = await call('', 'POST', { ...query, fingerprint: comparison.fingerprint });
+    denyScope(blockedScope);
+    await assert.rejects(call('/compare', 'POST', query), /access denied/);
+    await assert.rejects(call('', 'POST', { ...query, fingerprint: comparison.fingerprint }), /access denied/);
+    await assert.rejects(call(`/${saved.id}`), /access denied/);
+    await assert.rejects(call(`/${saved.id}/refresh`, 'POST'), /access denied/);
+    await assert.rejects(call(`/${saved.id}/comments`, 'POST', { path: 'document.md', side: 'new', line: 3, body: 'Hidden content' }), /access denied/);
+    await assert.rejects(call(`/${saved.id}/reviewed`, 'POST', { path: 'document.md', reviewed: true }), /access denied/);
+    assert.equal((await call('', 'GET', {}, query)).some(row => row.id === saved.id), false);
+    denyScope('');
+    assert.equal((await call(`/${saved.id}`)).id, saved.id);
+  }
 }));
 
 test('GitHub review reads filter private paths, preserve missing-patch states and reject mixed commits', async () => {

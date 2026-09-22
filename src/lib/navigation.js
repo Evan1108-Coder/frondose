@@ -4,7 +4,7 @@ const VIEWS = new Set([
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
-const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'resources', 'documents', 'people']);
+const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people']);
 
 function validId(value) {
   return typeof value === "string" && value.length > 0 &&

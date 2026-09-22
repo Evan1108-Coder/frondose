@@ -6,6 +6,8 @@
 .updates-search { display: flex; flex: 1 0 100%; gap: 8px; }
 .updates-search .search-field { flex: 1; min-width: 0; }
 .updates-results { display: grid; gap: 20px; }
+.updates-results, .feed-conversation, .updates-page { min-width: 0; }
+.feed-conversation > .activity-entry { min-width: 0; }
 .updates-results > .activity-entry { min-width: 0; }
 .updates-load-state { color: var(--muted); font-size: 13px; padding-block: 16px; text-align: center; }
 .updates-new-dialog { padding: 24px; }

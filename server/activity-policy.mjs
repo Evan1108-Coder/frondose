@@ -22,7 +22,7 @@ export function createActivityPolicy(db, allowed = () => true) {
     if (referencedProjects.some(value => !value || value.workspace_id !== entry.workspace_id)) return null;
     const at = projectId ? { scope_type: 'project', scope_id: projectId } : item.team_id ? { scope_type: 'team', scope_id: item.team_id } : {};
     return { item, table, area: AREAS[entry.target_type], at, requestRoute, scopes: [at, ...referencedIds.map(id => ({ scope_type: 'project', scope_id: id }))], active: !item.archived_at && !project?.archived_at && !requestRoute?.archived_at && !referencedProjects.some(value => value.archived_at),
-      display: { type: entry.target_type, id: item.id, title: item.title || item.name || 'Untitled', project_id: projectId, project_ids: [...new Set([projectId, ...referencedIds].filter(Boolean))], view: VIEWS[entry.target_type] } };
+      display: { type: entry.target_type, id: item.id, title: item.title || item.name || 'Untitled', team_id: project?.team_id || item.team_id || null, project_id: projectId, project_ids: [...new Set([projectId, ...referencedIds].filter(Boolean))], view: VIEWS[entry.target_type] } };
   }
   function permitted(entry, actor, verb) {
     const destination = target(entry);

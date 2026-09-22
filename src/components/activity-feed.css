@@ -60,11 +60,34 @@
 .activity-entry header time { color: var(--muted); margin-left: auto; }
 .activity-type { padding: 2px 6px; border-radius: 4px; background: var(--hover); color: var(--secondary); text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
 .activity-entry p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); line-height: 1.55; font-size: 14px; }
-.activity-entry-actions { display: flex; gap: 12px; }
+.activity-entry-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .activity-entry-actions button { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
 .activity-entry-actions button:hover { color: var(--text); }
 .activity-entry-actions svg { width: 14px; height: 14px; }
 .activity-replies { margin-left: 2px; padding-left: 14px; border-left: 1px solid var(--border); }
+.activity-replies[hidden] { display: none; }
+.activity-replies > .activity-entry { position: relative; }
+.activity-replies > .activity-entry::before { content: ''; position: absolute; width: 12px; height: 18px; left: -15px; top: 0; border-bottom: 1px solid var(--border); border-bottom-left-radius: 10px; }
+.activity-list > .activity-entry, .feed-conversation > .activity-entry { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 18px; margin-bottom: 14px; }
+.activity-thread-toggle, .activity-reply-prompt { display: flex; align-items: center; gap: 8px; text-align: left; color: var(--muted); padding: 8px 0; font-size: 13px; }
+.activity-thread-toggle:hover, .activity-reply-prompt:hover { color: var(--text); }
+.activity-reply-prompt { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 14px; }
+.activity-reply-prompt svg { width: 18px; height: 18px; }
+.update-work-fields { padding: 10px; border: 1px solid var(--border); border-radius: 7px; }
+.update-work-fields summary { cursor: pointer; font-size: 13px; }
+.update-work-fields p, .update-attachments small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.update-change-summary { display: grid; gap: 5px; margin: 6px 0; padding: 10px; border-radius: 6px; background: var(--hover); font-size: 12px; }
+.update-change-summary > div { display: flex; gap: 12px; flex-wrap: wrap; }
+.update-change-summary dt { text-transform: capitalize; color: var(--muted); }
+.update-change-summary dd { margin: 0; color: var(--secondary); }
+.update-attachments { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.update-attachments label { position: relative; overflow: hidden; cursor: pointer; }
+.update-attachments input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.update-attachments > div { width: 100%; display: flex; justify-content: space-between; gap: 10px; font-size: 12px; overflow-wrap: anywhere; }
+.update-file-links { display: flex; flex-wrap: wrap; gap: 10px; }
+.update-file-links a { display: grid; gap: 5px; max-width: 220px; color: var(--secondary); font-size: 12px; overflow-wrap: anywhere; }
+.update-file-links img { max-width: 100%; max-height: 160px; object-fit: contain; border-radius: 6px; }
+@media(max-width:640px) { .activity-replies .activity-entry { grid-template-columns: 5px minmax(0,1fr); gap: 4px; } .activity-replies { padding-left: 7px; } .activity-list > .activity-entry, .updates-results > .activity-entry { padding: 10px; } .activity-replies > .activity-entry::before { left: -8px; width: 7px; } }
 .activity-state { min-height: 110px; padding: 22px; display: grid; place-items: center; align-content: center; gap: 7px; border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); text-align: center; font-size: 13px; }
 .activity-state svg { width: 22px; height: 22px; }
 .activity-state strong { color: var(--secondary); }

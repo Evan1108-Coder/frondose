@@ -1,3 +1,4 @@
+import { requestUpdateNavigation, UnsavedUpdatesDialog } from './components/UnsavedUpdates.jsx';
 import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
 import { IconColorsProvider } from './components/IconColors.jsx';
 import {
@@ -138,10 +139,12 @@ export function App() {
   const startSession = useCallback((defaults = {}) => setSession(defaults), []);
   const setWorkspace = useCallback(
     (id) => {
-      setWorkspaceId(id);
-      navigate("overview");
-      setEditor(null);
-      setSession(null);
+      requestUpdateNavigation(() => {
+        setWorkspaceId(id);
+        navigate("overview");
+        setEditor(null);
+        setSession(null);
+      });
     },
     [navigate, setWorkspaceId],
   );
@@ -263,7 +266,8 @@ export function App() {
     [navigate, notify, page, perform],
   );
   useEffect(() => {
-    const change = () => setPage(readPage());
+    let previous = location.hash;
+    const change = () => { const next = location.hash; history.replaceState(null, '', previous || '#/'); requestUpdateNavigation(() => { previous = next; history.replaceState(null, '', next); setPage(readPage()); }); };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
@@ -377,7 +381,7 @@ export function App() {
   };
   if (!workspace)
     return (
-      <AppContext.Provider value={context}>
+      <AppContext.Provider value={context}><UnsavedUpdatesDialog />
         <FirstRun onCreated={setWorkspace} />
       </AppContext.Provider>
     );
@@ -407,7 +411,7 @@ export function App() {
   const currentTeam = page.view === 'teams' ? visible(data.teams).find(team => team.id === page.id) : null;
   return (
     <AppContext.Provider value={context}>
-      <IconColorsProvider>
+      <IconColorsProvider><UnsavedUpdatesDialog />
       <div className={`rumbo-app ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
         <a
           href="#main-content"

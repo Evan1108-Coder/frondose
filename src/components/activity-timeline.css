@@ -1,0 +1,14 @@
+.event-timeline { min-width: 0; margin-top: 24px; }
+.event-timeline ol { list-style: none; padding: 0; margin: 14px 0; }
+.event-timeline li { position: relative; display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 10px; padding: 0 0 20px; color: var(--secondary); font-size: 13px; }
+.event-timeline li:not(:last-child)::before { content: ''; position: absolute; left: 12px; top: 24px; bottom: 2px; border-left: 1px solid var(--border); }
+.event-marker { width: 26px; height: 24px; display: grid; place-items: center; color: var(--muted); }
+.event-timeline p { margin: 2px 0 5px; line-height: 1.6; overflow-wrap: anywhere; }
+.event-timeline strong { font-weight: 550; color: var(--text); }
+.event-timeline a { color: var(--secondary); text-decoration: none; }
+.event-timeline a:hover { text-decoration: underline; }
+.event-time, .event-timeline small, .event-empty { color: var(--muted); }
+.event-timeline summary { cursor: pointer; display: flex; gap: 5px; align-items: center; padding: 4px 0; font-size: 12px; }
+.event-timeline dl { margin: 5px 0; padding: 10px; border: 1px solid var(--border); border-radius: 7px; }
+.event-timeline dl > div { display: flex; gap: 10px; flex-wrap: wrap; padding: 3px 0; }
+.event-timeline dd { margin: 0; overflow-wrap: anywhere; }

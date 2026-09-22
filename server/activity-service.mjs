@@ -3,6 +3,7 @@ import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
 import { createActivityPolicy } from './activity-policy.mjs';
 import { getReaction, normalizeReactionColor } from '../src/lib/reaction-catalog.js';
+import { validateUpdateChanges, applyUpdateChanges, validateUpdateAttachments } from './update-fields.mjs';
 
 export const ACTIVITY_TYPES = Object.freeze(['progress', 'decision', 'blocker', 'risk', 'release', 'outcome', 'comment']);
 export const ACTIVITY_TARGETS = Object.freeze(['project', 'route', 'request', 'document', 'output', 'milestone', 'chat']);
@@ -50,8 +51,12 @@ export function installActivity(db) {
   CREATE INDEX IF NOT EXISTS activity_entries_target ON activity_entries(workspace_id,target_type,target_id,created_at);
   CREATE INDEX IF NOT EXISTS activity_entries_parent ON activity_entries(parent_id,created_at);`);
   const columns = new Set(db.prepare('PRAGMA table_info(activity_entries)').all().map(item => item.name));
-  for (const [name, definition] of Object.entries({ title: "TEXT NOT NULL DEFAULT ''", health: "TEXT NOT NULL DEFAULT 'none'", publication_state: "TEXT NOT NULL DEFAULT 'published'", published_at: 'TEXT', imported: 'INTEGER NOT NULL DEFAULT 0' })) {
+  for (const [name, definition] of Object.entries({ title: "TEXT NOT NULL DEFAULT ''", health: "TEXT NOT NULL DEFAULT 'none'", publication_state: "TEXT NOT NULL DEFAULT 'published'", published_at: 'TEXT', imported: 'INTEGER NOT NULL DEFAULT 0', work_changes_json: "TEXT NOT NULL DEFAULT '{}'", attachments_json: "TEXT NOT NULL DEFAULT '[]'" })) {
     if (!columns.has(name)) db.exec(`ALTER TABLE activity_entries ADD COLUMN ${name} ${definition}`);
+  }
+  for (const table of ['tasks', 'projects']) {
+    const fields = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (fields.length && !fields.some(field => field.name === 'reported_progress')) db.exec(`ALTER TABLE ${table} ADD COLUMN reported_progress INTEGER CHECK(reported_progress BETWEEN 0 AND 100)`);
   }
   db.exec(`UPDATE activity_entries SET published_at=created_at WHERE publication_state='published' AND published_at IS NULL;
     CREATE INDEX IF NOT EXISTS activity_entries_feed ON activity_entries(workspace_id,publication_state,published_at,id);
@@ -117,7 +122,10 @@ function inputFields(db, input, current = null) {
   if (!['none', 'on_track', 'at_risk', 'blocked'].includes(health)) throw invalid('Choose a valid health status.');
   const parentId = current?.parent_id ?? validateParent(db, input.parent_id, workspaceId, targetType, targetId);
   if (parentId && publication === 'draft') throw invalid('Replies publish directly; save drafts on root updates.');
-  return { workspace_id: workspaceId, target_type: targetType, target_id: targetId, update_type: updateType, parent_id: parentId, actor_type: actorType, actor_id: actorId, actor_name: actorName, content, title, health, publication_state: publication };
+  const workChanges = validateUpdateChanges(input.work_changes ?? JSON.parse(current?.work_changes_json || '{}'), targetType, Boolean(parentId));
+  if (current?.publication_state === 'published' && workChanges !== (current.work_changes_json || '{}')) throw invalid('Published work changes are immutable. Write another update to change the work.');
+  const attachments = validateUpdateAttachments(input.attachments ?? JSON.parse(current?.attachments_json || '[]'));
+  return { workspace_id: workspaceId, target_type: targetType, target_id: targetId, update_type: updateType, parent_id: parentId, actor_type: actorType, actor_id: actorId, actor_name: actorName, content, title, health, publication_state: publication, work_changes_json: workChanges, attachments_json: attachments };
 }
 
 function currentEntry(db, entryId, workspaceId) {
@@ -146,7 +154,8 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
       if (!['published', 'draft'].includes(state)) throw invalid('Choose published or draft updates.');
       const limit = Number(url.searchParams.get('limit') || 30);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw invalid('Limit must be 1–100.');
-      const filters = Object.fromEntries(['target_type', 'update_type', 'health', 'q', 'project_id', 'include_archived'].map(key => [key, url.searchParams.get(key) || '']));
+      const filters = Object.fromEntries(['target_type', 'update_type', 'health', 'q', 'project_id', 'team_id', 'include_archived'].map(key => [key, url.searchParams.get(key) || '']));
+      if (filters.team_id && !db.prepare('SELECT 1 FROM teams WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(filters.team_id, workspaceId)) throw invalid('Team unavailable.', 404);
       filters.q = url.searchParams.get('search') || filters.q;
       if (filters.target_type && !ACTIVITY_TARGETS.includes(filters.target_type) || filters.update_type && !ACTIVITY_TYPES.includes(filters.update_type) || filters.health && !['none', 'on_track', 'at_risk', 'blocked'].includes(filters.health) || filters.q.length > 200) throw invalid('Invalid feed filter.');
       const binding = JSON.stringify([workspaceId, actor.id, state, filters]);
@@ -162,7 +171,7 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
       // Permission filtering precedes pagination, so hidden records never occupy visible slots.
       const query = db.prepare(`SELECT * FROM activity_entries WHERE ${clauses.join(' AND ')} ORDER BY ${timeColumn} DESC,id DESC`);
       const result = [];
-      for (const item of query.iterate(...parameters)) { if (policy.visible(item, actor) && (filters.include_archived === 'true' || policy.ancestorsActive(item)) && (!filters.project_id || policy.target(item)?.display.project_ids.includes(filters.project_id))) result.push(item); if (result.length > limit) break; }
+      for (const item of query.iterate(...parameters)) { if (policy.visible(item, actor) && (filters.include_archived === 'true' || policy.ancestorsActive(item)) && (!filters.project_id || policy.target(item)?.display.project_ids.includes(filters.project_id)) && (!filters.team_id || ['project', 'route'].includes(item.target_type) && policy.target(item)?.display.team_id === filters.team_id)) result.push(item); if (result.length > limit) break; }
       const more = result.length > limit; if (more) result.pop();
       const last = result.at(-1);
       send(res, 200, { result: { items: result.map(present), next_cursor: more ? Buffer.from(JSON.stringify([binding, last[timeColumn], last.id])).toString('base64url') : null } }); return true;
@@ -225,7 +234,7 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
     const destination = policy.target(result);
     if (!destination?.active || !policy.permitted(result, actor, 'write')) throw invalid('You cannot update this target.', 403);
     if (!policy.ancestorsActive(result)) throw invalid('Replies need a published active parent and at most five levels.');
-    transact(() => { const fields = Object.keys(result); db.prepare(`INSERT INTO activity_entries(${fields.join(',')}) VALUES(${fields.map(() => '?').join(',')})`).run(...Object.values(result)); recordChange(db, 'activity_entries', null, result, 'created'); remember(result); });
+    transact(() => { if (result.publication_state === 'published') applyUpdateChanges(db, result, actor, allowed); const fields = Object.keys(result); db.prepare(`INSERT INTO activity_entries(${fields.join(',')}) VALUES(${fields.map(() => '?').join(',')})`).run(...Object.values(result)); recordChange(db, 'activity_entries', null, result, 'created'); remember(result); });
     respond(201, result);
     return true;
   }
@@ -252,6 +261,8 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
   }
   result.published_at = current.published_at || (result.publication_state === 'published' ? time : null);
   transact(() => {
+    if (current.publication_state === 'draft' && result.publication_state === 'published') applyUpdateChanges(db, result, actor, allowed);
+    db.prepare('UPDATE activity_entries SET work_changes_json=?,attachments_json=? WHERE id=? AND version=?').run(result.work_changes_json, result.attachments_json, entryId, current.version);
     const changed = db.prepare('UPDATE activity_entries SET update_type=?,content=?,title=?,health=?,publication_state=?,published_at=?,version=?,archived_at=?,updated_at=? WHERE id=? AND version=?').run(result.update_type, result.content, result.title, result.health, result.publication_state, result.published_at, result.version, result.archived_at, result.updated_at, entryId, current.version);
     if (changed.changes !== 1) throw invalid('This update changed. Refresh it before continuing.', 409);
     recordChange(db, 'activity_entries', current, result, result.archived_at && !current.archived_at ? 'archived' : current.archived_at && !result.archived_at ? 'restored' : current.publication_state === 'draft' && result.publication_state === 'published' ? 'published' : 'updated'); remember(result);

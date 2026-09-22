@@ -23,6 +23,112 @@ async function fixture(t) {
   return { api, db, governance, access, project, ws, call, post };
 }
 
+test('work changes publish atomically, drafts never mutate targets, stale publication and retries are safe', async t => {
+  const { db, ws, project, call, post } = await fixture(t);
+  const changes = { reported_progress: { before: null, after: 98 }, status: { before: project.status, after: 'paused' } };
+  const draft = await post({ publication_state: 'draft', work_changes: changes, idempotency_key: 'draft-fields-001' });
+  assert.equal(draft.status, 201);
+  assert.equal(db.prepare('SELECT reported_progress FROM projects WHERE id=?').get(project.id).reported_progress, null);
+  const publish = { workspace_id: ws, version: 1, publication_state: 'published', idempotency_key: 'publish-fields-001' };
+  const published = await call('PATCH', `/activity/${draft.body.result.id}`, publish);
+  assert.equal(published.status, 200, JSON.stringify(published.body));
+  assert.equal(db.prepare('SELECT reported_progress,status FROM projects WHERE id=?').get(project.id).reported_progress, 98);
+  assert.equal((await call('PATCH', `/activity/${draft.body.result.id}`, publish)).body.result.version, 2);
+  const count = db.prepare('SELECT COUNT(*) n FROM activity_entries').get().n;
+  assert.equal((await post({ work_changes: changes })).status, 409);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM activity_entries').get().n, count);
+  assert.equal((await call('PATCH', `/activity/${draft.body.result.id}`, { workspace_id: ws, version: 2, work_changes: {} })).status, 400);
+  assert.equal((await post({ parent_id: draft.body.result.id, work_changes: { reported_progress: { before: 98, after: 10 } } })).status, 400);
+  assert.equal((await post({ work_changes: { reported_progress: { before: 98, after: 101 } } })).status, 400);
+  assert.equal((await post({ work_changes: { local_path: { before: null, after: '/tmp' } } })).status, 400);
+});
+
+test('team feeds include direct Routes and project-owned Routes but never other teams; cursors are bound', async t => {
+  const { db, api, ws, project, call, post } = await fixture(t);
+  const time = new Date().toISOString();
+  for (const id of ['team-feed-a', 'team-feed-b']) db.prepare('INSERT INTO teams(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?)').run(id, ws, id, time, time);
+  db.prepare('UPDATE projects SET team_id=? WHERE id=?').run('team-feed-a', project.id);
+  await post({ title: 'Project team update' });
+  const task = api.snapshot().tasks.find(item => item.project_id === project.id);
+  await post({ target_type: 'route', target_id: task.id, title: 'Owned route' });
+  const result = await call('GET', `/activity/feed?workspace_id=${ws}&team_id=team-feed-a&limit=1`);
+  assert.equal(result.status, 200); assert.equal(result.body.result.items.length, 1); assert.ok(result.body.result.next_cursor);
+  assert.equal((await call('GET', `/activity/feed?workspace_id=${ws}&team_id=team-feed-b`)).body.result.items.length, 0);
+  assert.equal((await call('GET', `/activity/feed?workspace_id=${ws}&team_id=team-feed-b&cursor=${encodeURIComponent(result.body.result.next_cursor)}`)).status, 400);
+  assert.equal((await call('GET', `/activity/feed?workspace_id=${ws}&team_id=missing`)).status, 404);
+});
+
+test('timeline records trusted actor and old/new fields without publishing drafts', async t => {
+  const { ws, project, call, post } = await fixture(t);
+  await post({ content: 'PRIVATE TIMELINE TEXT', publication_state: 'draft' });
+  await post({ title: 'Progress report', actor_name: 'Spoofed author', work_changes: { reported_progress: { before: null, after: 98 } } });
+  const response = await call('GET', `/timeline?workspace_id=${ws}&target_type=project&target_id=${project.id}`);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.ok(!JSON.stringify(response.body).includes('PRIVATE TIMELINE TEXT'));
+  assert.ok(!JSON.stringify(response.body).includes('Spoofed author'));
+  const change = response.body.result.items.find(item => item.changes.some(change => change.field === 'reported_progress'));
+  assert.ok(change); assert.equal(change.source, 'Rumbo'); assert.notEqual(change.actor_name, 'Actor not recorded');
+  assert.deepEqual(change.changes.find(value => value.field === 'reported_progress'), { field: 'reported_progress', before: null, after: 98 });
+  assert.equal((await call('GET', `/timeline?workspace_id=${ws}&target_type=project&target_id=${project.id}&limit=1000`)).status, 400);
+});
+
+test('route activity includes child creation and timeline cursors cannot cross targets', async t => {
+  const { ws, project, call } = await fixture(t);
+  const root = (await call('POST', '/tasks', { workspace_id: ws, project_id: project.id, title: 'Parent activity route' })).body.task;
+  const tree = (await call('GET', `/sub-routes/${root.id}?workspace_id=${ws}`)).body.result;
+  const child = await call('POST', `/sub-routes/${root.id}/create`, { workspace_id: ws, revision: tree.revision, request_id: 'timeline-child', title: 'Child activity route' });
+  assert.equal(child.status, 201, JSON.stringify(child.body));
+  const url = `/timeline?workspace_id=${ws}&target_type=route&target_id=${root.id}`;
+  const timeline = await call('GET', url);
+  assert.equal(timeline.status, 200);
+  assert.ok(timeline.body.result.items.some(item => item.title === 'Child activity route'), JSON.stringify(timeline.body));
+  const completion = await call('POST', '/activity', { workspace_id: ws, target_type: 'route', target_id: root.id, update_type: 'progress', content: 'Cannot skip unfinished children', work_changes: { status: { before: root.status, after: 'done' } } });
+  assert.equal(completion.status, 409, JSON.stringify(completion.body));
+  const dueAt = '2026-10-01T12:00:00.000Z';
+  await call('PATCH', `/tasks/${root.id}`, { due_at: dueAt });
+  const dated = (await call('GET', url)).body.result.items;
+  assert.ok(dated.some(item => item.changes.some(change => change.field === 'due_at' && change.after === dueAt)));
+  const first = (await call('GET', url + '&limit=1')).body.result;
+  assert.ok(first.next_cursor);
+  assert.equal((await call('GET', `/timeline?workspace_id=${ws}&target_type=project&target_id=${project.id}&cursor=${encodeURIComponent(first.next_cursor)}`)).status, 400);
+});
+
+test('timeline excludes old restricted document scope after a move', async t => {
+  const { ws, project, db, governance, call } = await fixture(t);
+  const other = (await call('POST', '/projects', { workspace_id: ws, name: 'Restricted source' })).body.project;
+  const doc = (await call('POST', '/documents', { workspace_id: ws, project_id: other.id, title: 'PRIVATE HISTORY TITLE', content: 'Private' })).body.document;
+  await call('PATCH', `/documents/${doc.id}`, { project_id: project.id, title: 'Visible title' });
+  const reader = governance.command(ws, 'local-owner', 'create_member', { name: 'Reader', email: 'timeline-reader@example.com' });
+  governance.command(ws, 'local-owner', 'grant', { member_id: reader.id, permission: 'projects.read', effect: 'deny', scope_type: 'project', scope_id: other.id, reason: 'Private origin' });
+  const owner = await call('POST', '/identity/setup', { name: 'Owner', email: 'owner@example.com', password: 'long owner password 123' });
+  const invite = await call('POST', '/identity/invite', { workspace_id: ws, member_id: reader.id }, owner.cookie);
+  const account = await call('POST', '/identity/accept', { token: invite.body.result.invitation_token, password: 'long reader password 123' });
+  const result = await call('GET', `/timeline?workspace_id=${ws}&target_type=project&target_id=${project.id}`, undefined, account.cookie);
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.ok(!JSON.stringify(result.body).includes('PRIVATE HISTORY'));
+  const moved = db.prepare("SELECT id FROM change_log WHERE entity_id=? AND action='updated' ORDER BY created_at DESC LIMIT 1").get(doc.id);
+  assert.ok(moved); assert.ok(!result.body.result.items.some(item => item.id === moved.id));
+});
+
+test('attachments are validated, private with drafts, and retained by published workspace import', async t => {
+  const { ws, project, call, post } = await fixture(t);
+  const file = { name: 'evidence.txt', data: `data:text/plain;base64,${Buffer.from('Evidence text').toString('base64')}` };
+  const update = await post({ attachments: [file], work_changes: { reported_progress: { before: null, after: 27 } } });
+  assert.equal(update.status, 201, JSON.stringify(update.body));
+  assert.equal(JSON.parse(update.body.result.attachments_json)[0].size, 13);
+  assert.equal((await post({ attachments: [{ name: '../bad', data: file.data }] })).status, 400);
+  assert.equal((await post({ attachments: [{ name: 'bad.png', data: 'data:image/png;base64,YmFk' }] })).status, 400);
+  assert.equal((await post({ attachments: Array(5).fill(file) })).status, 400);
+  const archive = (await call('GET', `/export?workspace_id=${ws}`)).body;
+  const imported = await call('POST', '/import', archive);
+  assert.equal(imported.status, 201, JSON.stringify(imported.body));
+  const feed = (await call('GET', `/activity/feed?workspace_id=${imported.body.result.id}`)).body.result.items;
+  assert.equal(JSON.parse(feed[0].attachments_json)[0].data, file.data);
+  assert.equal(JSON.parse(feed[0].work_changes_json).reported_progress.after, 27);
+  const bootstrap = (await call('GET', '/bootstrap')).body;
+  assert.equal(bootstrap.projects.find(item => item.workspace_id === imported.body.result.id && item.name === project.name).reported_progress, 27);
+});
+
 test('drafts stay author-only and are absent from every export and public history before and after publishing', async t => {
   const { api, db, governance, access, ws, call, post } = await fixture(t);
   const member = governance.command(ws, 'local-owner', 'create_member', { name: 'Reader' });

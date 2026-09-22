@@ -28,6 +28,7 @@ import { WorkflowSelect, LabelPicker, WorkLabels } from '../components/WorkPrope
 import { RouteWorkflow } from '../components/RouteWorkflow.jsx';
 import { featureItems } from '../lib/settings-catalog.js';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
+import { ActivityTimeline } from '../components/ActivityTimeline.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { routeForestRows } from '../lib/sub-routes.js';
 import './route-hierarchy-list.css';
@@ -571,11 +572,13 @@ function RouteDetail({ route }) {
             )}
           </section>
           <ActivityFeed workspaceId={route.workspace_id} targetType="route" targetId={route.id} />
+          <ActivityTimeline workspaceId={route.workspace_id} targetType="route" targetId={route.id} />
           <ReviewPanel targetType="route" targetId={route.id} projectId={route.project_id} />
         </div>
         <aside className="detail-aside">
           <section>
             <h3>Properties</h3>
+            <p>Reported progress: <strong>{route.reported_progress == null ? 'Not set' : `${route.reported_progress}%`}</strong><br /><small>Manual assessment from published updates; separate from sub-route completion.</small></p>
             <WorkflowSelect item={route} onChange={patch => perform(() => rumboActions.updateTask(route.id, patch))} />
             <LabelPicker value={route.labels ?? []} onChange={labels => perform(() => rumboActions.updateTask(route.id, { labels }))} />
             <Select

@@ -3,6 +3,7 @@ import { RESOURCE_TYPES, matchingRoutes } from '../src/lib/settings-catalog.js';
 import { isRecord, validationError, validateAvatar } from './validation.mjs';
 import { emojiShortcode } from '../src/lib/custom-emojis.js';
 import { guardRouteMutation } from './route-hierarchy.mjs';
+import { changeContext } from './change-context.mjs';
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
 const decode = row => row ? { ...row, payload: JSON.parse(row.payload_json), payload_json: undefined } : null;
@@ -17,7 +18,8 @@ export function installWorkspaceFeatures(db) {
       id TEXT PRIMARY KEY, workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
       entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
       name TEXT NOT NULL, before_json TEXT, after_json TEXT, created_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS change_log_scope ON change_log(workspace_id,created_at);`);
+    CREATE INDEX IF NOT EXISTS change_log_scope ON change_log(workspace_id,created_at);
+    CREATE TABLE IF NOT EXISTS change_attribution (change_id TEXT PRIMARY KEY REFERENCES change_log(id) ON DELETE CASCADE, actor_id TEXT, actor_name TEXT NOT NULL, source TEXT NOT NULL);`);
 }
 export function featureSnapshot(db) {
   return {
@@ -34,7 +36,10 @@ export function recordChange(db, resource, before, after, action) {
   const workspaceId = item?.workspace_id ?? (resource === 'workspaces' ? item?.id : null);
   if (!workspaceId) return;
   // Only workspace content is retained; never credentials or connection payloads.
-  db.prepare('INSERT INTO change_log VALUES (?,?,?,?,?,?,?,?,?)').run(uid('change'), workspaceId, resource, item.id, action, item.name ?? item.title ?? resource, before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, stamp());
+  const id = uid('change');
+  db.prepare('INSERT INTO change_log VALUES (?,?,?,?,?,?,?,?,?)').run(id, workspaceId, resource, item.id, action, item.name ?? item.title ?? resource, before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, stamp());
+  const context = changeContext.getStore();
+  if (context?.actor) db.prepare('INSERT INTO change_attribution VALUES(?,?,?,?)').run(id, context.actor.id, context.actor.name || 'Member', context.source || 'Rumbo');
 }
 function activeWorkspace(db, workspaceId) {
   if (typeof workspaceId !== 'string' || !db.prepare('SELECT 1 FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId)) throw validationError('Choose an active workspace.');

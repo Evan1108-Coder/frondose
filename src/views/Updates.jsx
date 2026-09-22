@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { requestUpdateNavigation } from '../components/UnsavedUpdates.jsx';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityComposer, ActivityEntry, ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ArrowLeft, Plus, RotateCw, MessageSquareText } from '../components/icons.jsx';
 import { Button, Dialog, Empty, ErrorMessage, PageHeader, SearchField, Select, useApp } from '../ui.jsx';
 import { rumboApi } from '../data/api.js';
-import { UPDATE_TYPES } from '../lib/activity.js';
+import { filteredActivityThreads, UPDATE_TYPES } from '../lib/activity.js';
 import { mergeUpdatePages, UPDATE_HEALTH, UPDATE_TARGETS, updateTargetLink, updateTargets } from '../lib/updates.js';
 import './updates.css';
 
@@ -12,26 +13,27 @@ export function UpdatesView() {
   return page.id ? <UpdateDetail key={`${workspace.id}:${page.id}`} workspaceId={workspace.id} id={page.id} /> : <WorkspaceUpdates key={`${workspace.id}:${page.projectId ?? ''}`} workspaceId={workspace.id} projectId={page.projectId} />;
 }
 
-function WorkspaceUpdates({ workspaceId, projectId }) {
+export function WorkspaceUpdates({ workspaceId, projectId, teamId }) {
   const { data } = useApp();
   const [state, setState] = useState('published'), [type, setType] = useState(''), [health, setHealth] = useState(''), [target, setTarget] = useState('');
   const [project, setProject] = useState(projectId ?? ''), [search, setSearch] = useState(''), [query, setQuery] = useState('');
   const [archived, setArchived] = useState(false), [creating, setCreating] = useState(false), [reload, setReload] = useState(0);
-  const filterKey = JSON.stringify({ state, type, health, target, project, query, archived });
-  return <main className="page updates-page"><PageHeader title="Updates" description="Progress, decisions, and context from across your workspace."><Button icon={RotateCw} onClick={() => setReload(value => value + 1)}>Refresh</Button><Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>New update</Button></PageHeader>
+  const filterKey = JSON.stringify({ state, type, health, target, project, query, archived, teamId });
+  const Container = teamId ? 'section' : 'main';
+  return <Container className={`${teamId ? '' : 'page '}updates-page`}><PageHeader title={teamId ? 'Team updates' : 'Updates'} description={teamId ? 'Updates from this team’s Routes and projects.' : 'Progress, decisions, and context from across your workspace.'}><Button icon={RotateCw} onClick={() => requestUpdateNavigation(() => setReload(value => value + 1))}>Refresh</Button><Button variant="primary" icon={Plus} onClick={() => requestUpdateNavigation(() => setCreating(true))}>New update</Button></PageHeader>
     <div className="updates-privacy-note">Updates stay attached to their work. Drafts are private to their author; publishing does not send external notifications or start agents.</div>
     <div className="updates-filter-bar">
-      <Select label="Visibility" value={state} onChange={setState}><option value="published">Published updates</option><option value="draft">My drafts</option></Select>
-      <Select label="Work type" value={target} onChange={setTarget}><option value="">Every work type</option>{UPDATE_TARGETS.map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select>
-      <Select label="Project" value={project} onChange={setProject}><option value="">Every project</option>{(data.projects ?? []).filter(item => !item.archived_at).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
-      <Select label="Update type" value={type} onChange={setType}><option value="">Every update type</option>{UPDATE_TYPES.filter(([id]) => id !== 'comment').map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select>
-      <Select label="Health" value={health} onChange={setHealth}><option value="">Every health state</option>{UPDATE_HEALTH.map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select>
-      <label className="updates-archive-filter"><input type="checkbox" checked={archived} onChange={event => setArchived(event.target.checked)} />Include archived</label>
-      <form className="updates-search" onSubmit={event => { event.preventDefault(); setQuery(search.trim()); }}><SearchField value={search} onChange={setSearch} label="Search updates" placeholder="Search titles and content…" /><Button type="submit">Search</Button>{query ? <Button onClick={() => { setSearch(''); setQuery(''); }}>Clear</Button> : null}</form>
+      <Select label="Visibility" value={state} onChange={value => requestUpdateNavigation(() => setState(value))}><option value="published">Published updates</option><option value="draft">My drafts</option></Select>
+      <Select label="Work type" value={target} onChange={value => requestUpdateNavigation(() => setTarget(value))}><option value="">Every work type</option>{UPDATE_TARGETS.filter(([id]) => !teamId || ['project', 'route'].includes(id)).map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select>
+      <Select label="Project" value={project} onChange={value => requestUpdateNavigation(() => setProject(value))}><option value="">Every project</option>{(data.projects ?? []).filter(item => !item.archived_at && (!teamId || item.team_id === teamId)).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
+      <Select label="Update type" value={type} onChange={value => requestUpdateNavigation(() => setType(value))}><option value="">Every update type</option>{UPDATE_TYPES.filter(([id]) => id !== 'comment').map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select>
+      <Select label="Health" value={health} onChange={value => requestUpdateNavigation(() => setHealth(value))}><option value="">Every health state</option>{UPDATE_HEALTH.map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select>
+      <label className="updates-archive-filter"><input type="checkbox" checked={archived} onChange={event => { const checked = event.target.checked; requestUpdateNavigation(() => setArchived(checked)); }} />Include archived</label>
+      <form className="updates-search" onSubmit={event => { event.preventDefault(); requestUpdateNavigation(() => setQuery(search.trim())); }}><SearchField value={search} onChange={setSearch} label="Search updates" placeholder="Search titles and content…" /><Button type="submit">Search</Button>{query ? <Button onClick={() => requestUpdateNavigation(() => { setSearch(''); setQuery(''); })}>Clear</Button> : null}</form>
     </div>
-    <UpdateResults key={`${workspaceId}:${filterKey}:${reload}`} workspaceId={workspaceId} filters={{ publicationState: state, targetType: target, updateType: type, health, projectId: project, search: query, includeArchived: archived }} onChanged={entry => { if (entry?.publication_state) setState(entry.publication_state); setReload(value => value + 1); }} />
-    {creating ? <NewUpdateDialog workspaceId={workspaceId} initialProject={project} onClose={() => setCreating(false)} onSaved={entry => { setCreating(false); setState(entry.publication_state || 'published'); setType(''); setHealth(''); setTarget(entry.target_type); setProject(''); setSearch(''); setQuery(''); setArchived(false); setReload(value => value + 1); }} /> : null}
-  </main>;
+    <UpdateResults key={`${workspaceId}:${filterKey}:${reload}`} workspaceId={workspaceId} filters={{ publicationState: state, targetType: target, updateType: type, health, projectId: project, teamId, search: query, includeArchived: archived }} onChanged={entry => { if (entry?.publication_state) setState(entry.publication_state); setReload(value => value + 1); }} />
+    {creating ? <NewUpdateDialog workspaceId={workspaceId} teamId={teamId} initialProject={project} onClose={() => setCreating(false)} onSaved={entry => { setCreating(false); setState(entry.publication_state || 'published'); setType(''); setHealth(''); setTarget(entry.target_type); setProject(''); setSearch(''); setQuery(''); setArchived(false); setReload(value => value + 1); }} /> : null}
+  </Container>;
 }
 
 function UpdateResults({ workspaceId, filters, onChanged }) {
@@ -51,9 +53,31 @@ function UpdateResults({ workspaceId, filters, onChanged }) {
   }, [workspaceId, cursor, retry]);
   return <section className="updates-results" aria-label="Workspace updates" aria-busy={loading}>
     <ErrorMessage error={error} />
-    {entries.map(entry => <ActivityEntry key={entry.id} entry={entry} workspaceId={workspaceId} showTarget onChanged={onChanged} />)}
+    {entries.map(entry => <FeedConversation key={entry.id} entry={entry} workspaceId={workspaceId} />)}
     {loading ? <p role="status" className="updates-load-state">Loading updates…</p> : error ? <Button onClick={() => setRetry(value => value + 1)}>Try again</Button> : !entries.length ? <Empty icon={MessageSquareText} title={filters.publicationState === 'draft' ? 'No drafts match' : 'No updates match'} description="Try different filters, or write an update on a project, Route, or another workspace item." /> : next ? <Button onClick={() => setCursor(next)}>Load more updates</Button> : <p className="updates-load-state">You have reached the end of this feed.</p>}
   </section>;
+}
+
+function FeedConversation({ entry, workspaceId }) {
+  const [records, setRecords] = useState([entry]), [loaded, setLoaded] = useState(false), [loading, setLoading] = useState(false), [error, setError] = useState(null);
+  const controller = useRef(null);
+  useEffect(() => () => controller.current?.abort(), []);
+  async function load() {
+    controller.current?.abort(); const request = new AbortController(); controller.current = request;
+    setLoading(true); setError(null);
+    try {
+      const response = await rumboApi.listActivity({ workspaceId, targetType: entry.target_type, targetId: entry.target_id, includeArchived: true }, { signal: request.signal });
+      if (!request.signal.aborted) { setRecords(response.result); setLoaded(true); }
+    } catch (cause) { if (!request.signal.aborted) setError(cause); }
+    finally { if (!request.signal.aborted) setLoading(false); }
+  }
+  const currentRoot = records.find(item => item.id === entry.id) || entry;
+  const root = filteredActivityThreads(records, { state: currentRoot.archived_at ? 'archived' : currentRoot.publication_state }).find(item => item.id === entry.id) || currentRoot;
+  function changed(result) {
+    setRecords(current => current.some(item => item.id === result.id) ? current.map(item => item.id === result.id ? result : item) : [...current, result]);
+    load();
+  }
+  return <div className="feed-conversation"><ActivityEntry entry={root} workspaceId={workspaceId} showTarget onChanged={changed} /><ErrorMessage error={error} />{!loaded || error ? <Button disabled={loading} onClick={load}>{loading ? 'Loading conversation…' : 'Load conversation'}</Button> : null}</div>;
 }
 
 function UpdateDetail({ workspaceId, id }) {
@@ -70,14 +94,14 @@ function UpdateDetail({ workspaceId, id }) {
   </main>;
 }
 
-function NewUpdateDialog({ workspaceId, initialProject, onClose, onSaved }) {
+function NewUpdateDialog({ workspaceId, initialProject, teamId, onClose, onSaved }) {
   const { data } = useApp();
   const [type, setType] = useState('project'), [targetId, setTargetId] = useState(initialProject || '');
   const [dirty, setDirty] = useState(false), [pending, setPending] = useState(false), [discard, setDiscard] = useState(false);
-  const targets = updateTargets(data, type, workspaceId), selected = targets.find(item => item.id === targetId);
+  const targets = updateTargets(data, type, workspaceId).filter(item => !teamId || (data.projects.find(project => project.id === item.project_id)?.team_id || item.team_id) === teamId), selected = targets.find(item => item.id === targetId);
   const close = () => { if (pending) return; if (dirty) setDiscard(true); else onClose(); };
   return <Dialog title="New update" subtitle="Choose the work this update belongs to." onClose={close}><div className="updates-new-dialog">
     {discard ? <div role="alert"><h3>Discard unsaved changes?</h3><p>This text has not been saved as a draft.</p><Button onClick={() => setDiscard(false)}>Keep editing</Button><Button variant="danger" onClick={onClose}>Discard changes</Button></div> : null}
-    <div hidden={discard}><div className="updates-target-picker"><Select label="Work type" disabled={dirty || pending} value={type} onChange={value => { setType(value); setTargetId(''); }}>{UPDATE_TARGETS.map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select><Select label="Work item" disabled={dirty || pending} value={selected?.id ?? ''} onChange={setTargetId}><option value="">Choose an item</option>{targets.map(item => <option key={item.id} value={item.id}>{item.name || item.title}</option>)}</Select></div>{selected ? <ActivityComposer key={`${type}:${targetId}`} workspaceId={workspaceId} targetType={type} targetId={targetId} onSaved={onSaved} onCancel={close} onDirtyChange={setDirty} onPendingChange={setPending} /> : <p>Select an available work item. The server checks its current permissions before saving.</p>}</div>
+    <div hidden={discard}><div className="updates-target-picker"><Select label="Work type" disabled={dirty || pending} value={type} onChange={value => { setType(value); setTargetId(''); }}>{UPDATE_TARGETS.filter(([id]) => !teamId || ['project', 'route'].includes(id)).map(([id,label]) => <option key={id} value={id}>{label}</option>)}</Select><Select label="Work item" disabled={dirty || pending} value={selected?.id ?? ''} onChange={setTargetId}><option value="">Choose an item</option>{targets.map(item => <option key={item.id} value={item.id}>{item.name || item.title}</option>)}</Select></div>{selected ? <ActivityComposer key={`${type}:${targetId}`} workspaceId={workspaceId} targetType={type} targetId={targetId} onSaved={onSaved} onCancel={close} onDirtyChange={setDirty} onPendingChange={setPending} /> : <p>Select an available work item. The server checks its current permissions before saving.</p>}</div>
   </div></Dialog>;
 }

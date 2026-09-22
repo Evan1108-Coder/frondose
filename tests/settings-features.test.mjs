@@ -136,6 +136,32 @@ test('workspace content import remaps references, clears folder access and rolls
   await call('/import', exported, 'POST', 400);
   assert.equal(api.snapshot().workspaces.length, before);
 }));
+test('emoji imports reserve explicit and legacy shortcodes including archived history and roll back collisions', async () => fixture(async ({ call, item, workspace, api }) => {
+  const party = await item('emoji', 'Party Time', { symbol: '🎉' });
+  await call(`/workspace-items/${party.id}`, { version: party.version, name: 'Celebration' }, 'PATCH');
+  await item('emoji', 'Confetti', { symbol: '🎊' });
+  const archive = await call(`/export?workspace_id=${workspace.id}`);
+  const imported = await call('/import', archive);
+  assert.deepEqual(api.snapshot().workspace_items.filter(row => row.workspace_id === imported.result.id).map(row => row.payload.shortcode).sort(), ['confetti', 'party-time']);
+  const before = api.snapshot();
+  for (const kind of ['explicit', 'archived', 'legacy', 'mixed', 'invalid']) {
+    const candidate = structuredClone(archive);
+    const [first, second] = candidate.data.workspace_items;
+    if (kind === 'explicit' || kind === 'archived') {
+      second.payload.shortcode = first.payload.shortcode;
+      if (kind === 'archived') first.archived_at = new Date().toISOString();
+    } else if (kind === 'legacy' || kind === 'mixed') {
+      first.name = 'Party Time'; second.name = 'Party-Time';
+      if (kind === 'legacy') delete first.payload.shortcode;
+      delete second.payload.shortcode;
+    } else first.payload.shortcode = '---';
+    const rejected = await call('/import', candidate, 'POST', 400);
+    assert.match(JSON.stringify(rejected), /emoji shortcode/);
+    const after = api.snapshot();
+    assert.equal(after.workspaces.length, before.workspaces.length, kind);
+    assert.equal(after.workspace_items.length, before.workspace_items.length, kind);
+  }
+}));
 test('label merge updates work atomically, deduplicates labels and preserves history', async () => fixture(async ({ item, action, api, call, workspace }) => {
   const old = await item('route_label', 'Old label');
   const target = await item('route_label', 'Target');

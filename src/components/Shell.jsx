@@ -317,7 +317,7 @@ export function Sidebar({
                   <TeamIconButton team={team} size={19} /><Tooltip label={team.name}><button className="project-nav-name" style={{ color: colorsFor(`team:${team.id}:identity`, team).label || undefined }} onClick={() => go('teams', team.id)}><span>{team.name}</span></button></Tooltip>{optionsButton('teams', team)}
                 </div>
                 <Collapse className="project-nav-children" id={`team-navigation-${team.id}`} open={Boolean(preferences.teams[team.id])}>
-                  {[['overview', 'Overview', House], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['people', 'People', Users]].map(([section, label, Icon]) => {
+                  {[['overview', 'Overview', House], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['updates', 'Updates', MessageCircle], ['people', 'People', Users]].map(([section, label, Icon]) => {
                     const active = page.view === 'teams' && page.id === team.id && (page.section || 'overview') === section;
                     return <ColorableNavItem key={section} colorId={`team:${team.id}:${section}`} team={team} icon={Icon} label={label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} aria-label={`${team.name} · ${label}`} onClick={() => go('teams', team.id, { section })} />;
                   })}

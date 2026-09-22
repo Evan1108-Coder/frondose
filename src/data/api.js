@@ -116,6 +116,7 @@ const entity = async (request, key) => {
 };
 
 export const rumboApi = {
+  timeline: ({ workspaceId, targetType, targetId, cursor }, options) => get(`${API_ROOT}/timeline?${new URLSearchParams({ workspace_id: workspaceId, target_type: targetType, target_id: targetId, ...(cursor ? { cursor } : {}) })}`, options),
   subRoutes: (id, workspaceId, options) => get(`${API_ROOT}/sub-routes/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(workspaceId)}`, options),
   mutateSubRoutes: (id, action, input, options) => post(`${API_ROOT}/sub-routes/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, input, options),
   listActivity: ({ workspaceId, targetType, targetId, includeArchived = false }, options) => get(`${API_ROOT}/activity?workspace_id=${encodeURIComponent(workspaceId)}&target_type=${encodeURIComponent(targetType)}&target_id=${encodeURIComponent(targetId)}${includeArchived ? '&include_archived=true' : ''}`, options),
@@ -125,9 +126,9 @@ export const rumboApi = {
   activityHistory: (id, { workspaceId }, options) => get(`${API_ROOT}/activity/${encodeURIComponent(id)}/history?workspace_id=${encodeURIComponent(workspaceId)}`, options),
   reactActivity: (id, input, options) => post(`${API_ROOT}/activity/${encodeURIComponent(id)}/reactions`, input, options),
   archiveActivity: (id, input, options) => apiRequest(`${API_ROOT}/activity/${encodeURIComponent(id)}`, { ...options, method: 'DELETE', body: input }),
-  listActivityFeed: ({ workspaceId, publicationState = 'published', targetType, updateType, health, projectId, search, includeArchived = false, cursor, limit = 30 }, options) => {
+  listActivityFeed: ({ workspaceId, publicationState = 'published', targetType, updateType, health, projectId, teamId, search, includeArchived = false, cursor, limit = 30 }, options) => {
     const query = new URLSearchParams({ workspace_id: workspaceId, publication_state: publicationState, limit: String(limit) });
-    for (const [key, value] of Object.entries({ target_type: targetType, update_type: updateType, health, project_id: projectId, search, cursor })) if (value) query.set(key, value);
+    for (const [key, value] of Object.entries({ target_type: targetType, update_type: updateType, health, project_id: projectId, team_id: teamId, search, cursor })) if (value) query.set(key, value);
     if (includeArchived) query.set('include_archived', 'true');
     return get(`${API_ROOT}/activity/feed?${query}`, options);
   },
