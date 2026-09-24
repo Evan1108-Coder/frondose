@@ -24,7 +24,7 @@ test('body portal positioning skips transformed trigger ancestors but leaves inl
 test('team options open that team settings and expose dialog state', () => {
   const shell = source('components/Shell.jsx');
   assert.match(shell, /aria-haspopup="dialog" aria-expanded=\{itemOptions\?\.view === view && itemOptions\.id === item\.id\}/);
-  assert.match(shell, /itemOptions\.view === 'teams' \? <Button icon=\{Settings\}[\s\S]*go\('settings', `team:\$\{teamId\}`\); \}\}>Team settings/);
+  assert.match(shell, /itemOptions\.view === 'teams' \? <Button icon=\{Settings\}[\s\S]*go\('settings', `team:\$\{teamId\}`\); \}\}>Area settings/);
   assert.match(shell, /Hide from sidebar/);
   assert.match(shell, /Remove from favorites/);
 });

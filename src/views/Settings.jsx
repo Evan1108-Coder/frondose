@@ -96,7 +96,7 @@ export function SettingsView() {
                 <span>
                   <strong>New workspace</strong>
                   <small>
-                    Create a separate space for another team or project group.
+                    Create a separate space for another Area or project group.
                   </small>
                 </span>
                 <Button onClick={() => edit("workspace")}>
@@ -443,7 +443,7 @@ export function ArchiveList() {
     ["chats", "Chat", "updateChat"],
     ["agents", "Agent", "updateAgent"],
     ["memory_notes", "Memory", "updateMemoryNote"],
-    ["teams", "Team", "updateTeam"],
+    ["teams", "Area", "updateTeam"],
     ["team_members", "Person", "updateTeamMember"],
     ["documents", "Document", "updateDocument"],
     ["milestones", "Milestone", "updateMilestone"],

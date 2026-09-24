@@ -6,7 +6,7 @@ import { pageHash, parsePage } from "../src/lib/navigation.js";
 
 test("organization preferences normalize hostile data, preserve ordering and add new defaults", () => {
   const prefs = normalizeOrganization({ version: 1, order: { primary: ["work", "work", "garbage"] }, visibility: { focus: "hidden", agents: "bogus" }, badges: "rainbow", density: "small", favorites: [{ view: "agents", id: "a" }, { view: "agents", id: "a" }, { view: "settings", id: "profile" }, { view: "chats", id: "../bad" }, null] });
-  assert.deepEqual(prefs.order.primary, ["work", "overview", "focus", "inbox", "updates", "workbench", "operations"]);
+  assert.deepEqual(prefs.order.primary, ["work", "overview", "focus", "inbox", "updates", "workbench", "workflows", "operations"]);
   assert.equal(prefs.visibility.focus, "hidden"); assert.equal(prefs.visibility.agents, "always");
   assert.equal(prefs.badges, "count"); assert.equal(prefs.density, "comfortable");
   assert.deepEqual(prefs.favorites, [{ view: "agents", id: "a" }]);

@@ -11,8 +11,8 @@ import { TeamAppearanceFields } from './TeamAppearance.jsx';
 import { teamAppearance } from '../lib/team-appearance.js';
 
 const ENTITY = {
-  team: { label: "team", action: "Team" },
-  teamMember: { label: "person", action: "TeamMember" },
+  team: { label: "Area", action: "Team" },
+  teamMember: { label: "contact", action: "TeamMember" },
   document: { label: "document", action: "Document" },
   milestone: { label: "milestone", action: "Milestone" },
 };
@@ -54,7 +54,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
       <div className="form-fields">
         {kind === 'team' ? <TeamAppearanceFields value={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} /> : null}
         <Field label={["team", "teamMember"].includes(kind) ? "Name" : "Title"}><input autoFocus required maxLength={200} value={form.title} onChange={(event) => change("title", event.target.value)} placeholder={{ team: "e.g. Product", teamMember: "Full name", document: "Name this document", milestone: "A meaningful checkpoint" }[kind]} /></Field>
-        {["team", "milestone"].includes(kind) ? <Field label="Description"><textarea rows={4} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder={kind === "team" ? "What does this team work on?" : "What should be true when this is complete?"} /></Field> : null}
+        {["team", "milestone"].includes(kind) ? <Field label="Description"><textarea rows={4} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder={kind === "team" ? "What does this Area work on?" : "What should be true when this is complete?"} /></Field> : null}
         {kind === "teamMember" ? <><Field label="Role"><input value={form.role} maxLength={200} onChange={(event) => change("role", event.target.value)} placeholder="e.g. Product lead" /></Field><Field label="Email" hint="Optional contact information. Rumbo will not send an email."><input type="email" value={form.email} onChange={(event) => change("email", event.target.value)} placeholder="name@example.com" /></Field></> : null}
         {kind === "milestone" ? <div className="form-grid"><Select label="Status" value={form.status} onChange={(value) => change("status", value)}>{Object.entries(MILESTONE_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><Field label="Target date"><DateField value={form.target_date} onChange={(value) => change("target_date", value)} /></Field></div> : null}
         {kind === "document" ? <div className="document-writing"><div className="document-write-toolbar"><div className="segmented"><button type="button" className={!preview ? "active" : ""} aria-pressed={!preview} onClick={() => setPreview(false)}>Write</button><button type="button" className={preview ? "active" : ""} aria-pressed={preview} onClick={() => setPreview(true)}>Preview</button></div><span>Markdown supported</span></div>{preview ? <div className="document-preview">{form.content.trim() ? <DocumentContent content={form.content} /> : <p className="muted">Your document preview will appear here.</p>}</div> : <Field label="Content"><textarea className="document-input" rows={14} value={form.content} onChange={(event) => change("content", event.target.value)} placeholder={"# The plan\n\nWrite your decisions, guidelines, and next steps…"} /></Field>}<span className="document-word-count">{form.content.trim() ? form.content.trim().split(/\s+/).length : 0} words</span></div> : null}
@@ -75,5 +75,5 @@ export function SpaceArchiveDialog({ kind, item, onClose, onArchived }) {
       onClose(); onArchived?.();
     });
   }
-  return <Dialog title={`Archive ${entity.label}?`} subtitle={item.title ?? item.name} onClose={() => { if (!busy) onClose(); }}><div className="space-discard"><p>{kind === "team" ? "The team will leave your active list. Its projects, routes, documents, and people are kept. You can restore the team from the archived teams view." : "This item will leave the active list. Its content stays on this computer, and you can restore it from the archived view."}</p><ErrorMessage error={error} /><div className="space-editor-actions"><Button onClick={onClose} disabled={busy}>Cancel</Button><Button variant="primary" busy={busy} onClick={archive}>Archive {entity.label}</Button></div></div></Dialog>;
+  return <Dialog title={`Archive ${entity.label}?`} subtitle={item.title ?? item.name} onClose={() => { if (!busy) onClose(); }}><div className="space-discard"><p>{kind === "team" ? "The Area will leave your active list. Its projects, routes, documents, and people are kept. You can restore the Area from the archived Areas view." : "This item will leave the active list. Its content stays on this computer, and you can restore it from the archived view."}</p><ErrorMessage error={error} /><div className="space-editor-actions"><Button onClick={onClose} disabled={busy}>Cancel</Button><Button variant="primary" busy={busy} onClick={archive}>Archive {entity.label}</Button></div></div></Dialog>;
 }

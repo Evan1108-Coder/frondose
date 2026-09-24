@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, realpath, stat, lstat } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readdir, readFile, realpath, stat, lstat, writeFile, rename, unlink, chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createConnection } from 'node:net';
@@ -132,6 +132,70 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     if (bytes.includes(0)) throw validationError('This is a binary file. Workbench currently previews text files.');
     return { path, content: bytes.toString('utf8'), size: info.size, modified_at: info.mtime.toISOString() };
   }
+  async function checkpointRoot(project, environmentId = null) {
+    const root = await rootFor(project, environmentId);
+    await requireRepositoryRoot(root);
+    const info = await stat(root);
+    return { root, device: String(info.dev), inode: String(info.ino) };
+  }
+  async function checkpointPaths(root) {
+    await requireRepositoryRoot(root);
+    return [...new Set((await git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])).split('\0').filter(Boolean))];
+  }
+  async function writableTarget(root, path) {
+    const clean = safeRelative(path);
+    if (!clean) throw validationError('Choose a file inside the project.');
+    const target = resolve(root, clean), parent = dirname(target);
+    let actualParent;
+    try { actualParent = await realpath(parent); } catch { throw validationError('The destination folder is unavailable. Restore parent folders separately.'); }
+    if (!inside(root, actualParent)) throw validationError('Links outside this project cannot be changed.');
+    safeRelative(relative(root, actualParent));
+    const parentInfo = await stat(actualParent);
+    if (!parentInfo.isDirectory()) throw validationError('The destination folder is unavailable.');
+    try {
+      const info = await lstat(target);
+      if (info.isSymbolicLink() || !info.isFile()) throw validationError('Only regular project files can be restored.');
+      const actual = await realpath(target);
+      if (!inside(root, actual)) throw validationError('Links outside this project cannot be changed.');
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    return { clean, target, parent: actualParent };
+  }
+  async function checkpointState(root, path) {
+    const destination = await writableTarget(root, path);
+    let info;
+    try { info = await lstat(destination.target); } catch (error) {
+      if (error.code === 'ENOENT') return { path: destination.clean, state: 'absent', sha256: null, byte_size: 0, mode: null, content: null };
+      throw error;
+    }
+    if (info.isSymbolicLink() || !info.isFile()) throw validationError('Only regular project files can be checkpointed.');
+    if (info.size > MAX_FILE) throw validationError('Checkpoint files must be smaller than 512 KB.');
+    const content = await readFile(destination.target);
+    if (content.includes(0)) throw validationError('Binary files cannot be checkpointed or restored.');
+    if (!Buffer.from(content.toString('utf8'), 'utf8').equals(content)) throw validationError('Checkpoint files must contain valid UTF-8 text.');
+    return { path: destination.clean, state: 'present', sha256: createHash('sha256').update(content).digest('hex'), byte_size: content.length, mode: info.mode & 0o777, content };
+  }
+  async function stageCheckpointState(root, path, desired, token) {
+    const destination = await writableTarget(root, path);
+    if (desired.state === 'absent') return { ...destination, state: 'absent', temporary: null };
+    if (desired.state !== 'present' || !Buffer.isBuffer(desired.content)) throw validationError('The checkpoint file content is unavailable.');
+    const temporary = join(destination.parent, `.env.rumbo-restore-${token}`);
+    const mode = desired.mode ?? 0o600;
+    await writeFile(temporary, desired.content, { flag: 'wx', mode });
+    await chmod(temporary, mode);
+    return { ...destination, state: 'present', temporary };
+  }
+  async function applyCheckpointState(root, staged) {
+    const current = await writableTarget(root, staged.clean);
+    if (current.target !== staged.target || current.parent !== staged.parent) throw validationError('The destination changed during restore.');
+    const latest = await checkpointState(root, staged.clean);
+    if (latest.state !== staged.expectedState || (latest.sha256 || null) !== (staged.expectedSha256 || null) || (latest.mode ?? null) !== (staged.expectedMode ?? null)) throw Object.assign(validationError('The file changed during restore. Preview again.'), { statusCode: 409, errorCode: 'stale_worktree', code: 'stale_worktree' });
+    if (staged.state === 'present') await rename(staged.temporary, staged.target);
+    else { try { await unlink(staged.target); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+  }
+  async function cleanupCheckpointStage(staged) {
+    if (!staged?.temporary) return;
+    try { await unlink(staged.temporary); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   async function summary(project) {
     let root = null, folderError = null;
     if (project.local_path) { try { root = await rootFor(project); } catch (error) { folderError = error.message; } }
@@ -223,7 +287,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     const root = await rootFor(project, environmentId);
     if (action === 'checkpoint' && method === 'GET') {
       await requireRepositoryRoot(root);
-      const paths = [...new Set((await git(root, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])).split('\0').filter(Boolean))];
+      const paths = await checkpointPaths(root);
       const files = {}; let size = 0, limited = false;
       for (const path of paths) {
         try { safeRelative(path); if ((await lstat(join(root, path))).isSymbolicLink()) continue; } catch { continue; }
@@ -331,5 +395,6 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     const column = resource === 'projects' ? 'project_id' : 'workspace_id';
     return db.prepare(`SELECT id,project_id,workspace_id,status FROM workbench_terminals WHERE ${column}=? AND status IN ('running','stopping')`).all(itemId);
   }
-  return { handle, close, scope, dispatch, summary, activeSessionsFor };
+  const checkpointAdapter = { checkpointRoot, checkpointPaths, checkpointState, stageCheckpointState, applyCheckpointState, cleanupCheckpointStage };
+  return { handle, close, scope, dispatch, summary, activeSessionsFor, checkpointAdapter };
 }

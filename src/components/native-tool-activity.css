@@ -1,0 +1,29 @@
+.native-tools-choice { display: flex; gap: 10px; align-items: flex-start; padding: 14px; border: 1px solid var(--border); border-radius: 8px; color: var(--secondary); font-size: 12px; }
+.native-tools-choice input { margin-top: 3px; flex-shrink: 0; }
+.native-tools-choice strong { display: block; color: var(--text); font-size: 13px; font-weight: 500; }
+.native-tools-choice small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.native-tool-activity { margin: 24px 0; min-width: 0; border-top: 1px solid var(--border); padding-top: 20px; }
+.native-tool-activity > header, .native-tool-request > header { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
+.native-tool-activity h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 550; }
+.native-tool-activity h3 svg { width: 16px; height: 16px; }
+.native-tool-activity p, .native-tool-decision p { color: var(--muted); line-height: 1.65; font-size: 12px; }
+.native-tool-request { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 16px; }
+.native-tool-request > header { font-size: 13px; }
+.native-tool-request > header span { color: var(--muted); font-size: 11px; }
+.native-tool-meta { display: flex; gap: 8px 14px; flex-wrap: wrap; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.native-tool-fields { display: grid; gap: 12px; font-size: 12px; margin: 18px 0; }
+.native-tool-fields > div { display: grid; grid-template-columns: minmax(90px, 0.3fr) minmax(0, 1fr); gap: 16px; }
+.native-tool-fields dt { color: var(--muted); }
+.native-tool-fields dd { margin: 0; color: var(--secondary); white-space: pre-wrap; overflow-wrap: anywhere; text-align: left; }
+.native-tool-activity pre, .native-tool-decision pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 280px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 12px; margin: 0; }
+.native-tool-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.native-tool-actions small, .native-tool-calls small { color: var(--muted); font-size: 11px; }
+.native-tool-calls { margin-top: 20px; font-size: 12px; }
+.native-tool-calls summary, .native-tool-request summary { cursor: pointer; color: var(--secondary); font-size: 12px; }
+.native-tool-calls ol { padding: 0; list-style: none; }
+.native-tool-calls li { border-bottom: 1px solid var(--border); padding: 14px 0; overflow-wrap: anywhere; }
+.native-tool-calls li > div { display: flex; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.native-tool-calls time, .native-tool-calls li span { color: var(--muted); }
+.native-tool-activity .native-tool-error { color: var(--danger); }
+.native-tool-decision { padding: 4px 24px 20px; overflow: auto; min-height: 0; }
+@media (max-width: 650px) { .native-tool-activity > header { flex-direction: column; gap: 4px; } .native-tool-fields > div { grid-template-columns: minmax(0, 1fr); gap: 5px; } .native-tool-request { padding: 12px; } .native-tool-decision { padding-inline: 16px; } }

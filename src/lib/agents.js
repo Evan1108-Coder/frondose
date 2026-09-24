@@ -27,6 +27,8 @@ export function agentReadiness(agent, connection) {
   if (!agent || val(agent, "archived_at")) return result("archived", "Archived", "Restore this agent before starting a session.", "restore", false, false);
   if (!provider) return result("unsupported", "Not supported", "This provider cannot run sessions in Rumbo yet. Choose Codex or Claude.", "configure", false, false);
   if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
+  if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
+  if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
   const state = connection?.provider === agent.provider ? connection.state : "not_connected";
   if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
   if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${provider.name === "Claude" ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
@@ -50,12 +52,15 @@ export function runsForAgent(agent, runs = []) {
 }
 
 export function summarizeAgent(agent, data = {}) {
-  const connection = (data.connections || []).find((item) => item.provider === agent.provider);
+  const selectedConnection = val(agent, "provider_connection_id");
+  const hasBinding = Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId");
+  const connection = (data.connections || []).find((item) => item.provider === agent.provider && (hasBinding ? !!selectedConnection && item.id === selectedConnection : true));
   const runs = runsForAgent(agent, data.runs);
   const inWorkspace = (item) => !val(agent, "workspace_id") || val(item, "workspace_id") === val(agent, "workspace_id");
   const assignedTasks = visible(data.tasks).filter((task) => inWorkspace(task) && (val(task, "assignee_agent_ids") || []).includes(agent.id));
   const chats = visible(data.chats).filter((chat) => inWorkspace(chat) && (val(chat, "participant_agent_ids") || []).includes(agent.id));
   const projectIds = new Set([...assignedTasks, ...chats, ...runs].map((item) => val(item, "project_id")).filter(Boolean));
+  const runIds = new Set(runs.map(run => run.id));
   return {
     provider: AGENT_PROVIDERS[agent.provider] || { name: agent.provider || "Unknown provider", company: "", capabilities: [], permissions: "Not supported" },
     connection,
@@ -67,5 +72,7 @@ export function summarizeAgent(agent, data = {}) {
     projects: visible(data.projects).filter((project) => inWorkspace(project) && projectIds.has(project.id)),
     chats,
     assignedTasks,
+    outputs: visible(data.outputs).filter(output => inWorkspace(output) && runIds.has(val(output, "run_id"))),
+    failedRuns: runs.filter(run => run.status === "failed"),
   };
 }

@@ -1,5 +1,8 @@
 .chat-hub { display: grid; grid-template-columns: 292px minmax(0, 1fr); height: 100%; min-height: 0; overflow: hidden; }
 .chat-hub.resizable-chat-hub { display: grid; position: relative; grid-template-columns: var(--chat-list-width) 5px minmax(0, 1fr); }
+.chat-hub.resizable-chat-hub > .chat-hub-list { grid-column: 1; grid-row: 1; }
+.chat-hub.resizable-chat-hub > .chat-list-resizer { grid-column: 2; grid-row: 1; }
+.chat-hub.resizable-chat-hub > .chat-thread { grid-column: 3; grid-row: 1; }
 .resizable-chat-hub > .chat-list-resizer { cursor: col-resize; touch-action: none; z-index: 2; background: transparent; }
 .resizable-chat-hub > .chat-list-resizer:hover, .resizable-chat-hub > .chat-list-resizer:focus-visible { background: var(--accent); }
 .resizable-chat-hub.list-folded { grid-template-columns: 0 5px minmax(0, 1fr); }

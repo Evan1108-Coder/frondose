@@ -2,31 +2,33 @@ import { val, visible } from "./model.js";
 import { normalizeSidebarLayout } from './sidebar-layout.js';
 
 export const NAV_ITEMS = [
-  { id: "overview", label: "Home", key: "O" },
+  { id: "overview", label: "Today", key: "O" },
   { id: "focus", label: "Focus", key: "F" },
   { id: "inbox", label: "Inbox", key: "I" },
   { id: "updates", label: "Updates", key: "U" },
-  { id: "work", label: "Live work", key: "W" },
+  { id: "work", label: "Runs", key: "W" },
   { id: "workbench", label: "Workbench", key: "B" },
   { id: "operations", label: "Coordination", key: "D" },
-  { id: "library", label: "Library", key: "L" },
+  { id: "workflows", label: "Workflows", key: "Y" },
+  { id: "library", label: "Knowledge", key: "L" },
   { id: "documents", label: "Documents", key: "J" },
   { id: "views", label: "Saved views", key: "V" },
-  { id: "teams", label: "Teams", key: "T" },
+  { id: "teams", label: "Areas", key: "T" },
   { id: "projects", label: "Projects", key: "P" },
   { id: "tasks", label: "Routes", key: "R" },
-  { id: "chats", label: "Chats", key: "C" },
+  { id: "chats", label: "Conversations", key: "C" },
   { id: "agents", label: "Agents", key: "A" },
+  { id: "skills", label: "Skills", key: "K" },
   { id: "memory", label: "Memory", key: "M" },
   { id: "connections", label: "Connections", key: "N" },
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
-  primary: ["overview", "focus", "inbox", "updates", "work", "workbench", "operations"],
+  primary: ["overview", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
   sections: ["favorites", "agents", "teams", "projects", "workspace", "views", "chats"],
-  tools: ["tasks", "library", "documents", "memory", "connections"],
+  tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
-export const SECTION_LABELS = { favorites: "Favorites", agents: "Your agents", teams: "Teams", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Chats" };
+export const SECTION_LABELS = { favorites: "Favorites", agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
 const FAVORITE_VIEWS = new Set(["projects", "teams", "tasks", "chats", "agents", "memory", "library", "work", "workbench", "documents", "views"]);
 const ids = (input, allowed) => [...new Set([...(Array.isArray(input) ? input.filter(id => allowed.includes(id)) : []), ...allowed])];
 const validString = value => typeof value === "string" && value.length > 0 && value.length < 513 && !/[\u0000-\u001f/\\]/.test(value);

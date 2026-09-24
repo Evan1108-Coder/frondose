@@ -1,0 +1,12 @@
+.skill-version-comparison { min-width: 0; }
+.skill-comparison-selectors, .skill-definition-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.skill-comparison-selectors > *, .skill-definition-pair > * { min-width: 0; }
+.skill-version-comparison .cr-heading { flex-wrap: wrap; }
+.skill-version-comparison .cr-heading > div { min-width: 0; }
+.skill-version-comparison .cr-file > header { flex-wrap: wrap; }
+.skill-version-comparison .cr-file > header strong { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .skill-comparison-selectors, .skill-definition-pair { grid-template-columns: minmax(0, 1fr); }
+  .skill-version-comparison .cr-layout { grid-template-columns: minmax(0, 1fr); }
+  .skill-version-comparison .cr-toolbar > * { max-width: 100%; }
+}

@@ -9,8 +9,8 @@ const ENUMS = {
   agents: { provider: ['codex', 'claude', 'custom'], status: ['available', 'paused'] },
   milestones: { status: ['planned', 'in_progress', 'completed'] },
 };
-const ARRAY_FIELDS = new Set(['assignee_agent_ids_json', 'labels_json', 'participant_agent_ids_json', 'attachments_json']);
-const NULLABLE = new Set(['workspace_id', 'project_id', 'team_id', 'task_id', 'chat_id', 'local_path', 'github_url', 'due_at', 'sender_id', 'archived_at', 'working_directory', 'start_date', 'target_date', 'workflow_status_id']);
+const ARRAY_FIELDS = new Set(['assignee_agent_ids_json', 'labels_json', 'participant_agent_ids_json', 'attachments_json', 'context_source_ids_json']);
+const NULLABLE = new Set(['workspace_id', 'project_id', 'team_id', 'task_id', 'chat_id', 'local_path', 'github_url', 'due_at', 'sender_id', 'archived_at', 'working_directory', 'start_date', 'target_date', 'workflow_status_id', 'provider_connection_id', 'default_area_id', 'default_project_id']);
 
 export function validationError(message) {
   return Object.assign(new Error(message), { statusCode: 400, errorCode: 'validation_error' });
@@ -40,6 +40,7 @@ export function validateAvatar(value) {
 }
 
 export function validateRecord(db, resource, record, required, fields) {
+  if (resource === 'agents' && record.context_source_ids_json === undefined) record.context_source_ids_json = [];
   if (resource === 'teams') {
     for (const [key, allowed] of Object.entries({ tab_icon_color: ['team', 'global'], empty_icon_color: ['team', 'global'], tab_label_color: ['global', 'icon', 'neutral'] })) if (record[key] !== undefined) {
       if (typeof record[key] !== 'string' || (!allowed.includes(record[key]) && !normalizeReactionColor(record[key]))) throw validationError('Choose an inheritance option or a six-digit hex color.');
@@ -84,7 +85,7 @@ export function validateRecord(db, resource, record, required, fields) {
       continue;
     }
     if (typeof value !== 'string') throw validationError(`${field.replaceAll('_', ' ')} must be text.`);
-    if (value.length > (['content', 'description', 'instructions', 'goal'].includes(field) ? 100_000 : 2_000)) throw validationError(`${field.replaceAll('_', ' ')} is too long.`);
+    if (value.length > (['content', 'description', 'instructions', 'goal'].includes(field) ? 100_000 : field === 'output_behavior' ? 10_000 : 2_000)) throw validationError(`${field.replaceAll('_', ' ')} is too long.`);
     if (['due_at', 'archived_at'].includes(field) && !Number.isFinite(Date.parse(value))) throw validationError(`${field.replaceAll('_', ' ')} must be a valid date.`);
     if (['start_date', 'target_date'].includes(field) && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) throw validationError(`${field.replaceAll('_', ' ')} must be a valid calendar date.`);
   }

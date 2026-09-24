@@ -41,7 +41,7 @@ export function useSidebarArrange({ organization, updateOrganization, notify, cr
     <Button onClick={() => act(() => save(options.entity ? { hiddenItems: [...organization.hiddenItems, { view: options.group, id: options.id }] } : { visibility: { ...organization.visibility, [key]: 'hidden' } }))}>Hide from sidebar</Button>
     {[-1, 1].map(offset => <Button key={offset} disabled={!items.includes(key) || !items[items.indexOf(key) + offset]} onClick={() => act(() => move(key, container, items[items.indexOf(key) + offset], offset > 0))}>Move {offset < 0 ? 'up' : 'down'}</Button>)}
     {!BUILTIN_GROUPS.includes(key) && !key.startsWith('custom:') ? <label>Move to<Select aria-label="Move sidebar item to" value={container} onChange={value => act(() => move(key, value))}><option value="root">Sidebar (top level)</option>{organization.layout.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></label> : null}
-    {options.kind ? <Button onClick={() => act(() => create(options.kind, options.defaults ?? {}))}>Create new {options.kind === 'task' ? 'Route' : options.kind}</Button> : null}
+    {options.kind ? <Button onClick={() => act(() => create(options.kind, options.defaults ?? {}))}>Create new {options.kind === 'team' ? 'Area' : options.kind === 'task' ? 'Route' : options.kind}</Button> : null}
   </div></Dialog> : null;
   return { bind, drop, dialog, dragging, stop };
 }

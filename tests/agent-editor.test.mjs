@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { AGENT_PRESETS, agentFormPayload, applyAgentPreset, hasAgentText, initialAgentForm, validateAgentForm } from "../src/lib/agent-editor.js";
 
 test("new agent profile starts blank without silently applying a purpose", () => {
-  assert.deepEqual(initialAgentForm(), { name: "", provider: "codex", description: "", instructions: "", working_directory: "" });
+  assert.deepEqual(initialAgentForm(), { name: "", provider: "codex", description: "", instructions: "", working_directory: "", role: "", provider_connection_id: "", model: "", reasoning_effort: "", memory_policy: "reviewed", context_source_ids: [], default_area_id: "", default_project_id: "", permission_policy: "review", output_behavior: "" });
 });
 
 test("agent editor preserves camel-case folder values and explicit duplication defaults", () => {
@@ -51,7 +51,8 @@ test("editing a shared agent preserves global scope and leaves operational field
   assert.equal(payload.instructions, "Check tests");
   assert.equal(payload.working_directory, null);
   assert.equal(payload.status, undefined);
-  assert.equal(payload.model, undefined);
+  assert.equal(payload.model, "");
+  assert.equal(payload.provider_connection_id, null);
 });
 
 test("new agents use current workspace and existing agents retain their own workspace", () => {

@@ -1,0 +1,32 @@
+.acceptance-evidence, .acceptance-policy { min-width: 0; }
+.acceptance-evidence > header, .acceptance-cases article > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.acceptance-evidence p, .acceptance-policy p, .acceptance-evidence-dialog p { font-size: 13px; line-height: 1.7; color: var(--secondary); overflow-wrap: anywhere; }
+.acceptance-evidence small, .acceptance-policy small, .acceptance-evidence-dialog small { color: var(--muted); font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; }
+.acceptance-evidence h2, .acceptance-policy h3, .acceptance-evidence h4, .acceptance-evidence-dialog h4 { font-size: 14px; margin: 0; }
+.acceptance-policy { margin: 20px 0; padding-top: 18px; border-top: 1px solid var(--border); }
+.acceptance-cases { display: grid; gap: 12px; margin: 18px 0; }
+.acceptance-cases article { padding: 14px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.acceptance-cases article > .button { margin-top: 12px; }
+.acceptance-cases strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.acceptance-status { font-size: 11px; border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 7px; color: var(--secondary); }
+.acceptance-status.is-passed { color: var(--success); }
+.acceptance-status.is-failed { color: var(--danger); }
+.acceptance-history { margin: 18px 0; border-top: 1px solid var(--border); padding-top: 14px; }
+.acceptance-history > article { margin: 14px 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.acceptance-history summary, .acceptance-evidence-dialog summary { cursor: pointer; font-size: 13px; line-height: 1.7; }
+.acceptance-history li { padding: 10px 0; font-size: 13px; }
+.acceptance-history ul { padding-left: 18px; }
+.acceptance-evidence code, .acceptance-policy code, .acceptance-evidence-dialog code { overflow-wrap: anywhere; }
+.acceptance-evidence-dialog { padding: 24px; min-width: 0; }
+.dialog > .acceptance-evidence-dialog { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.acceptance-evidence-fields { display: grid; gap: 18px; margin: 18px 0; padding: 0; border: 0; min-width: 0; }
+.acceptance-artifact { min-width: 0; margin: 18px 0; }
+.acceptance-artifact pre { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 360px; padding: 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); line-height: 1.7; font-size: 12px; }
+.acceptance-artifact pre:focus-visible, .acceptance-history summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.acceptance-evidence-dialog .form-submit-row { gap: 8px; flex-wrap: wrap; min-width: 0; padding-top: 12px; }
+.acceptance-evidence-dialog .form-submit-row > .button { min-width: 0; max-width: 100%; white-space: normal; }
+@media (max-width: 600px) {
+  .acceptance-evidence-dialog { padding: 16px; }
+  .acceptance-evidence-dialog .form-submit-row > .button { flex: 1 1 100%; width: 100%; justify-content: center; }
+  .acceptance-cases article > header { align-items: flex-start; flex-direction: column; }
+}

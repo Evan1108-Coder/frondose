@@ -38,24 +38,25 @@ export function validateSteps(db, workspaceId, projectId, input, previous = []) 
 }
 export function installCoordination(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS work_plans (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, title TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active', steps_json TEXT NOT NULL DEFAULT '[]', version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS work_plans_workspace ON work_plans(workspace_id);`);
+  if (!db.prepare('PRAGMA table_info(work_plans)').all().some(column => column.name === 'kind')) db.exec("ALTER TABLE work_plans ADD COLUMN kind TEXT NOT NULL DEFAULT 'plan'");
 }
-export function coordinationSnapshot(db) { return { work_plans: db.prepare('SELECT * FROM work_plans ORDER BY updated_at DESC').all().map(decode) }; }
+export function coordinationSnapshot(db) { return { work_plans: db.prepare("SELECT * FROM work_plans WHERE kind='plan' ORDER BY updated_at DESC").all().map(decode) }; }
 export async function coordinationRoute({ db, req, res, path, readBody, send, snapshot }) {
   if (!path.startsWith('/coordination/')) return false;
   const match = path.match(/^\/coordination\/plans(?:\/([\w-]+))?(?:\/(prepare|complete|link-run|reopen))?$/);
   if (!match) return false;
   const [, id, action] = match;
-  if (req.method === 'GET') { const result = id ? decode(db.prepare('SELECT * FROM work_plans WHERE id=?').get(id)) : coordinationSnapshot(db).work_plans; if (id && !result) throw fail('Plan not found.',404); send(res,200,{result}); return true; }
+  if (req.method === 'GET') { const result = id ? decode(db.prepare("SELECT * FROM work_plans WHERE id=? AND kind='plan'").get(id)) : coordinationSnapshot(db).work_plans; if (id && !result) throw fail('Plan not found.',404); send(res,200,{result}); return true; }
   const body = await readBody(req); if (!isRecord(body)) throw fail('Provide a plan.');
   const stamp = new Date().toISOString();
-  let current = id ? decode(db.prepare('SELECT * FROM work_plans WHERE id=?').get(id)) : null;
+  let current = id ? decode(db.prepare("SELECT * FROM work_plans WHERE id=? AND kind='plan'").get(id)) : null;
   if (id && !current) throw fail('Plan not found.',404);
   if (current && body.version !== current.version) throw fail('This plan changed. Refresh and review the current steps.',409);
   scope(db, current?.workspace_id || body.workspace_id, current?.project_id || body.project_id);
   let result;
   if (!id && req.method === 'POST') {
     const title = text(body.title,'Plan title',200); if (!title) throw fail('Name the plan.');
-    result = { id: randomUUID(), workspace_id: body.workspace_id, project_id: body.project_id || null, title, state: 'active', steps: validateSteps(db,body.workspace_id,body.project_id,body.steps || []), version: 1, created_at: stamp, updated_at: stamp };
+    result = { id: randomUUID(), workspace_id: body.workspace_id, project_id: body.project_id || null, kind: 'plan', title, state: 'active', steps: validateSteps(db,body.workspace_id,body.project_id,body.steps || []), version: 1, created_at: stamp, updated_at: stamp };
     db.prepare('INSERT INTO work_plans(id,workspace_id,project_id,title,state,steps_json,version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(result.id,result.workspace_id,result.project_id,title,result.state,JSON.stringify(result.steps),1,stamp,stamp);
   } else if (id && req.method === 'PATCH' && !action) {
     const state = body.state ?? current.state; if (!['active','paused','cancelled'].includes(state)) throw fail('Choose a valid plan state.');
@@ -88,7 +89,7 @@ export async function coordinationRoute({ db, req, res, path, readBody, send, sn
       target.status = 'planned'; target.completed_at = null;
     }
   } else return false;
-  if (current) { result.version++; result.updated_at = stamp; db.prepare('UPDATE work_plans SET title=?,state=?,steps_json=?,version=?,updated_at=? WHERE id=?').run(result.title,result.state,JSON.stringify(result.steps),result.version,stamp,id); }
+  if (current) { result.version++; result.updated_at = stamp; db.prepare("UPDATE work_plans SET title=?,state=?,steps_json=?,version=?,updated_at=? WHERE id=? AND kind='plan'").run(result.title,result.state,JSON.stringify(result.steps),result.version,stamp,id); }
   recordChange(db,'work_plans',current,result,action || (current?'updated':'created'));
   send(res,current?200:201,{result,bootstrap:snapshot(db)}); return true;
 }

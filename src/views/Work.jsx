@@ -1,5 +1,9 @@
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
-import { useState } from "react";
+import { SkillFromRunButton } from '../components/SkillFromRun.jsx';
+import { ContextInspector } from '../components/ContextInspector.jsx';
+import { CapturedRunContextButton } from '../components/CapturedRunContext.jsx';
+import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
+import { lazy, Suspense, useState } from "react";
 import { Play, Square, Terminal, ShieldCheck, Check, X, ArrowRight, Download, Clock, MessageCircle, FileText, Plus, FlaskConical } from "../components/icons.jsx";
 import { rumboActions } from "../data/useRumbo.js";
 import { Form } from "../components/Form.jsx";
@@ -25,6 +29,7 @@ import {
   val,
   visible,
 } from "../lib/model.js";
+const RunUsageButton = lazy(() => import('../components/RunUsage.jsx').then(module => ({ default: module.RunUsageButton })));
 
 export function SessionDialog({ defaults = {}, onClose }) {
   const { data, workspace, navigate, notify } = useApp();
@@ -40,7 +45,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
     return agents.some((agent) => agent.id === id) ? id : (agents[0]?.id ?? "");
   });
   const [taskId, setTaskId] = useState(initialTask?.id ?? "");
-  const [projectId, setProjectId] = useState(val(initialTask, "project_id") ?? val(chat, "project_id") ?? defaults.project_id ?? "");
+  const [projectId, setProjectId] = useState(() => val(initialTask, "project_id") ?? val(chat, "project_id") ?? defaults.project_id ?? (!chat ? val(agents.find(item => item.id === agentId), "default_project_id") : "") ?? "");
   const [mode, setMode] = useState(defaults.mode === "live" ? "live" : "mock");
   const [permission, setPermission] = useState("read-only");
   const [prompt, setPrompt] = useState(
@@ -48,6 +53,8 @@ export function SessionDialog({ defaults = {}, onClose }) {
   );
   const [includeMemory, setIncludeMemory] = useState(true),
     [includeChat, setIncludeChat] = useState(true);
+  const [reviewedContext, setReviewedContext] = useState(null);
+  const [nativeTools, setNativeTools] = useState(false);
   const { busy, error, execute } = useAsync();
   const agent = agents.find((item) => item.id === agentId);
   const task = visible(data.tasks).find((item) => item.id === taskId);
@@ -66,7 +73,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
   );
   const provider = agent?.provider ?? "codex";
   const connection = data.connections.find(
-    (item) => item.provider === provider,
+    (item) => item.provider === provider && (!val(agent, "provider_connection_id") || item.id === val(agent, "provider_connection_id")),
   );
   const readiness = agentReadiness(agent, connection);
   const messages = data.messages
@@ -77,6 +84,16 @@ export function SessionDialog({ defaults = {}, onClose }) {
       !val(note, "project_id") || val(note, "project_id") === project?.id,
   );
   const cwd = val(project, "local_path") || val(agent, "working_directory");
+  const effectivePermission = provider === "claude" || val(agent, "permission_policy") === "read-only" || data.settings?.agentDefaults?.approvalMode === "read_only" ? "read-only" : permission;
+  const inspectionRequest = mode === "live" && agent && prompt.trim() ? {
+    workspace_id: workspace.id, project_id: project?.id ?? null, task_id: taskId || null,
+    chat_id: chat?.id ?? null, agent_id: agent.id, prompt: prompt.trim(), work_mode: "project",
+    permission_mode: effectivePermission, include_memory: includeMemory && val(agent, "memory_policy") !== "none", include_chat: includeChat, native_tools: nativeTools,
+    attachments: [], source_message_id: null, context_pack_ids: [], area_id: val(project, "team_id") || val(task, "team_id") || null,
+    ...(cwd ? { cwd } : {}),
+  } : null;
+  const inspectionKey = JSON.stringify([inspectionRequest, agent?.version ?? null]);
+  const contextReady = reviewedContext?.key === inspectionKey && Date.parse(reviewedContext.result.expires_at) > Date.now();
   async function start(event) {
     event.preventDefault();
     await execute(async () => {
@@ -84,6 +101,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
       if (taskId && !task || projectId && !project) throw new Error("The selected route or project is no longer available.");
       if (defaults.chat_id && !chat) throw new Error("This chat is no longer available.");
       if (mode === "live" && (!readiness.canStartLive || !cwd)) throw new Error("Connect this agent and choose a project with a working folder before starting live work.");
+      if (mode === "live" && !contextReady) throw new Error("Inspect the current context and choose Use this context before starting a live session.");
       const result = await rumboActions.startSession({
         workspace_id: workspace.id,
         project_id: project?.id ?? null,
@@ -93,14 +111,13 @@ export function SessionDialog({ defaults = {}, onClose }) {
         provider,
         title: task?.title ?? chat?.title ?? "Agent session",
         prompt: prompt.trim(),
-        include_memory: includeMemory,
+        include_memory: includeMemory && val(agent, "memory_policy") !== "none",
         include_chat: includeChat,
+        native_tools: mode === "live" && nativeTools,
         mode,
-        permissionMode:
-          provider === "claude" ||
-          data.settings?.agentDefaults?.approvalMode === "read_only"
-            ? "read-only"
-            : permission,
+        work_mode: "project",
+        permissionMode: effectivePermission,
+        ...(mode === "live" ? { context_inspection_id: reviewedContext.result.id, context_pack_ids: [], area_id: inspectionRequest.area_id } : {}),
         ...(cwd ? { cwd } : {}),
         scenario: "approval",
         requiresApproval: true,
@@ -193,18 +210,20 @@ export function SessionDialog({ defaults = {}, onClose }) {
             />
           </Field>
           <div className="context-review">
-            <h3>Context included</h3>
+            <h3>Context choices</h3>
             <p>{project?.name ?? "Workspace context"}{cwd ? <code>{cwd}</code> : <span>No working folder selected</span>}</p>
             {agent?.instructions ? (
               <p className="muted">Agent instructions: {agent.instructions}</p>
             ) : null}
+            {agent ? <p className="muted">Profile v{agent.version ?? 1} · Model: {agent.model || "Provider default"}{val(agent, "reasoning_effort") ? ` · Reasoning: ${val(agent, "reasoning_effort")}` : ""}. Availability depends on the connected provider.</p> : null}
             <label>
               <input
                 type="checkbox"
-                checked={includeMemory}
+                checked={includeMemory && val(agent, "memory_policy") !== "none"}
+                disabled={val(agent, "memory_policy") === "none"}
                 onChange={(e) => setIncludeMemory(e.target.checked)}
               />
-              {notes.length} memory {notes.length === 1 ? "note" : "notes"}
+              {val(agent, "memory_policy") === "none" ? "Saved memory disabled by this profile" : `${notes.length} memory ${notes.length === 1 ? "note" : "notes"}`}
             </label>
             <label>
               <input
@@ -223,6 +242,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
                 label="Working permissions"
                 value={
                   provider === "claude" ||
+                  val(agent, "permission_policy") === "read-only" ||
                   data.settings?.agentDefaults?.approvalMode === "read_only"
                     ? "read-only"
                     : permission
@@ -233,6 +253,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
                   Read only · inspect and suggest
                 </option>
                 {provider !== "claude" &&
+                val(agent, "permission_policy") !== "read-only" &&
                 data.settings?.agentDefaults?.approvalMode !== "read_only" ? (
                   <option value="workspace-write">
                     Allow changes inside the linked project
@@ -250,6 +271,8 @@ export function SessionDialog({ defaults = {}, onClose }) {
                     : ""}
                 </p>
               </div>
+              <NativeToolsChoice checked={nativeTools} disabled={busy} onChange={value => { setNativeTools(value); setReviewedContext(null); }} />
+              <ContextInspector key={`session-context:${agent?.id}:${agent?.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />
             </>
           ) : (
             <p className="form-note">
@@ -270,7 +293,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
             disabled={
               !prompt.trim() ||
               Boolean(agentId && !agent) ||
-              (mode === "live" && (!readiness.canStartLive || !cwd))
+              (mode === "live" && (!readiness.canStartLive || !cwd || !contextReady))
             }
           >
             {mode === "live" ? "Start live session" : "Start simulation"}
@@ -360,7 +383,7 @@ export function WorkView() {
   return (
     <main className="page work-page">
       <PageHeader
-        title="Live work"
+        title="Runs"
         description="See what’s happening, review requests, and keep every session in view."
       >
         {data.runs.length ? (
@@ -421,6 +444,9 @@ export function WorkView() {
                     <h2>{run.title}</h2>
                   </div>
                   <div>
+                    <SkillFromRunButton run={run} />
+                    <CapturedRunContextButton run={run} />
+                    <Suspense fallback={<span>Loading usage control…</span>}><RunUsageButton key={run.id} run={run} /></Suspense>
                     <Button
                       icon={Download}
                       onClick={() => {
@@ -539,6 +565,7 @@ export function WorkView() {
                   </section>
                 ) : null}
                 <ReviewPanel targetType="run" targetId={run.id} projectId={val(run, 'project_id')} />
+                {run.mode === 'live' ? <NativeToolActivity key={run.id} runId={run.id} /> : null}
                 {files.length ? (
                   <section>
                     <div className="section-heading">

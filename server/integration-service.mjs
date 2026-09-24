@@ -6,6 +6,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { StringDecoder } from 'node:string_decoder';
 import { providerSetup, listProviderSetups, providerCatalog } from './provider-adapters.mjs';
+import { NATIVE_AGENT_TOOL_STDIO_PATH, isNativeAgentToolBridgeDescriptor } from './native-agent-tool-bridge.mjs';
 
 const execFileAsync = promisify(execFile);
 const now = () => new Date().toISOString();
@@ -51,14 +52,29 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, item]) => [key, /^(?:token|access_token|refresh_token|api_key|authorization|client_secret)$/i.test(key) ? '[redacted]' : scrubPayload(item, depth + 1)]));
     return value;
   }
-  const commandEnv = (provider) => {
+  const commandEnv = (provider, nativeToolBridge = null) => {
     const result = { ...env, NO_COLOR: '1', FORCE_COLOR: '0', GH_PROMPT_DISABLED: '1' };
     if (provider !== 'github') { delete result.GH_TOKEN; delete result.GITHUB_TOKEN; }
     if (provider !== 'codex') { delete result.OPENAI_API_KEY; delete result.CODEX_API_KEY; }
     if (provider !== 'claude') { delete result.ANTHROPIC_API_KEY; delete result.CLAUDE_CODE_OAUTH_TOKEN; }
     delete result.RUMBO_GOOGLE_CLIENT_ID; delete result.RUMBO_GOOGLE_CLIENT_SECRET;
+    // Never inherit a stale bridge capability from the parent shell. A validated
+    // per-run descriptor is the only source for these two variables.
+    delete result.RUMBO_NATIVE_TOOL_SOCKET; delete result.RUMBO_NATIVE_TOOL_CAPABILITY;
+    if (nativeToolBridge) Object.assign(result, nativeToolBridge.env);
     return result;
   };
+
+  function validateNativeToolBridge(value) {
+    if (value == null) return null;
+    if (!isNativeAgentToolBridgeDescriptor(value)) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
+    const keys = value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).sort() : [];
+    if (JSON.stringify(keys) !== JSON.stringify(['args', 'command', 'enabledTools', 'env', 'name', 'required', 'transport'])) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
+    const envKeys = value.env && typeof value.env === 'object' && !Array.isArray(value.env) ? Object.keys(value.env).sort() : [];
+    const tools = value.enabledTools;
+    if (value.name !== 'rumbo' || value.transport !== 'stdio' || value.command !== process.execPath || value.required !== true || !Array.isArray(value.args) || value.args.length !== 1 || value.args[0] !== NATIVE_AGENT_TOOL_STDIO_PATH || JSON.stringify(envKeys) !== JSON.stringify(['RUMBO_NATIVE_TOOL_CAPABILITY', 'RUMBO_NATIVE_TOOL_SOCKET']) || typeof value.env.RUMBO_NATIVE_TOOL_SOCKET !== 'string' || !isAbsolute(value.env.RUMBO_NATIVE_TOOL_SOCKET) || value.env.RUMBO_NATIVE_TOOL_SOCKET.length > 500 || !/^[A-Za-z0-9_-]{43}$/.test(value.env.RUMBO_NATIVE_TOOL_CAPABILITY || '') || !Array.isArray(tools) || tools.length > 64 || new Set(tools).size !== tools.length || tools.some((name) => typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/.test(name))) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
+    return value;
+  }
   function persist() {
     mkdirSync(dataDir, { recursive: true });
     const temp = `${secretPath}.${randomBytes(6).toString('hex')}.tmp`;
@@ -217,9 +233,12 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     } catch (failure) { cleanup(); throw failure; }
   }
 
-  async function startRunInDirectory({ provider, prompt, cwd, allowedRoot, signal, permissionMode = 'read-only', workMode = 'project' }, { onEvent = () => {}, onComplete = () => {} } = {}) {
+  async function startRunInDirectory({ provider, prompt, cwd, allowedRoot, signal, model = '', reasoningEffort = '', permissionMode = 'read-only', workMode = 'project', timeoutMs = 1800000, nativeToolBridge = null }, { onEvent = () => {}, onComplete = () => {}, onUsageReport = () => {} } = {}) {
     if (signal?.aborted) throw error('session_cancelled', 'The session was cancelled before it started.', 409);
     if (!['codex', 'claude'].includes(provider)) throw error('unsupported_provider', 'Choose Codex or Claude for agent work.');
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1800000) throw error('invalid_timeout', 'Choose a provider execution limit between one second and thirty minutes.');
+    if (typeof model !== 'string' || (model && !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model))) throw error('invalid_model', 'Use a provider model identifier or the connection default.');
+    if (!['', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(reasoningEffort) || (provider !== 'codex' && reasoningEffort)) throw error('invalid_reasoning', 'Choose a supported Codex reasoning setting or the provider default.');
     if (closed) throw error('service_closed', 'Agent service is closed.', 503);
     if (status(provider).state !== 'connected') throw error('not_connected', `Connect ${providerCatalog()[provider].displayName} first.`, 409);
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100_000) throw error('invalid_prompt', 'Write an instruction between 1 and 100,000 characters.');
@@ -233,7 +252,9 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     }
     if (!['read-only', 'workspace-write'].includes(permissionMode)) throw error('invalid_permissions', 'Choose analysis or project editing permissions.');
     if (provider === 'claude' && permissionMode !== 'read-only') throw error('unsupported_permissions', 'Claude currently supports analysis only. Use Codex for edits inside the project folder.');
+    nativeToolBridge = validateNativeToolBridge(nativeToolBridge);
     const codexOverrides = ['approval_policy="never"', 'features.hooks=false', 'features.apps=false', 'features.remote_plugin=false', 'features.multi_agent=false', 'sandbox_workspace_write.writable_roots=[]', 'sandbox_workspace_write.network_access=false', 'sandbox_workspace_write.exclude_tmpdir_env_var=true', 'sandbox_workspace_write.exclude_slash_tmp=true', 'shell_environment_policy.ignore_default_excludes=false'].flatMap((value) => ['-c', value]);
+    if (reasoningEffort) codexOverrides.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`);
     if (workMode === 'conversation') codexOverrides.push(...[
       'features.shell_tool=false', 'features.unified_exec=false', 'features.shell_snapshot=false',
       'features.code_mode.enabled=false', 'features.code_mode_host=false',
@@ -249,6 +270,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       if (check.code !== 0 || !Array.isArray(servers)) throw error('provider_configuration', 'Rumbo could not verify the Codex tool configuration. Update Codex CLI and try again.', 409);
       for (const server of servers) {
         if (typeof server.name !== 'string' || server.name.length > 200 || /[\u0000-\u001f]/.test(server.name)) throw error('provider_configuration', 'A Codex tool server has an unsupported name. Rename it before running through Rumbo.', 409);
+        if (nativeToolBridge && server.name === nativeToolBridge.name) throw error('provider_configuration', 'The reserved Rumbo tool server name is already configured. Rename that server before starting this run.', 409);
         // General chat ignores user config. An enabled-only override would
         // recreate an invalid transportless entry. Supply a valid, disabled
         // stdio definition instead, so even names discovered in system config
@@ -257,19 +279,44 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
           ? `mcp_servers.${JSON.stringify(server.name)}={enabled=false,command="false"}`
           : `mcp_servers.${JSON.stringify(server.name)}.enabled=false`);
       }
+      if (nativeToolBridge) codexOverrides.push(...[
+        `mcp_servers.rumbo.command=${JSON.stringify(nativeToolBridge.command)}`,
+        `mcp_servers.rumbo.args=${JSON.stringify(nativeToolBridge.args)}`,
+        'mcp_servers.rumbo.env_vars=["RUMBO_NATIVE_TOOL_SOCKET","RUMBO_NATIVE_TOOL_CAPABILITY"]',
+        'mcp_servers.rumbo.enabled=true',
+        `mcp_servers.rumbo.enabled_tools=${JSON.stringify(nativeToolBridge.enabledTools)}`,
+        'mcp_servers.rumbo.required=true',
+      ].flatMap((value) => ['-c', value]));
     }
+    const claudeConfig = nativeToolBridge ? JSON.stringify({ mcpServers: { rumbo: { type: 'stdio', command: nativeToolBridge.command, args: nativeToolBridge.args } } }) : '{"mcpServers":{}}';
+    const claudeMcpArgs = nativeToolBridge
+      ? nativeToolBridge.enabledTools.length ? ['--allowedTools', ...nativeToolBridge.enabledTools.map((name) => `mcp__rumbo__${name}`)] : []
+      : ['--disallowedTools', workMode === 'conversation' ? '*' : 'mcp__*'];
     const args = provider === 'codex'
-      ? ['exec', '--json', '--color', 'never', '--sandbox', permissionMode, '--skip-git-repo-check', ...(workMode === 'conversation' ? ['--ignore-user-config', '--ignore-rules', '--ephemeral'] : []), ...codexOverrides, '-']
-      : ['-p', '--bare', '--restricted', '--output-format', 'stream-json', '--verbose', '--permission-mode', 'dontAsk', '--tools', workMode === 'conversation' ? '' : 'Read,Glob,Grep', '--disallowedTools', workMode === 'conversation' ? '*' : 'mcp__*', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--max-turns', '12'];
+      ? ['exec', '--json', '--color', 'never', '--sandbox', permissionMode, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(workMode === 'conversation' ? ['--ignore-user-config', '--ignore-rules', '--ephemeral'] : []), ...codexOverrides, '-']
+      : ['-p', '--bare', '--restricted', '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : []), '--permission-mode', 'dontAsk', '--tools', workMode === 'conversation' ? '' : 'Read,Glob,Grep', ...claudeMcpArgs, '--strict-mcp-config', '--mcp-config', claudeConfig, '--max-turns', '12'];
     if (signal?.aborted) throw error('session_cancelled', 'The session was cancelled before it started.', 409);
     if (closed || status(provider).state !== 'connected') throw error('not_connected', 'This connection was closed while the session was starting. Reconnect and try again.', 409);
-    const child = spawnProcess(provider, args, { cwd, env: commandEnv(provider), stdio: ['pipe', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' });
+    const bridgeSecret = nativeToolBridge?.env.RUMBO_NATIVE_TOOL_CAPABILITY;
+    if (bridgeSecret) knownSecrets.add(bridgeSecret);
+    let child;
+    try { child = spawnProcess(provider, args, { cwd, env: commandEnv(provider, nativeToolBridge), stdio: ['pipe', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' }); }
+    catch (failure) { if (bridgeSecret) knownSecrets.delete(bridgeSecret); throw failure; }
     liveProcesses.add(child);
-    let buffer = '', stderr = '', text = '', settled = false, stopped = false, providerError = '', eventCount = 0, timeout;
+    let buffer = '', stderr = '', text = '', settled = false, stopped = false, providerError = '', failureCode = '', eventCount = 0, timeout, usageCaptureIncomplete = false;
     const decoder = new StringDecoder('utf8');
+    const token = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+    const money = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+    const tokenFamily = (value, camel = false) => ({
+      input_tokens: token(value?.[camel ? 'inputTokens' : 'input_tokens']),
+      cache_creation_input_tokens: token(value?.[camel ? 'cacheCreationInputTokens' : 'cache_creation_input_tokens']),
+      cache_read_input_tokens: token(value?.[camel ? 'cacheReadInputTokens' : 'cache_read_input_tokens']),
+      output_tokens: token(value?.[camel ? 'outputTokens' : 'output_tokens']),
+    });
+    const usage = report => { try { onUsageReport(report); } catch { usageCaptureIncomplete = true; } };
     const appendText = (value) => { text = `${text}${scrubString(value)}\n`.slice(-100_000); };
     const emit = (type, summary, payload = {}) => { if (!stopped && !settled && eventCount++ < 5000) onEvent({ type, summary: scrubString(redact(summary), 12_000), payload: scrubPayload(payload) }); };
-    const finish = (runStatus, failure) => { if (settled) return; settled = true; clearTimeout(timeout); liveProcesses.delete(child); liveControllers.delete(child); onComplete({ status: runStatus, text: scrubString(text.slice(-100_000)), ...(failure ? { error: scrubString(redact(failure), 12_000) } : {}) }); };
+    const finish = (runStatus, failure) => { if (settled) return; settled = true; clearTimeout(timeout); liveProcesses.delete(child); liveControllers.delete(child); const result = { status: runStatus, text: scrubString(text.slice(-100_000)), ...(failure ? { error: scrubString(redact(failure), 12_000) } : {}), ...(failureCode ? { error_code: failureCode } : {}), ...(usageCaptureIncomplete ? { usage_capture_incomplete: true, usage_error_code: 'usage_persistence_failed' } : {}) }; if (bridgeSecret) knownSecrets.delete(bridgeSecret); onComplete(result); };
     const stop = () => {
       if (settled || stopped) return; stopped = true;
       try { if (child.pid && process.platform !== 'win32') process.kill(-child.pid, 'SIGTERM'); else child.kill('SIGTERM'); } catch { child.kill('SIGTERM'); }
@@ -286,12 +333,32 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
         emit(progress ? 'agent.progress' : 'agent.message', event.item.text || '', { text: (event.item.text || '').slice(-100_000) });
       }
       else if (event.type === 'assistant') { for (const block of event.message?.content || []) if (block.type === 'text') { appendText(block.text); emit('agent.message', block.text, { text: (block.text || '').slice(-100_000) }); } }
-      else if (event.type === 'result') { if (event.result) text = scrubString(String(event.result).slice(-100_000)); if (event.is_error) providerError = (Array.isArray(event.errors) ? event.errors : []).join('\n') || event.result || 'Claude could not complete this run.'; }
+      else if (event.type === 'result') {
+        if (event.result) text = scrubString(String(event.result).slice(-100_000));
+        if (event.is_error) providerError = (Array.isArray(event.errors) ? event.errors : []).join('\n') || event.result || 'Claude could not complete this run.';
+        if (provider === 'claude') {
+          const models = event.modelUsage && typeof event.modelUsage === 'object' && !Array.isArray(event.modelUsage) ? Object.values(event.modelUsage) : [];
+          const modelFamilies = models.map(value => tokenFamily(value, true));
+          const sum = key => modelFamilies.length && modelFamilies.every(item => item[key] !== null) ? token(modelFamilies.reduce((total, item) => total + item[key], 0)) : null;
+          usage({
+            provider: 'claude', source: 'result', result_subtype: typeof event.subtype === 'string' ? event.subtype.slice(0, 120) : null,
+            main: tokenFamily(event.usage),
+            all_models: { input_tokens: sum('input_tokens'), cache_creation_input_tokens: sum('cache_creation_input_tokens'), cache_read_input_tokens: sum('cache_read_input_tokens'), output_tokens: sum('output_tokens'), model_count: models.length || null },
+            estimated_cost_usd: money(event.total_cost_usd),
+          });
+        }
+      }
       else if (event.type === 'turn.failed' || event.type === 'error') { providerError = event.error?.message || event.message || (typeof event.error === 'string' ? event.error : '') || 'The provider could not complete this run.'; emit('provider.error', providerError); }
       else if (event.item?.type === 'command_execution') emit('command.output', event.item.command || 'Command', { command: redact(event.item.command), output: redact(event.item.aggregated_output), exitCode: event.item.exit_code });
       else if (event.item?.type === 'file_change') emit('files.changed', 'Project files changed', { changes: event.item.changes || [] });
       else if (event.type === 'thread.started' || event.type === 'system') emit('provider.ready', 'Agent session ready');
-      else if (event.type === 'turn.completed') emit('provider.usage', 'Agent turn finished', { usage: event.usage || {} });
+      else if (event.type === 'turn.completed') {
+        if (provider === 'codex') usage({ provider: 'codex', source: 'turn.completed', main: {
+          input_tokens: token(event.usage?.input_tokens), cached_input_tokens: token(event.usage?.cached_input_tokens),
+          output_tokens: token(event.usage?.output_tokens), reasoning_output_tokens: token(event.usage?.reasoning_output_tokens),
+        } });
+        emit('provider.usage', 'Agent turn finished', { usage: event.usage || {} });
+      }
     }
     child.stdout?.on('data', (chunk) => { if (stopped || settled) return; buffer += decoder.write(chunk); if (buffer.length > 2_000_000) { providerError = 'Provider output exceeded the capture limit.'; stop(); return; } const lines = buffer.split('\n'); buffer = lines.pop(); for (const line of lines) consume(line); });
     child.stderr?.on('data', (chunk) => { if (!stopped && !settled) stderr = scrubString(redact(stderr + chunk.toString()), 12_000); });
@@ -301,9 +368,9 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       if (workMode === 'conversation' && !stopped && code === 0 && !providerError && !text.trim()) providerError = 'The provider finished without a text reply. Your message is saved. Retry the reply or review the session details.';
       finish(stopped ? (providerError ? 'failed' : 'stopped') : code === 0 && !providerError ? 'completed' : 'failed', providerError || (code !== 0 && !stopped ? stderr || `Agent exited with code ${code}.` : undefined));
     });
-    timeout = setTimeout(() => { providerError = 'The run reached the 30-minute limit. Start a follow-up to continue.'; stop(); }, 30 * 60_000); timeout.unref?.();
+    timeout = setTimeout(() => { failureCode = 'run_timeout'; providerError = `The run reached its ${timeoutMs / 1000}-second execution limit. Start a follow-up to continue.`; stop(); }, timeoutMs); timeout.unref?.();
     child.stdin?.on('error', () => {}); child.stdin?.end(prompt);
-    emit('run.started', `${providerCatalog()[provider].displayName} started`, { permissionMode, cwd: workMode === 'conversation' ? null : cwd, workMode, liveAccountContacted: true });
+    emit('run.started', `${providerCatalog()[provider].displayName} started`, { permissionMode, cwd: workMode === 'conversation' ? null : cwd, workMode, timeoutMs, liveAccountContacted: true });
     return { stop };
   }
 

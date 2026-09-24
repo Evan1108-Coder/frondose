@@ -1,4 +1,4 @@
-const types = { routes: 'route', tasks: 'route', task: 'route', projects: 'project', chats: 'chat', agents: 'agent', outputs: 'output', sessions: 'session', runs: 'session', messages: 'message', docs: 'document' };
+const types = { teams: 'area', team: 'area', areas: 'area', routes: 'route', tasks: 'route', task: 'route', projects: 'project', chats: 'chat', agents: 'agent', outputs: 'output', sessions: 'session', runs: 'session', messages: 'message', docs: 'document' };
 export function searchCatalog(catalog, query, limit = 30) {
   const filters = {}, terms = [];
   for (const token of query.toLowerCase().match(/(?:[^\s"]+|"[^"]*")+/g) ?? []) {

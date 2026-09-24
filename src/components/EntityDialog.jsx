@@ -184,7 +184,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
       title={discarding ? "Discard your changes?" : `${item ? "Edit" : "New"} ${labels[kind]}`}
       subtitle={
         kind === "workspace"
-          ? "A separate space for a team, business, or personal work."
+          ? "A separate space for an Area, business, or personal work."
           : workspace?.name
       }
       onClose={requestClose}
@@ -260,7 +260,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               <WorkflowSelect kind="project" item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
               <LabelPicker kind="project" value={form.labels} onChange={labels => change('labels', labels)} />
               <div className="form-grid">
-                <Select label="Team" value={form.team_id} onChange={(value) => change("team_id", value)}><option value="">No team</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
+                <Select label="Area" value={form.team_id} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
                 <Field label="Project lead"><input value={form.lead} maxLength={200} onChange={(event) => change("lead", event.target.value)} placeholder="Name of the project lead" /></Field>
               </div>
               <div className="form-grid">
@@ -289,8 +289,8 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           ) : null}
           {kind === "task" ? (
             <>
-              <Select label="Team" value={linkedProject ? linkedProject.team_id ?? "" : form.team_id} disabled={Boolean(linkedProject)} onChange={(value) => change("team_id", value)}><option value="">No team</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
-              <p className="form-note">{linkedProject ? "The team is inherited from the linked project." : "A route can belong to a team without a project."}</p>
+              <Select label="Area" value={linkedProject ? linkedProject.team_id ?? "" : form.team_id} disabled={Boolean(linkedProject)} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
+              <p className="form-note">{linkedProject ? "The Area is inherited from the linked project." : "A route can belong to an Area without a project."}</p>
               <div className="form-grid">
                 <WorkflowSelect item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
                 <Select

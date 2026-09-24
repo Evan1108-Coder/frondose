@@ -1,7 +1,7 @@
 import { NAV_ITEMS } from "./organization.js";
 
 export const CREATE_SHORTCUTS = [
-  ["r", "task", "route"], ["p", "project", "project"], ["t", "team", "team"],
+  ["r", "task", "route"], ["p", "project", "project"], ["t", "team", "Area"],
   ["c", "chat", "chat"], ["a", "agent", "agent"], ["m", "memory", "memory note"], ["s", "session", "session"],
 ];
 export const SHORTCUTS = [

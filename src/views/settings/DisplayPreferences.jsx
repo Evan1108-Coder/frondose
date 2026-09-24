@@ -10,13 +10,13 @@ export function DisplayPreferences({ colors = false }) {
   const [settings, save] = useDisplayPreferences();
   const [error, setError] = useState(null);
   const update = patch => { try { save(patch); setError(null); } catch { setError(new Error('Your browser could not save this preference. Check available storage and try again.')); } };
-  return <section className="settings-panel display-preferences"><h2>{colors ? 'Icons & name colors' : 'Chat scrolling'}</h2><p>Personal to this browser. Team defaults are shared; your individual overrides are not.</p>{colors ? <>
+  return <section className="settings-panel display-preferences"><h2>{colors ? 'Icons & name colors' : 'Chat scrolling'}</h2><p>Personal to this browser. Area defaults are shared; your individual overrides are not.</p>{colors ? <>
     <div className="empty-color-preview" style={{ '--empty-icon-color': settings.emptyIconColor || 'var(--secondary)' }}><EmptyIllustration kind="teams" /><strong style={{ color: settings.emptyIconColor || undefined }}>Empty-state preview</strong></div>
     <ColorChoice label="Global empty-state color" value={settings.emptyIconColor} onChange={emptyIconColor => update({ emptyIconColor })} />
-    <p>Colors empty-state illustrations, headings, and descriptions. A team’s empty-state setting takes priority. Default uses the theme.</p>
+    <p>Colors empty-state illustrations, headings, and descriptions. A Area’s empty-state setting takes priority. Default uses the theme.</p>
     <ColorChoice label="Global tab icon color" value={settings.tabIconColor} onChange={tabIconColor => update({ tabIconColor })} />
     <ColorPolicyChoice label="Global tab name color" value={settings.tabLabelColor} options={[[ 'neutral', 'Theme default (neutral)'], ['icon', 'Match each tab icon']]} onChange={tabLabelColor => update({ tabLabelColor })} />
-    <p>Tab names start neutral. Team and custom-group settings are inherited automatically; explicit per-tab choices take priority.</p>
+    <p>Tab names start neutral. Area and custom-group settings are inherited automatically; explicit per-tab choices take priority.</p>
     <TabColorsSettings />
   </> : <><Toggle label="Smoothly follow new chat messages" checked={settings.smoothChatScroll} onChange={smoothChatScroll => update({ smoothChatScroll })} /><p>On by default. New messages ease into view while you’re at the bottom. Scroll up to pause; choose Latest messages to resume. Reduced motion skips the animation.</p></>}<ErrorMessage error={error} /></section>;
 }

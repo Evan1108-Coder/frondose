@@ -3,11 +3,16 @@ import { focusItems } from './organization.js';
 
 export const EXPERIENCE_DEFAULTS = { groupAttention: 'reason', snoozeHours: 4, recentLimit: 12, includeCompleted: true };
 const plain = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+const migrateAreaVisit = item => {
+  if (typeof item?.hash !== 'string' || !item.hash.startsWith('#/teams')) return item;
+  const page = parsePage(item.hash);
+  return page.view === 'teams' ? { ...item, hash: pageHash(page.view, page.id, page) } : item;
+};
 export function normalizeExperience(input) {
   const p = plain(input), options = plain(p.options);
   return {
     options: { groupAttention: options.groupAttention === 'project' ? 'project' : 'reason', snoozeHours: [1, 4, 24].includes(options.snoozeHours) ? options.snoozeHours : 4, recentLimit: [6, 12, 24].includes(options.recentLimit) ? options.recentLimit : 12, includeCompleted: options.includeCompleted !== false },
-    recent: (Array.isArray(p.recent) ? p.recent : []).filter(i => typeof i?.hash === 'string' && i.hash === pageHash(parsePage(i.hash).view, parsePage(i.hash).id, parsePage(i.hash)) && Number.isFinite(i.at)).slice(0, 24),
+    recent: (Array.isArray(p.recent) ? p.recent : []).map(migrateAreaVisit).filter(i => typeof i?.hash === 'string' && i.hash === pageHash(parsePage(i.hash).view, parsePage(i.hash).id, parsePage(i.hash)) && Number.isFinite(i.at)).slice(0, 24),
     snoozed: Object.fromEntries(Object.entries(plain(p.snoozed)).filter(([k,v]) => k.length < 250 && Number.isFinite(v)).slice(-500)),
     followed: [...new Set((Array.isArray(p.followed) ? p.followed : []).filter(i => typeof i === 'string' && i.length < 250))].slice(0, 200),
     lastSeenAt: Number.isFinite(p.lastSeenAt) ? p.lastSeenAt : null,
@@ -37,8 +42,8 @@ export function attentionItems(data, seenFailures = [], now = Date.now()) {
   return items;
 }
 export function describePage(data, page) {
-  const collection = { updates: 'activity_entries', memory: 'memory_notes', library: 'outputs', workbench: 'projects', work: 'runs', views: 'workspace_items' }[page.view] ?? page.view;
+  const collection = { workflows: 'manual_workflows', updates: 'activity_entries', memory: 'memory_notes', library: 'outputs', workbench: 'projects', work: 'runs', views: 'workspace_items' }[page.view] ?? page.view;
   const item = page.id && (data[collection] ?? []).find(i => i.id === page.id && !i.archived_at);
-  if (page.id && !item && !['operations', 'library'].includes(page.view)) return null;
-  return item?.title || item?.name || { overview: 'Home', work: 'Live work', tasks: 'Routes', workbench: 'Workbench', library: 'Library', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());
+  if (page.id && !item && !['operations', 'library', 'workflows'].includes(page.view)) return null;
+  return item?.title || item?.name || { teams: 'Areas', overview: 'Today', work: 'Runs', chats: 'Conversations', tasks: 'Routes', workbench: 'Workbench', library: 'Knowledge', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());
 }

@@ -27,3 +27,19 @@ export function mergeUpdatePages(current, incoming) {
   for (const item of incoming) items.set(item.id, item);
   return [...items.values()];
 }
+
+// Newly saved roots join the current feed without resetting filters, pagination,
+// or the keyed conversation components that may contain unsent replies.
+export function insertSavedUpdates(entries, saved, workspaceId, filters) {
+  const query = (filters.search || '').toLowerCase();
+  const matching = saved.filter(entry => entry.workspace_id === workspaceId && !entry.parent_id
+    && entry.publication_state === filters.publicationState
+    && (filters.includeArchived || !entry.archived_at)
+    && (!filters.targetType || entry.target_type === filters.targetType)
+    && (!filters.updateType || entry.update_type === filters.updateType)
+    && (!filters.health || entry.health === filters.health)
+    && (!filters.projectId || entry.target?.project_ids?.includes(filters.projectId))
+    && (!filters.teamId || ['project', 'route'].includes(entry.target_type) && entry.target?.team_id === filters.teamId)
+    && (!query || `${entry.title || ''}`.toLowerCase().includes(query) || `${entry.content || ''}`.toLowerCase().includes(query)));
+  return mergeUpdatePages([...matching].reverse(), entries);
+}

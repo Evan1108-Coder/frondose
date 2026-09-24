@@ -1,4 +1,6 @@
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
+import { ContextInspector } from '../components/ContextInspector.jsx';
+import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
 import { useChatFollow } from '../lib/use-chat-follow.js';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, PanelLeft, X, Link, FileText, GitFork, Clock } from "../components/icons.jsx";
@@ -102,6 +104,8 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const [, render] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
   const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [reviewedContext, setReviewedContext] = useState(null), [retryDraft, setRetryDraft] = useState(null), [reviewedRetry, setReviewedRetry] = useState(null);
+  const [retryNativeTools, setRetryNativeTools] = useState(false), [nativeActivityOpen, setNativeActivityOpen] = useState(false), [nativeRunId, setNativeRunId] = useState('');
   const [updatesDirty, setUpdatesDirty] = useState(false), [updatesPending, setUpdatesPending] = useState(false), [discardUpdates, setDiscardUpdates] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0), [commandLibraryOpen, setCommandLibraryOpen] = useState(false), [commandQuery, setCommandQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false), [search, setSearch] = useState(''), [retrying, setRetrying] = useState(null);
@@ -119,7 +123,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const task = data.tasks.find(item => item.id === val(chat, 'task_id'));
   const project = data.projects.find(item => item.id === (val(chat, 'project_id') || val(task, 'project_id')));
   const agent = agents.find(item => item.id === composer.recipient);
-  const connection = data.connections.find(item => item.provider === agent?.provider);
+  const connection = data.connections.find(item => item.provider === agent?.provider && (!val(agent, 'provider_connection_id') || item.id === val(agent, 'provider_connection_id')));
   const readiness = agent ? agentReadiness(agent, connection) : null;
   const folder = val(project, 'local_path') || val(agent, 'working_directory');
   const notes = visible(data.memory_notes).filter(note => !val(note, 'project_id') || val(note, 'project_id') === project?.id);
@@ -135,6 +139,31 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const connectedProviders = (data.connections || []).filter(item => item.status === 'connected' || item.connected).map(item => item.provider);
   const slashVisible = composer.text.trimStart().startsWith('/') && !composer.text.trimStart().startsWith('//') && !composer.text.includes('\n');
   const slashResults = slashVisible ? searchCommands(composer.text.trimStart().slice(1), { context: 'chat' }).slice(0, 10) : [];
+  const readOnlyProfile = agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
+  const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
+  const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
+  const sentAttachments = composer.context ? [{ name: `rumbo-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
+  const inspectionRequest = agent && (composer.text.trim() || composer.files.length) && !slashVisible ? {
+    workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
+    chat_id: chat.id, agent_id: agent.id, prompt: composer.text.trim() || 'Shared attachments',
+    work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission,
+    include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true, attachments: sentAttachments, source_message_id: null,
+    context_pack_ids: [], area_id: val(project, 'team_id') || val(task, 'team_id') || null,
+    ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
+  } : null;
+  const inspectionKey = JSON.stringify([inspectionRequest, agent?.version ?? null]);
+  const contextReady = reviewedContext?.key === inspectionKey && Date.parse(reviewedContext.result.expires_at) > Date.now();
+  const recoveringTurn = Boolean(composer.turn);
+  const retryAgent = retryDraft ? agents.find(item => item.id === val(retryDraft.run, 'agent_id')) : null;
+  const retryRequest = retryDraft && retryAgent ? {
+    workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
+    chat_id: chat.id, agent_id: retryAgent.id, prompt: retryDraft.message.content.trim(),
+    source_message_id: retryDraft.message.id, work_mode: val(retryDraft.run, 'work_mode') || 'project', permission_mode: 'read-only',
+    include_memory: composer.memory && val(retryAgent, 'memory_policy') !== 'none', include_chat: true, native_tools: retryNativeTools,
+    attachments: [], context_pack_ids: [], area_id: val(project, 'team_id') || val(task, 'team_id') || null,
+  } : null;
+  const retryInspectionKey = JSON.stringify([retryRequest, retryAgent?.version ?? null]);
+  const retryContextReady = reviewedRetry?.key === retryInspectionKey && Date.parse(reviewedRetry.result.expires_at) > Date.now();
   const { atBottom, scrollToEnd, setFollowing: setAtBottom } = useChatFollow(listRef, `${messages.length}:${runs.map(run => run.status).join(',')}:${search}`, data.settings?.appearance?.reduceMotion);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
@@ -154,6 +183,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     Object.assign(composer, changes);
     composer.version += 1;
     composer.turn = null;
+    if (Object.hasOwn(changes, 'recipient')) setReviewedContext(null);
     persistComposer(chat.id, composer, draftStorage());
     setError(null);
     render(version => version + 1);
@@ -246,10 +276,11 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     }
     if (blocker) { setError(new Error(blocker)); return; }
     if (composer.context && composer.files.length >= 20) { setError(new Error('The context snapshot uses one attachment slot. Remove a file before sending.')); return; }
+    if (agent && !recoveringTurn && !contextReady) { setError(new Error('Inspect the current context and choose Use this context before sending to an agent.')); return; }
     sending.current = true; composer.sending = true; setBusy(true); setError(null);
     const text = composer.text.trim() || 'Shared attachments', files = [...composer.files], version = composer.version;
     const context = composer.context;
-    const sentFiles = context ? [{ name: `rumbo-context-${context.id}.md`, type: 'text/markdown', content: context.content, rumbo_context_snapshot: context.id }, ...files] : files;
+    const sentFiles = sentAttachments;
     const metadata = { reply_to: composer.replyTo || undefined, context_snapshot_id: context?.id };
     const recipient = composer.recipient;
     if (recipient !== 'note' && !composer.turn) composer.turn = crypto.randomUUID();
@@ -259,17 +290,22 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
         content: text, sender_type: 'user', sender_id: 'local', sender_name: data.profile?.name || 'You', attachments: sentFiles, metadata: { delivery: 'note', ...metadata },
       }) : await rumboActions.sendChatTurn(chat.id, {
         content: text, attachments: sentFiles, agent_id: recipient, client_turn_id: composer.turn, ...metadata,
-        work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: composer.permission === 'conversation' ? 'read-only' : composer.permission, include_memory: composer.memory, include_chat: true,
+        work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission, include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true,
+        ...(contextReady ? { context_inspection_id: reviewedContext.result.id } : {}), context_pack_ids: [], area_id: inspectionRequest?.area_id ?? null,
+        ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
       });
       if (composer.version === version) { composer.text = ''; composer.version += 1; composer.turn = null; composer.replyTo = null; composer.context = null; }
+      composer.nativeTools = false;
       composer.files = composer.files.filter(file => !files.includes(file));
       persistComposer(chat.id, composer, draftStorage());
       const result = response?.result || response;
       if (result?.error) notify(`Message saved. ${result.error.message}`, 'error');
-      if (mounted.current) { render(value => value + 1); setAtBottom(true); inputRef.current?.focus(); }
+      if (mounted.current) { setReviewedContext(null); render(value => value + 1); setAtBottom(true); inputRef.current?.focus(); }
     } catch (cause) {
       // Keep the same turn key on retries after an uncertain network result.
-      if (mounted.current) setError(cause); else notify(`Could not confirm delivery in ${chat.title}: ${cause.message}`, 'error');
+      if (cause.status && cause.status < 500) { composer.turn = null; persistComposer(chat.id, composer, draftStorage()); }
+      if (mounted.current) { setError(cause); if (cause.status && cause.status < 500) setReviewedContext(null); }
+      else notify(`Could not confirm delivery in ${chat.title}: ${cause.message}`, 'error');
     } finally { sending.current = false; composer.sending = false; onComposerChange(); if (mounted.current) setBusy(false); }
   }
 
@@ -353,17 +389,26 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     if (!exact && command.usage.includes('[')) { change({ text: `${command.command} ` }); inputRef.current?.focus(); return; }
     executeSlashCommand(command, exact ? parsed.argv : []);
   }
-  async function retry(message, run) {
+  function retry(message, run) {
+    if (retrying || active) return;
+    setRetryDraft({ message, run }); setRetryNativeTools(Boolean(composer.retryKeys[message.id]) && composer.retryNativeTools?.[message.id] === true); setReviewedRetry(null); setError(null);
+  }
+  async function retryReviewed() {
+    if (!retryDraft || !retryContextReady) { setError(new Error('Inspect and use the regenerated context before retrying.')); return; }
+    const { message, run } = retryDraft;
     if (retrying || active) return;
     setRetrying(run.id); setError(null);
     composer.retryKeys[message.id] ||= crypto.randomUUID();
+    composer.retryNativeTools ||= {}; composer.retryNativeTools[message.id] = retryRequest.native_tools;
     persistComposer(chat.id, composer, draftStorage());
     try {
-      const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: composer.memory, include_chat: true });
+      const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, context_pack_ids: [], area_id: retryRequest.area_id });
       delete composer.retryKeys[message.id];
+      delete composer.retryNativeTools[message.id];
       persistComposer(chat.id, composer, draftStorage());
       if (response?.error) notify(response.error.message, 'error');
-    } catch (cause) { if (mounted.current) setError(cause); }
+      if (mounted.current) { setRetryDraft(null); setReviewedRetry(null); }
+    } catch (cause) { if (cause.status && cause.status < 500) { delete composer.retryKeys[message.id]; delete composer.retryNativeTools[message.id]; persistComposer(chat.id, composer, draftStorage()); } if (mounted.current) setError(cause); }
     finally { if (mounted.current) setRetrying(null); }
   }
   function exportChat() { download(`${chat.title.replace(/[^a-z0-9]+/gi, '-') || 'conversation'}.md`, chatMarkdown(chat, messages), 'text/markdown'); setOptionsOpen(false); notify('Chat exported'); }
@@ -398,7 +443,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
       <div className="chat-thread-title"><h2>{chat.title}</h2><div>{project ? <button onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <span>Workspace conversation</span>}{task ? <><span>/</span><button onClick={() => navigate('tasks', task.id)}>{task.title}</button></> : null}</div></div>
       <div className="chat-thread-tools"><IconButton label={searchOpen ? 'Close message search' : 'Search messages'} onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }} aria-pressed={searchOpen}><Search morphTo={searchOpen ? X : Search} /></IconButton><Button icon={PanelLeft} onClick={() => setContextOpen(true)}>Context</Button><IconButton label="Conversation options" onClick={() => setOptionsOpen(true)}><Ellipsis /></IconButton></div>
     </header>
-    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}</div>
+    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}</div>
     {threadId ? <div className="chat-thread-banner"><MessageCircle /><span>Thread · {inThread.length - 1} replies</span><button onClick={() => { setThreadId(null); change({ replyTo: null }); }}>Back to conversation</button></div> : null}
     {searchOpen ? <div className="chat-message-search"><SearchField label="Search messages in conversation" placeholder="Find a message…" value={search} onChange={setSearch} /><span>{search ? `${shownMessages.length} results` : 'Search this conversation'}</span></div> : null}
     {selectionMode ? <div className="chat-selection-bar" role="region" aria-label="Selected messages"><strong aria-live="polite">{selectedMessages.length} selected</strong><button onClick={() => setSelectedIds(new Set(shownMessages.map(message => message.id)))}>Select visible</button><Button variant="ghost" icon={Copy} disabled={!selectedMessages.length} onClick={() => perform(async () => { await navigator.clipboard.writeText(chatMarkdown(chat, selectedMessages)); notify(`${selectedMessages.length} messages copied`); })}>Copy</Button><Button variant="ghost" icon={Download} disabled={!selectedMessages.length} onClick={() => { download('selected-messages.md', chatMarkdown(chat, selectedMessages), 'text/markdown'); notify('Selected messages exported'); }}>Export</Button><IconButton label="Cancel message selection" onClick={stopSelection}><X /></IconButton></div> : null}
@@ -422,19 +467,22 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
           if (slashVisible && slashResults.length && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); selectSlash(slashResults[Math.min(slashIndex, slashResults.length - 1)]); return; }
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && (data.settings?.preferences?.sendKey !== 'modifier' || event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy) event.currentTarget.form.requestSubmit(); }
         }} />
+        {agent ? <details><summary>Context review · {contextReady ? 'selected' : recoveringTurn ? 'delivery recovery' : 'required before sending'}</summary><div className="chat-context-content" style={{ maxHeight: 'min(45vh, 420px)', overflowY: 'auto' }}><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />{recoveringTurn ? <p>An earlier delivery is unconfirmed. Resending keeps the same turn ID to recover it without duplicating work. If the server never received it, context is regenerated. Inspect again to require a newly reviewed context.</p> : null}</div></details> : null}
         <div className="chat-compose-controls"><div className="chat-compose-target">
-          <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider)).canStartLive ? '' : ' · Not ready'}</option>)}</Select>
-          {agent ? <Select aria-label="Agent access" value={composer.permission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
+          <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive ? '' : ' · Not ready'}</option>)}</Select>
+          {agent ? <Select aria-label="Agent access" value={composer.permission === 'conversation' ? 'conversation' : effectivePermission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' && !readOnlyProfile ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
           <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton>
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
           <IconButton label="Select context sources" onClick={() => setContextOpen(true)}><BookOpen /></IconButton>
           <IconButton label="Save follow-up draft without sending" disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={queueDraft}><Clock /></IconButton>
-        </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker)} aria-label={agent ? `Send to ${agent.name}` : 'Save note'}>{agent ? composer.permission === 'workspace-write' ? 'Start work' : 'Send' : 'Save note'}</Button></div>
+        </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker) || Boolean(agent && !slashVisible && !recoveringTurn && !contextReady)} aria-label={agent ? `Send to ${agent.name}` : 'Save note'}>{agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</Button></div>
       </Form>
-      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : <div className="chat-compose-caption"><span>{agent ? `${agent.name} receives the conversation${project ? ', project context' : ''}${composer.memory && notes.length ? ', and saved memory' : ''}.` : 'Notes stay in this conversation. No agent is contacted.'}</span><span>{data.settings?.preferences?.sendKey === 'modifier' ? 'Cmd / Ctrl + Enter' : 'Enter'} to send · Shift + Enter for a new line</span></div>}
+      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : <div className="chat-compose-caption"><span>{agent ? contextReady ? 'Context reviewed. Sending is a separate action.' : recoveringTurn ? 'Unconfirmed delivery · keep the same turn ID when retrying.' : 'Open Context review, inspect, and use the context before sending.' : 'Notes stay in this conversation. No agent is contacted.'}</span><span>{data.settings?.preferences?.sendKey === 'modifier' ? 'Cmd / Ctrl + Enter' : 'Enter'} to send · Shift + Enter for a new line</span></div>}
     </div>
+    {retryDraft ? <Dialog title="Review retry context" subtitle="Retrying creates a new bounded attempt. Context is regenerated from current accessible sources; the original message stays unchanged." wide onClose={() => { if (!retrying) { setRetryDraft(null); setReviewedRetry(null); } }}><div className="dialog-body chat-context-content"><ErrorMessage error={error} /><NativeToolsChoice checked={retryNativeTools} disabled={Boolean(retrying) || Boolean(composer.retryKeys[retryDraft.message.id])} onChange={value => { setRetryNativeTools(value); setReviewedRetry(null); }} />{composer.retryKeys[retryDraft.message.id] ? <p>An earlier retry delivery is unconfirmed. Its native-tool choice stays fixed while recovering the same turn.</p> : null}{retryAgent ? <ContextInspector key={`retry-context:${retryDraft.message.id}:${retryAgent.version ?? 0}`} request={retryRequest} onReviewed={result => setReviewedRetry({ key: retryInspectionKey, result })} onInvalidated={() => setReviewedRetry(null)} /> : <p>This message’s agent is unavailable. Restore or configure the profile before retrying.</p>}</div><footer className="dialog-footer"><Button disabled={Boolean(retrying)} onClick={() => { setRetryDraft(null); setReviewedRetry(null); }}>Cancel</Button><Button variant="primary" busy={Boolean(retrying)} disabled={!retryContextReady || Boolean(active)} onClick={retryReviewed}>Retry message</Button></footer></Dialog> : null}
     {updatesOpen ? <Dialog title="Conversation updates" subtitle="Progress and decisions about this conversation. Updates are separate from chat messages and never contact an agent." wide onClose={() => { if (updatesPending) notify('Resolve the pending update request before closing.'); else if (updatesDirty) setDiscardUpdates(true); else setUpdatesOpen(false); }}><div className="dialog-body" style={{ padding: 'clamp(12px, 3vw, 24px)' }}><Suspense fallback={<p role="status">Opening conversation updates…</p>}><ActivityFeed key={chat.id} workspaceId={val(chat, 'workspace_id')} targetType="chat" targetId={chat.id} onDirtyChange={setUpdatesDirty} onPendingChange={setUpdatesPending} /></Suspense></div></Dialog> : null}
+    {nativeActivityOpen ? <Dialog title="Conversation native tools" subtitle="Choose one recorded run. Reading tool records or reviewing a proposal never launches an agent." wide onClose={() => setNativeActivityOpen(false)}><div className="native-tool-decision"><Select label="Recorded conversation run" value={nativeRunId} onChange={setNativeRunId}><option value="">Choose run…</option>{runs.filter(run => run.mode === 'live').map(run => <option key={run.id} value={run.id}>{run.title || run.id} · {run.status} · {relative(run.created_at)}</option>)}</Select>{nativeRunId && runs.some(run => run.id === nativeRunId && run.mode === 'live') ? <NativeToolActivity key={nativeRunId} runId={nativeRunId} /> : <p>No run selected. Simulations do not invoke native tools.</p>}</div></Dialog> : null}
     {discardUpdates ? <Dialog title="Discard this update draft?" onClose={() => setDiscardUpdates(false)}><div className="dialog-body" style={{ padding: 24 }}><p>This unsaved text will be lost. Published updates and saved drafts stay unchanged.</p><div className="form-submit-row"><Button onClick={() => setDiscardUpdates(false)}>Keep editing</Button><Button variant="danger" onClick={() => { setDiscardUpdates(false); setUpdatesDirty(false); setUpdatesOpen(false); }}>Discard draft</Button></div></div></Dialog> : null}
     {contextOpen ? <Dialog title="Chat context" subtitle="Know what travels with this conversation." className="chat-context-dialog" onClose={() => setContextOpen(false)}><div className="dialog-body chat-context-content">
       <ErrorMessage error={collaborationError} />
@@ -447,7 +495,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
       <ReviewPanel targetType="chat" targetId={chat.id} projectId={project?.id} />
       <section><h3>Agents in this chat</h3>{agents.filter(item => (val(chat, 'participant_agent_ids') || []).includes(item.id)).map(item => <button className="chat-context-link" key={item.id} onClick={() => navigate('agents', item.id)}><ProviderIcon provider={item.provider} />{item.name}</button>)}<p>The composer chooses who receives each message. Other agents are not contacted automatically.</p></section>
       <section><h3>Working folder · optional for chat</h3><p className="chat-folder">{folder || 'No folder linked. General chat works without one.'}</p><p>Choose project access in the composer to inspect or code in project files. That mode requires a linked folder; General chat only uses the context you send.</p>{agent || project ? <Button icon={Folder} onClick={() => { setContextOpen(false); project ? edit('project', project) : edit('agent', agent); }}>{folder ? 'Change folder' : 'Link folder for project work'}</Button> : null}</section>
-      <section><Toggle label="Include saved memory" description="Workspace notes and this project’s notes are included when you send to an agent." checked={composer.memory} onChange={value => change({ memory: value })} />{notes.map(note => <button className="chat-context-link" key={note.id} onClick={() => { setContextOpen(false); edit('memory', note); }}><BookOpen />{note.title}</button>)}</section>
+      <section><Toggle label="Include saved memory" description={val(agent, 'memory_policy') === 'none' ? 'This profile excludes saved memory.' : 'Eligible notes can be included; inspect the exact selection and any limits before sending.'} checked={includeMemory} disabled={val(agent, 'memory_policy') === 'none'} onChange={value => change({ memory: value })} />{notes.map(note => <button className="chat-context-link" key={note.id} onClick={() => { setContextOpen(false); edit('memory', note); }}><BookOpen />{note.title}</button>)}</section>
       <section><h3>Attachments</h3><p>Text and code files can be sent to agents: up to 20 files, 100,000 characters each. Agent context uses at most 16 KB per file and 32 KB total. Full files remain saved here. Images are stored in notes only; they are not sent to CLI providers.</p></section>
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}
     {commandLibraryOpen ? <Dialog title="Rumbo commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}

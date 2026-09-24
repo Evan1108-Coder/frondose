@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState } from "react";
-import { Plus, Pencil, Ellipsis, Copy, Pause, Play, Archive, ArrowLeft, ArrowUpRight, Folder, Plug, FlaskConical, MessageCircle, ShieldCheck, Terminal, Pin, PinOff } from "../components/icons.jsx";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Plus, Pencil, Ellipsis, Copy, Pause, Play, Archive, ArrowLeft, ArrowUpRight, Folder, Plug, FlaskConical, MessageCircle, ShieldCheck, Terminal, Pin, PinOff, Download } from "../components/icons.jsx";
 import { Button, Dialog, Empty, ErrorMessage, IconButton, PageHeader, SearchField, Select, Status, useApp, useAsync } from "../ui.jsx";
 import { AgentIdentity } from "../components/AgentIdentity.jsx";
 import { rumboActions } from "../data/useRumbo.js";
+import { apiRequest } from "../data/api.js";
+import { AgentMemoryPanel } from "../components/AgentMemoryPanel.jsx";
+import { agentDefaultChoices, duplicateAgentDefinition, exportAgentDefinition, parseAgentDefinition } from "../lib/agent-editor.js";
 import { AGENT_PROVIDERS, agentReadiness, summarizeAgent } from "../lib/agents.js";
-import { relative, val, visible } from "../lib/model.js";
+import { download, relative, val, visible } from "../lib/model.js";
 import { ConnectionDialog } from "./Connections.jsx";
 import "./agents-page.css";
+const AgentProfileHistory = lazy(() => import('../components/AgentProfileHistory.jsx').then(module => ({ default: module.AgentProfileHistory })));
+const AgentUsageDisclosure = lazy(() => import('../components/RunUsage.jsx').then(module => ({ default: module.AgentUsageDisclosure })));
 
 function Readiness({ readiness }) {
   return <span className={`agent-readiness is-${readiness.state}`}><i aria-hidden="true" />{readiness.label}</span>;
 }
 
-function AgentMenu({ agent, onEdit, onDuplicate, onPause, onArchive, busy, active }) {
+function AgentMenu({ agent, onEdit, onDuplicate, onExport, onPause, onArchive, busy, active }) {
   const [open, setOpen] = useState(false);
   const root = useRef(null), trigger = useRef(null), menu = useRef(null);
   useEffect(() => {
@@ -38,6 +43,7 @@ function AgentMenu({ agent, onEdit, onDuplicate, onPause, onArchive, busy, activ
     }}>
       <button role="menuitem" onClick={() => action(onEdit)}><Pencil />Edit agent</button>
       <button role="menuitem" onClick={() => action(onDuplicate)}><Copy />Duplicate</button>
+      <button role="menuitem" onClick={() => action(onExport)}><Download />Export definition</button>
       <button role="menuitem" disabled={busy} onClick={() => action(onPause)}><Pause morphTo={agent.status === "paused" ? Play : Pause} />{agent.status === "paused" ? "Resume agent" : "Pause agent"}</button>
       <div className="agent-menu-divider" />
       <button role="menuitem" disabled={active || busy} onClick={() => action(onArchive)}><Archive />Archive agent</button>
@@ -45,6 +51,29 @@ function AgentMenu({ agent, onEdit, onDuplicate, onPause, onArchive, busy, activ
     </div> : null}
   </div>;
 }
+
+function ImportAgentDialog({ onClose, onImport }) {
+  const [definition, setDefinition] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false);
+  return <Dialog title="Import an agent definition" subtitle="Review the profile before saving. Importing never starts work." onClose={() => !busy && onClose()}><div className="agent-import-fields"><p>Only name, role, provider, instructions, model preferences, memory policy, and expected output text are imported. Accounts, credentials, folders, Area/project/Context Pack references, and permissions are never restored. Imports start read-only and unbound.</p><label>Rumbo agent JSON file<input type="file" accept=".json,application/json" disabled={busy} onChange={async event => {
+    const file = event.target.files?.[0]; setDefinition(null); setError(null); if (!file) return;
+    if (file.size > 250000) { setError(new Error("Choose a definition smaller than 250 KB.")); return; }
+    setBusy(true); try { setDefinition(parseAgentDefinition(await file.text())); } catch (problem) { setError(problem); } finally { setBusy(false); }
+  }} /></label>{definition ? <p role="status"><strong>{definition.name}</strong> · {definition.provider}. Ready to review in the profile editor.</p> : null}<ErrorMessage error={error} /></div><footer className="dialog-footer"><Button disabled={busy} onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!definition || busy} onClick={() => onImport(definition)}>Review imported profile</Button></footer></Dialog>;
+}
+
+function AgentSkills({ agentId, workspaceId, navigate }) {
+  const [state, setState] = useState({ loading: true, skills: [], error: null });
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ loading: true, skills: [], error: null });
+    apiRequest(`/api/skills?workspace_id=${encodeURIComponent(workspaceId)}`, { signal: controller.signal }).then(({ result }) => setState({ loading: false, skills: (result ?? []).filter(skill => skill.preferred_agent_id === agentId), error: null })).catch(error => { if (!controller.signal.aborted) setState({ loading: false, skills: [], error }); });
+    return () => controller.abort();
+  }, [agentId, workspaceId, retry]);
+  return <section className="agent-detail-section agent-linked-work"><h3>Preferred Skills</h3><p>Versioned capabilities that name this profile as their preferred agent. Being preferred does not grant tools or start work.</p><ErrorMessage error={state.error} />{state.loading ? <p role="status">Loading Skills…</p> : state.error ? <Button onClick={() => setRetry(value => value + 1)}>Retry Skills</Button> : state.skills.length ? state.skills.map(skill => <button key={skill.id} onClick={() => navigate("skills", skill.id)}><span>{skill.name} · v{skill.version} · {skill.state}</span><ArrowUpRight /></button>) : <p>No Skills name this agent yet.</p>}<Button onClick={() => navigate("skills")}>Manage Skills</Button></section>;
+}
+
+const DETAIL_TABS = [{ id: "overview", label: "Overview" }, { id: "context", label: "Context & Skills" }, { id: "sessions", label: "Runs & outputs" }];
 
 function ArchiveAgentDialog({ agent, onClose }) {
   const { notify, navigate, perform } = useApp();
@@ -64,10 +93,15 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
   const chatAction = useAsync();
   const favorite = organization.favorites.some(item => item.view === "agents" && item.id === agent.id);
   const [tab, setTab] = useState("overview");
-  const { readiness, provider, activeRuns, runs, projects, chats, connection } = summary;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { readiness, provider, activeRuns, runs, projects, chats, connection, outputs, failedRuns } = summary;
+  const choices = agentDefaultChoices(data, val(agent, "workspace_id"), val(agent, "default_area_id"));
+  const defaultArea = choices.areas.find(area => area.id === val(agent, "default_area_id"));
+  const defaultProject = choices.projects.find(project => project.id === val(agent, "default_project_id"));
+  const packs = val(agent, "context_source_ids") ?? [];
   return <aside className="agent-detail" aria-label={`${agent.name} details`}>
     <header className="agent-detail-header">
-      <div className="agent-detail-title"><AgentIdentity agent={agent} /><div><h2>{agent.name}</h2><p>{provider.name}{!val(agent, "workspace_id") ? " · Shared across workspaces" : ""}{activeRuns.length ? ` · ${activeRuns.length} active ${activeRuns.length === 1 ? "session" : "sessions"}` : ""}</p></div></div>
+      <div className="agent-detail-title"><AgentIdentity agent={agent} /><div><h2>{agent.name}</h2><p>{provider.name}{agent.version ? ` · Profile v${agent.version}` : " · Version not recorded"}{!val(agent, "workspace_id") ? " · Shared across workspaces" : ""}{activeRuns.length ? ` · ${activeRuns.length} active ${activeRuns.length === 1 ? "session" : "sessions"}` : ""}</p></div></div>
       <IconButton label={`Edit ${agent.name}`} onClick={() => edit("agent", agent)}><Pencil /></IconButton>
     </header>
     <div className="agent-detail-quick-actions"><Button icon={MessageCircle} busy={chatAction.busy} onClick={() => chatAction.execute(async () => {
@@ -76,32 +110,44 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
       navigate("chats", chat.id);
     })}>Chat with agent</Button><Button icon={favorite ? PinOff : Pin} aria-pressed={favorite} onClick={() => toggleFavorite({ view: "agents", id: agent.id })}>{favorite ? "Unfavorite" : "Favorite"}</Button><ErrorMessage error={chatAction.error} /></div>
     <div className="agent-detail-tabs" role="tablist" aria-label="Agent details">
-      {["overview", "sessions"].map((value) => <button key={value} role="tab" id={`agent-tab-${value}`} aria-controls={`agent-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={(event) => {
-        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = event.key === "Home" ? "overview" : event.key === "End" ? "sessions" : value === "overview" ? "sessions" : "overview"; setTab(next); event.currentTarget.parentElement.querySelector(`#agent-tab-${next}`)?.focus(); }
-      }}>{value === "overview" ? "Overview" : "Sessions"}{value === "sessions" && runs.length ? <span>{runs.length}</span> : null}</button>)}
+      {DETAIL_TABS.map(({ id: value, label }, index) => <button key={value} role="tab" id={`agent-tab-${value}`} aria-controls={`agent-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={(event) => {
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = DETAIL_TABS[event.key === "Home" ? 0 : event.key === "End" ? DETAIL_TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + DETAIL_TABS.length) % DETAIL_TABS.length].id; setTab(next); event.currentTarget.parentElement.querySelector(`#agent-tab-${next}`)?.focus(); }
+      }}>{label}{value === "sessions" && runs.length ? <span>{runs.length}</span> : null}</button>)}
     </div>
     <div className="agent-detail-content" role="tabpanel" id={`agent-panel-${tab}`} aria-labelledby={`agent-tab-${tab}`}>
       {tab === "overview" ? <>
-        <section className="agent-detail-section"><h3>Instructions</h3>{agent.instructions ? <p className="agent-instruction-copy">{agent.instructions}</p> : <><p>No instructions yet. Tell this agent how to approach its work.</p><button className="text-button" onClick={() => edit("agent", agent)}>Add instructions <ArrowUpRight /></button></>}</section>
+        <section className="agent-detail-section"><h3>Purpose</h3><p>{agent.role || "No role defined"}</p>{agent.description ? <small>{agent.description}</small> : null}</section>
+        <section className="agent-detail-section"><h3>Instructions</h3>{agent.instructions ? <p className="agent-instruction-copy">{agent.instructions}</p> : <><p>No instructions yet. Tell this agent how to approach its work.</p><button className="text-button" onClick={() => edit("agent", agent)}>Add instructions <ArrowUpRight /></button></>}<Button onClick={() => setHistoryOpen(true)}>Compare content history</Button></section>
+        <section className="agent-detail-section"><h3>Execution defaults</h3><dl className="agent-default-list"><div><dt>Model</dt><dd>{agent.model || "Provider default"}</dd></div><div><dt>Reasoning</dt><dd>{agent.provider === "codex" ? val(agent, "reasoning_effort") || "Provider default" : "Not supported in Rumbo"}</dd></div><div><dt>Permissions</dt><dd>{val(agent, "permission_policy") === "read-only" ? "Read-only" : "Review required"}</dd></div></dl><small>Provider support is checked at launch, not when this page opens. Instructions and defaults never grant access.</small><h3 className="agent-output-heading">Expected output</h3><p className="agent-instruction-copy">{val(agent, "output_behavior") || "Not defined. Set a format, evidence requirements, and stopping condition in the profile."}</p></section>
         <section className="agent-detail-section"><h3><Folder />Working folder</h3><p className="agent-folder">{val(agent, "working_directory") || "Choose with each session"}</p><small>A linked project folder takes precedence.</small></section>
         <section className="agent-detail-section agent-connection-section"><h3><Plug />Connection</h3><Readiness readiness={readiness} /><p>{readiness.description}</p>
           {val(connection, "account_label") && readiness.canStartLive ? <small>{val(connection, "account_label")}</small> : null}
           <div className="agent-launch-actions">
             {readiness.action === "start" ? <Button icon={Play} onClick={() => startSession({ agent_id: agent.id, mode: "live" })}>Start session</Button>
               : readiness.action === "resume" ? <Button icon={Play} busy={busy} onClick={onPause}>Resume agent</Button>
-                : readiness.action === "configure" ? <Button icon={Pencil} onClick={() => edit("agent", agent)}>Choose a supported provider</Button>
+                  : readiness.action === "configure" ? <Button icon={Pencil} onClick={() => edit("agent", agent)}>Review profile setup</Button>
                   : <Button icon={Plug} onClick={() => onConnect(agent.provider)}>Connect {provider.name}</Button>}
-            {readiness.canSimulate ? <button className="text-button agent-simulate" onClick={() => startSession({ agent_id: agent.id, mode: "mock" })}><FlaskConical />Try a simulation</button> : null}
+            {readiness.canSimulate ? <button className="text-button agent-simulate" onClick={() => startSession({ agent_id: agent.id, mode: "mock" })}><FlaskConical />Test with simulation</button> : null}
           </div>
           {AGENT_PROVIDERS[agent.provider] ? <p className="agent-permission-note"><ShieldCheck />{agent.provider === "claude" ? "Read-only in Rumbo. Project editing is not supported yet." : "Choose read-only or project-edit access before each live session."}</p> : null}
+          <small>The provider account and limits are shared with other profiles. Simulations do not use the account or validate model behavior. Ordinary ChatGPT/Claude history is not imported.</small>
         </section>
         {projects.length || chats.length ? <section className="agent-detail-section agent-linked-work"><h3>Linked work</h3>{projects.slice(0, 3).map((project) => <button key={project.id} onClick={() => navigate("projects", project.id)}><Folder /><span>{project.name}</span><ArrowUpRight /></button>)}{chats.slice(0, 3).map((chat) => <button key={chat.id} onClick={() => navigate("chats", chat.id)}><MessageCircle /><span>{chat.title}</span><ArrowUpRight /></button>)}</section> : null}
+      </> : tab === "context" ? <>
+        <section className="agent-detail-section"><h3>Default context</h3><dl className="agent-default-list"><div><dt>Area</dt><dd>{defaultArea?.name || (val(agent, "default_area_id") ? "Unavailable reference" : "No default")}</dd></div><div><dt>Project</dt><dd>{defaultProject?.name || (val(agent, "default_project_id") ? "Unavailable reference" : "No default")}</dd></div><div><dt>Memory</dt><dd>{val(agent, "memory_policy") === "none" ? "Saved memory excluded" : "Eligible reviewed memory only"}</dd></div></dl><p>Context Inspector resolves configured Area and profile Context Packs from currently accessible sources. Review included, excluded, and truncated content before launch. Saved defaults never broaden access.</p><h3 className="agent-output-heading">Context Packs</h3>{packs.length ? <ul>{packs.map(id => <li key={id}>{choices.packs.find(pack => pack.id === id)?.name || "Unavailable Context Pack"}</li>)}</ul> : <p>No Context Packs selected.</p>}<Button onClick={() => edit("agent", agent)}>Edit context preferences</Button></section>
+        <AgentSkills agentId={agent.id} workspaceId={workspace.id} navigate={navigate} />
+        <section className="agent-detail-section"><AgentMemoryPanel agentId={agent.id} workspaceId={workspace.id} projectId={val(agent, "default_project_id")} /></section>
+        <section className="agent-detail-section"><h3>Tools and connections</h3><p>{provider.permissions}. File access is selected for each run. Native tool access and external actions require their own server-checked scope and approval.</p><Button onClick={() => navigate("connections")}>Manage shared connections</Button></section>
       </> : <>
-        {runs.length ? <div className="agent-session-list">{runs.map((run) => <button key={run.id} onClick={() => navigate("work", run.id)}><span className="agent-session-title">{run.mode === "live" ? <Terminal /> : <FlaskConical />}<strong>{run.title}</strong><ArrowUpRight /></span><span className="agent-session-meta"><span>{run.mode === "live" ? "Live" : "Simulation"} · {relative(val(run, "created_at"))}</span><Status value={run.status} /></span></button>)}</div> : <div className="agent-sessions-empty"><Terminal /><h3>No sessions yet</h3><p>Work started with this profile will appear here. Try a simulation to see the workflow without using an AI account.</p>{readiness.canSimulate ? <Button icon={FlaskConical} onClick={() => startSession({ agent_id: agent.id, mode: "mock" })}>Try a simulation</Button> : null}</div>}
-        <p className="agent-history-note">Only this workspace’s sessions linked to this profile are shown. Older sessions without an agent ID remain in Live work.</p>
+        <section className="agent-detail-section"><h3>Run health</h3><p>{activeRuns.length} active · {failedRuns.length} failed · {runs.length} recorded</p><small>A completed run is not an accepted output. Recorded usage below is separate from account billing.</small></section>
+        <Suspense fallback={<p role="status">Loading usage controls…</p>}><AgentUsageDisclosure key={`${workspace.id}:${agent.id}`} agentId={agent.id} workspaceId={workspace.id} /></Suspense>
+        {runs.length ? <div className="agent-session-list">{runs.map((run) => <button key={run.id} onClick={() => navigate("work", run.id)}><span className="agent-session-title">{run.mode === "live" ? <Terminal /> : <FlaskConical />}<strong>{run.title}</strong><ArrowUpRight /></span><span className="agent-session-meta"><span>{run.mode === "live" ? "Live" : "Simulation"} · {relative(val(run, "created_at"))} · {val(run, "agent_profile_version") ? `Profile v${val(run, "agent_profile_version")}` : "Profile version not recorded"}</span><Status value={run.status} /></span></button>)}</div> : <div className="agent-sessions-empty"><Terminal /><h3>No sessions yet</h3><p>Work started with this profile will appear here. Try a simulation to see the workflow without using an AI account.</p>{readiness.canSimulate ? <Button icon={FlaskConical} onClick={() => startSession({ agent_id: agent.id, mode: "mock" })}>Try a simulation</Button> : null}</div>}
+        <section className="agent-detail-section agent-linked-work"><h3>Linked outputs</h3>{outputs.length ? outputs.map(output => <button key={output.id} onClick={() => navigate("library", output.id)}><span>{output.title} · v{output.current_version} · {output.state}</span><ArrowUpRight /></button>) : <p>No outputs are linked to this agent’s recorded runs.</p>}</section>
+        <p className="agent-history-note">Only this workspace’s sessions linked to this profile are shown. Older sessions without an agent ID remain in Runs.</p>
       </>}
     </div>
     <footer className="agent-detail-footer"><button className="text-button" disabled={busy} onClick={onPause}><Pause morphTo={agent.status === "paused" ? Play : Pause} />{agent.status === "paused" ? "Resume agent" : "Pause agent"}</button><button className="text-button" onClick={onDuplicate}><Copy />Duplicate</button></footer>
+    {historyOpen ? <Suspense fallback={<p role="status">Opening content history…</p>}><AgentProfileHistory key={agent.id} agent={agent} onClose={() => setHistoryOpen(false)} /></Suspense> : null}
   </aside>;
 }
 
@@ -109,20 +155,22 @@ export function AgentsView() {
   const { data, page, edit, navigate, notify, organization } = useApp();
   const [query, setQuery] = useState(""), [filter, setFilter] = useState("all");
   const [connectionProvider, setConnectionProvider] = useState(null), [archiveAgent, setArchiveAgent] = useState(null);
+  const [importing, setImporting] = useState(false);
   const { busy, error, execute } = useAsync();
   const agents = visible(data.agents).sort((a, b) => a.name.localeCompare(b.name));
   const summaries = new Map(agents.map((agent) => [agent.id, summarizeAgent(agent, data)]));
   const filtered = agents.filter((agent) => {
     const state = summaries.get(agent.id).readiness.state;
-    return `${agent.name} ${agent.provider} ${agent.description || ""}`.toLowerCase().includes(query.trim().toLowerCase()) &&
+    return `${agent.name} ${agent.provider} ${agent.role || ""} ${agent.description || ""}`.toLowerCase().includes(query.trim().toLowerCase()) &&
       (filter === "all" || filter === state || filter === "setup" && !["ready", "paused"].includes(state) || filter === "working" && summaries.get(agent.id).activeRuns.length > 0 || filter === "favorites" && organization.favorites.some(item => item.view === "agents" && item.id === agent.id));
   });
   const selected = filtered.find((agent) => agent.id === page.id) ?? filtered[0];
   const unavailable = page.id && !agents.some((agent) => agent.id === page.id);
-  function duplicate(agent) { edit("agent", null, { name: `${agent.name} copy`, provider: agent.provider, description: agent.description || "", instructions: agent.instructions || "", working_directory: val(agent, "working_directory") || "" }); }
+  function duplicate(agent) { try { edit("agent", null, duplicateAgentDefinition(agent)); notify("Review the copy. Connection, folders, and context references are not copied; permissions start read-only."); } catch (problem) { notify(problem.message, "error"); } }
+  function exportDefinition(agent) { download(`${agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "agent"}.rumbo-agent.json`, exportAgentDefinition(agent)); notify("Definition exported without account, folder, context, or permission references. Review instruction text before sharing."); }
   function pause(agent) { return execute(async () => { const status = agent.status === "paused" ? "available" : "paused"; await rumboActions.updateAgent(agent.id, { status }); notify(status === "paused" ? `${agent.name} paused. Existing sessions continue.` : `${agent.name} is available for new sessions.`); }); }
   return <main className={`page agents-page ${page.id ? "has-agent-selection" : ""}`}>
-    <PageHeader title="Agents" description="Shape how your agents work. Keep their setup and activity in one place.">{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
+    <PageHeader title="Agent Studio" description="Specialized profiles, shared provider accounts, and work you can inspect."><Button onClick={() => setImporting(true)}>Import definition</Button>{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
     <section className="agent-provider-strip" aria-label="Provider connections">
       <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).map(([id, provider]) => {
         const connection = data.connections.find((item) => item.provider === id);
@@ -146,7 +194,7 @@ export function AgentsView() {
                     <AgentIdentity agent={agent} /><span className="agent-row-copy"><strong>{agent.name}</strong><span>{summary.provider.name}{agent.description ? ` · ${agent.description}` : " · Custom agent profile"}</span></span>
                     <Readiness readiness={summary.readiness} />
                   </button>
-                  <AgentMenu agent={agent} busy={busy} active={summary.activeRuns.length > 0} onEdit={() => edit("agent", agent)} onDuplicate={() => duplicate(agent)} onPause={() => pause(agent)} onArchive={() => setArchiveAgent(agent)} />
+                  <AgentMenu agent={agent} busy={busy} active={summary.activeRuns.length > 0} onEdit={() => edit("agent", agent)} onDuplicate={() => duplicate(agent)} onExport={() => exportDefinition(agent)} onPause={() => pause(agent)} onArchive={() => setArchiveAgent(agent)} />
                 </div>;
               }) : <div className="agent-search-empty"><h3>No matching agents</h3><p>Try a different name, provider, or status.</p><Button onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</Button></div>}
             </div>
@@ -156,5 +204,6 @@ export function AgentsView() {
         </div>}
     {connectionProvider ? <ConnectionDialog provider={connectionProvider} onClose={() => setConnectionProvider(null)} /> : null}
     {archiveAgent ? <ArchiveAgentDialog agent={archiveAgent} onClose={() => setArchiveAgent(null)} /> : null}
+    {importing ? <ImportAgentDialog onClose={() => setImporting(false)} onImport={definition => { setImporting(false); edit("agent", null, definition); }} /> : null}
   </main>;
 }

@@ -4,6 +4,7 @@ import { isRecord, validationError, validateAvatar } from './validation.mjs';
 import { emojiShortcode } from '../src/lib/custom-emojis.js';
 import { guardRouteMutation } from './route-hierarchy.mjs';
 import { changeContext } from './change-context.mjs';
+import { bumpAgentProfileVersion } from './agent-profiles.mjs';
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
 const decode = row => row ? { ...row, payload: JSON.parse(row.payload_json), payload_json: undefined } : null;
@@ -217,6 +218,7 @@ function executeAction(db, item, body, snapshot, options = {}) {
       const agent = db.prepare('SELECT * FROM agents WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(body.agent_id ?? '', item.workspace_id);
       if (!agent) throw validationError('Choose a workspace-owned agent. Shared profiles cannot be overwritten here.');
       db.prepare('UPDATE agents SET instructions=?,updated_at=? WHERE id=?').run(p.content, time, agent.id);
+      bumpAgentProfileVersion(db, agent.id, ['instructions'], time);
       recordChange(db, 'agents', agent, { ...agent, instructions: p.content }, 'preset applied');
       result = { view: 'agents', id: agent.id };
     } else throw validationError('Unsupported action.');

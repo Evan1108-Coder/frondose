@@ -1,0 +1,65 @@
+.manual-workflows-page { max-width: 1280px; }
+.manual-workflows-page .page-heading { margin-bottom: 24px; }
+.manual-workflows-page > .search-field { max-width: 460px; margin-bottom: 24px; }
+.manual-workflow-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.manual-workflow-row { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px; background: var(--surface); border: 0; border-bottom: 1px solid var(--border); text-align: left; color: var(--text); font-size: 12px; }
+.manual-workflow-row:last-child { border-bottom: 0; }
+.manual-workflow-row:hover { background: var(--hover); }
+.manual-workflow-row > svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--muted); }
+.manual-workflow-row > span:first-of-type { flex: 1; min-width: 0; }
+.manual-workflow-row strong { display: block; font-size: 14px; font-weight: 550; overflow-wrap: anywhere; }
+.manual-workflow-row small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.manual-workflow-row > code { color: var(--muted); overflow-wrap: anywhere; }
+.manual-workflow-note { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 24px; }
+.manual-workflow-note h2, .manual-workflow-history h2 { font-size: 16px; font-weight: 550; margin: 0 0 12px; }
+.manual-workflow-note p, .manual-workflow-dialog p, .manual-workflow-editor p, .manual-workflow-history > p, .manual-workflow-run p { font-size: 13px; color: var(--muted); line-height: 1.65; }
+.manual-workflow-note > div { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.manual-workflow-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: var(--muted); font-size: 12px; }
+.manual-workflow-meta .text-button { font-size: 12px; }
+.manual-workflow-steps { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 0; }
+.manual-workflow-steps > li { position: relative; display: flex; align-items: flex-start; gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--border); }
+.manual-workflow-steps > li:last-child { border-bottom: 0; }
+.manual-step-number { width: 28px; height: 28px; border: 1px solid var(--border-strong); border-radius: 50%; display: grid; place-items: center; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.manual-workflow-steps h3 { font-size: 14px; font-weight: 550; margin: 4px 0 8px; }
+.manual-workflow-steps p { font-size: 13px; color: var(--secondary); line-height: 1.6; white-space: pre-wrap; margin: 0 0 12px; }
+.manual-workflow-steps small { display: block; color: var(--muted); font-size: 11px; line-height: 1.6; margin-top: 8px; }
+.manual-workflow-history { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 24px; display: grid; gap: 12px; }
+.manual-workflow-history details, .manual-workflow-definition-step { border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+.manual-workflow-history summary, .manual-workflow-definition-step summary { cursor: pointer; color: var(--text); font-size: 13px; }
+.manual-workflow-history summary:focus-visible, .manual-workflow-definition-step summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.manual-workflow-hash { overflow-wrap: anywhere; font-size: 11px; color: var(--muted); }
+.manual-workflow-dialog, .manual-workflow-editor { display: grid; gap: 20px; padding: 4px 24px 24px; }
+.manual-workflow-fields { display: grid; gap: 18px; }
+.manual-workflow-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.manual-workflow-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--secondary); }
+.manual-workflow-check input { flex-shrink: 0; margin-top: 3px; }
+.manual-workflow-check small { display: block; color: var(--muted); line-height: 1.5; margin-top: 5px; }
+.manual-workflow-preview { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 16px; }
+.manual-workflow-preview h3 { font-size: 14px; margin: 0 0 10px; }
+.manual-workflow-preview ol { padding-left: 22px; display: grid; gap: 12px; }
+.manual-workflow-preview li { color: var(--secondary); font-size: 12px; }
+.manual-workflow-preview li strong { display: block; font-weight: 500; margin-bottom: 4px; }
+.manual-workflow-preview li span { color: var(--muted); }
+.manual-workflow-editor fieldset { border: 1px solid var(--border); border-radius: 8px; padding: 16px; min-width: 0; margin: 0; }
+.manual-workflow-editor legend { padding: 0 5px; font-size: 13px; font-weight: 500; }
+.manual-workflow-editor h3 { font-size: 14px; margin: 0 0 12px; }
+.manual-workflow-definition-step > div { margin-top: 18px; display: grid; gap: 16px; }
+.manual-workflow-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.manual-workflow-run { display: grid; gap: 20px; }
+.manual-run-step { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.manual-run-step > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.manual-run-step h2 { font-size: 15px; margin: 0 0 7px; font-weight: 550; }
+.manual-run-step .manual-workflow-actions { margin-top: 16px; }
+.manual-step-state { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.manual-step-state.is-failed, .manual-step-state.is-blocked { color: var(--warning); }
+.manual-step-state.is-completed { color: var(--success); }
+.manual-step-error { color: var(--danger); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.manual-workflow-run pre { padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; color: var(--secondary); }
+.manual-workflow-run details { margin-top: 14px; }
+.manual-workflow-run summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.manual-run-step > .manual-workflow-fields { margin-top: 20px; }
+.manual-run-step .manual-workflow-actions small { color: var(--muted); overflow-wrap: anywhere; font-size: 11px; }
+.manual-memory-preview { padding: 16px; margin: 0; max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: 8px; color: var(--secondary); background: var(--surface); font-size: 12px; }
+.manual-workflows-page code { overflow-wrap: anywhere; }
+.manual-workflow-row:focus-visible, .manual-workflow-run summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+@media (max-width: 650px) { .manual-workflow-columns { grid-template-columns: minmax(0, 1fr); } .manual-workflow-row { flex-wrap: wrap; padding: 14px; } .manual-workflow-row > span:first-of-type { flex-basis: calc(100% - 45px); } .manual-workflow-dialog, .manual-workflow-editor { padding: 4px 16px 20px; } .manual-run-step { padding: 16px; } .manual-run-step > header { flex-direction: column; gap: 4px; } }

@@ -1,0 +1,46 @@
+.wb-checkpoints-dialog { padding: 24px; min-width: 0; }
+.dialog > .wb-checkpoints-dialog { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.wb-checkpoints-dialog h3 { margin: 0; font-size: 14px; font-weight: 550; }
+.wb-checkpoints-dialog p { color: var(--secondary); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.wb-checkpoints-dialog small { display: block; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.wb-checkpoints-dialog summary { cursor: pointer; font-size: 13px; line-height: 1.7; }
+.wb-checkpoints-dialog summary:focus-visible, .wb-checkpoint-row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wb-checkpoint-actions { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+.wb-checkpoint-actions .field { min-width: 150px; margin: 0; flex: 1; }
+.wb-checkpoint-list { display: grid; gap: 10px; margin: 18px 0; }
+.wb-checkpoint-row, .wb-checkpoint-recovery, .wb-checkpoint-outcome { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--surface); min-width: 0; }
+.wb-checkpoint-row { display: grid; gap: 8px; width: 100%; text-align: left; color: var(--text); cursor: pointer; font: inherit; }
+.wb-checkpoint-row:hover { background: var(--hover); }
+.wb-checkpoint-row strong { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.wb-checkpoint-row > span { font-size: 12px; color: var(--secondary); line-height: 1.6; overflow-wrap: anywhere; }
+.wb-checkpoint-form { display: grid; gap: 18px; margin-top: 20px; min-width: 0; }
+.wb-checkpoint-form > p { margin: 0; }
+.wb-checkpoint-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.7; }
+.wb-checkpoint-check input { flex-shrink: 0; margin-top: 4px; }
+.wb-checkpoints-dialog .wb-checkpoint-warning { border-left: 2px solid var(--warning); padding-left: 12px; }
+.wb-checkpoint-files { padding: 12px; margin: 20px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.wb-checkpoint-files legend { font-size: 13px; padding: 0 6px; }
+.wb-checkpoint-files > label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; }
+.wb-checkpoint-files input { margin-top: 3px; flex-shrink: 0; }
+.wb-checkpoint-files strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.wb-checkpoint-files > label > span:last-child { min-width: 0; }
+.wb-checkpoint-preview-list, .wb-checkpoint-outcome ul { list-style: none; padding: 0; margin: 20px 0; display: grid; gap: 10px; }
+.wb-checkpoint-preview-list li, .wb-checkpoint-outcome li { border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 12px; overflow-wrap: anywhere; }
+.wb-checkpoint-preview-list strong, .wb-checkpoint-outcome strong { display: block; font-weight: 550; margin-bottom: 6px; }
+.wb-checkpoint-exact { margin: 24px 0; }
+.wb-checkpoint-exact > section { margin: 20px 0; }
+.wb-checkpoint-text-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.wb-checkpoint-text-pair > section { min-width: 0; }
+.wb-checkpoint-text-pair .code-viewer { max-height: 300px; overflow: auto; }
+.wb-checkpoint-recovery, .wb-checkpoint-outcome { margin: 20px 0; }
+.wb-checkpoints-dialog .form-submit-row { gap: 8px; flex-wrap: wrap; min-width: 0; padding-top: 18px; }
+.wb-checkpoints-dialog .button { min-width: 0; max-width: 100%; white-space: normal; }
+.wb-checkpoints-dialog .cr-layout { grid-template-columns: minmax(0, 1fr); }
+.wb-checkpoints-dialog .cr-file-list { max-height: 150px; }
+@media (max-width: 600px) {
+  .wb-checkpoints-dialog { padding: 16px; }
+  .wb-checkpoint-text-pair { grid-template-columns: minmax(0, 1fr); }
+  .wb-checkpoints-dialog .form-submit-row > .button { flex: 1 1 100%; width: 100%; justify-content: center; }
+  .wb-checkpoint-actions > .field { flex: 1 1 100%; }
+  .wb-checkpoints-dialog .cr-toolbar > .button { flex: 1 1 45%; }
+}

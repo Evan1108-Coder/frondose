@@ -6,6 +6,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { createIntegrationService } from '../server/integration-service.mjs';
+import { createNativeAgentToolBridge } from '../server/native-agent-tool-bridge.mjs';
 
 const ok = (data) => ({ ok: true, status: 200, json: async () => data });
 const forbidden = () => { throw new Error('Tests must never reach a real provider or process.'); };
@@ -22,6 +23,53 @@ function fakeProcess() {
   child.kill = (signal) => { child.killedWith = signal; queueMicrotask(() => child.emit('close', null)); return true; };
   return child;
 }
+
+test('a reviewed execution deadline terminates the injected process and records a machine-readable timeout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const child = fakeProcess(), finished = [], events = [];
+  const { service, directory } = fixture(t, { execute: signedInExec, spawnProcess: () => child });
+  await service.connect('codex', { method: 'existing' });
+  await service.startRun({ provider: 'codex', cwd: directory, prompt: 'Bounded fixture', timeoutMs: 1000 }, { onComplete: result => finished.push(result), onEvent: event => events.push(event) });
+  assert.equal(events.find(event => event.type === 'run.started').payload.timeoutMs, 1000);
+  t.mock.timers.tick(999);
+  assert.equal(child.killedWith, undefined);
+  t.mock.timers.tick(1);
+  await Promise.resolve();
+  assert.equal(child.killedWith, 'SIGTERM');
+  assert.equal(finished.length, 1);
+  assert.equal(finished[0].status, 'failed');
+  assert.equal(finished[0].error_code, 'run_timeout');
+});
+
+test('invalid execution limits fail before provider configuration or process calls', async (t) => {
+  const { service, directory } = fixture(t);
+  for (const timeoutMs of [0, 999, 1800001, Infinity, '1000', 1000.5]) {
+    await assert.rejects(service.startRun({ provider: 'codex', cwd: directory, prompt: 'Invalid fixture', timeoutMs }), { code: 'invalid_timeout' });
+  }
+});
+
+test('profile model and Codex reasoning use argument values without shell interpolation', async (t) => {
+  for (const provider of ['codex', 'claude']) {
+    const child = fakeProcess(); let launch;
+    const { service } = fixture(t, {
+      execute: signedInExec,
+      spawnProcess: (command, args, options) => { launch = { command, args, options }; return child; },
+    });
+    await service.connect(provider, { method: 'existing' });
+    await service.startRun({ provider, prompt: 'Fixture only', workMode: 'conversation', model: 'fixture-model', reasoningEffort: provider === 'codex' ? 'medium' : '' });
+    assert.equal(launch.args[launch.args.indexOf('--model') + 1], 'fixture-model');
+    assert.equal(launch.options.shell, false);
+    assert.equal(launch.args.includes('model_reasoning_effort="medium"'), provider === 'codex');
+    child.emit('close', 0);
+  }
+});
+
+test('invalid model and unsupported reasoning never reach provider execution', async (t) => {
+  const { service } = fixture(t, { execute: signedInExec });
+  for (const config of [{ model: '--unsafe' }, { model: 'x; echo unsafe' }, { reasoningEffort: 'unbounded' }, { provider: 'claude', reasoningEffort: 'high' }]) {
+    await assert.rejects(service.startRun({ provider: 'codex', prompt: 'Fixture only', workMode: 'conversation', ...config }), error => ['invalid_model', 'invalid_reasoning'].includes(error.code));
+  }
+});
 
 test('general conversations use an empty private transient directory and restricted provider arguments', async (t) => {
   for (const provider of ['codex', 'claude']) {
@@ -207,6 +255,76 @@ test('Codex streams structured output with sandbox permissions and stdin prompt'
   assert.ok(events.some((event) => event.type === 'agent.message'));
 });
 
+test('usage reports bypass the bounded display-event stream and expose only normalized Codex metrics', async (t) => {
+  const child = fakeProcess(), events = [], reports = [], finished = [];
+  const { service, directory } = fixture(t, { execute: signedInExec, spawnProcess: () => child });
+  await service.connect('codex', { method: 'existing' });
+  await service.startRun({ provider: 'codex', prompt: 'Measure the injected fixture', cwd: directory }, {
+    onEvent: event => events.push(event), onUsageReport: report => reports.push(report), onComplete: result => finished.push(result),
+  });
+  for (let index = 0; index < 5010; index++) child.stdout.write('{"type":"system"}\n');
+  child.stdout.write('{"type":"turn.completed","usage":{"input_tokens":120,"cached_input_tokens":80,"output_tokens":30,"reasoning_output_tokens":7,"unsupported_secret":"DROP"}}\n');
+  child.emit('close', 0);
+  assert.ok(events.length <= 5000);
+  assert.deepEqual(reports, [{ provider: 'codex', source: 'turn.completed', main: { input_tokens: 120, cached_input_tokens: 80, output_tokens: 30, reasoning_output_tokens: 7 } }]);
+  assert.equal(JSON.stringify(reports).includes('unsupported_secret'), false);
+  assert.equal(finished[0].usage_capture_incomplete, undefined);
+});
+
+test('Claude reports main-loop and all-model usage independently and marks callback persistence failures', async (t) => {
+  const child = fakeProcess(), reports = [], finished = [];
+  const { service, directory } = fixture(t, { execute: async () => ({ code: 0, stdout: '{"loggedIn":true}' }), spawnProcess: () => child });
+  await service.connect('claude', { method: 'existing' });
+  await service.startRun({ provider: 'claude', prompt: 'Measure the injected fixture', cwd: directory }, {
+    onUsageReport: report => { reports.push(report); throw new Error('Injected persistence failure'); },
+    onComplete: result => finished.push(result),
+  });
+  child.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', result: 'Done', usage: { input_tokens: 12, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 }, modelUsage: {
+    first: { inputTokens: 10, cacheCreationInputTokens: 1, cacheReadInputTokens: 2, outputTokens: 3 },
+    second: { inputTokens: 20, cacheCreationInputTokens: 2, cacheReadInputTokens: 'invalid', outputTokens: 5 },
+  }, total_cost_usd: 0.0042 }) + '\n');
+  child.emit('close', 0);
+  assert.deepEqual(reports[0].main, { input_tokens: 12, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 4 });
+  assert.deepEqual(reports[0].all_models, { input_tokens: 30, cache_creation_input_tokens: 3, cache_read_input_tokens: null, output_tokens: 8, model_count: 2 });
+  assert.equal(reports[0].estimated_cost_usd, 0.0042);
+  assert.equal(finished[0].status, 'completed');
+  assert.equal(finished[0].usage_capture_incomplete, true);
+  assert.equal(finished[0].usage_error_code, 'usage_persistence_failed');
+  assert.equal(JSON.stringify(finished[0]).includes('Injected persistence failure'), false);
+});
+
+test('Claude ignores assistant placeholder usage and marks invalid or overflowing model totals unknown', async (t) => {
+  const child = fakeProcess(), reports = [];
+  const { service, directory } = fixture(t, { execute: signedInExec, spawnProcess: () => child });
+  await service.connect('claude', { method: 'existing' });
+  await service.startRun({ provider: 'claude', prompt: 'Fixture metrics only', cwd: directory }, { onUsageReport: report => reports.push(report) });
+  child.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [], usage: { input_tokens: 777, output_tokens: 1 } } }) + '\n');
+  assert.equal(reports.length, 0);
+  child.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', usage: { input_tokens: '0', output_tokens: 0, cache_read_input_tokens: -1, cache_creation_input_tokens: 1.5 }, modelUsage: {
+    first: { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 2, cacheReadInputTokens: 1, cacheCreationInputTokens: 0 },
+    second: { inputTokens: 1, outputTokens: 3, cacheReadInputTokens: 'bad' },
+  }, total_cost_usd: '0.0042' }) + '\n');
+  child.emit('close', 0);
+  assert.equal(reports.length, 1);
+  assert.deepEqual(reports[0].main, { input_tokens: null, output_tokens: 0, cache_read_input_tokens: null, cache_creation_input_tokens: null });
+  assert.deepEqual(reports[0].all_models, { input_tokens: null, output_tokens: 5, cache_read_input_tokens: null, cache_creation_input_tokens: null, model_count: 2 });
+  assert.equal(reports[0].estimated_cost_usd, null);
+});
+
+test('cancellation drops terminal usage arriving after stop and keeps completion single-shot', async (t) => {
+  for (const provider of ['codex', 'claude']) {
+    const child = fakeProcess(), reports = [], finished = [];
+    const { service, directory } = fixture(t, { execute: signedInExec, spawnProcess: () => child });
+    await service.connect(provider, { method: 'existing' });
+    const run = await service.startRun({ provider, prompt: 'Stop fixture', cwd: directory }, { onUsageReport: report => reports.push(report), onComplete: result => finished.push(result) });
+    run.stop();
+    child.stdout.write(JSON.stringify(provider === 'codex' ? { type: 'turn.completed', usage: { input_tokens: 42 } } : { type: 'result', subtype: 'success', usage: { input_tokens: 42 }, total_cost_usd: 1 }) + '\n');
+    await new Promise(resolve => setImmediate(resolve));
+    child.emit('close', 0);
+    assert.equal(reports.length, 0); assert.equal(finished.length, 1); assert.equal(finished[0].status, 'stopped');
+  }
+});
+
 test('agent validation prevents disconnected, invalid directory, and unsupported permissions from spawning', async (t) => {
   const { service, directory } = fixture(t, { execute: async () => ({ code: 0, stdout: '{}' }) });
   await assert.rejects(service.startRun({ provider: 'codex', prompt: 'Hello', cwd: directory }), { code: 'not_connected' });
@@ -324,4 +442,54 @@ test('UTF-8 model responses survive split byte boundaries', async (t) => {
   const cut = bytes.indexOf(Buffer.from('你')) + 1;
   child.stdout.write(bytes.subarray(0, cut)); child.stdout.write(bytes.subarray(cut)); child.emit('close', 0);
   assert.equal(results[0].text.trim(), '你好');
+});
+
+test('Codex receives one generated native MCP server without capability values in arguments', async (t) => {
+  const bridge = await createNativeAgentToolBridge({ listTools: () => [{ name: 'documents.read', inputSchema: { type: 'object' } }], callTool: () => ({}), expiresAt: Date.now() + 30_000 });
+  t.after(() => bridge.close());
+  const child = fakeProcess(); let launch;
+  const { service, directory } = fixture(t, { execute: signedInExec, spawnProcess: (command, args, options) => { launch = { command, args, options }; return child; } });
+  await service.connect('codex', { method: 'existing' });
+  await service.startRun({ provider: 'codex', prompt: 'Use the reviewed tool', cwd: directory, nativeToolBridge: bridge.descriptor });
+  const serialized = JSON.stringify(launch.args);
+  assert.equal(serialized.includes(bridge.descriptor.env.RUMBO_NATIVE_TOOL_CAPABILITY), false);
+  assert.equal(serialized.includes(bridge.descriptor.env.RUMBO_NATIVE_TOOL_SOCKET), false);
+  for (const value of [
+    `mcp_servers.rumbo.command=${JSON.stringify(process.execPath)}`,
+    'mcp_servers.rumbo.env_vars=["RUMBO_NATIVE_TOOL_SOCKET","RUMBO_NATIVE_TOOL_CAPABILITY"]',
+    'mcp_servers.rumbo.enabled_tools=["documents.read"]',
+    'mcp_servers.rumbo.required=true',
+  ]) assert.ok(launch.args.includes(value), value);
+  assert.equal(launch.options.env.RUMBO_NATIVE_TOOL_CAPABILITY, bridge.descriptor.env.RUMBO_NATIVE_TOOL_CAPABILITY);
+  child.emit('close', 0);
+});
+
+test('Claude keeps restricted builtins and allows only exact generated native MCP tools', async (t) => {
+  const bridge = await createNativeAgentToolBridge({ listTools: () => [{ name: 'reviews.record', inputSchema: { type: 'object' } }, { name: 'outputs.read', inputSchema: { type: 'object' } }], callTool: () => ({}), expiresAt: Date.now() + 30_000 });
+  t.after(() => bridge.close());
+  const child = fakeProcess(); let launch;
+  const { service, directory } = fixture(t, { execute: async () => ({ code: 0, stdout: '{"loggedIn":true}' }), spawnProcess: (command, args, options) => { launch = { command, args, options }; return child; } });
+  await service.connect('claude', { method: 'existing' });
+  await service.startRun({ provider: 'claude', prompt: 'Review', cwd: directory, nativeToolBridge: bridge.descriptor });
+  assert.equal(launch.args[launch.args.indexOf('--tools') + 1], 'Read,Glob,Grep');
+  assert.equal(launch.args.includes('--disallowedTools'), false);
+  assert.ok(launch.args.includes('mcp__rumbo__reviews.record'));
+  assert.ok(launch.args.includes('mcp__rumbo__outputs.read'));
+  const config = JSON.parse(launch.args[launch.args.indexOf('--mcp-config') + 1]);
+  assert.deepEqual(Object.keys(config.mcpServers), ['rumbo']);
+  assert.equal(JSON.stringify(config).includes(bridge.descriptor.env.RUMBO_NATIVE_TOOL_CAPABILITY), false);
+  assert.equal(launch.options.env.RUMBO_NATIVE_TOOL_CAPABILITY, bridge.descriptor.env.RUMBO_NATIVE_TOOL_CAPABILITY);
+  assert.ok(launch.args.includes('--bare')); assert.ok(launch.args.includes('--restricted'));
+  child.emit('close', 0);
+});
+
+test('native bridge descriptor tampering and reserved Codex server collisions fail before spawn', async (t) => {
+  const bridge = await createNativeAgentToolBridge({ listTools: () => [{ name: 'documents.read', inputSchema: { type: 'object' } }], callTool: () => ({}), expiresAt: Date.now() + 30_000 });
+  t.after(() => bridge.close());
+  let spawns = 0;
+  const { service, directory } = fixture(t, { execute: async (_command, args) => ({ code: 0, stdout: args.includes('mcp') ? '[{"name":"rumbo","enabled":true}]' : 'Logged in' }), spawnProcess: () => { spawns++; return fakeProcess(); } });
+  await service.connect('codex', { method: 'existing' });
+  await assert.rejects(service.startRun({ provider: 'codex', prompt: 'Work', cwd: directory, nativeToolBridge: { ...bridge.descriptor, command: '/tmp/untrusted' } }), { code: 'invalid_native_tool_bridge' });
+  await assert.rejects(service.startRun({ provider: 'codex', prompt: 'Work', cwd: directory, nativeToolBridge: bridge.descriptor }), { code: 'provider_configuration' });
+  assert.equal(spawns, 0);
 });

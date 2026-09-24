@@ -20,7 +20,7 @@ function Inline({ text, emojis = [] }) {
     const link = token.match(/^\[([^\]]+)\]\(([^\s)]+)\)$/);
     if (link?.[2].startsWith('#/')) {
       const page = parsePage(link[2]);
-      const base = link[2].split('?')[0];
+      const base = link[2].split('?')[0].replace(/^#\/teams(?=\/|$)/, '#/areas');
       if (pageHash(page.view,page.id).split('?')[0] === base) return <a key={index} href={link[2]}>{link[1]}</a>;
     }
     if (link && safeUrl(link[2])) return <a key={index} href={safeUrl(link[2])} target="_blank" rel="noreferrer noopener">{serviceBrand(null, link[2]) ? <ServiceLogo url={link[2]} className="inline-service-logo" /> : null}{link[1]}</a>;

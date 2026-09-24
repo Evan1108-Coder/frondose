@@ -103,7 +103,7 @@ test('HTTP external consequential action waits for exact governance approval bef
 
 test('HTTP live run records server-resolved sponsor rather than a submitted identity', () => fixture(async ({ ok, db, workspace, project, agentId, dataDir }) => {
   await ok(`/api/projects/${project.id}`, 'PATCH', { local_path: dataDir });
-  db.prepare("UPDATE agents SET provider='codex' WHERE id=?").run(agentId);
+  await ok(`/api/agents/${agentId}`, 'PATCH', { provider: 'codex', provider_connection_id: 'conn_codex' });
   await ok('/api/connections/codex/connect', 'POST', { method: 'existing' });
   const result = await ok('/api/runs', 'POST', { workspace_id: workspace.id, project_id: project.id, agent_id: agentId, mode: 'live', prompt: 'Reply to isolated fixture.', permissionMode: 'read-only', actor_id: 'spoofed', sponsor_id: 'spoofed' });
   assert.equal(db.prepare('SELECT actor_id FROM agent_run_sponsors WHERE run_id=?').get(result.run.id).actor_id, 'local-owner');

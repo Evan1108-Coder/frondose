@@ -1,10 +1,11 @@
 const VIEWS = new Set([
   "overview", "inbox", "projects", "tasks", "chats", "work", "memory",
-  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates",
+  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
-const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people']);
+const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people', 'settings']);
+const VIEW_ALIASES = { areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 
 function validId(value) {
   return typeof value === "string" && value.length > 0 &&
@@ -22,8 +23,8 @@ export function parsePage(hash = "") {
     const path = queryIndex < 0 ? route : route.slice(0, queryIndex);
     const query = queryIndex < 0 ? "" : route.slice(queryIndex + 1);
     const parts = path.split("/");
-    if (parts.length > 2 || !VIEWS.has(parts[0])) return home();
-    const view = parts[0];
+    const view = VIEW_ALIASES[parts[0]] || parts[0];
+    if (parts.length > 2 || !VIEWS.has(view)) return home();
     const id = parts.length === 2 ? decodeURIComponent(parts[1]) : null;
     if (id !== null && !validId(id)) return home();
     // URLSearchParams repairs malformed encoding; reject it instead.
@@ -37,7 +38,7 @@ export function parsePage(hash = "") {
     if (messages.length > 1 || messages.length && !validId(messages[0])) return home();
     const reviews = params.getAll('review');
     if (reviews.length > 1 || reviews.length && !validId(reviews[0])) return home();
-    const sections = params.getAll('section');
+    const sections = params.getAll('section').map(value => value === 'contacts' ? 'people' : value);
     if (sections.length > 1 || (sections.length && !TEAM_SECTIONS.has(sections[0]))) return home();
     return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(view === 'chats' && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
@@ -47,17 +48,19 @@ export function parsePage(hash = "") {
 
 /** Build a canonical hash while preserving a project-scoped list or detail. */
 export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null } = {}) {
+  view = VIEW_ALIASES[view] || view;
   if (!VIEWS.has(view)) return "#/overview";
   if (id !== null && !validId(id)) throw new TypeError("Invalid page identifier");
   if (projectId !== null && !validId(projectId))
     throw new TypeError("Invalid project identifier");
-  const path = `#/${view}${id === null ? "" : `/${encodeURIComponent(id)}`}`;
+  const path = `#/${view === 'teams' ? 'areas' : view}${id === null ? "" : `/${encodeURIComponent(id)}`}`;
   if (messageId !== null && !validId(messageId)) throw new TypeError('Invalid message identifier');
   const query = new URLSearchParams();
   if (reviewId !== null) { if (!validId(reviewId)) throw new TypeError('Invalid review identifier'); query.set('review', reviewId); }
   if (section && view === 'teams' && id) {
+    if (section === 'contacts') section = 'people';
     if (!TEAM_SECTIONS.has(section)) throw new TypeError('Invalid team section');
-    query.set('section', section);
+    query.set('section', section === 'people' ? 'contacts' : section);
   }
   if (projectId && SCOPED_VIEWS.has(view)) query.set('project', projectId);
   if (messageId && view === 'chats' && id) query.set('message', messageId);

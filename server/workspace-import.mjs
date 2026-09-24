@@ -3,6 +3,7 @@ import { isRecord, validateRecord, validationError } from './validation.mjs';
 import { RESOURCE_TYPES } from '../src/lib/settings-catalog.js';
 import { payloadFor } from './workspace-features.mjs';
 import { EXTENSION_TABLES, EXTENSION_PARENTS, importExtensions } from './workspace-import-extensions.mjs';
+import { validateAgentProfile, snapshotAgentProfile } from './agent-profiles.mjs';
 
 // Content-only restore. Never restore credentials, run processes, permissions,
 // provider state, personal preferences, or claims about public account access.
@@ -45,7 +46,7 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
   db.exec('BEGIN');
   try {
     db.prepare('INSERT INTO workspaces (id,name,slug,description,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(workspaceId, `${original.name.slice(0, 140)} (imported)`, workspaceId, String(original.description ?? '').slice(0, 100000), timestamp, timestamp);
-    const pending = [];
+    const pending = [], importedProfiles = [];
     for (const table of tables) for (const source of data[table] ?? []) {
       const row = normalize(table, source);
       if (table === 'teams' && source.tab_icon_color === undefined && row.color?.toLowerCase() === '#8b95a5') row.color = '';
@@ -57,7 +58,18 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
       if (row.labels_json) { if (!Array.isArray(row.labels_json)) throw validationError('Invalid labels.'); row.labels_json = row.labels_json.map(v => ids.get(v) ?? v); }
       // An imported project must not grant access to folders on this computer.
       if (table === 'projects') { row.local_path = null; row.identifier = row.id.slice(-12).toUpperCase(); }
-      if (table === 'agents') row.working_directory = null;
+      if (table === 'agents') {
+        // Bindings to machine execution accounts and folders are never portable.
+        row.working_directory = null;
+        row.provider_connection_id = null;
+        row.permission_policy = 'read-only';
+        const sources = row.context_source_ids_json ?? [];
+        if (!Array.isArray(sources)) throw validationError('Invalid profile context references.');
+        importedProfiles.push({ row, default_area_id: remap(row.default_area_id), default_project_id: remap(row.default_project_id), context_source_ids_json: sources.map(remap) });
+        // Agents precede projects and Context Packs in the restore order. Resolve
+        // these references only once all their canonical parents exist.
+        row.default_area_id = null; row.default_project_id = null; row.context_source_ids_json = [];
+      }
       if (table === 'messages') {
         const metadata = row.metadata_json;
         row.metadata_json = {};
@@ -95,8 +107,13 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
       db.prepare('INSERT INTO workspace_items VALUES (?,?,?,?,?,?,?,?,?,?)').run(ids.get(source.id), workspaceId, source.kind, source.name, JSON.stringify(p), Number.isFinite(source.position) ? source.position : 0, 1, source.archived_at ?? null, timestamp, timestamp);
     }
     for (const [table, row] of pending) validateCustomFields(db, table, row);
+    for (const profile of importedProfiles) {
+      const record = validateAgentProfile(db, { ...profile.row, default_area_id: profile.default_area_id, default_project_id: profile.default_project_id, context_source_ids_json: profile.context_source_ids_json }, { importing: true });
+      db.prepare('UPDATE agents SET default_area_id=?,default_project_id=?,context_source_ids_json=? WHERE id=?').run(record.default_area_id, record.default_project_id, JSON.stringify(record.context_source_ids_json), record.id);
+      snapshotAgentProfile(db, record.id, timestamp);
+    }
     importExtensions(db, data, ids, workspaceId, timestamp);
     db.exec('COMMIT');
-    return { id: workspaceId, importedRecords: count, skipped_activity_drafts: skippedDrafts, excluded: ['connections', 'credentials', 'sessions', 'personal settings', 'folder access', 'private activity drafts, activity reactions and author privileges', 'chat bookmarks, follow-up drafts and attachment metadata'], reviewRequired: ['outputs', 'knowledge'], paused: ['work plans'] };
+    return { id: workspaceId, importedRecords: count, skipped_activity_drafts: skippedDrafts, excluded: ['connections', 'credentials', 'sessions', 'Workflow runs, reservations and approvals', 'personal settings', 'folder access', 'private activity drafts, activity reactions and author privileges', 'chat bookmarks, follow-up drafts and attachment metadata'], reviewRequired: ['outputs', 'knowledge', 'Workflow definitions'], paused: ['work plans', 'manual Workflows'] };
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }

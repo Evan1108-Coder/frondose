@@ -4,6 +4,14 @@ import { pageHash, parsePage } from "../src/lib/navigation.js";
 
 const home = { view: "overview", id: null, projectId: null };
 
+test('solo-first navigation names preserve existing stored route identities', () => {
+  for (const [name, legacy] of [['today', 'overview'], ['conversations', 'chats'], ['knowledge', 'library'], ['runs', 'work']]) {
+    assert.deepEqual(parsePage(`#/${name}`), { view: legacy, id: null, projectId: null });
+    assert.equal(pageHash(name, 'record_1'), pageHash(legacy, 'record_1'));
+  }
+  assert.deepEqual(parsePage('#/conversations/chat_1?message=message_1'), { view: 'chats', id: 'chat_1', projectId: null, messageId: 'message_1' });
+});
+
 test('team section deep links preserve the selected tab', () => {
   for (const section of ['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people']) {
     assert.deepEqual(parsePage(pageHash('teams', 'team_1', { section })), { view: 'teams', id: 'team_1', projectId: null, section });

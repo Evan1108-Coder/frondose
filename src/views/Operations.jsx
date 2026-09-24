@@ -10,7 +10,7 @@ export const OPERATION_TABS = [['plans', 'Work plans', null], ['repeating', 'Rep
 export function OperationsView() {
   const { page, navigate } = useApp();
   const tab = OPERATION_TABS.find(t => t[0] === page.id) ?? OPERATION_TABS[0];
-  return <main className="page operations-page"><PageHeader title="Coordination" description="Plan the handoff, keep the dependencies clear, and decide when work starts."><Button icon={Settings} onClick={() => navigate('settings', 'coordination')}>Settings</Button></PageHeader>
+  return <main className="page operations-page"><PageHeader title="Coordination" description="Existing plans, repeating Routes, and workspace queues. Plans do not execute agent steps."><Button onClick={() => navigate('workflows')}>Manual Workflows</Button><Button icon={Settings} onClick={() => navigate('settings', 'coordination')}>Settings</Button></PageHeader>
     <div className="tabs" role="tablist" aria-label="Coordination areas">{OPERATION_TABS.map(([id,label]) => <button key={id} role="tab" className={tab[0] === id ? 'active' : ''} aria-selected={tab[0] === id} onClick={() => navigate('operations', id)}>{label}</button>)}</div>
     {tab[0] === 'plans' ? <Plans /> : tab[0] === 'repeating' ? <RepeatingRoutes /> : <Suspense fallback={<p role="status">Opening {tab[1].toLowerCase()}…</p>}><ResourcePage key={tab[2]} kind={tab[2]} /></Suspense>}
   </main>;

@@ -6,7 +6,8 @@ function rumboLocalApi() {
   return {
     name: "rumbo-local-api",
     configureServer(server) {
-      const api = createLocalApi();
+      // Test previews must opt into an isolated directory; never seed live data.
+      const api = createLocalApi({ dataDir: process.env.RUMBO_DATA_DIR || undefined, seedMode: process.env.RUMBO_DATA_DIR && process.env.RUMBO_SEED_MODE === 'demo' ? 'demo' : 'clean' });
       server.middlewares.use(api.middleware);
       server.httpServer?.once("close", () => api.close());
     },

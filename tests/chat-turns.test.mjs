@@ -267,6 +267,9 @@ test('retrying an older message prioritizes its attachments outside the recent h
     fake.mode = 'success';
     await call(`/chats/${chat.id}/turns`, {agent_id: first.run.agent_id,source_message_id:first.message.id,client_turn_id:'old-source-retry-002'});
     assert.match(fake.prompts.at(-1), /ORIGINAL_SOURCE_ATTACHMENT/);
-    assert.match(fake.prompts.at(-1), /Current message attachments:/);
+    const references = fake.prompts.at(-1).split('\n').filter(line => line.startsWith('Reference data ')).map(line => JSON.parse(line.slice('Reference data '.length)));
+    const attachments = references.filter(item => item.kind === 'attachment');
+    assert.equal(attachments[0].id, `${first.message.id}:0`);
+    assert.equal(attachments[0].content, 'ORIGINAL_SOURCE_ATTACHMENT');
   });
 });

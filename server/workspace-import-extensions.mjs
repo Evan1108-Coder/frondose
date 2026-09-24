@@ -6,9 +6,12 @@ import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/rea
 import { emojiShortcode } from '../src/lib/custom-emojis.js';
 import { ACTIVITY_TARGET_TABLES } from './activity-policy.mjs';
 import { routeGraph, inspectRouteGraph } from './route-hierarchy.mjs';
+import { validateAreaSettings, saveAreaSettings } from './area-service.mjs';
+import { validateSkillDefinition, validateSkillInputs } from './skills-service.mjs';
+import { importManualWorkflows } from './manual-workflow-import.mjs';
 
-export const EXTENSION_TABLES = ['route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'route_schedules', 'activity_entries'];
-export const EXTENSION_PARENTS = { route_workflows: 'tasks', project_strategies: 'projects', milestone_contracts: 'milestones' };
+export const EXTENSION_TABLES = ['route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'route_schedules', 'activity_entries', 'area_settings', 'skills', 'skill_versions', 'skill_test_runs', 'manual_workflows', 'manual_workflow_versions'];
+export const EXTENSION_PARENTS = { route_workflows: 'tasks', project_strategies: 'projects', milestone_contracts: 'milestones', area_settings: 'teams' };
 const error = message => validationError(`Cannot import workspace: ${message}`);
 const txt = (value, max = 100000, fallback = '') => { value ??= fallback; if (typeof value !== 'string' || value.length > max) throw error('invalid text field.'); return value; };
 const list = (value, max = 100) => { if (!Array.isArray(value) || value.length > max) throw error('invalid list.'); return value; };
@@ -65,6 +68,41 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
     insert('chat_collaboration', { chat_id: chatId, workspace_id: workspaceId, version: 1, payload_json: JSON.stringify({ bookmarks, reactions, drafts: [], branch: null }), updated_at: stamp });
   }
   for (const table of EXTENSION_TABLES) for (const row of data[table] ?? []) {
+    if (table === 'manual_workflows' || table === 'manual_workflow_versions') continue; // Resolve only after every source and Skill version exists.
+    if (table === 'skills') {
+      const project = source('projects', row.project_id), area = source('teams', row.team_id);
+      if (project && area && project.team_id !== area.id) throw error('Skill project and Area differ.');
+      if (!(data.skill_versions ?? []).some(version => version.skill_id === row.id && version.number === row.version)) throw error('Skill is missing its current version.');
+      insert(table, { id: ids.get(row.id), workspace_id: workspaceId, project_id: ref('projects', row.project_id), team_id: ref('teams', row.team_id), name: txt(row.name,200), purpose: txt(row.purpose,2000), state: 'draft', version: positive(row.version), published_version: null, provenance_json: '{}', archived_at: timestamp(row.archived_at), created_at: stamp, updated_at: stamp });
+      continue;
+    }
+    if (table === 'skill_versions') {
+      const skill = source('skills', row.skill_id, true), input = row.definition;
+      if (!isRecord(input)) throw error('Skill version needs a definition.');
+      const tables = { document: 'documents', memory: 'memory_notes', knowledge: 'knowledge_entries', pack: 'workspace_items' };
+      const mapped = { ...input, preferred_agent_id: ref('agents', input.preferred_agent_id), required_context: list(input.required_context || []).map(item => {
+        if (!isRecord(item) || !tables[item.kind]) throw error('Invalid Skill context reference.');
+        return { kind: item.kind, id: ref(tables[item.kind], item.id, true) };
+      }) };
+      const definition = validateSkillDefinition(db, workspaceId, mapped, null);
+      if (row.number === skill.version && (definition.name !== skill.name || definition.purpose !== skill.purpose)) throw error('Skill head does not match current definition.');
+      insert(table, { id: ids.get(row.id), skill_id: ref('skills', row.skill_id, true), workspace_id: workspaceId, number: positive(row.number), definition_json: JSON.stringify(definition), author_id: null, created_at: stamp });
+      continue;
+    }
+    if (table === 'skill_test_runs') {
+      const version = source('skill_versions', row.version_id, true);
+      if (version.skill_id !== row.skill_id) throw error('Skill test belongs to another version.');
+      const pinned = db.prepare('SELECT definition_json FROM skill_versions WHERE id=?').get(ref('skill_versions', row.version_id, true));
+      validateSkillInputs(JSON.parse(pinned.definition_json), row.inputs);
+      insert(table, { id: ids.get(row.id), skill_id: ref('skills', row.skill_id, true), workspace_id: workspaceId, version_id: ref('skill_versions', row.version_id, true), inputs_json: JSON.stringify(row.inputs), outcome: choice(row.outcome, ['passed','failed']), evidence: txt(row.evidence,20000), notes: txt(row.notes,10000), mode: 'imported', evaluator_id: null, created_at: stamp });
+      continue;
+    }
+    if (table === 'area_settings') {
+      const area = db.prepare('SELECT * FROM teams WHERE id=?').get(ref('teams', row.id, true));
+      const value = validateAreaSettings(db, area, { instructions: row.instructions, default_agent_ids: list(row.default_agent_ids).map(id => ref('agents', id, true)), context_pack_ids: list(row.context_pack_ids).map(id => ref('workspace_items', id, true)), allowed_tools: list(row.allowed_tools), permission_policy: 'review', contacts_enabled: row.contacts_enabled }, undefined, null, { importing: true });
+      saveAreaSettings(db, { ...value, version: 1, updated_at: stamp });
+      continue;
+    }
     let fields = { id: ids.get(row.id), workspace_id: workspaceId };
     const projectId = () => ref('projects',row.project_id);
     if (table === 'activity_entries') {
@@ -77,6 +115,7 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
         attachments_json: validateUpdateAttachments(JSON.parse(row.attachments_json || '[]')), work_changes_json: validateUpdateChanges(JSON.parse(row.work_changes_json || '{}'), row.target_type, Boolean(row.parent_id)) };
     } else if (table === 'route_workflows') {
       source('tasks',row.id,true);
+      if (row.acceptance_policy_version !== undefined && ![1, 2].includes(row.acceptance_policy_version)) throw error('invalid Route acceptance policy version.');
       const deps = list(row.dependency_ids), parent = ref('tasks',row.parent_task_id);
       if (deps.includes(row.id) || row.parent_task_id === row.id || new Set(deps).size !== deps.length) throw error('invalid route dependency.');
       const position = row.sibling_position ?? 0; if (!Number.isInteger(position) || position < 0 || position > 1000000) throw error('invalid sub-route order.');
@@ -117,7 +156,13 @@ export function importExtensions(db, data, ids, workspaceId, stamp) {
       fields = { ...fields, project_id:projectId(), title:txt(row.title,200), state:'paused', steps_json:JSON.stringify(steps), version:1, created_at:stamp, updated_at:stamp };
     }
     insert(table,fields);
+    if (table === 'route_workflows' && row.acceptance_policy_version === 2) {
+      // Preserve the stricter requirement, never imported evidence or reviewer
+      // identity. Restored outputs still need fresh exact-version assessments.
+      insert('route_acceptance_policies', { route_id: fields.id, workspace_id: workspaceId, policy_version: 2, enabled_by: null, enabled_at: stamp, version: 1 });
+    }
   }
+  importManualWorkflows(db, data, ids, workspaceId, stamp);
   for (const entry of data.activity_entries || []) {
     const seen = new Set([entry.id]); let current = entry;
     while (current.parent_id) {

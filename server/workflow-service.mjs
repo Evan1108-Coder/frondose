@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { installWorkspaceFeatures, recordChange } from './workspace-features.mjs';
 import { installRouteHierarchy, assertRouteLink, assertRouteDependencies, hierarchyTransaction, authorizeRouteNodes } from './route-hierarchy.mjs';
+import { assertOutputAcceptanceForReview, recordOutputAcceptanceReview } from './acceptance-evidence-service.mjs';
 
 const now = () => new Date().toISOString();
 const id = kind => `${kind}_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
@@ -58,7 +59,7 @@ export function installWorkflow(db) {
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     version_id TEXT NOT NULL REFERENCES output_versions(id) ON DELETE CASCADE,
     decision TEXT NOT NULL, reviewer_name TEXT NOT NULL, feedback TEXT NOT NULL DEFAULT '',
-    revision_task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL, created_at TEXT NOT NULL);
+    revision_task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL, created_at TEXT NOT NULL, reviewer_id TEXT);
   CREATE TABLE IF NOT EXISTS context_snapshots (
     id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
@@ -86,6 +87,7 @@ export function installWorkflow(db) {
   for (const [column, reference] of [['chat_id', 'chats'], ['source_message_id', 'messages']]) {
     if (!db.prepare('PRAGMA table_info(outputs)').all().some(row => row.name === column)) db.exec(`ALTER TABLE outputs ADD COLUMN ${column} TEXT REFERENCES ${reference}(id) ON DELETE SET NULL`);
   }
+  if (!db.prepare('PRAGMA table_info(output_reviews)').all().some(row => row.name === 'reviewer_id')) db.exec('ALTER TABLE output_reviews ADD COLUMN reviewer_id TEXT');
   installRouteHierarchy(db);
 }
 
@@ -152,7 +154,7 @@ export async function workflowRoute({ db, req, res, path, url, readBody, send, s
   if (!isRecord(body)) throw validationError('Provide an object with valid fields.');
   const auditResource = ({ routes:'route_workflows', outputs:action === 'versions' ? 'output_versions' : action === 'comments' ? 'output_comments' : action === 'review' ? 'output_reviews' : 'outputs', comments:'output_comments', context:'context_snapshots', knowledge:'knowledge_entries', projects:'project_strategies', milestones:'milestone_contracts' })[resource];
   const before = entityId && !action ? decode(db.prepare(`SELECT * FROM ${auditResource} WHERE id=?`).get(entityId)) : null;
-  let result, recorded = false, status = req.method === 'POST' && !entityId ? 201 : 200;
+  let result, responseResult, recorded = false, status = req.method === 'POST' && !entityId ? 201 : 200;
   if (resource === 'routes' && entityId && req.method === 'PATCH' && !action) {
     result = hierarchyTransaction(db, () => {
     const task = active(db, 'tasks', entityId, null, true); workspace(db, task.workspace_id);
@@ -191,13 +193,18 @@ export async function workflowRoute({ db, req, res, path, url, readBody, send, s
     if (typeof body.resolved !== 'boolean') throw validationError('Choose resolved or unresolved.');
     db.prepare('UPDATE output_comments SET resolved_at=? WHERE id=?').run(body.resolved ? now() : null, entityId); result = db.prepare('SELECT * FROM output_comments WHERE id=?').get(entityId);
   } else if (resource === 'outputs' && entityId && action === 'review' && req.method === 'POST') {
+    if (actor?.mode === 'agent' || actor?.type === 'agent') throw Object.assign(validationError('An agent cannot approve its own output.'), { statusCode: 403 });
     const output = currentOutput(db, entityId); expectVersion(body, output); const version = versionFor(db, output, body.version_id, true);
     const decision = oneOf(body.decision, ['approved', 'changes_requested'], 'review decision');
     const reviewer = text(body.reviewer_name, 'Reviewer', 120, true), feedback = text(body.feedback ?? '', 'Feedback', 20000, decision === 'changes_requested');
     if (output.reviewer_name && output.reviewer_name.toLowerCase() !== reviewer.toLowerCase()) throw validationError(`This output is assigned to ${output.reviewer_name}. Use that reviewer name or update the assignment first.`);
-    const agreement = decode(db.prepare('SELECT * FROM route_workflows WHERE id=?').get(output.task_id ?? ''));
-    if (decision === 'approved' && agreement?.acceptance.some(item => !item.done)) throw validationError('Complete the linked route’s acceptance checklist before approving this output.');
-    result = transaction(db, () => {
+    const reviewed = transaction(db, () => {
+      const agreement = decode(db.prepare('SELECT * FROM route_workflows WHERE id=?').get(output.task_id ?? ''));
+      let acceptanceSnapshot = null;
+      if (decision === 'approved') {
+        acceptanceSnapshot = assertOutputAcceptanceForReview({ db, output, version, agreement, actor, allowed });
+        if (!acceptanceSnapshot && agreement?.acceptance.some(item => !item.done)) throw validationError('Complete the linked route’s acceptance checklist before approving this output.');
+      }
       let revisionId = null;
       if (decision === 'changes_requested') {
         revisionId = id('task'); const number = db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM tasks WHERE workspace_id=?').get(output.workspace_id).n;
@@ -213,10 +220,12 @@ export async function workflowRoute({ db, req, res, path, url, readBody, send, s
         recordChange(db, 'tasks', null, revisionTask, 'created revision sub-route');
         recordChange(db, 'route_workflows', null, decode(db.prepare('SELECT * FROM route_workflows WHERE id=?').get(revisionId)), 'created');
       }
-      const review = { id: id('review'), output_id: output.id, workspace_id: output.workspace_id, version_id: version.id, decision, reviewer_name: reviewer, feedback, revision_task_id: revisionId, created_at: now() };
-      db.prepare('INSERT INTO output_reviews VALUES (?,?,?,?,?,?,?,?,?)').run(...Object.values(review));
-      db.prepare('UPDATE outputs SET state=?,version=version+1,updated_at=? WHERE id=?').run(decision, now(), output.id); return review;
+      const review = { id: id('review'), output_id: output.id, workspace_id: output.workspace_id, version_id: version.id, decision, reviewer_name: reviewer, feedback, revision_task_id: revisionId, created_at: now(), reviewer_id: actor?.id || null };
+      db.prepare('INSERT INTO output_reviews(id,output_id,workspace_id,version_id,decision,reviewer_name,feedback,revision_task_id,created_at,reviewer_id) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...Object.values(review));
+      const recordedAcceptance = recordOutputAcceptanceReview({ db, review, acceptanceSnapshot });
+      db.prepare('UPDATE outputs SET state=?,version=version+1,updated_at=? WHERE id=?').run(decision, now(), output.id); return { review, recordedAcceptance };
     });
+    result = reviewed.review; responseResult = { ...reviewed.review, acceptance_snapshot: reviewed.recordedAcceptance };
   } else if (resource === 'context' && !entityId && req.method === 'POST') {
     const ws = workspace(db, body.workspace_id), project = active(db, 'projects', body.project_id, ws);
     const refs = body.sources ?? [];
@@ -284,5 +293,5 @@ export async function workflowRoute({ db, req, res, path, url, readBody, send, s
     db.prepare('INSERT INTO milestone_contracts VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET acceptance_json=excluded.acceptance_json,version=excluded.version,updated_at=excluded.updated_at').run(entityId, milestone.workspace_id, JSON.stringify(acceptance), result.version, result.updated_at);
   } else return false;
   if (result?.workspace_id && !recorded) recordChange(db, auditResource, before, result, action || (before ? 'updated' : 'created'));
-  send(res, status, { result, bootstrap: snapshot(db) }); return true;
+  send(res, status, { result: responseResult ?? result, bootstrap: snapshot(db) }); return true;
 }

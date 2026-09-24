@@ -1,4 +1,5 @@
-import { cloneElement, useEffect, useId, useRef, useState } from "react";
+import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, LoaderCircle, Search, CircleAlert, CircleCheck, Circle, CircleDot, Clock, Minus } from "./components/icons.jsx";
 import { STATUSES, RUN_STATUSES } from "./lib/model.js";
 import { registerDialog } from "./components/dialog-manager.js";
@@ -149,12 +150,25 @@ export function Dialog({
   className = "",
 }) {
   const ref = useRef(null);
+  const originRef = useRef(null);
   const backdropStart = useRef(false);
   // Capture before the commit: a child autoFocus can already own focus by the
   // time this dialog's effect runs, and that child disappears when we close.
   const openerRef = useRef(typeof document === 'undefined' ? null : document.activeElement);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  useLayoutEffect(() => {
+    const origin = originRef.current, backdrop = ref.current?.closest('.dialog-backdrop');
+    if (!origin || !backdrop) return;
+    // Portals retain React context but not inherited CSS. Keep Area-specific
+    // empty-state colors without copying scroll masks or freezing theme tokens.
+    const inherited = origin.ownerDocument.defaultView.getComputedStyle(origin);
+    for (const property of ['--empty-icon-color', '--empty-copy-color']) {
+      const value = inherited.getPropertyValue(property);
+      if (value) backdrop.style.setProperty(property, value);
+      else backdrop.style.removeProperty(property);
+    }
+  });
   useEffect(() => {
     const previous = openerRef.current;
     const manager = registerDialog(ref.current);
@@ -207,7 +221,7 @@ export function Dialog({
       if (previous?.isConnected && !previous.closest?.("[inert]")) previous.focus?.();
     };
   }, []);
-  return (
+  const dialog = (
     <div
       className="dialog-backdrop"
       onPointerDown={(event) => {
@@ -239,6 +253,9 @@ export function Dialog({
       </section>
     </div>
   );
+  // A fixed overlay still clips inside a masked or transformed ancestor.
+  // Mount at the viewport root so scroll fades remain local to their surface.
+  return typeof document === 'undefined' ? dialog : <><span hidden aria-hidden="true" ref={originRef} data-dialog-origin="" />{createPortal(dialog, document.body)}</>;
 }
 export function Toggle({ label, description, checked, onChange, disabled }) {
   return (

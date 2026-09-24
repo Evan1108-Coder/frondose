@@ -15,16 +15,17 @@ import { searchCatalog, searchExcerpt } from '../lib/search.js';
 import { describePage } from '../lib/workspace-experience.js';
 import { parsePage } from '../lib/navigation.js';
 import { featureItems } from '../lib/settings-catalog.js';
-import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban, MessageSquareText } from './icons.jsx';
+import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban, MessageSquareText, ScrollText } from './icons.jsx';
 import { HelpMenu } from './HelpMenu.jsx';
 import { useSidebarArrange } from './SidebarArrange.jsx';
 import { TeamIconButton } from './TeamAppearance.jsx';
+import { areaContactsVisible } from '../lib/areas.js';
 import { ColorableNavItem, useIconColors } from './IconColors.jsx';
 import { SidebarLayout } from './SidebarLayout.jsx';
 import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 
-const NAV_ICONS = { overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+const NAV_ICONS = { skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
 
 export function Sidebar({
@@ -202,7 +203,7 @@ export function Sidebar({
       onClick={() => go(target)}>{label}</button></Tooltip>
       : <button className="section-title" onClick={() => toggleSection(section)} aria-expanded={preferences.sections[section]}>{label}</button>}
     {!preferences.sections[section] ? badge(section, `${label.toLowerCase()} items`) : null}
-    {onCreate ? <IconButton label={`New ${section === "projects" ? "project" : section === "teams" ? "team" : section === "agents" ? "agent" : "chat"}`} onClick={onCreate}><Plus /></IconButton> : null}
+    {onCreate ? <IconButton label={`New ${section === "projects" ? "project" : section === "teams" ? "Area" : section === "agents" ? "agent" : "chat"}`} onClick={onCreate}><Plus /></IconButton> : null}
   </div>;
   return (
     <>
@@ -272,7 +273,7 @@ export function Sidebar({
             <IconButton ref={createTriggerRef} label="Create new" aria-expanded={createOpen} onClick={() => { setCreateOpen(!createOpen); setWorkspaceOpen(false); }}><SquarePen /></IconButton>
             {createOpen ? <div className="popover create-options">
               <div className="popover-label">Create in {workspace.name}</div>
-              {[["task", "Route", GitBranch], ["project", "Project", Folder], ["team", "Team", Users], ["chat", "Chat", MessageCircle], ["memory", "Memory note", BookOpen], ["session", "Session", Play]].map(([kind, label, Icon]) =>
+              {[["task", "Route", GitBranch], ["project", "Project", Folder], ["team", "Area", Users], ["chat", "Chat", MessageCircle], ["memory", "Memory note", BookOpen], ["session", "Session", Play]].map(([kind, label, Icon]) =>
                 <button key={kind} onClick={() => create(kind, activeProject && !["project", "team"].includes(kind) ? { project_id: activeProject.id } : {})}><Icon /><span>{label}</span></button>)}
             </div> : null}
           </div>
@@ -298,7 +299,7 @@ export function Sidebar({
           </section>
           <section data-layout-id="agents" className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
             <div className="collapsed-section-link">{navItem("agents")}</div>
-            {sectionHeader("agents", "Your agents", "agents", () => create("agent"))}
+            {sectionHeader("agents", "Agents", "agents", () => create("agent"))}
             <Collapse id="navigation-agents" className="sidebar-section-content nav-group" open={preferences.sections.agents}>
               {agents.map(agent => {
                 const active = data.runs.filter(run => val(run, "agent_id") === agent.id && runningStatuses.has(run.status)).length;
@@ -309,21 +310,21 @@ export function Sidebar({
           </section>
           <section data-layout-id="teams" className="sidebar-section team-navigation" style={sectionStyle("teams")}>
             <div className="collapsed-section-link">{navItem("teams")}</div>
-            {sectionHeader("teams", "Teams", "teams", () => create("team"))}
+            {sectionHeader("teams", "Areas", "teams", () => create("team"))}
             <Collapse id="navigation-teams" className="sidebar-section-content nav-group" open={preferences.sections.teams}>
               {teams.map(team => <div className="sidebar-project sidebar-team-group" key={team.id}>
                 <div {...entityBinding("teams", team)} className={`project-nav-row ${page.view === 'teams' && page.id === team.id ? 'current-project' : ''}`}>
-                  <button className="project-disclosure" aria-expanded={Boolean(preferences.teams[team.id])} aria-label={`${preferences.teams[team.id] ? 'Collapse' : 'Expand'} team ${team.name}`} aria-controls={`team-navigation-${team.id}`} onClick={() => setPreferences(current => ({ ...current, teams: { ...current.teams, [team.id]: !current.teams[team.id] } }))}><ChevronRight morphTo={preferences.teams[team.id] ? ChevronDown : ChevronRight} interactive={false} /></button>
+                  <button className="project-disclosure" aria-expanded={Boolean(preferences.teams[team.id])} aria-label={`${preferences.teams[team.id] ? 'Collapse' : 'Expand'} Area ${team.name}`} aria-controls={`team-navigation-${team.id}`} onClick={() => setPreferences(current => ({ ...current, teams: { ...current.teams, [team.id]: !current.teams[team.id] } }))}><ChevronRight morphTo={preferences.teams[team.id] ? ChevronDown : ChevronRight} interactive={false} /></button>
                   <TeamIconButton team={team} size={19} /><Tooltip label={team.name}><button className="project-nav-name" style={{ color: colorsFor(`team:${team.id}:identity`, team).label || undefined }} onClick={() => go('teams', team.id)}><span>{team.name}</span></button></Tooltip>{optionsButton('teams', team)}
                 </div>
                 <Collapse className="project-nav-children" id={`team-navigation-${team.id}`} open={Boolean(preferences.teams[team.id])}>
-                  {[['overview', 'Overview', House], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['updates', 'Updates', MessageCircle], ['people', 'People', Users]].map(([section, label, Icon]) => {
+                  {[['overview', 'Overview', House], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['updates', 'Updates', MessageCircle], ['people', 'Contacts', Users]].filter(([section]) => section !== 'people' || areaContactsVisible(data, team.id)).map(([section, label, Icon]) => {
                     const active = page.view === 'teams' && page.id === team.id && (page.section || 'overview') === section;
                     return <ColorableNavItem key={section} colorId={`team:${team.id}:${section}`} team={team} icon={Icon} label={label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} aria-label={`${team.name} · ${label}`} onClick={() => go('teams', team.id, { section })} />;
                   })}
                 </Collapse>
               </div>)}
-              {!teams.length ? <button className="sidebar-empty-action" onClick={() => create("team")}><Plus /><span>Create your first team</span></button> : null}
+              {!teams.length ? <button className="sidebar-empty-action" onClick={() => create("team")}><Plus /><span>Create your first Area</span></button> : null}
             </Collapse>
           </section>
           <section data-layout-id="projects" className="sidebar-section project-navigation" style={sectionStyle("projects")}>
@@ -365,7 +366,7 @@ export function Sidebar({
           </section>
           <section data-layout-id="chats" className="sidebar-section chat-navigation" style={sectionStyle("chats")}>
             <div className="collapsed-section-link">{navItem("chats")}</div>
-            {sectionHeader("chats", "Chats", "chats", () => create("chat"))}
+            {sectionHeader("chats", "Conversations", "chats", () => create("chat"))}
             <Collapse id="navigation-chats" className="sidebar-section-content nav-group" open={preferences.sections.chats}>
               {recentChats.map((chat) => <div className="sidebar-entity-row" key={chat.id} {...entityBinding("chats", chat)}><Tooltip label={chat.title}><ColorableNavItem colorId={`entity:chats:${chat.id}`} icon={chat.pinned ? Pin : MessageCircle} label={chat.title}
                 aria-current={page.view === "chats" && page.id === chat.id ? "page" : undefined}
@@ -399,7 +400,7 @@ export function Sidebar({
       </aside>
       {arrange.dialog}
       {itemOptions ? <Dialog title={itemOptions.title} subtitle="Sidebar options" onClose={() => setItemOptions(null)}><div className="sidebar-item-dialog">
-        {itemOptions.view === 'teams' ? <Button icon={Settings} onClick={() => { const teamId = itemOptions.id; setItemOptions(null); go('settings', `team:${teamId}`); }}>Team settings</Button> : null}
+        {itemOptions.view === 'teams' ? <Button icon={Settings} onClick={() => { const teamId = itemOptions.id; setItemOptions(null); go('settings', `team:${teamId}`); }}>Area settings</Button> : null}
         <Button icon={Pin} onClick={() => { toggleFavorite(itemOptions); setItemOptions(null); }}>{favorites.some(item => favoriteKey(item) === favoriteKey(itemOptions)) ? 'Remove from favorites' : 'Add to favorites'}</Button><Button icon={PanelLeftClose} onClick={() => { try { updateOrganization({ ...organization, hiddenItems: [...organization.hiddenItems, { view: itemOptions.view, id: itemOptions.id }] }); setItemOptions(null); notify('Hidden from sidebar. Restore it in Customize sidebar.'); } catch (error) { notify(error.message, 'error'); } }}>Hide from sidebar</Button><p className="organization-note">This does not archive anything or stop active work. You can still find it through search or its collection.</p></div></Dialog> : null}
     </>
   );
@@ -436,7 +437,7 @@ export function CommandPalette({ onClose }) {
       ...["project", "team", "task", "chat", "agent", "memory"].map((kind) => ({
         id: `create-${kind}`,
         type: "Action",
-        title: `New ${kind === "task" ? "route" : kind === "memory" ? "memory note" : kind}`,
+        title: `New ${kind === "team" ? "Area" : kind === "task" ? "route" : kind === "memory" ? "memory note" : kind}`,
         subtitle: "Create in this workspace",
         icon: Plus,
         run: () => edit(kind),
@@ -452,7 +453,7 @@ export function CommandPalette({ onClose }) {
       ...SETTINGS_GROUPS.flatMap(([group, sections]) => sections.map(([id, label]) => ({ id: `setting-${id}`, type: 'Settings', title: `${group} · ${label}`, subtitle: 'Configure your workspace', icon: Settings, run: () => navigate('settings', id) }))),
       ...visible(data.teams ?? []).map((item) => ({
         id: item.id,
-        type: "Team",
+        type: "Area",
         title: item.name,
         subtitle: item.description,
         icon: Users,
@@ -504,7 +505,7 @@ export function CommandPalette({ onClose }) {
         <Search />
         <input
           autoFocus
-          aria-label="Search projects, teams, routes, chats and actions"
+          aria-label="Search projects, Areas, Routes, chats and actions"
           placeholder="Search anything · try type:output or project:Atlas"
           value={query}
           onChange={(e) => {

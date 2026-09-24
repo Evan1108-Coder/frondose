@@ -59,6 +59,8 @@ import { normalizeExperience, readExperience, rememberPage } from './lib/workspa
 const Workbench = lazy(() => import('./views/Workbench.jsx').then(module => ({ default: module.Workbench })));
 const LibraryView = lazy(() => import('./views/Library.jsx').then(module => ({ default: module.LibraryView })));
 const UpdatesView = lazy(() => import('./views/Updates.jsx').then(module => ({ default: module.UpdatesView })));
+const SkillsView = lazy(() => import('./views/Skills.jsx').then(module => ({ default: module.SkillsView })));
+const WorkflowsView = lazy(() => import('./views/Workflows.jsx').then(module => ({ default: module.WorkflowsView })));
 
 function readPage() {
   return parsePage(location.hash);
@@ -201,11 +203,12 @@ export function App() {
       runs,
       teams: scoped("teams"),
       team_members: scoped("team_members"),
+      area_settings: scoped("area_settings"),
       documents: scoped("documents"),
       milestones: scoped("milestones"),
       workspace_items: scoped("workspace_items"),
       audit_log: scoped("audit_log"),
-      ...Object.fromEntries(['activity_entries', 'route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'chat_collaboration', 'route_schedules'].map(key => [key, scoped(key)])),
+      ...Object.fromEntries(['skills', 'skill_versions', 'skill_test_runs', 'manual_workflows', 'manual_workflow_versions', 'manual_workflow_runs', 'manual_workflow_step_runs', 'manual_workflow_approvals', 'activity_entries', 'route_workflows', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'context_snapshots', 'knowledge_entries', 'project_strategies', 'milestone_contracts', 'work_plans', 'chat_collaboration', 'route_schedules'].map(key => [key, scoped(key)])),
       agents: (rawData.agents ?? []).filter(
         (item) =>
           !val(item, "workspace_id") ||
@@ -390,6 +393,7 @@ export function App() {
     focus: <FocusView />,
     inbox: <InboxView />,
     updates: <UpdatesView />,
+    skills: <Suspense fallback={<p role="status">Opening Skills…</p>}><SkillsView /></Suspense>,
     projects: <ProjectsView />,
     teams: <TeamsView />,
     tasks: <RoutesView />,
@@ -398,6 +402,7 @@ export function App() {
     workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={page.id ?? page.projectId} /></Suspense>,
     library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={page.id} /></Suspense>,
     operations: <OperationsView />,
+    workflows: <Suspense fallback={<p role="status">Opening Workflows…</p>}><WorkflowsView /></Suspense>,
     documents: <Suspense fallback={<p role="status">Opening documents…</p>}><DocumentsView /></Suspense>,
     views: <Suspense fallback={<p role="status">Opening saved views…</p>}><SavedViews /></Suspense>,
     memory: <MemoryView />,
@@ -448,7 +453,7 @@ export function App() {
               {currentProject ? <>
                 <button onClick={() => navigate('projects')}>Projects</button><ChevronRight />
                 {page.view === 'projects' ? <strong>{currentProject.name}</strong> : <><button onClick={() => navigate('projects', currentProject.id)}>{currentProject.name}</button><ChevronRight /><strong>{NAV.find(item => item.id === page.view)?.label}</strong></>}
-              </> : currentTeam ? <><button onClick={() => navigate('teams')}>Teams</button><ChevronRight /><strong>{currentTeam.name}</strong></> : <strong>{NAV.find(item => item.id === page.view)?.label}</strong>}
+              </> : currentTeam ? <><button onClick={() => navigate('teams')}>Areas</button><ChevronRight /><strong>{currentTeam.name}</strong></> : <strong>{NAV.find(item => item.id === page.view)?.label}</strong>}
             </div>
             <NavigationHistory key={workspace.id} />
             {currentFavorite ? <IconButton label={isFavorite ? "Remove from favorites" : "Add to favorites"} className={`icon-button favorite-toggle ${isFavorite ? "is-favorite" : ""}`} aria-pressed={Boolean(isFavorite)} onClick={() => toggleFavorite(currentFavorite)}><Pin morphTo={isFavorite ? PinOff : Pin} /></IconButton> : null}

@@ -75,6 +75,19 @@
 .agent-connection-section .agent-permission-note { display: flex; align-items: flex-start; gap: 7px; color: var(--faint); font-size: 11px; line-height: 1.6; margin-top: 18px; }
 .agent-permission-note svg { flex: 0 0 14px; width: 14px; height: 14px; margin-top: 2px; }
 .agent-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 22px; border-top: 1px solid var(--border); }
+.agent-default-list { display: grid; gap: 9px; margin: 0 0 14px; font-size: 12px; }
+.agent-default-list > div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; }
+.agent-default-list dt { color: var(--muted); }
+.agent-default-list dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.agent-detail-section h3.agent-output-heading { margin-top: 18px; }
+.agent-detail-section ul { padding-left: 18px; color: var(--secondary); font-size: 13px; line-height: 1.7; }
+.agent-detail-tabs { gap: 16px; overflow-x: auto; }
+.agent-detail-tabs button { flex-shrink: 0; }
+.agent-detail-section .button { margin-top: 12px; }
+.agent-import-fields { display: grid; gap: 20px; padding: 10px 24px 24px; }
+.agent-import-fields p { margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.65; }
+.agent-import-fields label { display: grid; gap: 10px; font-size: 13px; }
+.agent-import-fields input { width: 100%; }
 .agent-linked-work button { display: flex; align-items: center; width: 100%; gap: 8px; padding: 8px 0; background: none; border: 0; color: var(--secondary); font-size: 13px; text-align: left; }
 .agent-linked-work button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-linked-work svg { width: 16px; height: 16px; }
