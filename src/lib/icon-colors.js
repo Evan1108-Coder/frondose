@@ -14,6 +14,11 @@ export function resolveTeamColor(team, kind, globalColor = '') {
   const policy = colorPolicy(team?.[kind], TEAM_COLOR_POLICIES, 'team');
   return policy === 'global' ? globalColor : policy === 'team' ? teamColor(team) || globalColor : policy;
 }
+export function resolveEmptyIconColor(settings = {}, team) {
+  return (settings.emptyIconFollowArea === true
+    ? resolveTeamColor(team, 'empty_icon_color', settings.emptyIconColor)
+    : settings.emptyIconColor) || 'var(--text)';
+}
 export function resolveNavColors(settings = {}, team, override = {}) {
   const globalIcon = settings.tabIconColor || '';
   const inheritedIcon = team ? resolveTeamColor(team, 'tab_icon_color', globalIcon) : globalIcon;

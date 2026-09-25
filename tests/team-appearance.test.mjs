@@ -5,6 +5,15 @@ import { ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
 import { normalizeDisplayPreferences } from '../src/lib/display-preferences.js';
 import { createChatFollower, nearChatBottom } from '../src/lib/chat-scroll.js';
 import { groupColorDefaults, resolveNavColors, resolveTeamColor, normalizeTabColors, pageTeam } from '../src/lib/icon-colors.js';
+import { resolveEmptyIconColor } from '../src/lib/icon-colors.js';
+
+test('empty illustrations are neutral unless a global color or Area override is explicitly chosen', () => {
+  const area = { color: '#00ffff', empty_icon_color: 'team' };
+  assert.equal(resolveEmptyIconColor(normalizeDisplayPreferences(), area), 'var(--text)');
+  assert.equal(resolveEmptyIconColor({ emptyIconColor: '#aabbcc' }, area), '#aabbcc');
+  assert.equal(resolveEmptyIconColor({ emptyIconFollowArea: true }, area), '#00ffff');
+  assert.equal(normalizeDisplayPreferences({ emptyIconFollowArea: 'true' }).emptyIconFollowArea, false);
+});
 
 test('team identity accepts every bundled line icon but never emoji or arbitrary markup', () => {
   for (const { id } of ICON_REACTIONS) assert.equal(teamAppearance({ icon: id }).icon, id);
@@ -13,10 +22,21 @@ test('team identity accepts every bundled line icon but never emoji or arbitrary
   assert.equal(teamAppearance({ color: 'url(x)', icon_color: 'red' }).icon_color, '');
 });
 test('display defaults enable smooth following and sanitize personal icon colors', () => {
-  const defaults = { emptyIconColor: '', tabIconColor: '', tabLabelColor: 'neutral', tabColors: {}, smoothChatScroll: true };
+  const defaults = { emptyIconFollowArea: false, emptyTextColor: '', emptyIconColor: '', tabIconColor: '', tabLabelColor: 'neutral', tabColors: {}, smoothChatScroll: true };
   assert.deepEqual(normalizeDisplayPreferences(), defaults);
   assert.deepEqual(normalizeDisplayPreferences({ emptyIconColor: '#AABBCC', smoothChatScroll: false }), { ...defaults, emptyIconColor: '#aabbcc', smoothChatScroll: false });
   assert.deepEqual(normalizeDisplayPreferences({ emptyIconColor: 'url(x)', smoothChatScroll: 'false' }), defaults);
+});
+
+test('empty-state copy stays neutral for legacy colors and supports independent explicit customization', () => {
+  const legacy = normalizeDisplayPreferences({ emptyIconColor: '#00ffff' });
+  assert.equal(legacy.emptyTextColor, '');
+  assert.equal(normalizeDisplayPreferences({ ...legacy, emptyTextColor: '#AABBCC' }).emptyTextColor, '#aabbcc');
+  for (const emptyTextColor of ['', 'team', 'url(x)', null]) {
+    const settings = normalizeDisplayPreferences({ ...legacy, emptyTextColor });
+    assert.equal(settings.emptyTextColor, '');
+    assert.equal(settings.emptyIconColor, '#00ffff');
+  }
 });
 
 test('tab color precedence is explicit, live and independent from label policy', () => {

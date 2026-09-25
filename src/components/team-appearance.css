@@ -14,7 +14,7 @@
 .color-choice-custom button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; }
 .color-choice-custom button:disabled { opacity: .45; }
 .color-choice small { color: var(--muted); }
-.empty-illustration { color: var(--empty-icon-color, var(--secondary)); }
+.empty-illustration { color: var(--empty-icon-color, var(--text)); }
 .display-preferences { padding: 20px; margin: 24px 0; }
 .display-preferences h2 { font-size: 15px; }
 .display-preferences p { font-size: 13px; color: var(--muted); margin: 10px 0; line-height: 1.6; }

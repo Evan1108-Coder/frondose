@@ -3,7 +3,7 @@ import { normalizeReactionColor } from './reaction-catalog.js';
 import { colorPolicy, normalizeTabColors } from './icon-colors.js';
 export const DISPLAY_KEY = 'rumbo.displayPreferences.v1';
 export function normalizeDisplayPreferences(input) {
-  return { emptyIconColor: normalizeReactionColor(input?.emptyIconColor) || '', tabIconColor: normalizeReactionColor(input?.tabIconColor) || '', tabLabelColor: colorPolicy(input?.tabLabelColor, ['icon', 'neutral'], 'neutral'), tabColors: normalizeTabColors(input?.tabColors), smoothChatScroll: typeof input?.smoothChatScroll === 'boolean' ? input.smoothChatScroll : true };
+  return { emptyIconFollowArea: input?.emptyIconFollowArea === true, emptyTextColor: normalizeReactionColor(input?.emptyTextColor) || '', emptyIconColor: normalizeReactionColor(input?.emptyIconColor) || '', tabIconColor: normalizeReactionColor(input?.tabIconColor) || '', tabLabelColor: colorPolicy(input?.tabLabelColor, ['icon', 'neutral'], 'neutral'), tabColors: normalizeTabColors(input?.tabColors), smoothChatScroll: typeof input?.smoothChatScroll === 'boolean' ? input.smoothChatScroll : true };
 }
 export function readDisplayPreferences() {
   try { return normalizeDisplayPreferences(JSON.parse(localStorage.getItem(DISPLAY_KEY) || '{}')); } catch { return normalizeDisplayPreferences(); }
