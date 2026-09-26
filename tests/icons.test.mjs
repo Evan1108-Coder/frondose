@@ -31,6 +31,8 @@ test('every empty-state drawing uses the shared theme-aware relief treatment', (
   for (const layer of ['far', 'mid', 'near', 'dash']) assert.match(css, new RegExp(`empty-art-scene-${layer}`));
   assert.match(art, /stroke="currentColor"/);
   assert.doesNotMatch(art, /#[0-9a-fA-F]{3,8}/);
+  const agentCss = readFileSync(new URL('../src/views/rumbo-agent.css', import.meta.url), 'utf8');
+  assert.match(agentCss, /\.rumbo-agent-disconnected > \.empty-illustration \{[^}]*width: 220px/);
 });
 
 test('Morphicons transitions retarget and settle to canonical Lucide geometry within 300ms', () => {
