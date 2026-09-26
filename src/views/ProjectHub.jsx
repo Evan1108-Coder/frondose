@@ -15,6 +15,7 @@ import { ProjectTimeline } from '../components/ProjectTimeline.jsx';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ActivityTimeline } from '../components/ActivityTimeline.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
+import { RumboAgentEntryButton } from '../components/RumboAgentEntry.jsx';
 import "./workspace-spaces.css";
 
 const TABS = [{ id: "overview", label: "Overview" }, { id: "strategy", label: "Strategy & risks" }, { id: "timeline", label: "Timeline" }, { id: "routes", label: "Routes" }, { id: "documents", label: "Documents" }, { id: "chats", label: "Chats" }, { id: 'changes', label: 'Changes' }, { id: "updates", label: "Updates" }, { id: "activity", label: "Activity" }];
@@ -41,7 +42,7 @@ export function ProjectHub({ project }) {
   return <main className="page space-page project-hub">
     <button className="back-link" onClick={() => navigate("projects")}><ArrowLeft />All projects</button>
     {project.image_url ? <button className="project-picture-edit" aria-label="Change project picture" onClick={() => edit('project', project)}><img className="project-heading-picture" src={project.image_url} alt="" /></button> : null}
-    <PageHeader title={project.name} description={project.description || "A shared home for your plans, context, and progress."}><Button icon={Pencil} onClick={() => edit("project", project)}>Edit project</Button><Button variant="primary" icon={Plus} onClick={() => edit("task", null, { project_id: project.id, team_id: project.team_id })}>New route</Button></PageHeader>
+    <PageHeader title={project.name} description={project.description || "A shared home for your plans, context, and progress."}><RumboAgentEntryButton source={{ type: 'project', id: project.id }} /><Button icon={Pencil} onClick={() => edit("project", project)}>Edit project</Button><Button variant="primary" icon={Plus} onClick={() => edit("task", null, { project_id: project.id, team_id: project.team_id })}>New route</Button></PageHeader>
     <SpaceTabs label="Project sections" tabs={TABS.map((item) => ({ ...item, count: item.id === "routes" ? routes.length : item.id === "chats" ? chats.length : undefined }))} value={tab} onChange={value => requestUpdateNavigation(() => setTab(value))} />
     <div className="space-section-toolbar"><Button onClick={() => navigate('workbench', project.id)}>Open workbench<ArrowRight /></Button><Button onClick={() => navigate('library', null, { projectId: project.id })}>Project outputs<ArrowRight /></Button></div>
     <div className="space-tab-content" role="tabpanel" aria-label={TABS.find((item) => item.id === tab).label}>

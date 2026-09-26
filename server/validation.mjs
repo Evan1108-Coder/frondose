@@ -4,7 +4,7 @@ import { guardRouteMutation } from './route-hierarchy.mjs';
 const ENUMS = {
   projects: { status: ['planned', 'active', 'paused', 'completed', 'cancelled', 'archived'] },
   tasks: { status: ['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled'], priority: ['no_priority', 'low', 'medium', 'high', 'urgent'] },
-  chats: { kind: ['general', 'direct', 'group', 'project', 'task'] },
+  chats: { kind: ['general', 'direct', 'group', 'project', 'task', 'rumbo-agent'] },
   messages: { sender_type: ['user', 'agent', 'system'], kind: ['message', 'run_event', 'note'] },
   agents: { provider: ['codex', 'claude', 'custom'], status: ['available', 'paused'] },
   milestones: { status: ['planned', 'in_progress', 'completed'] },

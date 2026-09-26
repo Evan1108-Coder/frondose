@@ -75,6 +75,7 @@ function fromRows(category, rows, defaults = {}) {
 const core = fromRows(COMMAND_CATEGORIES.CORE, [
   ['help', 'Search commands and explain their parameters.', { usage: '/help [query]', aliases: ['commands'] }],
   ['agent', 'Select the agent that will receive the composed message.', { usage: '/agent [agent]', operation: 'draft' }],
+  ['rumbo', 'Prepare a request in Rumbo agent without sending or starting work.', { usage: '/rumbo [instruction]', operation: 'draft', contexts: [...COMPOSERS, 'workbench'] }],
   ['ask', 'Prepare a bounded question for an agent using selected context.', { usage: '/ask [agent] [instruction]', operation: 'draft', action: { agentStart: true, paid: true } }],
   ['mention', 'Insert a person, team, or agent mention.', { usage: '/mention [person|team|agent]', operation: 'draft' }],
   ['reply', 'Reply to the selected message, update, or finding.', { operation: 'draft' }],

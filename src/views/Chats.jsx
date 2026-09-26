@@ -18,12 +18,13 @@ import { byUpdated, download, relative, val, visible } from '../lib/model.js';
 import { agentReadiness } from '../lib/agents.js';
 import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnBlocker, restoreComposer, persistComposer, messageLink, quotedMessage, threadMessages } from '../lib/chats.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
+import { prepareRumboAgentEntry } from '../lib/rumbo-agent-entry.js';
 import './chats-page.css';
 const ReactionPicker = lazy(() => import('../components/ReactionPicker.jsx'));
 const ActivityFeed = lazy(() => import('../components/ActivityFeed.jsx').then(module => ({ default: module.ActivityFeed })));
 
 const CHAT_COMMANDS = Object.freeze([
-  'help', 'agent', 'ask', 'reply', 'update', 'context', 'sources', 'remember', 'attach', 'clear',
+  'help', 'rumbo', 'agent', 'ask', 'reply', 'update', 'context', 'sources', 'remember', 'attach', 'clear',
   'chat.new', 'route.new', 'request.new', 'project.new', 'document.new', 'inbox', 'focus', 'workbench',
   'connections', 'settings', 'runs', 'permissions', 'status', 'priority', 'due', 'route.block', 'chat.export',
   'summarize', 'translate', 'format', 'run', 'continue', 'retry', 'review', 'compare', 'test', 'explain',
@@ -63,6 +64,9 @@ export function ChatsView() {
   const create = () => edit('chat', null, project ? { project_id: project.id } : {});
   const filtered = matchingChats(chats, index.messagesByChat, query);
   useEffect(() => { setQuery(''); }, [page.projectId]);
+  useEffect(() => {
+    if (page.id && chat?.kind === 'rumbo-agent') navigate('rumbo-agent', chat.id, { messageId: page.messageId || null });
+  }, [page.id, page.messageId, chat?.id, chat?.kind, navigate]);
   if (page.projectId && !project) return <main className="page"><Empty kind="projects" title="Project unavailable" description="This project may be archived or belong to another workspace." action="All chats" onAction={() => navigate('chats')} /></main>;
   if (page.id && !chat) return <main className="page"><Empty kind="chats" title="Conversation unavailable" description="This chat may be archived or outside this project." action="All chats" onAction={() => navigate('chats', null, scope)} /></main>;
   if (!chats.length) return <main className="page"><Empty kind="chats" title={project ? 'Start the project conversation' : 'Your conversations, connected'} description="Keep ideas, decisions, and agent work in the same conversation. Link a project to bring its context along." action="Create chat" onAction={create} secondaryAction={project ? 'Open project' : 'Explore projects'} onSecondaryAction={() => navigate('projects', project?.id || null)} /></main>;
@@ -77,7 +81,7 @@ export function ChatsView() {
           const messages = index.messagesByChat.get(item.id) || [], last = messages.at(-1);
           const active = (index.runsByChat.get(item.id) || []).some(run => ACTIVE_CHAT_RUNS.has(run.status));
           const linked = data.projects.find(project => project.id === val(item, 'project_id'));
-          return <button className={`chat-hub-item ${chat?.id === item.id ? 'selected' : ''}`} aria-current={chat?.id === item.id ? 'page' : undefined} key={item.id} onClick={() => { setListOpen(false); navigate('chats', item.id, scope); }}>
+          return <button className={`chat-hub-item ${chat?.id === item.id ? 'selected' : ''}`} aria-current={chat?.id === item.id ? 'page' : undefined} key={item.id} onClick={() => { setListOpen(false); navigate(item.kind === 'rumbo-agent' ? 'rumbo-agent' : 'chats', item.id, scope); }}>
             <span className="chat-hub-item-icon"><UiIcon icon={item.pinned ? Pin : MessageCircle} /></span>
             <span className="chat-hub-item-text"><strong>{item.title}</strong><small>{last?.content || 'Start the conversation'}</small><span>{linked?.name || 'Workspace chat'}{active ? <span className="chat-working-label"><i />Working</span> : null}</span></span>
             <time>{relative(val(item, 'updated_at'))}</time>
@@ -92,14 +96,23 @@ export function ChatsView() {
       onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); event.preventDefault(); }}
       onPointerMove={event => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const width = event.clientX - hubRef.current.getBoundingClientRect().left; setListFolded(width < 160); setListWidth(Math.max(220, Math.min(420, width))); }}
       onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
-    <Conversation key={chat.id} chat={chat} index={index} composers={composers.current} scope={scope} listFolded={folded} onToggleList={() => { setListFolded(folded ? false : true); setListOpen(folded); }} onComposerChange={() => refreshComposers(value => value + 1)} />
+    {chat.kind === 'rumbo-agent' ? <section className="chat-thread"><Empty kind="chats" title={chat.title} description="Open this conversation in Rumbo Agent to review its model and context controls." action="Open Rumbo Agent" onAction={() => navigate('rumbo-agent', chat.id)} /></section> : <Conversation key={chat.id} chat={chat} index={index} composers={composers.current} scope={scope} listFolded={folded} onToggleList={() => { setListFolded(folded ? false : true); setListOpen(folded); }} onComposerChange={() => refreshComposers(value => value + 1)} />}
   </main>;
 }
 
-function Conversation({ chat, index, composers, scope, onComposerChange, listFolded, onToggleList }) {
+export function Conversation({ chat, index, composers, scope = {}, onComposerChange = () => {}, listFolded, onToggleList, assistant }) {
   const { data, navigate, edit, archive, perform, notify } = useApp();
   const agents = visible(data.agents);
-  if (!composers.has(chat.id)) composers.set(chat.id, restoreComposer(chat, agents, draftStorage()));
+  if (!composers.has(chat.id)) {
+    const draft = restoreComposer(chat, agents, draftStorage());
+    if (assistant && !draft.turn && !draft.text && !draft.hasSavedPreferences) Object.assign(draft, {
+      model: assistant.preferences?.model || '', reasoning: assistant.preferences?.reasoning_effort || '',
+      memory: assistant.preferences?.include_memory !== false, includeChat: assistant.preferences?.include_chat !== false,
+      includeWorkspace: assistant.preferences?.include_workspace !== false,
+      contextPackIds: assistant.preferences?.context_pack_ids || [],
+    });
+    composers.set(chat.id, draft);
+  }
   const composer = composers.get(chat.id);
   const [, render] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
@@ -143,12 +156,14 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
   const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
   const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
   const sentAttachments = composer.context ? [{ name: `rumbo-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
+  const assistantOptions = assistant ? { model: composer.model || '', reasoning_effort: composer.reasoning || '', include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
   const inspectionRequest = agent && (composer.text.trim() || composer.files.length) && !slashVisible ? {
     workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
     chat_id: chat.id, agent_id: agent.id, prompt: composer.text.trim() || 'Shared attachments',
     work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission,
     include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true, attachments: sentAttachments, source_message_id: null,
     context_pack_ids: [], area_id: val(project, 'team_id') || val(task, 'team_id') || null,
+    ...assistantOptions,
     ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
   } : null;
   const inspectionKey = JSON.stringify([inspectionRequest, agent?.version ?? null]);
@@ -159,6 +174,8 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
     chat_id: chat.id, agent_id: retryAgent.id, prompt: retryDraft.message.content.trim(),
     source_message_id: retryDraft.message.id, work_mode: val(retryDraft.run, 'work_mode') || 'project', permission_mode: 'read-only',
+    ...(typeof retryDraft.message.metadata?.include_workspace === 'boolean' ? { include_workspace: retryDraft.message.metadata.include_workspace } : {}),
+    ...(typeof retryDraft.message.metadata?.model === 'string' ? { model: retryDraft.message.metadata.model, reasoning_effort: retryDraft.message.metadata.reasoning_effort || '' } : {}),
     include_memory: composer.memory && val(retryAgent, 'memory_policy') !== 'none', include_chat: true, native_tools: retryNativeTools,
     attachments: [], context_pack_ids: [], area_id: val(project, 'team_id') || val(task, 'team_id') || null,
   } : null;
@@ -292,6 +309,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
         content: text, attachments: sentFiles, agent_id: recipient, client_turn_id: composer.turn, ...metadata,
         work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission, include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true,
         ...(contextReady ? { context_inspection_id: reviewedContext.result.id } : {}), context_pack_ids: [], area_id: inspectionRequest?.area_id ?? null,
+        ...assistantOptions,
         ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
       });
       if (composer.version === version) { composer.text = ''; composer.version += 1; composer.turn = null; composer.replyTo = null; composer.context = null; }
@@ -313,6 +331,11 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     const args = argv.join(' ').trim();
     const findAgent = value => agents.find(item => [item.name, item.provider, item.id].some(candidate => String(candidate || '').toLowerCase() === value.toLowerCase()));
     setError(null);
+    if (command.id === 'rumbo') {
+      prepareRumboAgentEntry({ workspaceId: val(chat, 'workspace_id'), source: task ? { type: 'task', id: task.id } : project ? { type: 'project', id: project.id } : null, instruction: args });
+      navigate('rumbo-agent');
+      return;
+    }
     if (command.startsAgent) {
       const providerAgent = command.connection ? agents.find(item => item.provider === command.connection) : null;
       const namedAgent = argv[0] ? findAgent(argv[0]) : null;
@@ -402,7 +425,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     composer.retryNativeTools ||= {}; composer.retryNativeTools[message.id] = retryRequest.native_tools;
     persistComposer(chat.id, composer, draftStorage());
     try {
-      const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, context_pack_ids: [], area_id: retryRequest.area_id });
+const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
       delete composer.retryKeys[message.id];
       delete composer.retryNativeTools[message.id];
       persistComposer(chat.id, composer, draftStorage());
@@ -438,11 +461,11 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
     setDestination(project?.id || ''); setComposeDialog({ type, message });
   }
   return <section className="chat-thread" aria-label={chat.title} onKeyDown={event => { if (selectionMode && event.key === 'Escape' && !event.defaultPrevented && !event.target.closest('[role="dialog"]')) { event.preventDefault(); stopSelection(); } }}>
-    <header className="chat-thread-header">
+    {assistant ? assistant.header : <header className="chat-thread-header">
       <IconButton label={listFolded ? 'Show conversations' : 'Hide conversations'} aria-expanded={!listFolded} onClick={onToggleList}><PanelLeft /></IconButton>
       <div className="chat-thread-title"><h2>{chat.title}</h2><div>{project ? <button onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <span>Workspace conversation</span>}{task ? <><span>/</span><button onClick={() => navigate('tasks', task.id)}>{task.title}</button></> : null}</div></div>
       <div className="chat-thread-tools"><IconButton label={searchOpen ? 'Close message search' : 'Search messages'} onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }} aria-pressed={searchOpen}><Search morphTo={searchOpen ? X : Search} /></IconButton><Button icon={PanelLeft} onClick={() => setContextOpen(true)}>Context</Button><IconButton label="Conversation options" onClick={() => setOptionsOpen(true)}><Ellipsis /></IconButton></div>
-    </header>
+    </header>}
     <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}</div>
     {threadId ? <div className="chat-thread-banner"><MessageCircle /><span>Thread · {inThread.length - 1} replies</span><button onClick={() => { setThreadId(null); change({ replyTo: null }); }}>Back to conversation</button></div> : null}
     {searchOpen ? <div className="chat-message-search"><SearchField label="Search messages in conversation" placeholder="Find a message…" value={search} onChange={setSearch} /><span>{search ? `${shownMessages.length} results` : 'Search this conversation'}</span></div> : null}
@@ -469,7 +492,7 @@ function Conversation({ chat, index, composers, scope, onComposerChange, listFol
         }} />
         {agent ? <details><summary>Context review · {contextReady ? 'selected' : recoveringTurn ? 'delivery recovery' : 'required before sending'}</summary><div className="chat-context-content" style={{ maxHeight: 'min(45vh, 420px)', overflowY: 'auto' }}><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />{recoveringTurn ? <p>An earlier delivery is unconfirmed. Resending keeps the same turn ID to recover it without duplicating work. If the server never received it, context is regenerated. Inspect again to require a newly reviewed context.</p> : null}</div></details> : null}
         <div className="chat-compose-controls"><div className="chat-compose-target">
-          <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive ? '' : ' · Not ready'}</option>)}</Select>
+          {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive ? '' : ' · Not ready'}</option>)}</Select>}
           {agent ? <Select aria-label="Agent access" value={composer.permission === 'conversation' ? 'conversation' : effectivePermission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' && !readOnlyProfile ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
           <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton>

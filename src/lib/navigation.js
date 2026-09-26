@@ -1,5 +1,5 @@
 const VIEWS = new Set([
-  "overview", "inbox", "projects", "tasks", "chats", "work", "memory",
+  "overview", "rumbo-agent", "inbox", "projects", "tasks", "chats", "work", "memory",
   "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
@@ -40,7 +40,7 @@ export function parsePage(hash = "") {
     if (reviews.length > 1 || reviews.length && !validId(reviews[0])) return home();
     const sections = params.getAll('section').map(value => value === 'contacts' ? 'people' : value);
     if (sections.length > 1 || (sections.length && !TEAM_SECTIONS.has(sections[0]))) return home();
-    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(view === 'chats' && id && messages.length ? { messageId: messages[0] } : {}) };
+    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
     return home();
   }
@@ -63,6 +63,6 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
     query.set('section', section === 'people' ? 'contacts' : section);
   }
   if (projectId && SCOPED_VIEWS.has(view)) query.set('project', projectId);
-  if (messageId && view === 'chats' && id) query.set('message', messageId);
+  if (messageId && ['chats', 'rumbo-agent'].includes(view) && id) query.set('message', messageId);
   return `${path}${query.size ? `?${query}` : ''}`;
 }

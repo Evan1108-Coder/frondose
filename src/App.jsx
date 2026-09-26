@@ -36,6 +36,7 @@ const TeamsView = lazy(() => import('./views/Teams.jsx').then(module => ({ defau
 import { Overview, InboxView } from "./views/Overview.jsx";
 import { ProjectsView, RoutesView } from "./views/Projects.jsx";
 const ChatsView = lazy(() => import('./views/Chats.jsx').then(module => ({ default: module.ChatsView })));
+const RumboAgent = lazy(() => import('./views/RumboAgent.jsx').then(module => ({ default: module.RumboAgent })));
 import { WorkView, SessionDialog } from "./views/Work.jsx";
 import { MemoryView } from "./views/Agents.jsx";
 const AgentsView = lazy(() => import('./views/AgentRoster.jsx').then(module => ({ default: module.AgentsView })));
@@ -400,6 +401,7 @@ export function App() {
     teams: <TeamsView />,
     tasks: <RoutesView />,
     chats: <Suspense fallback={<div className="app-loading" role="status">Opening chats…</div>}><ChatsView /></Suspense>,
+    'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Rumbo Agent…</div>}><RumboAgent /></Suspense>,
     work: <WorkView />,
     workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={page.id ?? page.projectId} /></Suspense>,
     library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={page.id} /></Suspense>,

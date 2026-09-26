@@ -6,12 +6,13 @@ import { installSkills, skillSnapshot, skillsRoute } from './skills-service.mjs'
 import { installSkillReliability, skillReliabilityRoute, skillEvaluationPreparedSourceAccess, bindSkillEvaluationRun, replaySkillEvaluationRun } from './skill-reliability-service.mjs';
 import { buildContextInspection } from './context-inspector.mjs';
 import { installRunContextStore, saveInspection, getInspection, consumeInspection, captureRunContext, readRunContext } from './run-context-store.mjs';
-import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
+import { captureSourceAccess, assertSourceAccess, chatHasRumboSourceHistory } from './context-source-access.mjs';
 import { installNativeAgentTools, listNativeAgentTools, createNativeAgentToolService } from './native-agent-tools.mjs';
 import { createNativeAgentToolBridge } from './native-agent-tool-bridge.mjs';
 import { createNativeToolApply } from './native-tool-apply.mjs';
 import { buildTodaySummary } from './today-service.mjs';
 import { installAgentProfiles, validateAgentProfile, snapshotAgentProfile, bumpAgentProfileVersion } from './agent-profiles.mjs';
+import { rumboAgentRoute, runModelSelection, assertRumboChatSource, isRumboAgentChat } from './rumbo-agent-service.mjs';
 import { installAgentProfileHistory, agentProfileHistoryRoute } from './agent-profile-history.mjs';
 import { installRunUsage, beginRunUsage, recordRunUsage, finalizeRunUsage, finalizeInterruptedRunUsage, runUsageRoute } from './run-usage-service.mjs';
 import { installKnowledgeConflicts, knowledgeConflictRoute, getKnowledgeConflictWarnings } from './knowledge-conflicts.mjs';
@@ -653,7 +654,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (body.workflow_step || turn) throw validationError('A Skill evaluation must be launched separately from a Workflow or conversation turn.');
     }
     const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
-    for (const field of ['include_memory', 'includeMemory', 'include_chat', 'includeChat', 'native_tools']) if (body[field] !== undefined && typeof body[field] !== 'boolean') throw validationError('Context selections must be true or false.');
+    for (const field of ['include_workspace', 'include_memory', 'includeMemory', 'include_chat', 'includeChat', 'native_tools']) if (body[field] !== undefined && typeof body[field] !== 'boolean') throw validationError('Context selections must be true or false.');
     const workMode = turn?.workMode ?? body.work_mode ?? 'project';
     const requested = body.permission_mode ?? body.permissionMode ?? 'read-only';
     const timeoutMs = body.timeout_ms ?? 1800000;
@@ -664,17 +665,24 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     if (typeof prompt !== 'string' || !prompt.trim()) throw validationError('Write an instruction before inspecting context.');
     const packs = body.context_pack_ids ?? [];
     if (!Array.isArray(packs) || packs.some(value => typeof value !== 'string')) throw validationError('Choose context packs by their IDs.');
+    const sourceMessage = turn?.source || (body.source_message_id ? present(db.prepare('SELECT * FROM messages WHERE id=? AND chat_id=?').get(body.source_message_id, resolved.links.chat_id)) : null);
+    const priorSelection = sourceMessage?.metadata || {};
+    const rumboPreferences = parseJson(db.prepare('SELECT value_json FROM settings WHERE key=?').get(`rumboAgent:${resolved.workspaceId}`)?.value_json, {});
+    for (const field of ['model', 'reasoning_effort']) if (Object.hasOwn(priorSelection, field) && body[field] !== undefined && body[field] !== priorSelection[field]) throw validationError('Retry with the original model and reasoning settings, or send a new message.');
+    const selection = runModelSelection({ model: body.model ?? priorSelection.model, reasoning_effort: body.reasoning_effort ?? priorSelection.reasoning_effort }, agent, body.provider || agent?.provider || 'codex');
     const input = {
       ...resolved.links, agent_id: agent?.id || null, area_id: body.area_id || null,
       prompt: prompt.trim(), work_mode: workMode, permission_mode: permissionMode, timeout_ms: timeoutMs,
       include_memory: agent?.memory_policy !== 'none' && (body.include_memory ?? body.includeMemory) !== false,
       include_chat: (body.include_chat ?? body.includeChat) !== false,
+      include_workspace: body.include_workspace ?? priorSelection.include_workspace ?? (isRumboAgentChat(db, resolved.linkedChat) && rumboPreferences.include_workspace !== false),
       attachments: (turn?.source?.id || body.source_message_id) ? [] : turn?.attachments ?? body.attachments ?? [],
       source_message_id: turn?.source?.id ?? body.source_message_id ?? null,
       context_pack_ids: [...new Set(packs)].sort(),
       cwd: workMode === 'conversation' ? null : sessionWorkingDirectory(resolved.project, agent, body.cwd) || null,
       profile_version: agent?.version ?? null, provider_connection_id: agent?.provider_connection_id ?? null,
       native_tools: body.native_tools === true,
+      ...selection,
       ...(body.skill_evaluation ? { skill_evaluation: { preparation_id: body.skill_evaluation.preparation_id, preparation_version: body.skill_evaluation.preparation_version } } : {}),
       ...(body.workflow_step ? { workflow_step: {
         workflow_run_id: body.workflow_step.workflow_run_id,
@@ -689,9 +697,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const evaluationAccess = input.skill_evaluation && !historical ? skillEvaluationPreparedSourceAccess({ db: getDb(), skillEvaluation: input.skill_evaluation, actor, allowed: access.allowed }) : null;
     const nativeToolNames = evaluationAccess ? evaluationAccess.allowed_native_tools : input.workflow_step ? manualWorkflows.manualWorkflowNativeToolNames({ db: getDb(), workflowStep: input.workflow_step, actor, allowed: access.allowed }) : null;
     const inspection = await prepareAgentContext({ actor, workspaceId: input.workspace_id, projectId: input.project_id, taskId: input.task_id, chatId: input.chat_id, agent,
-      prompt: input.prompt, includeMemory: input.include_memory, includeChat: input.include_chat,
+      prompt: input.prompt, includeMemory: input.include_memory, includeChat: input.include_chat, includeWorkspace: input.include_workspace,
       sourceMessageId: input.source_message_id, currentAttachments: input.attachments, contextPackIds: input.context_pack_ids, areaId: input.area_id,
-      permissionMode: input.permission_mode, workMode: input.work_mode, timeoutMs: input.timeout_ms, nativeTools: input.native_tools, nativeToolNames, includeRuntime: true, runtimeNonce });
+      permissionMode: input.permission_mode, workMode: input.work_mode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, nativeTools: input.native_tools, nativeToolNames, includeRuntime: true, runtimeNonce });
     if (input.workflow_step && !historical) {
       if (!manualWorkflows.manualWorkflowPreparedSourceAccess) throw validationError('Workflow context preparation is not available.');
       const extra = manualWorkflows.manualWorkflowPreparedSourceAccess({ db: getDb(), workflowStep: input.workflow_step, actor, allowed: access.allowed });
@@ -706,8 +714,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     }
     return { ...inspection, request: input };
   }
-  async function prepareAgentContext({ actor, workspaceId, projectId, taskId, chatId, agent, prompt, includeMemory = true, includeChat = true, sourceMessageId, currentAttachments = [], contextPackIds = [], areaId, permissionMode = 'read-only', workMode = 'conversation', timeoutMs = 1800000, nativeTools: enableNative = false, nativeToolNames = null, includeRuntime = false, runtimeNonce }) {
+  async function prepareAgentContext({ actor, workspaceId, projectId, taskId, chatId, agent, prompt, includeWorkspace = false, includeMemory = true, includeChat = true, sourceMessageId, currentAttachments = [], contextPackIds = [], areaId, permissionMode = 'read-only', workMode = 'conversation', timeoutMs = 1800000, model, reasoningEffort, nativeTools: enableNative = false, nativeToolNames = null, includeRuntime = false, runtimeNonce }) {
     const db = getDb();
+    const selectedSource = chatId ? assertRumboChatSource(db, db.prepare('SELECT * FROM chats WHERE id=?').get(chatId), actor, access.allowed) : null;
     const connectionSummaries = awarenessEnabled(db, workspaceId) && agent?.id
       ? await connectionPlatform.agentContext(workspaceId, agent.id, actor).catch((error) => { if (error.statusCode === 403) return []; throw error; })
       : [];
@@ -717,9 +726,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       reason: nativeToolNames !== null && !nativeToolNames.includes(tool.name) ? 'not_allowed_by_pinned_skill' : nativeAvailable ? '' : !enableNative ? 'not_enabled_for_run' : !canPropose ? 'workspace_awareness_paused' : 'profile_not_connected' }));
     const personalInstructions = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='personalization'").get()?.value_json, {}).instructions || '';
     const inspection = buildContextInspection({
-      db, workspaceId, projectId, taskId, chatId, agentId: agent?.id, areaId, prompt,
-      includeMemory, includeChat, sourceMessageId, currentAttachments, contextPackIds,
+      db, workspaceId, projectId, taskId, chatId, agentId: agent?.id, areaId: areaId || selectedSource?.areaId, prompt,
+      includeMemory, includeChat, includeWorkspace, sourceMessageId, currentAttachments, contextPackIds,
       connectionSummaries, availableTools, personalInstructions, permissionMode, workMode, timeoutMs,
+      executionSelection: { model: model ?? agent?.model ?? '', reasoning_effort: reasoningEffort ?? agent?.reasoning_effort ?? '' }, selectedSource,
       filter: (data) => access.filter(data, actor), maxContextCharacters: 62000, maxTotalCharacters: 90000, inheritProfileScope: false,
     });
     const sourceAccess = captureSourceAccess(db, inspection);
@@ -823,9 +833,24 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const result = hierarchyTransaction(db, () => {
       const current = db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId);
       if (!current) throw Object.assign(validationError(`${resource.slice(0, -1)} not found.`), { statusCode: 404 });
+      if (resource === 'chats' && body.kind !== undefined && body.kind !== current.kind && isRumboAgentChat(db, current)) throw validationError('A Rumbo Agent conversation keeps its dedicated chat type. Rename or archive it instead.');
       if (resource === 'agents' && body.version !== undefined && (!Number.isSafeInteger(body.version) || body.version !== current.version)) throw Object.assign(new Error('This agent profile changed. Reload it before saving.'), { statusCode: 409, errorCode: 'stale_profile' });
       if (['tasks', 'projects'].includes(resource) && body.status !== undefined && body.workflow_status_id === undefined && body.status !== current.status) body.workflow_status_id = null;
       if (resource === 'messages' && body.chat_id !== undefined && body.chat_id !== current.chat_id) return fail(res, 400, 'validation_error', 'A message must stay in its original conversation.');
+      if (resource === 'messages') {
+        const metadata = parseJson(current.metadata_json, {});
+        if (metadata.run_id || metadata.latest_run_id) {
+          for (const field of ['sender_type', 'sender_id']) if (body[field] !== undefined && body[field] !== current[field]) throw validationError('Recorded agent-turn identity cannot be changed.');
+          if (body.metadata_json !== undefined) {
+            if (!body.metadata_json || typeof body.metadata_json !== 'object' || Array.isArray(body.metadata_json)) throw validationError('Message metadata must be an object.');
+            for (const field of ['run_id', 'latest_run_id', 'source_message_id', 'client_turn_id', 'target_agent_id', 'work_mode', 'model', 'reasoning_effort', 'include_workspace']) {
+              if (!Object.hasOwn(metadata, field)) continue;
+              if (Object.hasOwn(body.metadata_json, field) && body.metadata_json[field] !== metadata[field]) throw validationError('Recorded agent-turn provenance cannot be changed.');
+              body.metadata_json[field] = metadata[field];
+            }
+          }
+        }
+      }
       if (resource === 'tasks' && (body.project_id || current.project_id)) {
         const projectId = body.project_id !== undefined ? body.project_id : current.project_id;
         const project = projectId ? db.prepare('SELECT team_id FROM projects WHERE id=?').get(projectId) : null;
@@ -872,6 +897,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     }
     if (req.method === 'DELETE' && itemId) {
       if (activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop the active sessions linked to this item before deleting it.');
+      if (resource === 'messages' && db.prepare('SELECT 1 FROM outputs WHERE source_message_id=? LIMIT 1').get(itemId)) return fail(res, 409, 'linked_context', 'This message is a recorded source for a review output and must remain available to preserve its provenance.');
+      if (resource === 'chats' && chatHasRumboSourceHistory(db, itemId) && (db.prepare('SELECT 1 FROM runs WHERE chat_id=? LIMIT 1').get(itemId) || db.prepare('SELECT 1 FROM outputs WHERE chat_id=? OR source_message_id IN (SELECT id FROM messages WHERE chat_id=?) LIMIT 1').get(itemId, itemId))) return fail(res, 409, 'linked_context', 'Archive this source-bound conversation while its runs or review outputs exist. Deleting it would remove their context provenance.');
       const result = hierarchyTransaction(db, () => { if (resource === 'tasks') guardRouteDeletion(db, itemId); return db.prepare(`DELETE FROM ${resource} WHERE id=?`).run(itemId); });
       return result.changes ? send(res, 200, { ok: true, id: itemId }) : fail(res, 404, 'not_found', `${resource.slice(0, -1)} not found.`);
     }
@@ -985,6 +1012,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await acceptanceEvidenceRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed })) return;
       if (await skillReliabilityRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor) })) return;
       if (await skillsRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed })) return;
+      if (await rumboAgentRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor), integration, present })) return;
       if (path === '/context/inspect' && req.method === 'POST') {
         access.check({ actor, path: '/runs', method: 'GET', url, body });
         const resolved = resolveRunContext(db, body);
@@ -1096,6 +1124,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(chatExport[1]);
         if (!chat) return fail(res, 404, 'not_found', 'Chat not found.');
         const messages = rows(db.prepare('SELECT * FROM messages WHERE chat_id=? ORDER BY created_at'), chat.id);
+        if (access.filter({ messages }, actor).messages.length !== messages.length) return fail(res, 403, 'context_access_revoked', 'Some conversation context is no longer readable. A complete transcript cannot be exported.');
         const markdown = [`# ${chat.title}`, '', ...messages.flatMap((message) => [`## ${message.sender_name} · ${message.created_at}`, '', message.content, ''])].join('\n');
         return send(res, 200, { filename: `${slugify(chat.title)}.md`, markdown });
       }
@@ -1127,7 +1156,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
           db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, nestedMessages[1]);
           return send(res, 201, { message: present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId)) });
         }
-        return collectionRoute(req, res, 'messages', nestedMessages[2], url, actor);
+        // Await so validation failures are handled by this request's error
+        // boundary instead of escaping as an unhandled rejected response.
+        return await collectionRoute(req, res, 'messages', nestedMessages[2], url, actor);
       }
 
       const collectionMatch = path.match(/^\/(workspaces|projects|tasks|chats|messages|agents|memory-notes|teams|team-members|documents|milestones)(?:\/([^/]+))?$/);
@@ -1171,8 +1202,11 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
             if (existing.agent_id !== body.agent_id || (body.source_message_id && body.source_message_id !== existing.source_message_id) || (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== message.content)) || (body.attachments !== undefined && JSON.stringify(body.attachments) !== JSON.stringify(message.attachments))) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different message.');
             const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(existing.run_id));
             if (body.work_mode !== undefined && body.work_mode !== run.work_mode) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different work mode.');
+            const selection = readRunContext(db, run.id)?.inspection?.request;
+            for (const field of ['model', 'reasoning_effort']) if (body[field] !== undefined && body[field] !== (selection?.[field] ?? message.metadata?.[field] ?? '')) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different model settings.');
             return send(res, 200, { message, run, replayed: true });
           }
+          if (isRumboAgentChat(db, chat) && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact Rumbo Agent context before sending.');
           let source = null;
           if (body.source_message_id !== undefined) {
             if (typeof body.source_message_id !== 'string') throw validationError('Choose a valid message to retry.');
@@ -1265,7 +1299,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
               const messageId = id('message');
               const profile = db.prepare("SELECT name FROM local_profile WHERE id='local'").get();
               db.prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-                .run(messageId, links.chat_id, 'user', actor.mode === 'account' ? actor.id : 'local', actor.mode === 'account' ? actor.name : profile?.name || 'You', turn.content, 'message', JSON.stringify(turn.attachments), JSON.stringify({ ...turn.metadata, client_turn_id: turn.clientId, target_agent_id: agent.id, work_mode: workMode }), stamp, stamp);
+                .run(messageId, links.chat_id, 'user', actor.mode === 'account' ? actor.id : 'local', actor.mode === 'account' ? actor.name : profile?.name || 'You', turn.content, 'message', JSON.stringify(turn.attachments), JSON.stringify({ ...turn.metadata, client_turn_id: turn.clientId, target_agent_id: agent.id, work_mode: workMode, model: input.model, reasoning_effort: input.reasoning_effort, include_workspace: input.include_workspace }), stamp, stamp);
               sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId));
             }
           db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -1276,6 +1310,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
               db.prepare('INSERT INTO chat_turns (id,chat_id,client_turn_id,source_message_id,agent_id,run_id,created_at) VALUES (?,?,?,?,?,?,?)').run(id('turn'), links.chat_id, turn.clientId, sourceMessage.id, agent.id, runId, stamp);
               db.prepare('UPDATE messages SET metadata_json=?,updated_at=? WHERE id=?').run(JSON.stringify({ ...sourceMessage.metadata, latest_run_id: runId, target_agent_id: agent.id }), stamp, sourceMessage.id);
               db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
+              if (!turn.source && linkedChat?.kind === 'rumbo-agent' && linkedChat.title === 'New chat' && db.prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_id=? AND sender_type='user'").get(links.chat_id).count === 1) {
+                const generatedTitle = turn.content.replace(/\s+/g, ' ').trim().slice(0, 72);
+                db.prepare('UPDATE chats SET title=? WHERE id=? AND title=?').run(generatedTitle, links.chat_id, 'New chat');
+              }
             }
             db.prepare('UPDATE runs SET work_mode=?,timeout_ms=? WHERE id=?').run(workMode, input.timeout_ms, runId);
             if (profileSnapshot) db.prepare('UPDATE runs SET agent_profile_version=? WHERE id=?').run(profileSnapshot.version, runId);
@@ -1294,7 +1332,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
             if (turn) sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(sourceMessage.id));
           } catch (error) { db.exec('ROLLBACK'); throw error; }
           if (profileSnapshot) {
-            addRunEvent(runId, 'profile.captured', `Agent profile version ${profileSnapshot.version}`, { demo: false, agent_id: agent.id, profile_version: profileSnapshot.version, profile_hash: profileSnapshot.snapshot_hash, model: agent.model || null, reasoning_effort: agent.reasoning_effort || null, permission_mode: permissionMode, provider_connection_id: agent.provider_connection_id });
+            addRunEvent(runId, 'profile.captured', `Agent profile version ${profileSnapshot.version}`, { demo: false, agent_id: agent.id, profile_version: profileSnapshot.version, profile_hash: profileSnapshot.snapshot_hash, model: input.model || null, reasoning_effort: input.reasoning_effort || null, model_selection: 'captured_execution_settings', permission_mode: permissionMode, provider_connection_id: agent.provider_connection_id });
           }
           const prompt = inspection.finalPrompt;
           const actionNonce = inspection.actionNonce;
@@ -1315,7 +1353,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
               nativeBridges.set(runId, nativeBridge);
               addRunEvent(runId, 'tools.connected', 'Reviewed native tools connected for this run; mutations require human review.', { demo: false, tool_count: nativeBridge.descriptor.enabledTools.length });
             }
-            const controller = await integration.startRun({ provider, prompt, cwd, permissionMode, workMode, timeoutMs: input.timeout_ms, model: agent?.model || '', reasoningEffort: agent?.reasoning_effort || '', signal: startingController.signal, ...(nativeBridge ? { nativeToolBridge: nativeBridge.descriptor } : {}) }, {
+            const controller = await integration.startRun({ provider, prompt, cwd, permissionMode, workMode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, signal: startingController.signal, ...(nativeBridge ? { nativeToolBridge: nativeBridge.descriptor } : {}) }, {
               onEvent(event) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) addRunEvent(runId, event.type, event.summary, { ...event.payload, demo: false }); },
               onUsageReport(report) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) recordRunUsage(getDb(), runId, report); },
               onComplete(result) {

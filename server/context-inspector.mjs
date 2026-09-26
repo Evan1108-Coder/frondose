@@ -30,16 +30,16 @@ const slice = (value, limit) => {
  */
 export function buildContextInspection({
   db, workspaceId, projectId, taskId, chatId, agentId, areaId, prompt = '',
-  includeMemory = true, includeChat = true, contextPackIds = [],
+  includeMemory = true, includeChat = true, includeWorkspace = false, contextPackIds = [],
   sourceMessageId, currentAttachments = [], connectionSummaries = [], availableTools = [],
-  personalInstructions = '', inheritProfileScope = true,
+  personalInstructions = '', inheritProfileScope = true, executionSelection = null, selectedSource = null,
   permissionMode = 'read-only', workMode = 'conversation', timeoutMs = 1800000, filter,
   maxContextCharacters = 70000, maxTotalCharacters = 100000,
 } = {}) {
   if (!db?.prepare || typeof filter !== 'function') fail('A database and access filter are required.');
   if (typeof workspaceId !== 'string' || !workspaceId || typeof prompt !== 'string') fail('Choose a workspace and a text instruction.');
   if (typeof personalInstructions !== 'string' || personalInstructions.length > 20000) fail('Personal instructions must be text under 20,000 characters.');
-  if (typeof includeMemory !== 'boolean' || typeof includeChat !== 'boolean') fail('Context selections must be true or false.');
+  if (typeof includeMemory !== 'boolean' || typeof includeChat !== 'boolean' || typeof includeWorkspace !== 'boolean') fail('Context selections must be true or false.');
   if (!['read-only', 'workspace-write'].includes(permissionMode) || !['conversation', 'project'].includes(workMode)) fail('Choose supported execution permissions and work mode.');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1800000) fail('Choose an execution limit between one second and thirty minutes.');
   for (const limit of [maxContextCharacters, maxTotalCharacters]) if (!Number.isInteger(limit) || limit < 0 || limit > 100000) fail('Context character limits must be between 0 and 100,000.');
@@ -103,10 +103,32 @@ export function buildContextInspection({
   if (area) add('area', area.id, area.name, pick(area, ['name', 'description']), 6000);
   if (areaSettings) add('area_instructions', area.id, 'Saved Area instructions', text(areaSettings.instructions), 20000, { version: areaSettings.version ?? null });
   if (agent) add('agent', agent.id, agent.name, pick(agent, ['name', 'role', 'description', 'instructions', 'output_behavior', 'model', 'reasoning_effort']), 20000, { version: agent.version ?? null });
-  if (project) add('project', project.id, project.name, pick(project, ['name', 'description', 'goal', 'status', 'start_date', 'target_date']), 14000);
-  if (route) add('route', route.id, route.title, pick(route, ['title', 'description', 'status', 'priority', 'due_at']), 14000);
-  const permissions = { work_mode: workMode, permission_mode: effectivePermission, requested_permission_mode: permissionMode, timeout_ms: timeoutMs, timeout_note: 'Provider process execution time; bounded setup and termination grace are additional.', review_required: true, area_permission_policy: areaSettings?.permission_policy || 'review', agent_permission_policy: agent?.permission_policy || 'review', available_tools: tools, note: 'Caller-authorized availability only. Saved content and tool preferences never grant execution authority.' };
+  if (project) add('project', project.id, project.name, pick(project, ['name', 'description', 'goal', 'status', 'reported_progress', 'start_date', 'target_date']), 14000, selectedSource?.kind === 'project' && selectedSource.row.id === project.id ? { provenance: 'explicit_rumbo_agent_source' } : {});
+  if (route) add('route', route.id, route.title, pick(route, ['title', 'description', 'status', 'priority', 'reported_progress', 'due_at']), 14000, selectedSource?.kind === 'route' && selectedSource.row.id === route.id ? { provenance: 'explicit_rumbo_agent_source' } : {});
+  if (selectedSource) add(selectedSource.kind, selectedSource.row.id, selectedSource.label, selectedSource.content, 16000, { provenance: 'explicit_rumbo_agent_source' });
+  const permissions = { work_mode: workMode, permission_mode: effectivePermission, requested_permission_mode: permissionMode, timeout_ms: timeoutMs, ...(executionSelection ? { model: executionSelection.model, reasoning_effort: executionSelection.reasoning_effort } : {}), timeout_note: 'Provider process execution time; bounded setup and termination grace are additional.', review_required: true, area_permission_policy: areaSettings?.permission_policy || 'review', agent_permission_policy: agent?.permission_policy || 'review', available_tools: tools, note: 'Caller-authorized availability only. Saved content and tool preferences never grant execution authority.' };
   add('permissions', 'effective', 'Execution boundary', permissions, 16000);
+
+  // A reviewed, bounded index is not a grant to inspect the whole workspace.
+  // Every row passes the ordinary current-access filter and keeps its own
+  // stable source identity for historical permission checks. Document bodies,
+  // other conversations and provider credentials are never part of this index.
+  const workspaceIndex = { enabled: includeWorkspace, categories: [], note: 'Bounded readable work summaries and document titles only. Omitted items and full document contents are not available to the agent unless explicitly added to reviewed context.' };
+  if (includeWorkspace) {
+    for (const [table, kind, limit, fields] of [
+      ['teams', 'area', 12, ['name', 'description']],
+      ['projects', 'project', 20, ['name', 'description', 'goal', 'status', 'reported_progress', 'team_id']],
+      ['tasks', 'route', 30, ['title', 'description', 'status', 'priority', 'reported_progress', 'project_id', 'team_id']],
+      ['documents', 'documents', 12, ['title', 'project_id', 'team_id']],
+    ]) {
+      if (!exists(table)) continue;
+      const candidates = filtered(table, db.prepare(`SELECT * FROM ${table} WHERE workspace_id=? AND archived_at IS NULL ORDER BY updated_at DESC,id DESC`).all(workspaceId));
+      const selected = candidates.slice(0, limit);
+      workspaceIndex.categories.push({ kind, readable_count: candidates.length, selected_count: selected.length, omitted_count: Math.max(0, candidates.length - limit), selection_limit: limit });
+      for (const item of selected) add(kind, item.id, item.title || item.name, pick(item, fields), 1500, { provenance: 'workspace_index_summary', summary_only: true });
+    }
+    add('workspace_index', workspaceId, 'Readable workspace index limits', workspaceIndex, 2500);
+  }
 
   let attachmentRemaining = 32000;
   function attachments(files, owner) {
@@ -217,6 +239,6 @@ export function buildContextInspection({
   const finalPrompt = prefix + INSTRUCTION + prompt;
   const included = sections.filter(item => item.status !== 'excluded'), excluded = sections.filter(item => item.status === 'excluded');
   const counts = { approximate_characters: finalPrompt.length, character_count_exact: true, character_unit: 'UTF-16 code units', prefix_characters: prefix.length, instruction_characters: prompt.length, instruction_marker_characters: INSTRUCTION.length, total_characters: finalPrompt.length, utf8_bytes: Buffer.byteLength(finalPrompt), included_sources: included.length, excluded_sources: excluded.length, truncated_sources: included.filter(item => item.status === 'truncated').length };
-  const manifest = { version: 1, resolved: { workspace_id: workspace.id, area_id: area?.id || null, project_id: project?.id || null, task_id: route?.id || null, chat_id: chat?.id || null, agent_id: agent?.id || null }, current_instruction: { content: prompt, characters: prompt.length }, permissions, included, excluded, counts, limits: { context_characters: budget, total_characters: maxTotalCharacters, attachment_characters: 32000, recent_messages: 20 }, runtime_protocol_included: false, source_trust: 'untrusted_reference_data', fingerprint: hash(finalPrompt) };
+  const manifest = { version: 1, resolved: { workspace_id: workspace.id, area_id: area?.id || null, project_id: project?.id || null, task_id: route?.id || null, chat_id: chat?.id || null, agent_id: agent?.id || null }, current_instruction: { content: prompt, characters: prompt.length }, permissions, workspace_index: workspaceIndex, included, excluded, counts, limits: { context_characters: budget, total_characters: maxTotalCharacters, attachment_characters: 32000, recent_messages: 20 }, runtime_protocol_included: false, source_trust: 'untrusted_reference_data', fingerprint: hash(finalPrompt) };
   return { prefix, finalPrompt, manifest, counts, approximate_characters: counts.approximate_characters, truncated: sections.some(item => item.status === 'truncated' || ['context_budget', 'attachment_budget', 'selection_limit'].includes(item.reason)) };
 }

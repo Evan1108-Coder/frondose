@@ -30,6 +30,7 @@ import { featureItems } from '../lib/settings-catalog.js';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ActivityTimeline } from '../components/ActivityTimeline.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
+import { RumboAgentEntryButton } from '../components/RumboAgentEntry.jsx';
 import { routeForestRows } from '../lib/sub-routes.js';
 import './route-hierarchy-list.css';
 
@@ -434,6 +435,7 @@ function RouteDetail({ route }) {
         <Button icon={Pencil} onClick={() => edit("task", route)}>
           Edit route
         </Button>
+        <RumboAgentEntryButton source={{ type: 'task', id: route.id }} />
         <Button
           variant="primary"
           icon={Play}

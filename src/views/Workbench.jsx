@@ -10,12 +10,13 @@ import { SlashCommandMenu } from '../components/SlashCommandMenu.jsx';
 import { readWorkbenchLayout, saveWorkbenchLayout, workbenchRequest } from '../lib/workbench.js';
 import { visible } from '../lib/model.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
+import { RumboAgentEntryButton, RumboAgentEntryDialog } from '../components/RumboAgentEntry.jsx';
 import './workbench.css';
 
 const WorkbenchCheckpoints = lazy(() => import('../components/WorkbenchCheckpoints.jsx').then(module => ({ default: module.WorkbenchCheckpoints })));
 
 const TABS = [{ id: 'overview', label: 'Overview', icon: BookOpen }, { id: 'files', label: 'Files', icon: Folder }, { id: 'changes', label: 'Changes', icon: GitBranch }, { id: 'commands', label: 'Commands', icon: Code }, { id: 'terminal', label: 'Terminals', icon: Terminal }];
-const TERMINAL_COMMANDS = Object.freeze(['terminal.new', 'command', 'files', 'git.status', 'git.diff', 'git.branch', 'git.fetch', 'git.pull', 'git.commit', 'git.push', 'git.worktree', 'git.history']);
+const TERMINAL_COMMANDS = Object.freeze(['rumbo', 'terminal.new', 'command', 'files', 'git.status', 'git.diff', 'git.branch', 'git.fetch', 'git.pull', 'git.commit', 'git.push', 'git.worktree', 'git.history']);
 
 export function Workbench({ projectId }) {
   const { data, workspace, navigate, edit } = useApp();
@@ -37,6 +38,7 @@ function ProjectWorkbench({ project }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const [terminalSlash, setTerminalSlash] = useState(''), [terminalSlashIndex, setTerminalSlashIndex] = useState(0);
+  const [rumboRequest, setRumboRequest] = useState(null);
   const settingsQueue = useRef(Promise.resolve()), settingsWrite = useRef(0);
   const scope = useMemo(() => ({ workspaceId: workspace.id, projectId: project.id, environmentId: layout.environmentId }), [workspace.id, project.id, layout.environmentId]);
   const patchLayout = patch => setLayout(current => ({ ...current, ...patch }));
@@ -95,6 +97,7 @@ function ProjectWorkbench({ project }) {
   function executeTerminalSlash(command, argv = []) {
     const args = argv.join(' ').trim();
     setTerminalSlash(''); setTerminalSlashIndex(0); setError(null);
+    if (command.id === 'rumbo') { setRumboRequest(args || 'Help me plan the next step for this project. Explain before proposing changes.'); return; }
     if (command.id === 'terminal.new') { setDialog({ type: 'terminal' }); return; }
     if (command.id === 'files') { patchLayout({ tab: 'files', ...(args ? { file: args } : {}) }); return; }
     if (command.id === 'git.diff') { patchLayout({ tab: 'changes' }); return; }
@@ -119,7 +122,8 @@ function ProjectWorkbench({ project }) {
     executeTerminalSlash(command, exact ? parsed.argv : []);
   }
   return <main className="workbench-page">
-    <div className="wb-header"><div className="wb-identity"><button className="back-link" onClick={() => navigate('projects', project.id)}><ArrowLeft />{project.name}</button><h1>Workbench</h1></div><div className="wb-header-actions"><IconButton label="Refresh workbench" onClick={refreshAll} disabled={busy}><RotateCw /></IconButton><IconButton label="Workbench settings" onClick={() => setDialog({ type: 'settings' })}><Settings /></IconButton><Button onClick={() => setCheckpointsOpen(true)}>Checkpoints</Button>{root ? <Button icon={Plus} variant="primary" onClick={() => setDialog({ type: 'terminal' })}>New terminal</Button> : <Button icon={MessageCircle} variant="primary" onClick={() => edit('chat', null, { project_id: project.id })}>New conversation</Button>}</div></div>
+    {rumboRequest !== null ? <RumboAgentEntryDialog source={{ type: 'project', id: project.id }} initialInstruction={rumboRequest} onClose={() => setRumboRequest(null)} /> : null}
+    <div className="wb-header"><div className="wb-identity"><button className="back-link" onClick={() => navigate('projects', project.id)}><ArrowLeft />{project.name}</button><h1>Workbench</h1></div><div className="wb-header-actions"><IconButton label="Refresh workbench" onClick={refreshAll} disabled={busy}><RotateCw /></IconButton><IconButton label="Workbench settings" onClick={() => setDialog({ type: 'settings' })}><Settings /></IconButton><RumboAgentEntryButton source={{ type: 'project', id: project.id }} /><Button onClick={() => setCheckpointsOpen(true)}>Checkpoints</Button>{root ? <Button icon={Plus} variant="primary" onClick={() => setDialog({ type: 'terminal' })}>New terminal</Button> : <Button icon={MessageCircle} variant="primary" onClick={() => edit('chat', null, { project_id: project.id })}>New conversation</Button>}</div></div>
     <div className="wb-context-bar"><span className="wb-context-mode"><span className={`wb-state-dot ${root ? 'ready' : ''}`} />{root ? 'Read project · explicit coding execution' : 'Research & discussion'}</span>{root ? <><Select aria-label="Working environment" value={layout.environmentId} onChange={switchEnvironment}><option value="">Project folder</option>{summary?.environments.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><span className="wb-branch"><GitBranch />{git === null ? 'Checking repository…' : git.branch || 'No Git repository'}</span><code title={root}>{root}</code></> : <button className="text-button" onClick={() => edit('project', project)}><Folder />Link folder for coding</button>}</div>
     <ErrorMessage error={error || summary?.folderError} />
     <div className="wb-tabs" role="tablist" aria-label="Workbench views">{TABS.filter(item => root || item.id === 'overview').map(item => <button key={item.id} role="tab" aria-selected={layout.tab === item.id} onClick={() => patchLayout({ tab: item.id })}><item.icon />{item.label}{item.id === 'terminal' && terminals.length ? <span>{terminals.filter(row => row.status === 'running').length} live</span> : null}{item.id === 'changes' && git?.files.length ? <span>{git.files.length}</span> : null}</button>)}<div className="wb-tab-spacer" />{root && layout.tab === 'files' ? <IconButton label={settings.showFiles ? 'Hide file browser' : 'Show file browser'} onClick={() => saveSettings({ showFiles: !settings.showFiles })}><PanelLeft /></IconButton> : null}</div>

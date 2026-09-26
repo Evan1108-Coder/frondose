@@ -1,6 +1,12 @@
 # Schema and migration contract
 
-Updated September 24, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+Updated September 26, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+
+## Rumbo Agent compatibility storage
+
+Rumbo Agent uses existing `chats` (`kind='rumbo-agent'`), agent profiles, messages, runs, settings and chat-collaboration storage rather than a second execution engine. Workspace-scoped preferences contain provider/model/context defaults only. Explicit chat creation uses an actor/workspace-bound request identity for replay protection; source references in chat collaboration retain provenance and are revalidated through the canonical context compiler. Effective model/reasoning are captured with the user turn and used for retry validation. Existing records are not renamed or deleted, and opening the assistant does not provision an account/profile or start a run.
+
+The `rumboAgent:<workspaceId>` settings value stores validated defaults, including `include_workspace`; it is never an access grant. `rumbo_creation` and optional `rumbo_source` in chat collaboration preserve server-owned creation/source identity independently of display fields. Bounded workspace-index rows participate in the same captured/current access checks. `include_workspace` joins model/reasoning in turn metadata and exact context selection. Source-dependent retained artifacts block permanent chat deletion rather than losing provenance through null foreign keys; archive is recoverable. No schema migration or live-data rewrite is needed for this slice.
 
 ## Areas compatibility storage
 

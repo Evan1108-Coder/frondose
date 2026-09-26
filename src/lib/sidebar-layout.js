@@ -1,5 +1,11 @@
 export const BUILTIN_GROUPS = ['favorites', 'agents', 'teams', 'projects', 'chats'];
-export const SIDEBAR_TABS = ['overview', 'focus', 'inbox', 'updates', 'work', 'workbench', 'operations', 'workflows', 'views', 'tasks', 'skills', 'library', 'documents', 'memory', 'connections'];
+export const FIXED_SIDEBAR_TOP = ['overview', 'rumbo-agent'];
+export const isFixedSidebarEntry = key => FIXED_SIDEBAR_TOP.includes(key);
+function withFixedTop(layout) {
+  return { ...layout, root: [...FIXED_SIDEBAR_TOP, ...layout.root.filter(key => !isFixedSidebarEntry(key))],
+    groups: layout.groups.map(group => ({ ...group, items: group.items.filter(key => !isFixedSidebarEntry(key)) })) };
+}
+export const SIDEBAR_TABS = ['overview', 'rumbo-agent', 'focus', 'inbox', 'updates', 'work', 'workbench', 'operations', 'workflows', 'views', 'tasks', 'skills', 'library', 'documents', 'memory', 'connections'];
 const staticIds = new Set([...BUILTIN_GROUPS, ...SIDEBAR_TABS]);
 export const entityKey = (view, id) => 'entity:' + view + ':' + id;
 export function parseEntityKey(key) {
@@ -25,10 +31,10 @@ export function normalizeSidebarLayout(value, order) {
     if ((!validKey(key) && !groupIds.has(key)) || seen.has(key)) continue;
     seen.add(key); root.push(key);
   }
-  return { root, groups };
+  return withFixedTop({ root, groups });
 }
 export function moveSidebarEntry(layout, key, container = 'root', target = null, after = false) {
-  if (key === target) return layout;
+  if (key === target || isFixedSidebarEntry(key)) return layout;
   const group = layout.groups.find(g => g.id === container);
   // Built-in collections are never destinations, nor are nested groups supported.
   if (container !== 'root' && (!group || BUILTIN_GROUPS.includes(key) || key.startsWith('custom:'))) return layout;
@@ -39,10 +45,10 @@ export function moveSidebarEntry(layout, key, container = 'root', target = null,
   const index = target === null ? destination.length : destination.indexOf(target);
   if (index < 0) return layout;
   destination.splice(index + (target !== null && after ? 1 : 0), 0, key);
-  return { root, groups };
+  return withFixedTop({ root, groups });
 }
 export function removeSidebarGroup(layout, id) {
   const group = layout.groups.find(g => g.id === id);
   if (!group) return layout;
-  return { root: layout.root.flatMap(key => key === id ? group.items : [key]), groups: layout.groups.filter(g => g.id !== id) };
+  return withFixedTop({ root: layout.root.flatMap(key => key === id ? group.items : [key]), groups: layout.groups.filter(g => g.id !== id) });
 }

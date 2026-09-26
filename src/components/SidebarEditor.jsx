@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Button, Dialog, ErrorMessage, Select, useApp } from '../ui.jsx';
 import { ArrowDown, ArrowUp, RotateCcw } from './icons.jsx';
 import { NAV_ITEMS, SECTION_LABELS, normalizeOrganization, resolveFavorite, favoriteKey } from '../lib/organization.js';
-import { BUILTIN_GROUPS, moveSidebarEntry, removeSidebarGroup, entityKey, parseEntityKey } from '../lib/sidebar-layout.js';
+import { BUILTIN_GROUPS, moveSidebarEntry, removeSidebarGroup, entityKey, parseEntityKey, isFixedSidebarEntry } from '../lib/sidebar-layout.js';
 import { visible } from '../lib/model.js';
 
 export function SidebarEditor({ onClose }) {
@@ -16,21 +16,21 @@ export function SidebarEditor({ onClose }) {
   const patch = value => setDraft(current => ({ ...current, ...value }));
   const move = (key, container, target, after) => setDraft(current => ({ ...current, layout: moveSidebarEntry(current.layout, key, container, target, after) }));
   const dragProps = (key, container) => ({
-    draggable: true,
-    onDragStart: event => { drag.current = key; event.dataTransfer.setData('text/plain', label(key)); },
-    onDragOver: event => { if (drag.current) event.preventDefault(); },
-    onDrop: event => { event.preventDefault(); if (drag.current) { const box = event.currentTarget.getBoundingClientRect(); move(drag.current, container, key, event.clientY > box.top + box.height / 2); } drag.current = null; },
+    draggable: !isFixedSidebarEntry(key),
+    onDragStart: event => { if (isFixedSidebarEntry(key)) { event.preventDefault(); return; } drag.current = key; event.dataTransfer.setData('text/plain', label(key)); },
+    onDragOver: event => { if (drag.current && !isFixedSidebarEntry(key)) event.preventDefault(); },
+    onDrop: event => { event.preventDefault(); if (drag.current && !isFixedSidebarEntry(key)) { const box = event.currentTarget.getBoundingClientRect(); move(drag.current, container, key, event.clientY > box.top + box.height / 2); } drag.current = null; },
     onDragEnd: () => { drag.current = null; },
   });
   const row = (key, container, items) => {
     const ref = parseEntityKey(key), group = draft.layout.groups.find(g => g.id === key);
-    const index = items.indexOf(key);
+    const index = items.indexOf(key), fixed = isFixedSidebarEntry(key);
     return <div className="sidebar-layout-editor-row" key={key} {...dragProps(key, container)}>
       <span>{label(key)}</span>
-      <div className="sidebar-reorder">{[-1,1].map(offset => <button key={offset} aria-label={'Move ' + label(key) + (offset < 0 ? ' up' : ' down')} disabled={!items[index + offset]} onClick={() => move(key, container, items[index + offset], offset > 0)}>{offset < 0 ? <ArrowUp /> : <ArrowDown />}</button>)}</div>
-      {!group && !BUILTIN_GROUPS.includes(key) ? <Select aria-label={'Group for ' + label(key)} value={container} onChange={value => move(key, value)}><option value="root">Top level</option>{draft.layout.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select> : null}
-      {!ref ? <Select aria-label={label(key) + ' visibility'} value={draft.visibility[key] ?? 'always'} onChange={value => patch({ visibility: { ...draft.visibility, [key]: value } })}><option value="always">Show</option><option value="hidden">Hide</option><option value="activity">With activity</option></Select> : null}
-      {!ref ? <Button onClick={() => patch({ pinnedLayout: draft.pinnedLayout.includes(key) ? draft.pinnedLayout.filter(id => id !== key) : [...draft.pinnedLayout, key], layout: draft.pinnedLayout.includes(key) ? draft.layout : moveSidebarEntry(draft.layout, key, 'root', draft.layout.root[0]) })}>{draft.pinnedLayout.includes(key) ? 'Unpin' : 'Pin'}</Button> : null}
+      <div className="sidebar-reorder">{[-1,1].map(offset => <button key={offset} aria-label={'Move ' + label(key) + (offset < 0 ? ' up' : ' down')} disabled={fixed || !items[index + offset] || isFixedSidebarEntry(items[index + offset])} onClick={() => move(key, container, items[index + offset], offset > 0)}>{offset < 0 ? <ArrowUp /> : <ArrowDown />}</button>)}</div>
+      {!fixed && !group && !BUILTIN_GROUPS.includes(key) ? <Select aria-label={'Group for ' + label(key)} value={container} onChange={value => move(key, value)}><option value="root">Top level</option>{draft.layout.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select> : null}
+      {!ref ? <Select aria-label={label(key) + ' visibility'} disabled={key === 'rumbo-agent'} value={draft.visibility[key] ?? 'always'} onChange={value => patch({ visibility: { ...draft.visibility, [key]: value } })}><option value="always">Show</option><option value="hidden">Hide</option><option value="activity">With activity</option></Select> : null}
+      {fixed ? <span className="organization-note">Fixed at top</span> : !ref ? <Button onClick={() => patch({ pinnedLayout: draft.pinnedLayout.includes(key) ? draft.pinnedLayout.filter(id => id !== key) : [...draft.pinnedLayout, key], layout: draft.pinnedLayout.includes(key) ? draft.layout : moveSidebarEntry(draft.layout, key, 'root', draft.layout.root[0]) })}>{draft.pinnedLayout.includes(key) ? 'Unpin' : 'Pin'}</Button> : null}
     </div>;
   };
   return <Dialog title="Customize sidebar" subtitle={'Your layout for ' + workspace.name} onClose={onClose} className="sidebar-editor">
@@ -43,7 +43,7 @@ export function SidebarEditor({ onClose }) {
         <div className="sidebar-custom-editor"><input aria-label="New group name" placeholder="Group name" maxLength={60} value={name} onChange={event => setName(event.target.value)} /><Button disabled={!name.trim() || draft.layout.groups.length >= 30} onClick={() => { const id = 'custom:' + crypto.randomUUID(); patch({ layout: { root: [...draft.layout.root, id], groups: [...draft.layout.groups, { id, name: name.trim(), items: [], collapsed: false }] } }); setName(''); }}>Create group</Button></div>
         {draft.layout.groups.map(group => <div key={group.id}><div className="sidebar-custom-editor"><input aria-label={'Rename ' + group.name} value={group.name} maxLength={60} onChange={event => patch({ layout: { ...draft.layout, groups: draft.layout.groups.map(g => g.id === group.id ? { ...g, name: event.target.value } : g) } })} /><Button onClick={() => patch({ layout: removeSidebarGroup(draft.layout, group.id) })}>Remove group</Button></div>{group.items.map(key => row(key, group.id, group.items))}<p className="organization-note">Removing a group moves its tabs back to the sidebar.</p></div>)}
       </section>
-      <section><h3>Sidebar order</h3><p className="organization-note">Drag any row above or below another, or use the arrows. Use “Group for” to move tabs into a custom group or back to the top level.</p>{draft.layout.root.map(key => row(key, 'root', draft.layout.root))}</section>
+      <section><h3>Sidebar order</h3><p className="organization-note">Today and Rumbo Agent stay at the top. Rumbo Agent is always visible. Reorder the other rows with drag or arrows, or use “Group for” to move them into custom groups.</p>{draft.layout.root.map(key => row(key, 'root', draft.layout.root))}</section>
       <section><h3>Project, team, agent, and chat shortcuts</h3>{['projects','teams','agents','chats'].flatMap(view => visible(data[view] ?? []).map(item => {
         const key = entityKey(view, item.id);
         const placed = draft.layout.root.includes(key) || draft.layout.groups.some(g => g.items.includes(key));

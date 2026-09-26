@@ -62,7 +62,7 @@ export function turnBlocker({ agent, readiness, folder, activeRun, files, permis
 }
 
 export function restoreComposer(chat, agents, storage) {
-  const base = { text: '', files: [], recipient: defaultRecipient(chat, agents), version: 0, turn: null, permission: 'conversation', memory: true, nativeTools: false, retryKeys: {}, retryNativeTools: {}, replyTo: null, context: null };
+  const base = { text: '', files: [], recipient: defaultRecipient(chat, agents), version: 0, turn: null, permission: 'conversation', memory: true, nativeTools: false, model: '', reasoning: '', includeChat: true, includeWorkspace: chat.kind === 'rumbo-agent', contextPackIds: [], retryKeys: {}, retryNativeTools: {}, replyTo: null, context: null };
   try {
     const saved = JSON.parse(storage?.getItem(`rumbo.composer.v2.${chat.id}`) || 'null');
     if (!saved || ![2, 3, 4].includes(saved.version)) return { ...base, text: storage?.getItem(`rumbo.draft.${chat.id}`) || '' };
@@ -70,6 +70,12 @@ export function restoreComposer(chat, agents, storage) {
       files: Array.isArray(saved.files) ? saved.files.filter(file => file && typeof file.name === 'string' && typeof file.content === 'string') : [],
       recipient: typeof saved.recipient === 'string' ? saved.recipient : base.recipient,
       turn: typeof saved.turn === 'string' ? saved.turn : null,
+      model: typeof saved.model === 'string' ? saved.model.slice(0, 160) : '',
+      reasoning: typeof saved.reasoning === 'string' ? saved.reasoning.slice(0, 32) : '',
+      includeChat: saved.includeChat !== false,
+      includeWorkspace: typeof saved.includeWorkspace === 'boolean' ? saved.includeWorkspace : base.includeWorkspace,
+      hasSavedPreferences: Object.hasOwn(saved, 'model'),
+      contextPackIds: Array.isArray(saved.contextPackIds) ? [...new Set(saved.contextPackIds.filter(id => typeof id === 'string'))].slice(0, 20) : [],
       // Preserve the original choice only for recovery of an uncertain delivery.
       // A new launch never inherits native-tool consent from a saved draft.
       nativeTools: typeof saved.turn === 'string' && Boolean(saved.turn) && saved.nativeTools === true,
@@ -86,7 +92,7 @@ export function restoreComposer(chat, agents, storage) {
 }
 export function persistComposer(chatId, composer, storage) {
   try {
-    storage?.setItem(`rumbo.composer.v2.${chatId}`, JSON.stringify({ version: 4, text: composer.text, files: composer.files, recipient: composer.recipient, turn: composer.turn, permission: composer.permission, memory: composer.memory, nativeTools: Boolean(composer.turn) && composer.nativeTools === true, retryKeys: composer.retryKeys, retryNativeTools: Object.fromEntries(Object.entries(composer.retryNativeTools || {}).filter(([id]) => Boolean(composer.retryKeys?.[id]))), replyTo: composer.replyTo, context: composer.context }));
+storage?.setItem(`rumbo.composer.v2.${chatId}`, JSON.stringify({ version: 4, model: composer.model, reasoning: composer.reasoning, includeChat: composer.includeChat, includeWorkspace: composer.includeWorkspace, contextPackIds: composer.contextPackIds, text: composer.text, files: composer.files, recipient: composer.recipient, turn: composer.turn, permission: composer.permission, memory: composer.memory, nativeTools: Boolean(composer.turn) && composer.nativeTools === true, retryKeys: composer.retryKeys, retryNativeTools: Object.fromEntries(Object.entries(composer.retryNativeTools || {}).filter(([id]) => Boolean(composer.retryKeys?.[id]))), replyTo: composer.replyTo, context: composer.context }));
     storage?.setItem(`rumbo.draft.${chatId}`, composer.text);
     return true;
   } catch { return false; }

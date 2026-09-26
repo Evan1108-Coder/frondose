@@ -3,6 +3,7 @@ import { normalizeSidebarLayout } from './sidebar-layout.js';
 
 export const NAV_ITEMS = [
   { id: "overview", label: "Today", key: "O" },
+  { id: "rumbo-agent", label: "Rumbo Agent", key: "" },
   { id: "focus", label: "Focus", key: "F" },
   { id: "inbox", label: "Inbox", key: "I" },
   { id: "updates", label: "Updates", key: "U" },
@@ -24,7 +25,7 @@ export const NAV_ITEMS = [
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
-  primary: ["overview", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
+  primary: ["overview", "rumbo-agent", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
   sections: ["favorites", "agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
@@ -37,6 +38,7 @@ export function normalizeOrganization(value) {
   const input = value?.version === 1 ? value : {};
   const order = Object.fromEntries(Object.entries(SIDEBAR_GROUPS).map(([key, defaults]) => [key, ids(input.order?.[key], defaults)]));
   const visibility = Object.fromEntries(Object.values(SIDEBAR_GROUPS).flat().map(id => [id, ["always", "activity", "hidden"].includes(input.visibility?.[id]) ? input.visibility[id] : id === "favorites" ? "activity" : "always"]));
+  visibility['rumbo-agent'] = 'always';
   const favorites = [], seen = new Set();
   for (const item of Array.isArray(input.favorites) ? input.favorites.slice(0, 100) : []) {
     if (!FAVORITE_VIEWS.has(item?.view) || !validString(item.id) || seen.has(favoriteKey(item))) continue;

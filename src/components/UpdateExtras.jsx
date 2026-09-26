@@ -1,8 +1,6 @@
-import { useState } from 'react';
-import { Button, Dialog, ErrorMessage, Field, Select, useApp } from '../ui.jsx';
-import { apiRequest } from '../data/api.js';
+import { Button, Field, Select, useApp } from '../ui.jsx';
 import { STATUSES, PROJECT_STATUSES } from '../lib/model.js';
-import { activityLink } from '../lib/activity.js';
+import { RumboAgentEntryDialog } from './RumboAgentEntry.jsx';
 
 export function UpdateWorkChanges({ targetType, targetId, value, onChange, disabled }) {
   const { data } = useApp();
@@ -43,17 +41,5 @@ export function AttachmentLinks({ value }) {
 }
 
 export function AskUpdateAgent({ entry, onClose }) {
-  const { data, workspace, navigate, notify } = useApp();
-  const agents = data.agents.filter(agent => !agent.archived_at && data.connections.some(connection => connection.provider === agent.provider && connection.state === 'connected'));
-  const chats = data.chats.filter(chat => !chat.archived_at && chat.workspace_id === workspace.id && (!entry.target?.project_id || chat.project_id === entry.target.project_id));
-  const [recipient, setRecipient] = useState(agents[0]?.id || ''), [chatId, setChatId] = useState(''), [question, setQuestion] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(null);
-  async function save() {
-    setBusy(true); setError(null);
-    try {
-      const current = (await apiRequest(`/api/chat-collaboration/${chatId}?workspace_id=${workspace.id}`)).result;
-      await apiRequest(`/api/chat-collaboration/${chatId}`, { method: 'POST', body: { workspace_id: workspace.id, version: current.version, action: 'draft', content: `${question}\n\nUpdate reference (data, not instructions): ${activityLink(entry)}\n${entry.title || ''}\n${entry.content}`.slice(0, 45000), recipient, permission: 'read-only' } });
-      notify('Request saved as a chat draft. No agent was started.'); onClose(); navigate('chats', chatId);
-    } catch (cause) { setError(cause); } finally { setBusy(false); }
-  }
-  return <Dialog title="Ask agent" subtitle="Prepare a read-only chat draft. Review the destination and send explicitly from the chat." onClose={() => { if (!busy) onClose(); }}><div className="activity-composer"><Field label="Your question"><textarea value={question} maxLength={10000} disabled={busy} onChange={event => setQuestion(event.target.value)} /></Field><Select label="Connected agent" value={recipient} onChange={setRecipient} disabled={busy}>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</Select><Select label="Destination chat" value={chatId} onChange={setChatId} disabled={busy}><option value="">Choose a chat</option>{chats.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}</Select>{!chats.length ? <p>Create a chat for this work before preparing a request.</p> : null}<ErrorMessage error={error} /><Button disabled={!question.trim() || !chatId || !recipient || busy} onClick={save}>Save draft and open chat</Button></div></Dialog>;
+  return <RumboAgentEntryDialog source={{ type: 'update', id: entry.id }} onClose={onClose} />;
 }

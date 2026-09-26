@@ -139,7 +139,7 @@ export function beginRunUsage(db, runId) {
   const record = {
     run_id: run.id, workspace_id: run.workspace_id, provider: run.provider, mode: 'independent',
     agent_id: run.agent_id || null, agent_profile_version: Number.isSafeInteger(run.agent_profile_version) ? run.agent_profile_version : null,
-    model: profileModel(db, run), project_id: run.project_id || null, task_id: run.task_id || null,
+    model: context.inspection.request?.model ?? profileModel(db, run), project_id: run.project_id || null, task_id: run.task_id || null,
     workflow_id: linked?.workflow_id || null, workflow_run_id: linked?.workflow_run_id || null,
     context_fingerprint: context.inspection.manifest.fingerprint, source_access_json: JSON.stringify(captured),
     started_at: run.started_at || run.created_at || now(),

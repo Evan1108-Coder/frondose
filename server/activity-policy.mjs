@@ -1,3 +1,5 @@
+import { assertRumboSourceReferences } from './context-source-access.mjs';
+
 export const ACTIVITY_TARGET_TABLES = Object.freeze({ project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', output: 'outputs', milestone: 'milestones', chat: 'chats' });
 const AREAS = { project: 'projects', route: 'routes', request: 'workspace', document: 'documents', output: 'documents', milestone: 'projects', chat: 'chats' };
 const VIEWS = { project: 'projects', route: 'tasks', request: 'requests', document: 'documents', output: 'library', milestone: 'projects', chat: 'chats' };
@@ -27,6 +29,10 @@ export function createActivityPolicy(db, allowed = () => true) {
   function permitted(entry, actor, verb) {
     const destination = target(entry);
     if (!destination || !destination.scopes.every(at => allowed(entry.workspace_id, actor, `${destination.area}.${verb}`, at))) return false;
+    try {
+      assertRumboSourceReferences(db, entry, 'activity_entries', actor, allowed);
+      assertRumboSourceReferences(db, destination.item, destination.table, actor, allowed);
+    } catch { return false; }
     return !destination.requestRoute || allowed(entry.workspace_id, actor, 'routes.read', destination.at);
   }
   function visible(entry, actor, { exporting = false } = {}) {

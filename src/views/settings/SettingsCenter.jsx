@@ -4,6 +4,7 @@ import { AreaSettings, useAreaSettings } from '../../components/AreaSettings.jsx
 import { ColorableNavItem, useIconColors } from '../../components/IconColors.jsx';
 import { DisplayPreferences } from './DisplayPreferences.jsx';
 import { NotificationPreferences } from './NotificationPreferences.jsx';
+import { RumboAgentPreferences } from './RumboAgentPreferences.jsx';
 import { ServiceLogo } from '../../components/ServiceLogo.jsx';
 import { Button, Dialog, ErrorMessage, Field, Select, Toggle, Empty, useApp, useAsync } from '../../ui.jsx';
 import { ArrowLeft, ArrowRight, Plus, Search, Settings, Users, Bot, FileText, ShieldCheck, Plug, Activity, Download, Pencil, Check, Clock } from '../../components/icons.jsx';
@@ -28,7 +29,7 @@ import { SlidersHorizontal, Focus, Tag, Tags, ListChecks, PanelsTopLeft, Radio, 
 
 const ICONS = { Personal: Settings, Routes: FileText, Projects: FileText, 'Agents & work': Bot, Collaboration: Users, Connections: Plug, Administration: ShieldCheck };
 const WorkspaceUsage = lazy(() => import('../../components/RunUsage.jsx').then(module => ({ default: module.WorkspaceUsage })));
-const PAGE_ICONS = { awareness: Database, preferences: SlidersHorizontal, profile: CircleUser, appearance: Paintbrush, 'home-attention': Focus, notifications: Bell, 'code-reviews': Code, 'personal-security': KeyRound, accounts: UserRoundCog, personalization: Sparkles, 'route-labels': Tag, 'project-labels': Tags, 'route-templates': ListChecks, 'project-templates': PanelsTopLeft, 'route-workflow': Route, 'project-statuses': Waypoints, repeating: TimerReset, intake: Inbox, updates: Flag, agents: Bot, collections: Shapes, presets: ScrollText, context: BookOpen, permissions: ShieldCheck, workbench: Terminal, coordination: Network, 'output-policy': Package, queue: ListOrdered, handoffs: GitFork, automations: Workflow, chats: MessageSquareText, documents: NotebookPen, views: SquareStack, requests: Radio, goals: Target, reviews: ClipboardCheck, emojis: Smile, integrations: Cable, workspace: FolderKanban, teams: Users, members: UserRound, security: ShieldUser, applications: AppWindow, api: Webhook, billing: ReceiptText, usage: Gauge, retention: ArchiveRestore, storage: Download, audit: History };
+const PAGE_ICONS = { 'rumbo-agent': MessageCircle, awareness: Database, preferences: SlidersHorizontal, profile: CircleUser, appearance: Paintbrush, 'home-attention': Focus, notifications: Bell, 'code-reviews': Code, 'personal-security': KeyRound, accounts: UserRoundCog, personalization: Sparkles, 'route-labels': Tag, 'project-labels': Tags, 'route-templates': ListChecks, 'project-templates': PanelsTopLeft, 'route-workflow': Route, 'project-statuses': Waypoints, repeating: TimerReset, intake: Inbox, updates: Flag, agents: Bot, collections: Shapes, presets: ScrollText, context: BookOpen, permissions: ShieldCheck, workbench: Terminal, coordination: Network, 'output-policy': Package, queue: ListOrdered, handoffs: GitFork, automations: Workflow, chats: MessageSquareText, documents: NotebookPen, views: SquareStack, requests: Radio, goals: Target, reviews: ClipboardCheck, emojis: Smile, integrations: Cable, workspace: FolderKanban, teams: Users, members: UserRound, security: ShieldUser, applications: AppWindow, api: Webhook, billing: ReceiptText, usage: Gauge, retention: ArchiveRestore, storage: Download, audit: History };
 export function SettingsCenter() {
   const { data, page, navigate, workspace } = useApp();
   const { colorsFor } = useIconColors();
@@ -68,6 +69,7 @@ function SettingsContent({ section, teamId }) {
   const update = (group, value) => perform(() => rumboActions.updateSettings({ [group]: value }), 'Preference saved');
   if (teamId) return <TeamSettings teamId={teamId} />;
   if (section === 'awareness') return <AgentAwarenessSettings />;
+  if (section === 'rumbo-agent') return <RumboAgentPreferences />;
   if (section === 'personal-security') return <IdentitySettings />;
   if (section === 'code-reviews') return <CodeAppearanceSettings />;
   if (['security', 'members', 'access-approvals'].includes(section)) return <GovernanceSettings initialTab={section === 'members' ? 'members' : section === 'access-approvals' ? 'approvals' : 'roles'} />;

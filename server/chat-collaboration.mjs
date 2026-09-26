@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
+import { chatHasRumboSourceHistory } from './context-source-access.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
 
 const stamp = () => new Date().toISOString();
@@ -115,8 +116,9 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
     send(res, 200, { result: match[2] ? contextSnapshot(db, match[2], chat.id) : current }); return true;
   }
   if (req.method !== 'POST' || match[2]) return false;
+  if (chatHasRumboSourceHistory(db, chat.id) && ['branch', 'document'].includes(body.action)) throw validationError('Source-bound Rumbo Agent chats cannot be branched or converted to documents yet. Keep this conversation linked to its reviewed source.');
   if (body.version !== current.version) throw Object.assign(validationError('This conversation changed elsewhere. Refresh before trying again.'), { statusCode: 409 });
-  const payload = { bookmarks: current.bookmarks, drafts: current.drafts, branch: current.branch, reactions: current.reactions };
+  const payload = { bookmarks: current.bookmarks, drafts: current.drafts, branch: current.branch, reactions: current.reactions, ...(current.rumbo_source ? { rumbo_source: current.rumbo_source } : {}), ...(current.rumbo_creation ? { rumbo_creation: current.rumbo_creation } : {}) };
   let result;
   db.exec('BEGIN');
   try {
