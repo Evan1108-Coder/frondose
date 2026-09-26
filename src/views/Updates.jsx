@@ -57,7 +57,7 @@ function UpdateResults({ workspaceId, filters, savedEntries }) {
   return <section className="updates-results" aria-label="Workspace updates" aria-busy={loading}>
     <ErrorMessage error={error} />
     {displayed.map(entry => <FeedConversation key={entry.id} entry={entry} workspaceId={workspaceId} />)}
-    {loading ? <p role="status" className="updates-load-state">Loading updates…</p> : error ? <Button onClick={() => setRetry(value => value + 1)}>Try again</Button> : !displayed.length ? <Empty icon={MessageSquareText} title={filters.publicationState === 'draft' ? 'No drafts match' : 'No updates match'} description="Try different filters, or write an update on a project, Route, or another workspace item." /> : next ? <Button onClick={() => setCursor(next)}>Load more updates</Button> : <p className="updates-load-state">You have reached the end of this feed.</p>}
+    {loading ? <p role="status" className="updates-load-state">Loading updates…</p> : error ? <Button onClick={() => setRetry(value => value + 1)}>Try again</Button> : !displayed.length ? <Empty kind="update" icon={MessageSquareText} title={filters.publicationState === 'draft' ? 'No drafts match' : 'No updates match'} description="Try different filters, or write an update on a project, Route, or another workspace item." /> : next ? <Button onClick={() => setCursor(next)}>Load more updates</Button> : <p className="updates-load-state">You have reached the end of this feed.</p>}
   </section>;
 }
 

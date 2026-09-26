@@ -16,7 +16,8 @@ const iconKinds = new Map([
   [Users, "teams"],
 ]);
 
-// Each illustration shares the same directional line language, not an icon tile.
+// Semantic drawings stay distinct; their shared oblique scenes provide one
+// restrained relief language without turning empty states into enlarged icons.
 const illustrations = {
   ...emptyArtCatalog,
   teams: (
@@ -107,6 +108,36 @@ const illustrations = {
   ),
 };
 
+const sceneKinds = {
+  orbit: new Set(['overview', 'focus', 'teams', 'agents', 'connections', 'goal', 'emoji', 'accounts', 'notifications', 'personalization', 'security', 'permissions', 'usage', 'audit', 'automation', 'repeating']),
+  stack: new Set(['documents', 'memory', 'projects', 'archive', 'library', 'resources', 'collection', 'context_pack', 'saved_view', 'review', 'storage', 'milestones', 'route_template', 'project_template']),
+  panel: new Set(['workbench', 'work', 'chats', 'inbox', 'search', 'chat_template', 'request', 'update', 'preferences', 'profile', 'appearance', 'code', 'members', 'applications', 'api', 'billing', 'route_label', 'project_label', 'preset']),
+};
+
+function EmptyArtScene({ kind }) {
+  const scene = Object.entries(sceneKinds).find(([, kinds]) => kinds.has(kind))?.[0] ?? 'flow';
+  if (scene === 'orbit') return <>
+    <ellipse className="empty-art-scene-far" cx="121" cy="104" rx="91" ry="43" transform="rotate(-12 121 104)" />
+    <path className="empty-art-scene-mid" d="M33 104c-3-24 29-48 70-53m76 10c29 11 40 28 34 48M45 132c31 28 113 33 153 6" />
+    <ellipse className="empty-art-scene-dash" cx="121" cy="95" rx="91" ry="43" transform="rotate(-12 121 95)" />
+  </>;
+  if (scene === 'stack') return <>
+    <path className="empty-art-scene-far" d="m30 125 84-47 99 39-84 47-99-39Z" />
+    <path className="empty-art-scene-mid" d="m30 113 84-47 99 39-84 47-99-39Zm0 12v-12m99 51v-12m84-35v-12" />
+    <path className="empty-art-scene-near" d="m30 101 84-47 99 39-84 47-99-39Z" />
+  </>;
+  if (scene === 'panel') return <>
+    <path className="empty-art-scene-far" d="m30 64 154-25 27 19v91l-154 25-27-19V64Z" />
+    <path className="empty-art-scene-mid" d="m30 53 154-25 27 19v91l-154 25-27-19V53Z" />
+    <path className="empty-art-scene-near" d="m30 42 154-25 27 19v91l-154 25-27-19V42Z" />
+  </>;
+  return <>
+    <path className="empty-art-scene-far" d="M43 42c24-21 61-25 90-10m46 10c31 24 44 60 24 90M38 139c21 24 59 32 90 18" />
+    <path className="empty-art-scene-mid" d="M28 91c-1-18 8-36 24-48m133-6c19 13 32 29 36 47M28 106c5 16 17 31 33 40" />
+    <path className="empty-art-scene-near" d="m37 82-13 14 14 14m163-27 14 14-14 14M104 25l16-10 16 10m-32 130 16 10 16-10" />
+  </>;
+}
+
 export const EMPTY_ART_KINDS = Object.freeze(Object.keys(illustrations));
 export function resolveEmptyArtKind(kind) {
   const resolved = emptyArtAliases[kind] ?? kind;
@@ -122,13 +153,16 @@ export function EmptyIllustration({ kind = "overview" }) {
       viewBox="0 0 240 180"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth="2.4"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      {illustrations[resolved]}
+      <EmptyArtScene kind={resolved} />
+      <g className="empty-art-symbol" transform="translate(38 30) scale(.68 .67)">
+        {illustrations[resolved]}
+      </g>
     </svg>
   );
 }

@@ -40,6 +40,27 @@
   height: auto;
 }
 
+.empty-illustration .empty-art-scene-far {
+  opacity: .12;
+}
+
+.empty-illustration .empty-art-scene-mid {
+  opacity: .25;
+}
+
+.empty-illustration .empty-art-scene-near {
+  opacity: .44;
+}
+
+.empty-illustration .empty-art-scene-dash {
+  opacity: .34;
+  stroke-dasharray: 4 9;
+}
+
+.empty-illustration .empty-art-symbol {
+  stroke-width: 2.8;
+}
+
 .rumbo-empty .empty-art-back {
   opacity: 0.35;
 }

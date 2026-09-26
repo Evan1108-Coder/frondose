@@ -18,7 +18,19 @@ test('every interface icon is backed by actual Lucide geometry and no Phosphor i
   }
   const empty = readFileSync(new URL('../src/components/EmptyState.jsx', import.meta.url), 'utf8');
   assert.match(empty, /const illustrations =/);
-  assert.match(empty, /m115 20 46 21/); // Existing custom Routes illustration stays intact.
+  assert.match(empty, /m115 20 46 21/); // Routes retains its semantic drawing.
+  assert.match(empty, /<EmptyArtScene kind=\{resolved\}/);
+  assert.match(empty, /className="empty-art-symbol"/);
+});
+
+test('every empty-state drawing uses the shared theme-aware relief treatment', () => {
+  const art = readFileSync(new URL('../src/components/EmptyState.jsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/components/empty-state.css', import.meta.url), 'utf8');
+  assert.match(art, /sceneKinds = \{/);
+  for (const scene of ['orbit', 'stack', 'panel', 'flow']) assert.match(art, new RegExp(`scene === '${scene}'|return <>`));
+  for (const layer of ['far', 'mid', 'near', 'dash']) assert.match(css, new RegExp(`empty-art-scene-${layer}`));
+  assert.match(art, /stroke="currentColor"/);
+  assert.doesNotMatch(art, /#[0-9a-fA-F]{3,8}/);
 });
 
 test('Morphicons transitions retarget and settle to canonical Lucide geometry within 300ms', () => {
