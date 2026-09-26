@@ -12,9 +12,9 @@ export function DisplayPreferences({ colors = false }) {
   const update = patch => { try { save(patch); setError(null); } catch { setError(new Error('Your browser could not save this preference. Check available storage and try again.')); } };
   return <section className="settings-panel display-preferences"><h2>{colors ? 'Icons & name colors' : 'Chat scrolling'}</h2><p>Personal to this browser. Area defaults are shared; your individual overrides are not.</p>{colors ? <>
     <div className="empty-color-preview" style={{ '--empty-icon-color': settings.emptyIconColor || 'var(--text)' }}><EmptyIllustration kind="teams" /><strong style={{ color: settings.emptyTextColor || 'var(--text)' }}>Empty-state preview</strong></div>
-    <ColorChoice label="Global empty-state illustration color" value={settings.emptyIconColor} onChange={emptyIconColor => update({ emptyIconColor })} />
-    <p>Illustrations default to neutral theme text color, not the Area color. A custom global color applies unless you enable Area overrides below.</p>
-    <Toggle label="Use Area illustration colors" checked={settings.emptyIconFollowArea} onChange={emptyIconFollowArea => update({ emptyIconFollowArea })} />
+    <ColorChoice label="Global empty-state image tint" value={settings.emptyIconColor} onChange={emptyIconColor => update({ emptyIconColor })} />
+    <p>Generated images retain their photographed material and shading. This color tints them; the default is neutral, not the Area color. Area overrides are optional below.</p>
+    <Toggle label="Use Area image tints" checked={settings.emptyIconFollowArea} onChange={emptyIconFollowArea => update({ emptyIconFollowArea })} />
     <ColorChoice label="Empty-state text color" value={settings.emptyTextColor} onChange={emptyTextColor => update({ emptyTextColor })} />
     <p>Headings and descriptions use neutral theme colors by default, independently of Area and illustration colors. Choose a custom text color here if you prefer.</p>
     <ColorChoice label="Global tab icon color" value={settings.tabIconColor} onChange={tabIconColor => update({ tabIconColor })} />

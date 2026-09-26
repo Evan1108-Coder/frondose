@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import * as lucide from 'lucide';
 import { canonicalD, createMorph } from 'morphicons/dom';
 import { ICON_SPRING, ICON_HOVER_SPRING, hoverShape, activationSpec, arrowFrame, activateIcon, registerIcon } from '../src/lib/icon-motion.js';
+import { emptyArtKinds } from '../src/components/empty-art-catalog.js';
 
 test('every interface icon is backed by actual Lucide geometry and no Phosphor imports remain', () => {
   const source = readFileSync(new URL('../src/components/icons.jsx', import.meta.url), 'utf8');
@@ -17,20 +19,17 @@ test('every interface icon is backed by actual Lucide geometry and no Phosphor i
     assert.doesNotMatch(readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'), /@phosphor-icons/);
   }
   const empty = readFileSync(new URL('../src/components/EmptyState.jsx', import.meta.url), 'utf8');
-  assert.match(empty, /const illustrations =/);
-  assert.match(empty, /m115 20 46 21/); // Routes retains its semantic drawing.
-  assert.match(empty, /<EmptyArtScene kind=\{resolved\}/);
-  assert.match(empty, /className="empty-art-symbol"/);
+  assert.match(empty, /<img src=\{source\}/);
+  assert.match(empty, /\/empty-art\/\$\{resolved\}\.webp/);
+  assert.doesNotMatch(empty, /<svg|<EmptyArtScene/);
 });
 
-test('every empty-state drawing uses the shared theme-aware relief treatment', () => {
+test('empty states use photographic assets with a theme-aware tint overlay', () => {
   const art = readFileSync(new URL('../src/components/EmptyState.jsx', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../src/components/empty-state.css', import.meta.url), 'utf8');
-  assert.match(art, /sceneKinds = \{/);
-  for (const scene of ['orbit', 'stack', 'panel', 'flow']) assert.match(art, new RegExp(`scene === '${scene}'|return <>`));
-  for (const layer of ['far', 'mid', 'near', 'dash']) assert.match(css, new RegExp(`empty-art-scene-${layer}`));
-  assert.match(art, /stroke="currentColor"/);
-  assert.doesNotMatch(art, /#[0-9a-fA-F]{3,8}/);
+  assert.match(art, /empty-illustration-tint/);
+  assert.match(css, /mask: var\(--empty-art-source\)/);
+  assert.match(css, /mix-blend-mode: color/);
   const agentCss = readFileSync(new URL('../src/views/rumbo-agent.css', import.meta.url), 'utf8');
   assert.match(agentCss, /\.rumbo-agent-disconnected > \.empty-illustration \{[^}]*width: 220px/);
 });
@@ -138,12 +137,20 @@ test('all icons share one delegated click subscription and clean up on final unm
   } finally { for (const [key, value] of Object.entries(before)) if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
 });
 
-test('every settings resource has dedicated artwork and a distinct settings navigation symbol', () => {
-  const art = readFileSync(new URL('../src/components/empty-art-catalog.jsx', import.meta.url), 'utf8');
-  const kinds = [...art.matchAll(/^  ([a-z_]+): <>/gm)].map(match => match[1]);
-  assert.ok(kinds.length >= 40);
+test('every empty-state resource has a generated photographic asset and distinct settings navigation symbol', () => {
+  const kinds = emptyArtKinds;
+  assert.ok(kinds.length >= 57);
   assert.equal(new Set(kinds).size, kinds.length);
-  for (const kind of ['route_label', 'project_label', 'route_status', 'project_status', 'route_template', 'project_template', 'chat_template', 'collection', 'preset', 'context_pack', 'queue', 'handoff', 'automation', 'saved_view', 'request', 'goal', 'review', 'update', 'emoji']) assert.ok(kinds.includes(kind), kind);
+  const imageHashes = new Set();
+  for (const kind of kinds) {
+    const asset = new URL(`../public/empty-art/${kind}.webp`, import.meta.url);
+    const bytes = readFileSync(asset);
+    assert.equal(bytes.toString('ascii', 0, 4), 'RIFF', kind);
+    assert.equal(bytes.toString('ascii', 8, 12), 'WEBP', kind);
+    assert.ok(statSync(asset).size > 8_000, kind);
+    imageHashes.add(createHash('sha256').update(bytes).digest('hex'));
+  }
+  assert.equal(imageHashes.size, kinds.length, 'every kind should have its own generated image');
   const settings = readFileSync(new URL('../src/views/settings/SettingsCenter.jsx', import.meta.url), 'utf8');
   const mapping = settings.match(/const PAGE_ICONS = \{([^}]+)\}/)[1];
   const icons = [...mapping.matchAll(/:\s*(\w+)/g)].map(match => match[1]);

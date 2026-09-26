@@ -2,29 +2,21 @@
 
 ## Purpose
 
-One reusable illustration language for empty tabs, search results, settings resources, and disconnected states. The artwork should orient a person without overpowering the title, explanation, or primary action.
+Use a coherent family of generated photographic product renders for empty tabs, search results, settings resources, and disconnected states. These are decorative aids; the title, explanation, and real next action remain the accessible source of meaning.
 
-## Reference family
+## Reference and direction
 
-Four user-supplied September 26 screenshots show isolated monochrome line objects on a near-black field: an oblique round object, an orbit of small objects, a layered stack, and a central object with surrounding arcs. They are style references, not assets to copy. Rumbo keeps its own semantic drawings and compositions.
+The four user-supplied September 26 references showed monochrome isolated objects, oblique depth, layered forms, and large negative space. They are composition references, not assets to copy. The approved direction is an actual generated image per semantic kind—not SVG line drawings, CSS art, enlarged navigation icons, or a single generic image reused everywhere.
 
-## Fixed rules
+## Asset rules
 
-- SVG in a 240 × 180 viewBox. No raster export, embedded words, bitmap texture, glow, or looping animation.
-- `currentColor` only: dark/light theme and the existing global/Area illustration-color preferences must work without separate assets.
-- Thin rounded contours, bright semantic foreground, two quieter relief layers, and generous clear space around the drawing.
-- Choose one of four scene families—oblique orbit, layered plane, receding panel, or segmented flow—according to the empty state's meaning. The scene supports, rather than repeats, the subject.
-- The illustration is decorative (`aria-hidden`); meaningful state and next action remain in accessible text and controls.
-- Keep a distinct semantic composition for each kind in the shared catalog. Do not replace them with enlarged navigation icons or the same generic artwork.
+- Each of the 57 canonical kinds in `src/components/empty-art-catalog.js` has a distinct generated, transparent 600 × 400 WebP in `public/empty-art/`.
+- Render as a small physical sculpture photographed in a restrained studio-CGI style: satin graphite ceramic, brushed pewter/silver edges, subtle microtexture, slight three-quarter perspective, and pale neutral rim light.
+- Do not include text, logos, people, screenshots, a rectangular backdrop, strong color, or a cast shadow outside the isolated object.
+- Keep the subject readable at both the 224px page size and the compact 88px size, against dark and light themes.
+- The image remains static and decorative (`aria-hidden`, empty image `alt`). Text and action controls must communicate the state without it.
+- Personal/Area illustration color settings may tint the generated image via a masked color overlay that preserves its photographic luminance; the underlying image file stays unchanged. The default is neutral rather than the Area accent.
 
-## Variable content
+## Maintenance
 
-The central object, scene family, and copy can change for a Route, project, chat, agent, document, setting, or search. Scene depth and composition stay consistent. Product screenshots and the landing's embedded demo must be refreshed from the real frontend after an illustration change; do not paint these vectors into screenshots by hand.
-
-## Review checklist
-
-- Is the subject recognizable at full size and at the compact 88px slot?
-- Are the foreground and receding contours separable, without a knot of overlapping lines?
-- Do dark, light, and custom-color settings remain legible?
-- Does an empty state still offer an honest explanation and usable next step?
-- Do reduced-motion users see the same static artwork?
+When adding an empty-state kind, generate a new image in this same visual family, add its canonical key and asset test, then inspect dark/light and compact layouts. After artwork changes, refresh screenshots from the real frontend, including the Rumbo Landing embedded product demo where affected. Do not hand-paint artwork into screenshots.

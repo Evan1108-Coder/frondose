@@ -14,12 +14,11 @@
 .color-choice-custom button { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; }
 .color-choice-custom button:disabled { opacity: .45; }
 .color-choice small { color: var(--muted); }
-.empty-illustration { color: var(--empty-icon-color, var(--text)); }
 .display-preferences { padding: 20px; margin: 24px 0; }
 .display-preferences h2 { font-size: 15px; }
 .display-preferences p { font-size: 13px; color: var(--muted); margin: 10px 0; line-height: 1.6; }
 .empty-color-preview { display: grid; place-items: center; padding: 14px; background: var(--hover); border-radius: 10px; margin: 16px 0; }
-.empty-color-preview svg { width: 170px; height: 120px; }
+.empty-color-preview .empty-illustration { width: 170px; }
 .project-nav-row > .team-icon-button { padding: 4px; }
 @media (max-width: 600px) { .color-choice { flex-direction: column; gap: 10px; } }
 .icon-color-scope { display: contents; }
