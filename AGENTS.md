@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- September 26 notices: errors, confirmations and sample-workspace restrictions use one dismissible, top-centered notification surface, not inline popup boxes. Use a bounded damped-spring entrance, interruptible exit, OS/app reduced motion, keyboard-accessible close, modal-safe layering, hover/focus/hidden-tab timer pauses, and a browser-local duration preference in Settings → Notifications (including until dismissed). Keep persistent failure state honest after dismissing its notice; never treat a notification as approval or a successful write.
+
 - September 25 empty-state copy: headings and descriptions default to neutral theme text, independent of Area or illustration tint. Illustrations also default to neutral theme text color; Area illustration overrides are browser-personal opt-in. Separate illustration and text colors allow explicit customization. Missing legacy preferences remain neutral; preserve illustration and navigation color choices. This supersedes earlier coupled illustration/copy behavior.
 
 - September 22 solo-first direction supersedes human-team-first language: Rumbo is a personal AI work environment with the lifecycle Intent → Route → Run → Output → Review → Memory. Areas organize domains of work; Projects and Routes support bounded agent work rather than defining a company hierarchy. Contacts are optional, never accounts or authorization.

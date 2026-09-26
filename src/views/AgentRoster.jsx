@@ -175,7 +175,7 @@ export function AgentsView() {
       <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).map(([id, provider]) => {
         const connection = data.connections.find((item) => item.provider === id);
         const readiness = agentReadiness({ id, provider: id, status: "available" }, connection);
-        return <button key={id} className="agent-provider-summary" onClick={() => setConnectionProvider(id)} aria-label={`Manage ${provider.name} connection`}><AgentIdentity compact provider={id} /><strong>{provider.name}</strong><span className={`agent-connection-label is-${readiness.state}`}><i aria-hidden="true" />{readiness.canStartLive ? "Connected" : readiness.state === "connecting" ? "Signing in" : readiness.state === "not_installed" ? "Not installed" : "Not connected"}</span></button>;
+        return <button key={id} className="agent-provider-summary" onClick={() => setConnectionProvider(id)} aria-label={`Manage ${provider.name} connection`}><AgentIdentity compact provider={id} /><strong>{provider.name}</strong><span className={`agent-connection-label is-${readiness.state}`}><i aria-hidden="true" />{readiness.state === "sample" ? "Connected · sample" : readiness.canStartLive ? "Connected" : readiness.state === "connecting" ? "Signing in" : readiness.state === "not_installed" ? "Not installed" : "Not connected"}</span></button>;
       })}</div>
       <button className="text-button" onClick={() => navigate("connections")}>Manage connections <ArrowUpRight /></button>
     </section>

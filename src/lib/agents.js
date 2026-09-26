@@ -30,6 +30,8 @@ export function agentReadiness(agent, connection) {
   if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
   if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
   const state = connection?.provider === agent.provider ? connection.state : "not_connected";
+  if (state === 'connected' && connection.mode === 'demo' && connection.metadata?.simulated === true)
+    return result('sample', 'Connected · sample', 'A simulated connection in a view-only sample workspace. No provider account is connected and no session can start.', 'inspect', false, false);
   if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
   if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${provider.name === "Claude" ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
   if (state === "connected" && connection.mode !== "demo" && connection.metadata?.liveAccountChecked !== false) {

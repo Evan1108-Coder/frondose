@@ -7,6 +7,7 @@ import { Tooltip } from "./components/Tooltip.jsx";
 import { UiIcon } from "./components/icons.jsx";
 import { ServiceLogo } from './components/ServiceLogo.jsx';
 import { useApp as useAppContext } from './app-context.js';
+import { ErrorNotification } from './components/Notifications.jsx';
 
 export { AppContext, useApp } from "./app-context.js";
 export { EmptyState as Empty } from "./components/EmptyState.jsx";
@@ -113,12 +114,7 @@ export function Field({ label, hint, children }) {
   );
 }
 export function ErrorMessage({ error }) {
-  return error ? (
-    <div className="inline-error" role="alert">
-      <CircleAlert />
-      <span>{typeof error === "string" ? error : error.message}</span>
-    </div>
-  ) : null;
+  return <ErrorNotification error={error} />;
 }
 export function useAsync() {
   const [busy, setBusy] = useState(false);
@@ -174,7 +170,7 @@ export function Dialog({
     const manager = registerDialog(ref.current);
     const focusable = () => [...(ref.current?.querySelectorAll(
       'button:not(:disabled), input:not(:disabled):not([type="hidden"]), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]',
-    ) ?? [])].filter((element) => element.getClientRects().length && !element.closest("[inert]") && element.tabIndex >= 0);
+    ) ?? []), ...document.querySelectorAll('[data-rumbo-notifications] button')].filter((element) => element.getClientRects().length && !element.closest("[inert]") && element.tabIndex >= 0);
     const focusFirst = () => (ref.current?.querySelector('[autofocus], input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), [role="combobox"]:not(:disabled)') ?? focusable()[0] ?? ref.current)?.focus();
     const frame = requestAnimationFrame(() => { if (manager.isTop()) focusFirst(); });
     function onKey(event) {
@@ -209,7 +205,7 @@ export function Dialog({
       }
     }
     function containFocus(event) {
-      if (manager.isTop() && !ref.current?.contains(event.target)) focusFirst();
+      if (manager.isTop() && !ref.current?.contains(event.target) && !event.target.closest?.('[data-rumbo-notifications]')) focusFirst();
     }
     document.addEventListener("keydown", onKey);
     document.addEventListener("focusin", containFocus);

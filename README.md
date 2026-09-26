@@ -99,6 +99,10 @@ Tests cover isolated SQLite persistence, cross-workspace validation, optimistic 
 
 The production build includes Sites-compatible static packaging, but the hosted worker does not provide the local SQLite/CLI runtime. The complete application currently runs through the local Vite server.
 
+## On-screen notifications
+
+Errors and confirmations arrive at the top of the window with a short damped-spring animation. The × button dismisses them without closing a form or discarding its contents. Settings → Notifications → Display duration offers 3, 5, 8 or 12 seconds, or **Until dismissed**. This preference is browser-local, not a workspace setting. Timers pause on hover, keyboard focus and hidden tabs; Undo gets at least 10 seconds. OS and app reduced-motion preferences remove travel. Persistent server-failure state remains visible in the connection indicator after a notice is dismissed.
+
 ## Keyboard shortcuts
 
 `Cmd/Ctrl + K` searches work, messages, documents, outputs, saved views and actions, with optional `type:`, `project:` and `status:` filters. `C` opens a new Route form. `Cmd/Ctrl [` and `Cmd/Ctrl ]` navigate in-app history without leaving the workspace. Press `G` followed by a section letter to navigate; `?` lists every current shortcut. Letter shortcuts are inactive while typing and can be disabled.

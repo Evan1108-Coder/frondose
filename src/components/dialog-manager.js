@@ -15,7 +15,7 @@ function updateInert() {
   let current = top.closest(".dialog-backdrop") ?? top;
   while (current.parentElement && current !== document.body) {
     for (const sibling of current.parentElement.children) {
-      if (sibling === current || ["SCRIPT", "STYLE", "LINK"].includes(sibling.tagName)) continue;
+      if (sibling === current || sibling.hasAttribute('data-rumbo-notifications') || ["SCRIPT", "STYLE", "LINK"].includes(sibling.tagName)) continue;
       inertElements.set(sibling, sibling.inert);
       sibling.inert = true;
     }

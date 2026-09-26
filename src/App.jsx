@@ -1,4 +1,5 @@
 import { requestUpdateNavigation, UnsavedUpdatesDialog } from './components/UnsavedUpdates.jsx';
+import { notify } from './lib/notifications.js';
 import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
 import { IconColorsProvider } from './components/IconColors.jsx';
 import {
@@ -103,24 +104,26 @@ export function App() {
     [helpOpen, setHelpOpen] = useState(false),
     [feedbackOpen, setFeedbackOpen] = useState(false),
     [editor, setEditor] = useState(null),
-    [session, setSession] = useState(null),
-    [toast, setToast] = useState(null);
+    [session, setSession] = useState(null);
   const [sidebarEditorOpen, setSidebarEditorOpen] = useState(false);
   const [organizationState, setOrganizationState] = useState(null);
   const [experienceState, setExperienceState] = useState(null);
   const [shortcutPrefix, setShortcutPrefix] = useState(null);
   const chordRef = useRef(null);
-  const toastTimer = useRef();
+  const lastConnectionError = useRef('');
   const navigate = useCallback((view, id = null, options = {}) => {
     const next = pageHash(view, id, options);
     if (location.hash !== next) location.hash = next;
     else setPage(parsePage(next));
   }, []);
-  const notify = useCallback((message, type = "success", undo) => {
-    clearTimeout(toastTimer.current);
-    setToast({ message, type, undo });
-    toastTimer.current = setTimeout(() => setToast(null), undo ? 10000 : 5000);
-  }, []);
+  useEffect(() => {
+    const message = (status.error || status.syncError)?.message || '';
+    if (message && message !== lastConnectionError.current) notify(message, 'error', undefined, {
+      actionLabel: 'Retry', action: () => rumboActions.refresh(),
+    });
+    // Repeated failed background polls do not restart or resurrect the notice.
+    lastConnectionError.current = message;
+  }, [status.error, status.syncError]);
   const perform = useCallback(
     async (action, success) => {
       try {
@@ -128,7 +131,7 @@ export function App() {
         if (success) notify(success);
         return result;
       } catch (error) {
-        notify(error.message ?? "Something went wrong.", "error");
+        notify(error.message ?? "Something went wrong.", error.code === 'read_only_demo' ? 'info' : 'error');
         return undefined;
       }
     },
@@ -338,7 +341,6 @@ export function App() {
     const timer = setTimeout(() => { chordRef.current = null; setShortcutPrefix(null); }, 1000);
     return () => clearTimeout(timer);
   }, [shortcutPrefix]);
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
   if (!rawData && status.loading)
     return (
       <div className="app-loading">
@@ -417,7 +419,7 @@ export function App() {
   return (
     <AppContext.Provider value={context}>
       <IconColorsProvider><UnsavedUpdatesDialog />
-      <div className={`rumbo-app ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
+      <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
         <a
           href="#main-content"
           className="skip-link"
@@ -465,27 +467,11 @@ export function App() {
                 ? "Saving…"
                 : status.syncError
                   ? "Sync interrupted"
+                  : status.error
+                    ? "Action failed"
                   : "Connected"}
             </div>
           </header>
-          {status.error || status.syncError ? (
-            <div className="connection-error" role="alert">
-              <CircleAlert />
-              <span>{(status.error || status.syncError).message}</span>
-              <Button
-                variant="ghost"
-                onClick={() => perform(() => rumboActions.refresh())}
-              >
-                Retry
-              </Button>
-              <IconButton
-                label="Dismiss error"
-                onClick={() => rumboActions.clearError()}
-              >
-                <X />
-              </IconButton>
-            </div>
-          ) : null}
           <div id="main-content" className="main-scroll" tabIndex={-1}>
             <ScreenBoundary key={`${page.view}-${workspace.id}-${page.projectId ?? "all"}`}>
               <Suspense fallback={<div className="app-loading" role="status">Opening {NAV.find(item => item.id === page.view)?.label?.toLowerCase() || 'page'}…</div>}>
@@ -512,32 +498,8 @@ export function App() {
         {session ? (
           <SessionDialog defaults={session} onClose={() => setSession(null)} />
         ) : null}
-        {toast ? (
-          <div
-            className={`toast ${toast.type}`}
-            role={toast.type === "error" ? "alert" : "status"}
-          >
-            {toast.type === "error" ? <CircleAlert /> : <CircleCheck />}
-            <span>{toast.message}</span>
-            {toast.undo ? (
-              <button
-                onClick={() => {
-                  toast.undo();
-                  setToast(null);
-                }}
-              >
-                Undo
-              </button>
-            ) : null}
-            <IconButton
-              label="Dismiss notification"
-              onClick={() => setToast(null)}
-            >
-              <X />
-            </IconButton>
-          </div>
-        ) : null}
       </div>
+      {rawData.meta?.sampleWorkspace ? <aside className="sample-workspace-label" aria-label="Sample workspace information">SAMPLE WORKSPACE · View only · Fictional people, simulated connections & example results · No live AI</aside> : null}
       </IconColorsProvider>
     </AppContext.Provider>
   );
