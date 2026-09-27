@@ -10,6 +10,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Rumbo product decisions
 
+- September 27 connection pause: Codex and Claude remain the only active local AI runners. All non-AI service connections are Coming soon; keep their catalog and existing records, but block new authorization, resource reads, sync, imports and provider actions at the local API, stop background jobs without auto-resuming them, and show an honest disabled preview. This does not make CLI runner sign-in a public, hosted AI connection or certify any model as available to a given account. Re-enabling any external provider requires an explicit release decision and fresh verification.
+
 - September 25 empty-state copy: headings and descriptions default to neutral theme text, independent of Area or illustration tint. Illustrations also default to neutral theme text color; Area illustration overrides are browser-personal opt-in. Separate illustration and text colors allow explicit customization. Missing legacy preferences remain neutral; preserve illustration and navigation color choices. This supersedes earlier coupled illustration/copy behavior.
 
 - September 22 solo-first direction supersedes human-team-first language: Rumbo is a personal AI work environment with the lifecycle Intent → Route → Run → Output → Review → Memory. Areas organize domains of work; Projects and Routes support bounded agent work rather than defining a company hierarchy. Contacts are optional, never accounts or authorization.

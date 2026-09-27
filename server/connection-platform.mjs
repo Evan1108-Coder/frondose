@@ -33,7 +33,7 @@ export function installConnectionPlatform(db) {
   if (!db.prepare('PRAGMA table_info(platform_connections)').all().some(column => column.name === 'verification')) db.exec("ALTER TABLE platform_connections ADD COLUMN verification TEXT NOT NULL DEFAULT '{}'");
 }
 
-export function createConnectionPlatform({ db, dataDir, env = process.env, fetchImpl = fetch, authorize, requireApproval, workerIntervalMs = 5000 } = {}) {
+export function createConnectionPlatform({ db, dataDir, env = process.env, fetchImpl = fetch, authorize, requireApproval, workerIntervalMs = 5000, paused = false } = {}) {
   if (!db || !dataDir || typeof authorize !== 'function') throw new Error('Connection platform requires a database, private data directory and authorization callback.');
   installConnectionPlatform(db);
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -188,7 +188,7 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
     await check(actor, { workspace_id: workspaceId, scope_type: 'workspace' }, 'connections.view');
     const runners = [['codex', 'Codex'], ['claude', 'Claude Code']].map(([id, name]) => ({ id, name, category: 'AI agents', auth_family: 'runner', execution: 'existing_runner', configured: true, setup_required: [], features: [], actions: [], sync_kinds: [], resource_hint: 'Manage the existing provider account and agent execution settings.' }));
     const registration = { github: 'https://github.com/settings/developers', google: 'https://console.cloud.google.com/apis/credentials', linear: 'https://linear.app/settings/api', jira: 'https://developer.atlassian.com/console/myapps/', slack: 'https://api.slack.com/apps', figma: 'https://www.figma.com/developers/apps' };
-    return [...runners, ...Object.values(CONNECTOR_CATALOG).map(item => { const cfg = config(item.id), missing = []; if (!cfg.client_id) missing.push(`The Rumbo operator must configure ${cfg.prefix}_CLIENT_ID.`); if (!cfg.client_secret) missing.push(`The Rumbo operator must configure ${cfg.prefix}_CLIENT_SECRET.`); if (cfg.callback_error) missing.push(cfg.callback_error); return { ...item, configured: !missing.length, setup_required: missing, callback_url: cfg.callback_error ? null : cfg.redirect_uri, scopes: cfg.scopes, registration_url: registration[cfg.family] }; })];
+    return [...runners, ...Object.values(CONNECTOR_CATALOG).map(item => { const cfg = config(item.id), missing = []; if (!cfg.client_id) missing.push(`The Rumbo operator must configure ${cfg.prefix}_CLIENT_ID.`); if (!cfg.client_secret) missing.push(`The Rumbo operator must configure ${cfg.prefix}_CLIENT_SECRET.`); if (cfg.callback_error) missing.push(cfg.callback_error); return { ...item, availability: paused ? 'coming_soon' : 'available', configured: !paused && !missing.length, setup_required: paused ? ['External service connections are paused while Rumbo focuses on AI agents.'] : missing, callback_url: paused || cfg.callback_error ? null : cfg.redirect_uri, scopes: cfg.scopes, registration_url: paused ? null : registration[cfg.family] }; })];
   }
   async function list(workspaceId, actor) {
     await check(actor, { workspace_id: workspaceId, scope_type: 'workspace' }, 'connections.view');
@@ -354,6 +354,7 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
     return Boolean(agent && !agent.archived_at && agent.status !== 'paused' && (!agent.workspace_id || agent.workspace_id === connection.workspace_id) && connection.state === 'connected' && connection.settings.agent_access === true && connection.settings.allowed_agent_ids?.includes(agentId));
   }
   async function agentContext(workspaceId, agentId, sponsor) {
+    if (paused) return [];
     const result = [];
     for (const connection of await list(workspaceId, sponsor)) {
       if (!agentAllowed(connection, agentId)) continue;
@@ -370,17 +371,28 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
     return result;
   }
   async function executeForAgent(id, body, { agent_id, sponsor } = {}) {
+    if (paused) throw fail('coming_soon', 'External service connections are coming soon. No provider action was sent.', 409);
     const connection = get(id);
     if (!agentAllowed(connection, agent_id) || !actorId(sponsor)) throw fail('agent_access_denied', 'This agent is not authorized to use this connection.', 403);
     return execute(id, body, { ...sponsor, delegated_agent_id: agent_id });
   }
   const imports = createConnectionImports({ db, check, audit, get });
-  const jobs = createConnectionJobs({ db, env, check, get, sync, imports, audit, intervalMs: workerIntervalMs });
+  const jobs = createConnectionJobs({ db, env, check, get, sync, imports, audit, intervalMs: paused ? 0 : workerIntervalMs, paused });
   async function handle({ method, path, query = {}, body = {}, actor, rawBody, headers }) {
     path = path.replace(/^\/api/, ''); if (!path.startsWith('/connection-platform/')) return null;
     const suffix = path.slice('/connection-platform'.length), respond = (result, statusCode = 200) => ({ statusCode, body: { result } });
     if (method === 'GET' && suffix === '/catalog') return respond(await catalog(query.workspace_id, actor));
     if (method === 'GET' && suffix === '/connections') return respond(await list(query.workspace_id, actor));
+    if (paused) {
+      const archived = suffix.match(/^\/connections\/([^/]+)(?:\/(activity))?$/);
+      if (archived && method === 'GET') {
+        if (archived[2]) return respond(await activity(archived[1], actor));
+        const connection = get(archived[1]); await check(actor, connection, 'connections.view'); return respond(connection);
+      }
+      const disconnectMatch = suffix.match(/^\/connections\/([^/]+)\/disconnect$/);
+      if (disconnectMatch && method === 'POST') return respond(await disconnect(disconnectMatch[1], body, actor));
+      throw fail('coming_soon', 'External service connections are coming soon. Existing records are preserved, but authorization, sync, and actions are paused.', 409);
+    }
     if (method === 'POST' && suffix === '/connections') return respond(await create(body, actor), 201);
     if (method === 'GET' && suffix === '/oauth/callback') return respond(await completeAuthorization(query, actor));
     const webhook = suffix.match(/^\/webhooks\/([^/]+)$/);

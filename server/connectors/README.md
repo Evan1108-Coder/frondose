@@ -10,7 +10,9 @@ Enable `read` and select a repository to view its PRs. The separate `review_pull
 
 ## Configuration
 
-Configure server-side `RUMBO_{FAMILY}_CLIENT_ID` and `RUMBO_{FAMILY}_CLIENT_SECRET`, where FAMILY is `GITHUB`, `GOOGLE`, `LINEAR`, `JIRA`, `SLACK`, or `FIGMA`. Register `RUMBO_CONNECTION_CALLBACK_URL` exactly with each provider. The development default is `http://127.0.0.1:4174/api/connection-platform/oauth/callback`. Production must use HTTPS. Values never belong in frontend environment variables.
+Current release status: all non-AI service connections are Coming soon. The default local API preserves existing records but blocks authorization, provider reads and writes, imports, and synchronization. Scheduled jobs are paused and cannot auto-resume. The adapter implementation and fixture tests below are retained for a later, explicitly reviewed release; they are not evidence of a publicly available integration. Codex and Claude remain separate local AI runners.
+
+For a later release, configure server-side `RUMBO_{FAMILY}_CLIENT_ID` and `RUMBO_{FAMILY}_CLIENT_SECRET`, where FAMILY is `GITHUB`, `GOOGLE`, `LINEAR`, `JIRA`, `SLACK`, or `FIGMA`. Register `RUMBO_CONNECTION_CALLBACK_URL` exactly with each provider. The development default is `http://127.0.0.1:4174/api/connection-platform/oauth/callback`. Production must use HTTPS. Values never belong in frontend environment variables.
 
 `RUMBO_CONNECTION_ENCRYPTION_KEY` is an optional base64-encoded 32-byte AES-256 key. Without it the local service creates a mode-0600 `connections.key` in its private data directory. Tokens are AES-GCM encrypted in a separate database table, authenticated against their connection ID, excluded from catalog and connection responses. The local key file is development storage, not a hosted vault or OS keychain. A hosted operator must supply and back up a protected key separately from database backups. Losing it requires reconnecting accounts.
 

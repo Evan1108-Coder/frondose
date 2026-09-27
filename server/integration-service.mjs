@@ -25,7 +25,7 @@ async function execute(command, args, options = {}) {
   }
 }
 
-export function createIntegrationService({ dataDir, env = process.env, execute: runCommand = execute, spawnProcess = spawn, fetchImpl = fetch, onConnectionChange = () => {} } = {}) {
+export function createIntegrationService({ dataDir, env = process.env, execute: runCommand = execute, spawnProcess = spawn, fetchImpl = fetch, onConnectionChange = () => {}, pauseExternalConnections = false } = {}) {
   if (!dataDir) throw new Error('Integration storage directory is required.');
   const secretPath = join(dataDir, 'integrations.private.json');
   let saved = {};
@@ -84,7 +84,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
   function status(provider) {
     known(provider);
     const value = saved[provider] || {}, auth = authProcesses.get(provider);
-    return { provider, state: value.state || 'not_connected', method: value.method || null, accountLabel: value.accountLabel || null, checkedAt: value.checkedAt || null, liveAccountChecked: Boolean(value.checkedAt), ...(auth ? { auth: { status: auth.status, output: scrubString(redact(auth.output), 12_000), startedAt: auth.startedAt } } : {}) };
+    return { provider, availability: pauseExternalConnections && !['codex', 'claude'].includes(provider) ? 'coming_soon' : 'available', state: value.state || 'not_connected', method: value.method || null, accountLabel: value.accountLabel || null, checkedAt: value.checkedAt || null, liveAccountChecked: Boolean(value.checkedAt), ...(auth ? { auth: { status: auth.status, output: scrubString(redact(auth.output), 12_000), startedAt: auth.startedAt } } : {}) };
   }
   function update(provider, values) {
     rememberSecrets(values);
@@ -93,8 +93,13 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     onConnectionChange(provider, { state: connection.state, mode: 'local', metadata: connection, last_probed_at: connection.checkedAt, updated_at: now() });
     return connection;
   }
-  const setup = (provider, options = {}) => ({ ...providerSetup(provider, { env, ...options }), connection: status(provider) });
-  const listSetups = (options = {}) => listProviderSetups({ env, ...options }).map((item) => ({ ...item, connection: status(item.provider) }));
+  const setup = (provider, options = {}) => {
+    const descriptor = providerSetup(provider, { env, ...options });
+    if (!descriptor) return null;
+    const availability = pauseExternalConnections && !['codex', 'claude'].includes(provider) ? 'coming_soon' : 'available';
+    return { ...descriptor, availability, ...(availability === 'coming_soon' ? { configured: false, startAllowed: false, startReason: 'External service connections are coming soon.', methods: [] } : {}), connection: status(provider) };
+  };
+  const listSetups = (options = {}) => listProviderSetups({ env, ...options }).map((item) => setup(item.provider, options));
   async function requestJson(url, options = {}) {
     let response;
     try { response = await fetchImpl(url, { ...options, signal: AbortSignal.timeout(15_000) }); }
@@ -127,11 +132,13 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
   }
   async function authStatus(provider, options) {
     known(provider);
+    if (pauseExternalConnections && !['codex', 'claude'].includes(provider)) throw error('coming_soon', 'External service connections are coming soon.', 409);
     try { return await inspectAuth(provider, options); }
     catch (failure) { if (!closed) update(provider, { state: 'not_connected', accountLabel: null, checkedAt: now() }); throw failure; }
   }
   async function connect(provider, { method = 'existing', token, origin = 'http://127.0.0.1:4174' } = {}) {
     known(provider);
+    if (pauseExternalConnections && !['codex', 'claude'].includes(provider)) throw error('coming_soon', 'External service connections are coming soon.', 409);
     if (closed) throw error('service_closed', 'Connections service is closed.', 503);
     if (!providerCatalog()[provider].methods.includes(method)) throw error('unsupported_method', 'Choose a supported connection method.');
     if (method === 'token') {
@@ -172,6 +179,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     return { authorizationUrl: authorization.href, connection: update('google-drive', { state: 'connecting', method: 'browser' }) };
   }
   async function completeGoogleAuth({ code, state, origin }) {
+    if (pauseExternalConnections) throw error('coming_soon', 'Google Drive connections are coming soon.', 409);
     const pending = oauthStates.get(state); oauthStates.delete(state);
     if (!pending || pending.expires < Date.now() || pending.callbackUrl !== new URL('/api/auth/google-drive/callback', origin).href) throw error('invalid_oauth_state', 'This sign-in link expired or is invalid. Start again from Connections.');
     if (typeof code !== 'string' || !code) { update('google-drive', { state: 'not_connected' }); throw error('oauth_denied', 'Google sign-in was not completed. Try again from Connections.'); }
@@ -190,6 +198,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
   }
   async function resources(provider, { pageToken = '' } = {}) {
     known(provider);
+    if (pauseExternalConnections && !['codex', 'claude'].includes(provider)) throw error('coming_soon', 'External service connections are coming soon.', 409);
     if (status(provider).state !== 'connected') throw error('not_connected', 'Connect this provider before browsing resources.', 409);
     if (provider === 'github') {
       const page = /^\d{1,4}$/.test(pageToken) ? Number(pageToken) : 1, path = `/user/repos?per_page=50&sort=updated&page=${page}`;

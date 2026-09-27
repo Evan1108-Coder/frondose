@@ -14,6 +14,7 @@ import { captureAgentActions } from '../server/agent-awareness.mjs';
 async function fixture(run) {
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-platform-api-')), providerCalls = [];
   const api = createLocalApi({ dataDir, integrationOptions: {
+    externalConnectionsPaused: false,
     env: { RUMBO_GITHUB_CLIENT_ID: 'fixture-client', RUMBO_GITHUB_CLIENT_SECRET: 'fixture-secret' },
     execute: async (_command, args) => ({ stdout: args.includes('mcp') ? '[]' : 'Logged in', stderr: '', code: 0 }),
     spawnProcess: () => { const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.stdin = new EventEmitter(); child.kill = () => {}; child.stdin.end = () => queueMicrotask(() => { child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Fixture reply.' } }) + '\n')); child.emit('close', 0); }); return child; },
@@ -46,6 +47,39 @@ async function fixture(run) {
   try { await run({ api, request, ok, db, governance, workspace, project, agentId, secondOwner, connect, propose, providerCalls, dataDir }); }
   finally { db.close(); await new Promise(resolve => server.close(resolve)); api.close(); await rm(dataDir, { recursive: true, force: true }); }
 }
+
+test('default release gate keeps external providers visible but prevents new authorization and actions', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-paused-connections-'));
+  const api = createLocalApi({ dataDir });
+  const server = createServer((req, res) => api.middleware(req, res));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const request = async (path, method = 'GET', body) => {
+    const response = await fetch(base + path, { method, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const workspace = (await request('/api/workspaces', 'POST', { name: 'Paused connections' })).body.workspace;
+    const catalog = (await request(`/api/connection-platform/catalog?workspace_id=${workspace.id}`)).body.result;
+    assert.ok(catalog.some(item => item.id === 'codex' && item.execution === 'existing_runner'));
+    assert.ok(catalog.some(item => item.id === 'claude' && item.execution === 'existing_runner'));
+    assert.ok(catalog.filter(item => !['codex', 'claude'].includes(item.id)).every(item => item.availability === 'coming_soon' && item.configured === false));
+    const legacySetups = (await request('/api/connections/setup')).body.setups;
+    assert.equal(legacySetups.find(item => item.provider === 'github').availability, 'coming_soon');
+    assert.equal(legacySetups.find(item => item.provider === 'github').startAllowed, false);
+    assert.equal(legacySetups.find(item => item.provider === 'codex').availability, 'available');
+    const created = await request('/api/connection-platform/connections', 'POST', { workspace_id: workspace.id, provider: 'github' });
+    assert.equal(created.status, 409);
+    assert.equal(created.body.error.code, 'coming_soon');
+    const legacy = await request('/api/connections/github/connect', 'POST', { method: 'existing' });
+    assert.equal(legacy.status, 409);
+    assert.equal(legacy.body.error.code, 'coming_soon');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    api.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
 
 test('HTTP legacy delete requires another Owner and consumes an exact approval once', () => fixture(async ({ request, ok, db, governance, workspace, project, secondOwner }) => {
   const owner2 = secondOwner();

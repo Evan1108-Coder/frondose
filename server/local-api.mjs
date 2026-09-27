@@ -21,7 +21,6 @@ import { dirname, isAbsolute, join, resolve, parse as parsePath } from 'node:pat
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { listProviderSetups, providerSetup } from './provider-adapters.mjs';
 import { isRecord, mergeSettings, validateAvatar, validateRecord, validationError } from './validation.mjs';
 import { createIntegrationService } from './integration-service.mjs';
 import { installWorkspaceFeatures, featureSnapshot, featureRoute, recordChange, validateCustomFields } from './workspace-features.mjs';
@@ -504,6 +503,7 @@ function snapshot(db) {
 }
 
 export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {} } = {}) {
+  const externalConnectionsPaused = integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
   let identity, governance, access, connectionPlatform;
   function installAccess() {
@@ -519,7 +519,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       { id: 'connections.delete_cache', label: 'Permanently remove connection cache and import links', category: 'Connections' },
       ...Object.values(CONNECTOR_CATALOG).flatMap(provider => provider.actions.map(action => ({ id: `connections.${provider.id}.${action.id}`, label: `${provider.name}: ${action.label}`, category: provider.name }))),
     ]);
-    connectionPlatform = createConnectionPlatform({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch,
+    connectionPlatform = createConnectionPlatform({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch, paused: externalConnectionsPaused,
       authorize: ({ actor, workspace_id, permission, scope_type, scope_id }) => {
         if (!actor?.id) throw Object.assign(new Error('Sign in to use connections.'), { statusCode: 401 });
         const capability = { 'routes.edit': 'routes.write', 'projects.edit': 'projects.write', 'documents.edit': 'documents.write' }[permission] || permission;
@@ -586,6 +586,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   }
   const integration = createIntegrationService({
     ...integrationOptions,
+    pauseExternalConnections: externalConnectionsPaused,
     dataDir: store.directory,
     onConnectionChange(provider, patch) {
       if (closed) return;
@@ -1436,16 +1437,17 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (req.method === 'GET' && path === '/connections') return send(res, 200, { connections: rows(db.prepare('SELECT * FROM connections ORDER BY category,display_name')), note: 'Demo states are not live account connections.' });
       if (req.method === 'GET' && path === '/connections/setup') {
         const origin = `http://${req.headers.host || '127.0.0.1:4173'}`;
-        return send(res, 200, { setups: listProviderSetups({ origin }), accountSafe: true });
+        return send(res, 200, { setups: integration.listSetups({ origin }), accountSafe: true });
       }
       const setupMatch = path.match(/^\/connections\/(github|google-drive|codex|claude)\/setup$/);
       if (req.method === 'GET' && setupMatch) {
         const origin = `http://${req.headers.host || '127.0.0.1:4173'}`;
-        return send(res, 200, { setup: providerSetup(setupMatch[1], { origin }), accountSafe: true });
+        return send(res, 200, { setup: integration.setup(setupMatch[1], { origin }), accountSafe: true });
       }
       const probeMatch = path.match(/^\/connections\/(?:probe\/)?(github|google-drive|codex|claude)(?:\/probe)?$/);
       if ((req.method === 'POST' || req.method === 'GET') && probeMatch) {
         const provider = probeMatch[1];
+        if (externalConnectionsPaused && !['codex', 'claude'].includes(provider)) return fail(res, 409, 'coming_soon', 'External service connections are coming soon.');
         const probe = safeExecutableProbe(provider);
         db.prepare('UPDATE connections SET state=?,metadata_json=?,last_probed_at=?,updated_at=? WHERE provider=?')
           .run(probe.state, JSON.stringify(probe), probe.checkedAt, probe.checkedAt, provider);

@@ -86,8 +86,8 @@ export function ConnectionsView() {
       <div className="connections-group">
         <h2>Project context</h2>
         <p className="muted">
-          Browse repositories and file references, then attach the right context
-          to your work.
+          External service connections are coming soon. Existing records are preserved,
+          but authorization and synchronization are paused.
         </p>
         <div className="connection-grid">
           {data.connections
@@ -148,6 +148,7 @@ function ConnectionCard({ connection, setup, descriptor, onOpen }) {
   const name =
     setup?.displayName ?? descriptor?.displayName ?? connection.display_name ?? connection.displayName;
   const preview = connection.state === "preview";
+  const comingSoon = !["codex", "claude"].includes(connection.provider);
   return (
     <article className="connection-card">
       <div className="connection-card-top">
@@ -156,7 +157,9 @@ function ConnectionCard({ connection, setup, descriptor, onOpen }) {
           className={`connection-state ${connection.state === "connected" ? "connected" : ""}`}
         >
           <i />
-          {connection.state === "connected"
+          {comingSoon
+            ? "Coming soon"
+            : connection.state === "connected"
             ? "Connected"
             : connection.state === "connecting"
               ? "Connecting"
@@ -169,7 +172,9 @@ function ConnectionCard({ connection, setup, descriptor, onOpen }) {
       <p>{setup?.purpose ?? descriptor?.boundary ?? connection.description}</p>
       <div className="connection-card-footer">
         <span>
-          {preview
+          {comingSoon
+            ? "Unavailable for now"
+            : preview
             ? "Configuration only"
             : connection.provider === "google-drive"
             ? "Read-only metadata"
@@ -180,7 +185,7 @@ function ConnectionCard({ connection, setup, descriptor, onOpen }) {
                 : "Repositories"}
         </span>
         <Button onClick={onOpen}>
-          {connection.state === "connected" ? "Manage" : preview ? "View details" : "Set up"}
+          {comingSoon ? "View preview" : connection.state === "connected" ? "Manage" : preview ? "View details" : "Set up"}
           <ArrowRight />
         </Button>
       </div>
@@ -190,7 +195,8 @@ function ConnectionCard({ connection, setup, descriptor, onOpen }) {
 export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const { data, perform, notify, edit } = useApp();
   const descriptor = CONNECTION_PROVIDERS[provider];
-  const metadataOnly = descriptor?.implementation === "metadata_only";
+  const comingSoon = !["codex", "claude"].includes(provider);
+  const metadataOnly = comingSoon || descriptor?.implementation === "metadata_only";
   const [setup, setSetup] = useState(initialSetup),
     [current, setCurrent] = useState(null),
     [token, setToken] = useState(""),
@@ -304,6 +310,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const tabs = connectionSettingsTabs(provider, {
     connectionState: connection?.state ?? "not_connected",
   });
+  if (comingSoon) return <Dialog title={setup?.displayName ?? descriptor?.displayName ?? provider} subtitle="Coming soon" onClose={onClose} wide><div className="connection-setup"><div className="connection-detail-state"><ProviderIcon large provider={provider} /><span className="connection-preview-badge">Coming soon</span></div><div className="connection-boundary is-preview"><strong>External service connection paused</strong><p>Rumbo is focusing on AI-agent connections. Authorization, resource sync, and provider actions are unavailable for now. Existing records are preserved.</p></div></div></Dialog>;
   return (
     <Dialog
       title={setup?.displayName ?? descriptor?.displayName ?? provider}

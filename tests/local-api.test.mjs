@@ -188,8 +188,13 @@ test("task-linked mock run requests and resolves approval without a provider", a
   assert.equal(events.bootstrap.meta.localOnly, true);
 });
 
-test("all provider probes are account-safe", async () => {
-  for (const provider of ["github", "google-drive", "codex", "claude"]) {
+test("AI provider probes are account-safe while external probes are paused", async () => {
+  for (const provider of ["github", "google-drive"]) {
+    const response = await rawRequest(`/api/connections/${provider}/probe`);
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error.code, 'coming_soon');
+  }
+  for (const provider of ["codex", "claude"]) {
     const payload = await request(`/api/connections/${provider}/probe`);
     assert.equal(payload.safe, true);
     assert.equal(payload.probe.liveAccountChecked, false);
@@ -439,6 +444,7 @@ test('stopping during provider startup prevents spawning and keeps exported cred
   let spawns = 0;
   const token = 'github_pat_only_a_local_test_fixture';
   const local = createLocalApi({ dataDir: directory, integrationOptions: {
+    externalConnectionsPaused: false,
     env: { RUMBO_GOOGLE_CLIENT_SECRET: 'private-google-test-fixture' },
     execute: async (_command, args) => {
       if (args.includes('mcp')) { preflightBegan(); await preflightResult; return { code: 0, stdout: '[]', stderr: '' }; }

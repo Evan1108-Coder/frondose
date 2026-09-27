@@ -6,7 +6,7 @@ import { connectionReadOptions, effectiveReadOptions } from './connectors/read-o
 const now = () => new Date().toISOString();
 const signedEqual = (actual, expected) => typeof actual === 'string' && actual.length === expected.length && timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
 
-export function createConnectionJobs({ db, env, check, get, sync, imports, audit, intervalMs = 5000 }) {
+export function createConnectionJobs({ db, env, check, get, sync, imports, audit, intervalMs = 5000, paused = false }) {
   db.exec(`CREATE TABLE IF NOT EXISTS platform_sync_jobs (
     id TEXT PRIMARY KEY,connection_id TEXT NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
     resource_id TEXT NOT NULL,kind TEXT NOT NULL,cursor TEXT,actor_json TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',
@@ -20,8 +20,10 @@ export function createConnectionJobs({ db, env, check, get, sync, imports, audit
     connection_id TEXT NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
     delivery_id TEXT NOT NULL,received_at TEXT NOT NULL,PRIMARY KEY(connection_id,delivery_id));`);
   if (!db.prepare('PRAGMA table_info(platform_sync_jobs)').all().some(column => column.name === 'read_options')) db.exec("ALTER TABLE platform_sync_jobs ADD COLUMN read_options TEXT NOT NULL DEFAULT '{}'");
-  // Cached reads are safe to retry after a server restart. Writes never use this queue.
-  db.prepare("UPDATE platform_sync_jobs SET state='pending' WHERE state='running'").run();
+  // Paused releases must not resume old work if the worker is later re-enabled.
+  // Keep the job records for inspection and require an explicit future retry.
+  if (paused) db.prepare("UPDATE platform_sync_jobs SET state='paused',updated_at=? WHERE state IN ('pending','running')").run(now());
+  else db.prepare("UPDATE platform_sync_jobs SET state='pending' WHERE state='running'").run();
   let processing = false, closed = false;
   const supported = provider => ['github', 'linear', 'slack'].includes(CONNECTOR_CATALOG[provider]?.auth_family);
   const secretFor = provider => env[`RUMBO_${CONNECTOR_CATALOG[provider].auth_family.toUpperCase()}_WEBHOOK_SECRET`];
