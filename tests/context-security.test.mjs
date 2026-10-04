@@ -12,7 +12,7 @@ import { captureSourceAccess, assertSourceAccess } from '../server/context-sourc
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'rumbo-context-security-'));
   const forbidden = () => { throw new Error('Provider calls are forbidden in context security fixtures.'); };
-  const api = createLocalApi({ dataDir: dir, seedMode: 'clean', integrationOptions: { env: {}, execute: forbidden, fetchImpl: forbidden, spawnProcess: forbidden } });
+  const api = createLocalApi({ dataDir: dir, seedMode: 'clean', integrationOptions: { externalConnectionsPaused: false, env: {}, execute: forbidden, fetchImpl: forbidden, spawnProcess: forbidden } });
   const db = new DatabaseSync(api.dbPath);
   const server = createServer(api.middleware); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const request = async (path, body, method = body === undefined ? 'GET' : 'POST', cookie) => {

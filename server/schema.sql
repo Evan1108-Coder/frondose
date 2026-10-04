@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
   slug TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
   icon TEXT NOT NULL DEFAULT 'briefcase',
+  image_url TEXT,
   color TEXT NOT NULL DEFAULT '#6b7280',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

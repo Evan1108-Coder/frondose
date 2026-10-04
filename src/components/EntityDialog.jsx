@@ -70,6 +70,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
   });
   const initial = useRef(form);
   const [discarding, setDiscarding] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(!defaults.guided);
   const keepRef = useRef(null);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial.current);
   useEffect(() => { if (discarding) keepRef.current?.focus(); }, [discarding]);
@@ -99,7 +100,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
       const common = { workspace_id: workspace?.id };
       let input;
       if (kind === "workspace")
-        input = { name: form.title.trim(), description: form.description };
+        input = { name: form.title.trim(), description: form.description, image_url: form.image_url };
       if (kind === "project")
         input = {
           ...common,
@@ -227,7 +228,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               />
             </Field>
           ) : null}
-          {["task", "chat", "memory"].includes(kind) ? (
+          {["task", "chat", "memory"].includes(kind) && (kind !== 'task' || advancedOpen) ? (
             <Select
               label="Project"
               value={form.project_id}
@@ -246,6 +247,8 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               ))}
             </Select>
           ) : null}
+          {kind === 'task' && defaults.guided ? <div className="guided-route-note"><p>Start with a title and a short description of the outcome. Saving the Route does not start an agent.</p><button type="button" onClick={() => setAdvancedOpen(open => !open)} aria-expanded={advancedOpen}>{advancedOpen ? 'Hide optional settings' : 'Show project, Area, priority, and other settings'}</button></div> : null}
+          {kind === "workspace" ? <ImageField label="Workspace picture" value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} /> : null}
           {kind === "project" ? (
             <>
               <ImageField value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} />
@@ -287,7 +290,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               </Field>
             </>
           ) : null}
-          {kind === "task" ? (
+          {kind === "task" && advancedOpen ? (
             <>
               <Select label="Area" value={linkedProject ? linkedProject.team_id ?? "" : form.team_id} disabled={Boolean(linkedProject)} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
               <p className="form-note">{linkedProject ? "The Area is inherited from the linked project." : "A route can belong to an Area without a project."}</p>

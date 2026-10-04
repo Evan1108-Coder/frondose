@@ -3,11 +3,13 @@ import { ChevronRight, ChevronDown, Ellipsis } from './icons.jsx';
 import { parseEntityKey } from '../lib/sidebar-layout.js';
 import { useIconColors } from './IconColors.jsx';
 
-export function SidebarLayout({ children, organization, arrange, renderTab, renderEntity, updateOrganization, customizeSidebar }) {
+export function SidebarLayout({ children, organization, arrange, renderTab, renderEntity, updateOrganization, customizeSidebar, hiddenRootKeys = [] }) {
   const { colorsFor, editColors } = useIconColors();
   const builtins = new Map();
+  const hiddenRoot = new Set(hiddenRootKeys);
   Children.forEach(children, child => { if (child?.props?.['data-layout-id']) builtins.set(child.props['data-layout-id'], child); });
   const renderEntry = (key, container = 'root') => {
+    if (container === 'root' && hiddenRoot.has(key)) return null;
     if (organization.visibility[key] === 'hidden') return null;
     const group = organization.layout.groups.find(g => g.id === key);
     let node;

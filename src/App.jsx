@@ -41,7 +41,7 @@ import { WorkView, SessionDialog } from "./views/Work.jsx";
 import { MemoryView } from "./views/Agents.jsx";
 const AgentsView = lazy(() => import('./views/AgentRoster.jsx').then(module => ({ default: module.AgentsView })));
 import { Form } from "./components/Form.jsx";
-const ConnectionsView = lazy(() => import('./views/ConnectionPlatform.jsx').then(module => ({ default: module.ConnectionPlatformView })));
+const ConnectionsView = lazy(() => import('./views/AIConnections.jsx').then(module => ({ default: module.AIConnectionsView })));
 const SettingsCenter = lazy(() => import('./views/settings/SettingsCenter.jsx').then(module => ({ default: module.SettingsCenter })));
 const DocsView = lazy(() => import('./views/Docs.jsx').then(module => ({ default: module.DocsView })));
 const FeedbackDialog = lazy(() => import('./components/FeedbackDialog.jsx').then(module => ({ default: module.FeedbackDialog })));
@@ -52,6 +52,7 @@ import { favoriteForPage, favoriteKey, normalizeOrganization, readOrganization, 
 import { resolveShortcut } from "./lib/shortcuts.js";
 import { SidebarEditor } from "./components/SidebarEditor.jsx";
 import { NavigationHistory } from './components/NavigationHistory.jsx';
+import { GlobalToolbar } from './components/GlobalToolbar.jsx';
 import { FocusView } from "./views/Focus.jsx";
 import { Home } from './views/Home.jsx';
 const OperationsView = lazy(() => import('./views/Operations.jsx').then(module => ({ default: module.OperationsView })));
@@ -461,6 +462,7 @@ export function App() {
             </div>
             <NavigationHistory key={workspace.id} />
             {currentFavorite ? <IconButton label={isFavorite ? "Remove from favorites" : "Add to favorites"} className={`icon-button favorite-toggle ${isFavorite ? "is-favorite" : ""}`} aria-pressed={Boolean(isFavorite)} onClick={() => toggleFavorite(currentFavorite)}><Pin morphTo={isFavorite ? PinOff : Pin} /></IconButton> : null}
+            <GlobalToolbar onSearch={() => setCommandOpen(true)} />
             <div className="connection-health">
               <i
                 className={`live-dot ${status.error || status.syncError ? "offline" : ""}`}

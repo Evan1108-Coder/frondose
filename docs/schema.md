@@ -1,6 +1,10 @@
 # Schema and migration contract
 
-Updated September 26, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+Updated October 4, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+
+## Workspace pictures and status icons
+
+`workspaces.image_url` is an optional, additively migrated image field. Existing rows remain unchanged. The workspace editor reuses the PNG/JPEG/WebP crop flow and the server's bounded image validation. Workspace JSON export includes the image; import validates and restores it into a new workspace. Clearing a picture writes `NULL` and returns to the Rumbo symbol. Custom Route and project status resources retain their lifecycle category while an optional catalog-backed icon choice is stored in their existing payload; no status identifiers or linked work items are rewritten.
 
 ## Rumbo Agent compatibility storage
 
@@ -91,7 +95,7 @@ A verified consistent backup preceded this additive slice under `.rumbo/backups/
 
 ## Agent profiles and exact run context
 
-`connections` contains installation-level provider identities; `agents` contains separate profiles; `platform_connections` contains workspace service authorization. Do not merge these stores or copy credentials into profiles. Additive profile fields include shared binding, role, model/reasoning, memory policy, context-pack IDs, default Area/project, permission policy and output behavior. `agent_profile_versions` retains immutable definitions; `runs.agent_profile_version` pins execution. Model and supported reasoning defaults are passed to the provider adapter, not treated as new accounts. Updates accept an optimistic profile version. Imports remap safe references, clear provider bindings/folders and force read-only; old agents are migrated once without rebinding deliberately unbound profiles.
+`connections` contains installation-level provider identities; `agents` contains separate profiles; `platform_connections` contains workspace service authorization. `ai_account_connections` is a separate per-workspace, per-actor browser AI account ledger; it currently stores OpenRouter's user-controlled key and Hugging Face OAuth tokens encrypted with AES-256-GCM using the private connection key. `ai_authorization_attempts` holds a ten-minute, actor/workspace/origin-bound one-use PKCE verifier encrypted at rest. The callback checks the same signed-in actor and current workspace access before exchanging a code; disconnect removes local credentials and pending attempts but does not revoke the remote provider grant. Neither AI table is part of workspace export/import, a provider profile binding, or a public-hosting authorization grant. Do not merge these stores or copy credentials into profiles. Additive profile fields include shared binding, role, model/reasoning, memory policy, context-pack IDs, default Area/project, permission policy and output behavior. `agent_profile_versions` retains immutable definitions; `runs.agent_profile_version` pins execution. Model and supported reasoning defaults are passed to the provider adapter, not treated as new accounts. Updates accept an optimistic profile version. Imports remap safe references, clear provider bindings/folders and force read-only; old agents are migrated once without rebinding deliberately unbound profiles.
 
 ### Instruction history and content-only restoration
 

@@ -54,6 +54,14 @@ test('custom workflow stages preserve lifecycle semantics and block unsafe remov
   await call(`/workspace-items/${custom.id}`, { version: 1, archived_at: new Date().toISOString() }, 'PATCH');
   await call('/projects', { workspace_id: workspace.id, name: 'Wrong status', status: 'active', workflow_status_id: custom.id }, 'POST', 400);
 }));
+test('status icons are constrained catalog choices without changing lifecycle stages', async () => fixture(async ({ call, item, workspace }) => {
+  const route = await item('route_status', 'Ready to review', { category: 'review', icon: 'icon:circle-check' });
+  const project = await item('project_status', 'In flight', { category: 'active', icon: 'icon:rocket' });
+  assert.equal(route.payload.icon, 'icon:circle-check');
+  assert.equal(route.payload.category, 'review');
+  assert.equal(project.payload.icon, 'icon:rocket');
+  await call('/workspace-items', { workspace_id: workspace.id, kind: 'route_status', name: 'Unsafe icon', payload: { category: 'ready', icon: '<svg />' } }, 'POST', 400);
+}));
 test('emoji shortcodes remain stable after rename and cannot collide with active or archived codes', async () => fixture(async ({ call, item, workspace }) => {
   const emoji = await item('emoji', 'Party Time', { symbol: '🎉' });
   assert.equal(emoji.payload.shortcode, 'party-time');

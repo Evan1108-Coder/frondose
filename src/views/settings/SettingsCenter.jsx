@@ -34,17 +34,19 @@ export function SettingsCenter() {
   const { data, page, navigate, workspace } = useApp();
   const { colorsFor } = useIconColors();
   const [query, setQuery] = useState('');
+  const railNav = useRef(null);
   const sections = SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id, label, group })));
   const teamId = page.id?.startsWith('team:') ? page.id.slice(5) : null;
   const section = sections.find(s => s.id === page.id) ?? { id: page.id === 'archive' ? 'archive' : teamId ? page.id : 'preferences', label: teamId ? 'Area settings' : page.id === 'archive' ? 'Archive' : 'Preferences', group: teamId ? 'Your Areas' : 'Personal' };
+  useEffect(() => { const selected = railNav.current?.querySelector('.active'); if (selected) selected.scrollIntoView({ block: 'nearest', behavior: document.documentElement.dataset.motion === 'reduced' ? 'instant' : 'smooth' }); }, [section.id]);
   const teams = visible(data.teams);
   return <main className="settings-center">
     <aside className="settings-rail">
-      <div className="settings-brand"><RumboSymbol size={34} decorative /><strong>{workspace.name}</strong></div>
+      <div className="settings-brand">{workspace.image_url ? <img className="workspace-picture" src={workspace.image_url} alt="" /> : <RumboSymbol size={34} decorative />}<strong>{workspace.name}</strong></div>
       <button className="settings-back" onClick={() => navigate('overview')}><ArrowLeft />Back to workspace</button>
       <div className="settings-search"><Search /><input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={e => setQuery(e.target.value)} /></div>
       <div className="settings-mobile-jump"><Select aria-label="Settings page" value={section.id} onChange={v => navigate('settings', v)}>{sections.map(s => <option key={s.id} value={s.id}>{s.group} · {s.label}</option>)}</Select></div>
-      <nav aria-label="Settings sections">{SETTINGS_GROUPS.map(([group, items]) => {
+      <nav ref={railNav} aria-label="Settings sections">{SETTINGS_GROUPS.map(([group, items]) => {
         const filtered = items.filter(([id, label]) => `${group} ${label}`.toLowerCase().includes(query.toLowerCase()));
         const Icon = ICONS[group];
         return filtered.length ? <section key={group}><h2>{group}</h2>{filtered.map(([id, label]) => { const PageIcon = PAGE_ICONS[id] ?? Icon; return <ColorableNavItem key={id} colorId={`settings:${id}`} icon={PageIcon} label={label} className={section.id === id ? 'active' : ''} aria-current={section.id === id ? 'page' : undefined} onClick={() => navigate('settings', id)} />; })}</section> : null;

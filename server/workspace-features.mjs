@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { RESOURCE_TYPES, matchingRoutes } from '../src/lib/settings-catalog.js';
 import { isRecord, validationError, validateAvatar } from './validation.mjs';
 import { emojiShortcode } from '../src/lib/custom-emojis.js';
+import { ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
 import { guardRouteMutation } from './route-hierarchy.mjs';
 import { changeContext } from './change-context.mjs';
 import { bumpAgentProfileVersion } from './agent-profiles.mjs';
@@ -72,6 +73,7 @@ export function payloadFor(db, kind, input, workspaceId, { allowArchived = false
         else if (!value || value.length > 24 || /[<>:/]/.test(value)) throw validationError('Upload a PNG, JPEG, or WebP emoji image.');
       }
       if (field.type === 'choice' && !field.options.includes(value)) throw validationError(`Choose a valid ${field.label.toLowerCase()}.`);
+      if (field.type === 'icon' && value && !ICON_REACTIONS.some(icon => icon.id === value)) throw validationError('Choose a status icon from the icon catalog.');
       if (field.type === 'color' && !/^#[\da-f]{6}$/i.test(value)) throw validationError('Choose a six-digit hex color.');
     }
     result[key] = value;

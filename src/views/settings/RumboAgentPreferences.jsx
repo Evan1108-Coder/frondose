@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Form } from '../../components/Form.jsx';
 import { apiRequest } from '../../data/api.js';
-import { Button, ErrorMessage, Field, Select, Toggle, useApp } from '../../ui.jsx';
+import { Button, ErrorMessage, Select, Toggle, useApp } from '../../ui.jsx';
 import { visible } from '../../lib/model.js';
 import '../rumbo-agent.css';
 
 const asList = value => Array.isArray(value) ? value : [];
 const providerId = item => item?.provider || item?.id || '';
+const providerName = item => providerId(item) === 'codex' ? 'Codex' : providerId(item) === 'claude' ? 'Claude Code' : item?.label || item?.name || providerId(item);
 const modelId = item => typeof item === 'string' ? item : item?.id || item?.model || '';
 const modelLabel = item => typeof item === 'string' ? item : item?.label || item?.name || item?.id || item?.model || '';
 
@@ -48,8 +49,8 @@ export function RumboAgentPreferences() {
     finally { setBusy(false); }
   }
   return <><h1>Rumbo Agent</h1><p>Choose defaults for new Rumbo Agent drafts. Every send still requires exact context review; these preferences never grant workspace or native-tool authority.</p><Form className="settings-group" onSubmit={save}><section className="settings-panel">
-    <div className="setting-row"><span><strong>Model provider</strong><small>Only providers reported by the local Rumbo service are listed. Saving does not connect an account.</small></span><Select aria-label="Default Rumbo Agent provider" value={form.provider} onChange={provider => patch({ provider, model: '', reasoning_effort: '' })}>{state.providers.map(item => <option key={providerId(item)} value={providerId(item)}>{providerId(item)}{providerConnected(item) ? ' · connected' : ' · disconnected'}</option>)}</Select></div>
-    <div className="setting-row"><span><strong>Model</strong><small>The list contains only the connection default and identifiers already configured in this workspace. It is not an availability catalog.</small></span><div className="rumbo-agent-setting-controls"><Select aria-label="Configured default Rumbo Agent model" value={form.model} disabled={!form.provider} onChange={model => patch({ model })}><option value="">{selectedProvider?.models?.find(item => !modelId(item))?.label || 'Connection default'}</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)} · unverified</option>)}{customModel ? <option value={form.model} title={form.model}>{form.model} · unverified</option> : null}</Select><Field label="Custom model ID"><input value={form.model} disabled={!form.provider} placeholder="Optional provider model ID" onChange={event => patch({ model: event.target.value })} /></Field></div></div>
+    <div className="setting-row"><span><strong>Model provider</strong><small>Only providers reported by the local Rumbo service are listed. Saving does not connect an account.</small></span><Select aria-label="Default Rumbo Agent provider" value={form.provider} onChange={provider => patch({ provider, model: '', reasoning_effort: '' })}>{state.providers.map(item => <option key={providerId(item)} value={providerId(item)}>{providerName(item)}{providerConnected(item) ? ' · connected' : ' · disconnected'}</option>)}</Select></div>
+    <div className="setting-row"><span><strong>Model</strong><small>Automatic lets the provider choose. Other entries are configured IDs, not proof that your account can run them.</small></span><div className="rumbo-agent-setting-controls"><Select aria-label="Default Rumbo Agent model" value={form.model} disabled={!form.provider} onChange={model => patch({ model })}><option value="">Automatic</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)} · unverified</option>)}{customModel ? <option value={form.model} title={form.model}>{form.model} · unverified</option> : null}</Select></div></div>
     <div className="setting-row"><span><strong>Reasoning effort</strong><small>Only values reported for the selected provider are offered and the provider validates the choice again at launch.</small></span><Select aria-label="Default reasoning effort" value={form.reasoning_effort} disabled={!form.provider} onChange={reasoning_effort => patch({ reasoning_effort })}><option value="">Provider default</option>{reasoningEfforts.map(value => <option key={value} value={value}>{value}</option>)}</Select></div>
     <div className="setting-row"><Toggle label="Include saved memory by default" description="Eligible reviewed memory may be selected in the context preview. Profile policy and current access can still exclude it." checked={form.include_memory} onChange={include_memory => patch({ include_memory })} /></div>
     <div className="setting-row"><Toggle label="Include conversation history by default" description="The exact bounded history is shown before sending. Turning this off does not delete saved messages." checked={form.include_chat} onChange={include_chat => patch({ include_chat })} /></div>

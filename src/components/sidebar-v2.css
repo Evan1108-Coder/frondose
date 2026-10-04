@@ -7,6 +7,8 @@
 .sidebar-v2 .workspace-picker { min-width: 0; flex: 1; }
 .sidebar-v2 .workspace-trigger { border: 0; border-radius: 6px; padding: 3px 2px; min-height: 40px; gap: 4px; font-size: 14px; font-weight: 570; }
 .sidebar-v2 .workspace-trigger .workspace-name { flex: 1; }
+.sidebar-v2 .workspace-picture { width: 32px; height: 32px; flex: none; border-radius: 8px; object-fit: cover; }
+.sidebar-v2 .workspace-initial img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .sidebar-v2 .workspace-trigger > svg { flex-shrink: 0; width: 12px; height: 12px; margin: 0 2px; }
 .sidebar-v2 .sidebar-header-actions { display: flex; flex-shrink: 0; gap: 1px; }
 .sidebar-v2 .sidebar-header-actions .icon-button { width: 30px; height: 32px; border-radius: 6px; }
@@ -25,6 +27,18 @@
 .sidebar-v2 .nav-item > svg { width: 20px; height: 20px; flex-shrink: 0; }
 .sidebar-v2 .nav-item > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-v2 .main-nav { margin-bottom: 24px; }
+.sidebar-v2 .sidebar-more-trigger { display: flex; align-items: center; color: var(--secondary); margin-top: 8px; text-align: left; }
+.sidebar-v2 .sidebar-more-trigger:hover, .sidebar-v2 .sidebar-more-trigger.active { background: var(--hover); color: var(--text); }
+.sidebar-more-dialog > .sidebar-more-groups { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.sidebar-more-groups { display: grid; gap: 22px; padding: 20px 24px 24px; }
+.sidebar-more-groups h3 { margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.sidebar-more-groups section > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.sidebar-more-groups section button { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px; border-radius: 7px; text-align: left; font-size: 13px; }
+.sidebar-more-groups section button:hover { background: var(--hover); }
+.sidebar-more-groups section button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sidebar-more-groups section button > svg:first-child { width: 17px; height: 17px; flex: none; color: var(--secondary); }
+.sidebar-more-groups section button > svg:last-child { width: 14px; height: 14px; flex: none; margin-left: auto; color: var(--muted); }
+.sidebar-more-groups section button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-v2 .sidebar-section { margin-bottom: 22px; }
 .sidebar-section-heading { display: flex; align-items: center; gap: 2px; min-height: 30px; margin-bottom: 5px; color: var(--muted); }
 .sidebar-section-heading .section-disclosure { display: grid; place-items: center; width: 24px; height: 28px; border-radius: 6px; }
@@ -85,6 +99,7 @@
 @media (min-width: 1400px) { .rumbo-app { --sidebar: 292px; } }
 @media (min-width: 801px) and (max-width: 1100px) { .rumbo-app { --sidebar: 258px; gap: 20px; } }
 @media (max-width: 800px) {
+  .sidebar-more-groups section > div { grid-template-columns: 1fr; }
   .sidebar.sidebar-v2, .sidebar.sidebar-v2.collapsed { width: min(292px, calc(100vw - 28px)); padding: 12px 10px 10px; }
   .sidebar.sidebar-v2:not(.mobile-open) { transform: translateX(calc(-100% - 24px)); }
   .sidebar.sidebar-v2.mobile-open { transform: translateX(0); }

@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Download, Keyboard, MessageCircle, PanelLeft, Settings } from './icons.jsx';
-import { Button, Dialog, useApp } from '../ui.jsx';
+import { BookOpen, Keyboard, PanelLeft, Settings } from './icons.jsx';
+import { Dialog, useApp } from '../ui.jsx';
 import './help-menu.css';
 
 export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
-  const { navigate, customizeSidebar, showShortcuts, showFeedback } = useApp();
+  const { navigate, customizeSidebar, showShortcuts } = useApp();
   const [open, setOpen] = useState(false);
-  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
   const [position, setPosition] = useState({ left: 8, bottom: 64 });
   const trigger = useRef(null), menu = useRef(null);
   const initialItem = useRef('first');
@@ -51,10 +51,9 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
   const go = onNavigate ?? navigate;
   const items = [
     ['Docs', BookOpen, () => go('docs')],
-    ['Feedback', MessageCircle, showFeedback],
+    ['What the tools mean', BookOpen, () => setTermsOpen(true)],
     ['Sidebar customization', PanelLeft, customizeSidebar],
     ['Keyboard shortcuts', Keyboard, showShortcuts],
-    ['Download app', Download, () => setDownloadOpen(true)],
     ['Settings', Settings, () => go('settings')],
   ];
   return <>
@@ -79,8 +78,14 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
       }
     }}>
       <div className="rumbo-help-menu-label">Rumbo resources</div>
-      {items.map(([label, Icon, action]) => <button type="button" role="menuitem" key={label} onClick={() => run(action)}><Icon /><span>{label}</span>{label === 'Download app' ? <small>Coming soon</small> : null}</button>)}
+      {items.map(([label, Icon, action]) => <button type="button" role="menuitem" key={label} onClick={() => run(action)}><Icon /><span>{label}</span></button>)}
     </div>, document.body) : null}
-    {downloadOpen ? <Dialog title="Download Rumbo" subtitle="The desktop app is not available yet." onClose={() => setDownloadOpen(false)}><div className="rumbo-download-placeholder"><Download /><p>Keep using Rumbo in your browser. This is a preview of the download entry—there is no installer or download available today.</p><Button onClick={() => setDownloadOpen(false)}>Got it</Button></div></Dialog> : null}
+    {termsOpen ? <Dialog title="What the tools mean" subtitle="A short map of Rumbo’s work surfaces." onClose={() => setTermsOpen(false)}><dl className="rumbo-terms">
+      <div><dt>Rumbo Agent</dt><dd>Your general assistant conversation. It uses a connected AI provider only after you review and send a request.</dd></div>
+      <div><dt>Agent profiles</dt><dd>Reusable specialist roles with their own instructions and defaults. Several can share one provider connection.</dd></div>
+      <div><dt>Workflows</dt><dd>Bounded sequences of agent, skill, tool, and human-decision steps. A prepared workflow is not a running one.</dd></div>
+      <div><dt>Coordination</dt><dd>Plans, handoffs, requests, and queues for deciding who or what should act next.</dd></div>
+      <div><dt>Knowledge and Memory</dt><dd>Knowledge holds reviewed sources and outputs; Memory keeps explicit notes for future context. Neither grants an agent new access by itself.</dd></div>
+    </dl></Dialog> : null}
   </>;
 }

@@ -36,6 +36,7 @@ export function SidebarEditor({ onClose }) {
   return <Dialog title="Customize sidebar" subtitle={'Your layout for ' + workspace.name} onClose={onClose} className="sidebar-editor">
     <div className="sidebar-editor-body">
       <div className="sidebar-editor-preferences">
+        <label><span>Navigation <small>Focused keeps Today, Rumbo Agent, Inbox, and Projects in the sidebar. Other pages remain in More and search.</small></span><Select aria-label="Sidebar navigation mode" value={draft.navigationMode} onChange={navigationMode => patch({ navigationMode })}><option value="focused">Focused</option><option value="full">All tools</option></Select></label>
         <label><span>Badge style</span><Select aria-label="Sidebar badge style" value={draft.badges} onChange={badges => patch({ badges })}><option value="count">Count</option><option value="dot">Dot</option><option value="none">None</option></Select></label>
         <label><span>Row spacing</span><Select aria-label="Sidebar spacing" value={draft.density} onChange={density => patch({ density })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></Select></label>
       </div>
@@ -53,6 +54,6 @@ export function SidebarEditor({ onClose }) {
       <section><h3>Hidden items</h3>{draft.hiddenItems.map(ref => <div className="sidebar-layout-editor-row" key={favoriteKey(ref)}><span>{resolveFavorite(data, ref)?.title || 'Unavailable item'}</span><Button onClick={() => patch({ hiddenItems: draft.hiddenItems.filter(item => favoriteKey(item) !== favoriteKey(ref)) })}>Restore</Button></div>)}</section>
       <ErrorMessage error={error} />
     </div>
-    <footer className="dialog-footer"><Button icon={RotateCcw} onClick={() => { const defaults = normalizeOrganization(null); setDraft({ ...draft, layout: defaults.layout, order: defaults.order, visibility: defaults.visibility, pinnedLayout: [], hiddenItems: [], entityOrder: defaults.entityOrder }); }}>Reset layout</Button><span className="dialog-footer-spacer" /><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => { try { updateOrganization(draft); onClose(); } catch (cause) { setError(cause); } }}>Save layout</Button></footer>
+    <footer className="dialog-footer"><Button icon={RotateCcw} onClick={() => { const defaults = normalizeOrganization(null); setDraft({ ...draft, layout: defaults.layout, order: defaults.order, visibility: defaults.visibility, navigationMode: defaults.navigationMode, pinnedLayout: [], hiddenItems: [], entityOrder: defaults.entityOrder }); }}>Reset layout</Button><span className="dialog-footer-spacer" /><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => { try { updateOrganization(draft); onClose(); } catch (cause) { setError(cause); } }}>Save layout</Button></footer>
   </Dialog>;
 }

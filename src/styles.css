@@ -819,7 +819,7 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
+  margin-left: 8px;
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;

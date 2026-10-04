@@ -21,7 +21,7 @@ export const NAV_ITEMS = [
   { id: "agents", label: "Agents", key: "A" },
   { id: "skills", label: "Skills", key: "K" },
   { id: "memory", label: "Memory", key: "M" },
-  { id: "connections", label: "Connections", key: "N" },
+  { id: "connections", label: "AI connections", key: "N" },
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
@@ -30,6 +30,11 @@ export const SIDEBAR_GROUPS = {
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
 export const SECTION_LABELS = { favorites: "Favorites", agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
+export const FOCUSED_SIDEBAR_ROOT = new Set(['overview', 'rumbo-agent', 'inbox', 'projects']);
+export function focusedSidebarHiddenKeys(organization) {
+  if (organization.navigationMode !== 'focused') return [];
+  return organization.layout.root.filter(key => Object.values(SIDEBAR_GROUPS).flat().includes(key) && !FOCUSED_SIDEBAR_ROOT.has(key));
+}
 const FAVORITE_VIEWS = new Set(["projects", "teams", "tasks", "chats", "agents", "memory", "library", "work", "workbench", "documents", "views"]);
 const ids = (input, allowed) => [...new Set([...(Array.isArray(input) ? input.filter(id => allowed.includes(id)) : []), ...allowed])];
 const validString = value => typeof value === "string" && value.length > 0 && value.length < 513 && !/[\u0000-\u001f/\\]/.test(value);
@@ -54,6 +59,7 @@ export function normalizeOrganization(value) {
   const pinnedLayout = (Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => Object.values(SIDEBAR_GROUPS).flat().includes(id) || layout.groups.some(g => g.id === id));
   const entityOrder = Object.fromEntries(['projects', 'teams', 'agents', 'chats'].map(view => [view, [...new Set((Array.isArray(input.entityOrder?.[view]) ? input.entityOrder[view] : []).filter(validString))].slice(0, 500)]));
   return { version: 1, order, visibility, favorites, hiddenItems, pinnedLayout, entityOrder, layout,
+    navigationMode: input.navigationMode === 'focused' || input.navigationMode === 'full' ? input.navigationMode : value?.version === 1 ? 'full' : 'focused',
     badges: ["count", "dot", "none"].includes(input.badges) ? input.badges : "count",
     density: input.density === "compact" ? "compact" : "comfortable",
     shortcuts: input.shortcuts !== false,

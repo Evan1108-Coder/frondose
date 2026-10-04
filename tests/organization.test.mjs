@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { favoriteForPage, focusItems, moveItem, normalizeOrganization, organizationCounts, readOrganization, resolveFavorite, saveOrganization, showSidebarItem } from "../src/lib/organization.js";
+import { favoriteForPage, focusItems, focusedSidebarHiddenKeys, moveItem, normalizeOrganization, organizationCounts, readOrganization, resolveFavorite, saveOrganization, showSidebarItem } from "../src/lib/organization.js";
 import { resolveShortcut, SHORTCUTS } from "../src/lib/shortcuts.js";
 import { pageHash, parsePage } from "../src/lib/navigation.js";
 
@@ -19,6 +19,18 @@ test("sidebar preferences are workspace-local, and storage failures are not sile
   assert.equal(readOrganization(storage, "two").shortcuts, true);
   assert.equal(readOrganization({getItem:()=>"invalid"}, "one").badges, "count");
   assert.throws(() => saveOrganization({setItem:()=>{throw Error("denied");}}, "one", null), /denied/);
+});
+test('focused navigation is the new default but preserves existing layouts and custom groups', () => {
+  const fresh = normalizeOrganization(null);
+  assert.equal(fresh.navigationMode, 'focused');
+  assert.ok(focusedSidebarHiddenKeys(fresh).includes('connections'));
+  assert.ok(!focusedSidebarHiddenKeys(fresh).includes('projects'));
+  const legacy = normalizeOrganization({ version: 1 });
+  assert.equal(legacy.navigationMode, 'full');
+  assert.deepEqual(focusedSidebarHiddenKeys(legacy), []);
+  const custom = normalizeOrganization({ version: 1, navigationMode: 'focused', layout: { root: ['overview', 'rumbo-agent', 'custom:extra', 'focus'], groups: [{ id: 'custom:extra', name: 'Mine', items: ['skills'] }] } });
+  assert.ok(!focusedSidebarHiddenKeys(custom).includes('custom:extra'));
+  assert.ok(custom.layout.groups[0].items.includes('skills'));
 });
 test("reordering is bounded and does not mutate previous state", () => {
   const input = ["a","b","c"];

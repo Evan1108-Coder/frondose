@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isRecord, validateRecord, validationError } from './validation.mjs';
+import { isRecord, validateAvatar, validateRecord, validationError } from './validation.mjs';
 import { RESOURCE_TYPES } from '../src/lib/settings-catalog.js';
 import { payloadFor } from './workspace-features.mjs';
 import { EXTENSION_TABLES, EXTENSION_PARENTS, importExtensions } from './workspace-import-extensions.mjs';
@@ -17,6 +17,7 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
   if (!Array.isArray(data.workspaces) || data.workspaces.length !== 1) throw validationError('Export and import one workspace at a time.');
   const original = data.workspaces[0];
   if (!isRecord(original) || typeof original.id !== 'string' || typeof original.name !== 'string' || !original.name.trim()) throw validationError('The archive has no valid workspace.');
+  validateAvatar(original.image_url ?? null);
   const tables = ['teams', 'agents', 'projects', 'tasks', 'chats', 'messages', 'team_members', 'documents', 'milestones', 'memory_notes'];
   const ids = new Map(), uid = () => `import_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
   ids.set(original.id, uid());
@@ -45,7 +46,7 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
   const timestamp = new Date().toISOString(), workspaceId = ids.get(original.id);
   db.exec('BEGIN');
   try {
-    db.prepare('INSERT INTO workspaces (id,name,slug,description,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(workspaceId, `${original.name.slice(0, 140)} (imported)`, workspaceId, String(original.description ?? '').slice(0, 100000), timestamp, timestamp);
+    db.prepare('INSERT INTO workspaces (id,name,slug,description,image_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').run(workspaceId, `${original.name.slice(0, 140)} (imported)`, workspaceId, String(original.description ?? '').slice(0, 100000), original.image_url ?? null, timestamp, timestamp);
     const pending = [], importedProfiles = [];
     for (const table of tables) for (const source of data[table] ?? []) {
       const row = normalize(table, source);

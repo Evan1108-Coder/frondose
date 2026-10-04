@@ -22,7 +22,6 @@ import { dirname, isAbsolute, join, resolve, parse as parsePath } from 'node:pat
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { listProviderSetups, providerSetup } from './provider-adapters.mjs';
 import { isRecord, mergeSettings, validateAvatar, validateRecord, validationError } from './validation.mjs';
 import { createIntegrationService } from './integration-service.mjs';
 import { installWorkspaceFeatures, featureSnapshot, featureRoute, recordChange, validateCustomFields } from './workspace-features.mjs';
@@ -43,6 +42,7 @@ import { createIdentityService } from './identity-service.mjs';
 import { createGovernanceService, governanceRoute } from './governance-service.mjs';
 import { createAccessBoundary } from './access-boundary.mjs';
 import { createConnectionPlatform } from './connection-platform.mjs';
+import { installAiConnections, createAiConnectionsService } from './ai-connections-service.mjs';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
 import { subRoutesRoute } from './sub-routes-service.mjs';
 import { guardRouteMutation, guardRouteDeletion, hierarchyTransaction, routeGraph, inspectRouteGraph, authorizeRouteNodes } from './route-hierarchy.mjs';
@@ -57,7 +57,7 @@ const JSON_FIELDS = new Set([
 
 const TABLE_CONFIG = {
   workspaces: {
-    fields: ['name', 'slug', 'description', 'icon', 'color', 'archived_at'],
+    fields: ['name', 'slug', 'description', 'icon', 'image_url', 'color', 'archived_at'],
     required: ['name'],
   },
   projects: {
@@ -424,6 +424,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   const needsAgentIdentity = !db.prepare('PRAGMA table_info(runs)').all().some((column) => column.name === 'agent_id');
   if (needsAgentIdentity) db.exec('ALTER TABLE runs ADD COLUMN agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL');
   const additions = {
+    workspaces: { image_url: 'TEXT' },
     teams: { icon_color: "TEXT NOT NULL DEFAULT ''", tab_icon_color: "TEXT NOT NULL DEFAULT 'team'", empty_icon_color: "TEXT NOT NULL DEFAULT 'team'", tab_label_color: "TEXT NOT NULL DEFAULT 'global'" },
     projects: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', image_url: 'TEXT', start_date: 'TEXT', target_date: 'TEXT', lead: "TEXT NOT NULL DEFAULT ''", workflow_status_id: 'TEXT', labels_json: "TEXT NOT NULL DEFAULT '[]'" },
     tasks: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', workflow_status_id: 'TEXT' },
@@ -456,6 +457,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installRunUsage(db);
   installKnowledgeConflicts(db);
   installWorkbenchCheckpoints(db);
+  installAiConnections(db);
   // Historical name-only sessions intentionally remain unassigned: a name is not identity.
   // A terminated local process cannot still own a running session after restart.
   db.prepare("UPDATE runs SET status='interrupted',finished_at=?,updated_at=? WHERE status IN ('running','starting','queued')").run(now(), now());
@@ -505,8 +507,9 @@ function snapshot(db) {
 }
 
 export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {} } = {}) {
+  const externalConnectionsPaused = integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
-  let identity, governance, access, connectionPlatform;
+  let identity, governance, access, connectionPlatform, aiConnections;
   function installAccess() {
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
@@ -520,7 +523,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       { id: 'connections.delete_cache', label: 'Permanently remove connection cache and import links', category: 'Connections' },
       ...Object.values(CONNECTOR_CATALOG).flatMap(provider => provider.actions.map(action => ({ id: `connections.${provider.id}.${action.id}`, label: `${provider.name}: ${action.label}`, category: provider.name }))),
     ]);
-    connectionPlatform = createConnectionPlatform({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch,
+    connectionPlatform = createConnectionPlatform({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch, paused: externalConnectionsPaused,
       authorize: ({ actor, workspace_id, permission, scope_type, scope_id }) => {
         if (!actor?.id) throw Object.assign(new Error('Sign in to use connections.'), { statusCode: 401 });
         const capability = { 'routes.edit': 'routes.write', 'projects.edit': 'projects.write', 'documents.edit': 'documents.write' }[permission] || permission;
@@ -536,6 +539,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         }
         return governance.requestProtectedAction(connection.workspace_id, actor.id, { permission: action === 'purge_cache' ? 'connections.delete_cache' : `connections.${connection.provider}.${action}`, scope: { scope_type: connection.scope_type, scope_id: connection.scope_id }, action, target_id: connection.id, payload });
       },
+    });
+    aiConnections = createAiConnectionsService({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch,
+      authorize: (workspaceId, actor) => governance.authorize(workspaceId, actor.id, 'connections.view'),
     });
   }
   installAccess();
@@ -587,6 +593,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   }
   const integration = createIntegrationService({
     ...integrationOptions,
+    pauseExternalConnections: externalConnectionsPaused,
     dataDir: store.directory,
     onConnectionChange(provider, patch) {
       if (closed) return;
@@ -916,7 +923,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (!allowedLoopbackHost(req.headers.host)) return fail(res, 403, 'invalid_host', 'Rumbo only accepts loopback hosts.');
     if (!allowedOrigin(req.headers.origin, req.headers.host)) return fail(res, 403, 'invalid_origin', 'Cross-origin API requests are not allowed.');
-    if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && ['/api/auth/google-drive/callback', '/api/connection-platform/oauth/callback'].includes(url.pathname))) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
+    if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && (['/api/auth/google-drive/callback', '/api/connection-platform/oauth/callback', '/api/ai-connections/huggingface/callback'].includes(url.pathname) || url.pathname.startsWith('/api/ai-connections/openrouter/callback/')))) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return fail(res, 415, 'unsupported_media_type', 'Use application/json for API changes.');
     try {
       const db = getDb();
@@ -925,6 +932,15 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const path = /^\/areas(?:\/[^/]+)?$/.test(requestedPath) ? requestedPath.replace(/^\/areas/, '/teams') : requestedPath;
       const actor = identity.resolve(req);
       Object.assign(changeContext.getStore(), { actor, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Rumbo' });
+      const aiCallback = path.match(/^\/ai-connections\/openrouter\/callback\/([A-Za-z0-9_-]+)$/);
+      if (aiCallback && req.method === 'GET') {
+        await aiConnections.complete(aiCallback[1], url.searchParams.get('code'), actor, req.headers.host);
+        res.statusCode = 303; res.setHeader('Location', '/#/connections'); res.setHeader('Cache-Control', 'no-store'); res.end(); return;
+      }
+      if (path === '/ai-connections/huggingface/callback' && req.method === 'GET') {
+        await aiConnections.hfComplete(url.searchParams.get('state'), url.searchParams.get('code'), actor, req.headers.host);
+        res.statusCode = 303; res.setHeader('Location', '/#/connections'); res.setHeader('Cache-Control', 'no-store'); res.end(); return;
+      }
       if (path.startsWith('/connection-platform/webhooks/') && req.method === 'POST') {
         await readBody(req);
         const result = await connectionPlatform.handle({ method: req.method, path, rawBody: req.rumboRawBody, headers: req.headers });
@@ -964,6 +980,17 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return access.filter(data, actor);
       };
       const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : 1_000_000) : {};
+      if (path === '/ai-connections' && req.method === 'GET') return send(res, 200, { result: await aiConnections.list(url.searchParams.get('workspace_id'), actor) });
+      if (path === '/ai-connections/openrouter/start' && req.method === 'POST') return send(res, 200, { result: await aiConnections.start(body, actor, req.headers.host) });
+      if (path === '/ai-connections/openrouter/check' && req.method === 'POST') return send(res, 200, { result: await aiConnections.check(body.workspace_id, actor) });
+      if (path === '/ai-connections/openrouter/models' && req.method === 'GET') return send(res, 200, { result: await aiConnections.models(url.searchParams.get('workspace_id'), actor) });
+      if (path === '/ai-connections/openrouter/test' && req.method === 'POST') return send(res, 200, { result: await aiConnections.testModel(body.workspace_id, body.model, actor) });
+      if (path === '/ai-connections/openrouter/disconnect' && req.method === 'POST') return send(res, 200, { result: await aiConnections.disconnect(body.workspace_id, actor) });
+      if (path === '/ai-connections/huggingface/start' && req.method === 'POST') return send(res, 200, { result: await aiConnections.hfStart(body, actor, req.headers.host) });
+      if (path === '/ai-connections/huggingface/check' && req.method === 'POST') return send(res, 200, { result: await aiConnections.hfCheck(body.workspace_id, actor) });
+      if (path === '/ai-connections/huggingface/models' && req.method === 'GET') return send(res, 200, { result: await aiConnections.hfModels(url.searchParams.get('workspace_id'), actor) });
+      if (path === '/ai-connections/huggingface/test' && req.method === 'POST') return send(res, 200, { result: await aiConnections.hfTestModel(body.workspace_id, body.model, actor) });
+      if (path === '/ai-connections/huggingface/disconnect' && req.method === 'POST') return send(res, 200, { result: await aiConnections.hfDisconnect(body.workspace_id, actor) });
       // The service rechecks captured scope, sponsor and reviewer authority. There
       // is deliberately no browser endpoint for invoking agent tools.
       const nativeDecision = path.match(/^\/native-tool-requests\/([^/]+)\/decision$/);
@@ -1474,16 +1501,17 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (req.method === 'GET' && path === '/connections') return send(res, 200, { connections: rows(db.prepare('SELECT * FROM connections ORDER BY category,display_name')), note: 'Demo states are not live account connections.' });
       if (req.method === 'GET' && path === '/connections/setup') {
         const origin = `http://${req.headers.host || '127.0.0.1:4173'}`;
-        return send(res, 200, { setups: listProviderSetups({ origin }), accountSafe: true });
+        return send(res, 200, { setups: integration.listSetups({ origin }), accountSafe: true });
       }
       const setupMatch = path.match(/^\/connections\/(github|google-drive|codex|claude)\/setup$/);
       if (req.method === 'GET' && setupMatch) {
         const origin = `http://${req.headers.host || '127.0.0.1:4173'}`;
-        return send(res, 200, { setup: providerSetup(setupMatch[1], { origin }), accountSafe: true });
+        return send(res, 200, { setup: integration.setup(setupMatch[1], { origin }), accountSafe: true });
       }
       const probeMatch = path.match(/^\/connections\/(?:probe\/)?(github|google-drive|codex|claude)(?:\/probe)?$/);
       if ((req.method === 'POST' || req.method === 'GET') && probeMatch) {
         const provider = probeMatch[1];
+        if (externalConnectionsPaused && !['codex', 'claude'].includes(provider)) return fail(res, 409, 'coming_soon', 'External service connections are coming soon.');
         const probe = safeExecutableProbe(provider);
         db.prepare('UPDATE connections SET state=?,metadata_json=?,last_probed_at=?,updated_at=? WHERE provider=?')
           .run(probe.state, JSON.stringify(probe), probe.checkedAt, probe.checkedAt, provider);

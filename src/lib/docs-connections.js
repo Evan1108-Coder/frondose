@@ -1,5 +1,10 @@
 const section = (id, title, paragraphs, extra = {}) => ({ id, title, paragraphs, ...extra });
-const guide = (id, title, description, sections, related = []) => ({ id, group: 'integrations', title, description, sections, related, appLink: { view: 'connections', label: 'Open connections' } });
+const guide = (id, title, description, sections, related = []) => {
+  const deferred = id.startsWith('connection-') && !['connection-codex', 'connection-claude'].includes(id);
+  return { id, group: 'integrations', title, description: deferred ? `Coming soon · ${description}` : description,
+    sections: deferred ? [section('release-status', 'Current release status', ['External-service authorization, synchronization, and actions are paused in the current Rumbo release. The sections below describe the planned capability and its security boundaries; they are not setup steps you can complete today. Existing connection records are preserved. Codex and Claude are the currently available AI runners.']), ...sections] : sections,
+    related, appLink: { view: 'connections', label: 'Open connections' } };
+};
 const providers = [
   ['github', 'GitHub', 'Repositories, source files, issues, pull requests, and commits.',
     'Authorize GitHub through its sign-in page, then select repositories in Resources. GitHub Actions and Packages have their own Rumbo entries so their capabilities and settings can be managed separately. The existing GitHub CLI account flow remains available from Manage existing account; that machine account is separate from a new workspace OAuth connection.',

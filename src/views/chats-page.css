@@ -106,7 +106,7 @@
 .chat-compose-area { flex-shrink: 0; padding: 12px 32px 20px; width: 100%; max-width: 1000px; margin: 0 auto; }
 .chat-compose { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; padding: 18px 16px 12px; transition: border-color 120ms ease; }
 .chat-compose:focus-within { border-color: color-mix(in srgb, var(--text) 32%, var(--border-strong)); }
-.chat-hub .chat-compose textarea { display: block; resize: none; width: 100%; border: 0; outline: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 16px; line-height: 1.6; min-height: 78px; max-height: 220px; padding: 0 3px 16px; box-shadow: none; }
+.chat-compose textarea { display: block; resize: none; width: 100%; border: 0; outline: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 16px; line-height: 1.6; min-height: 78px; max-height: 220px; padding: 0 3px 16px; box-shadow: none; }
 .chat-compose textarea::placeholder { color: var(--muted); }
 .chat-compose-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .chat-compose-controls > .button { flex-shrink: 0; min-height: 36px; font-size: 13px; padding: 7px 12px; }
@@ -275,4 +275,33 @@
   .chat-compose-notice > button { margin-left: 22px; }
   .chat-message-search { padding: 10px; gap: 8px; }
   .chat-message-search > span { display: none; }
+}
+
+/* The global navigation already switches recent conversations. Keep the thread
+   single-pane and use this full-width index for older conversations and search. */
+.chat-single-page { display: flex; height: 100%; min-height: 0; overflow: hidden; }
+.chat-single-page > .chat-thread { display: flex; flex: 1; width: 100%; min-width: 0; }
+.chat-overview-page { height: 100%; overflow-y: auto; padding: clamp(28px, 4vw, 54px); }
+.chat-overview-heading { max-width: 1040px; margin: 0 auto 28px; display: flex; justify-content: space-between; align-items: start; gap: 20px; }
+.chat-overview-heading h1 { margin: 0; font-size: clamp(28px, 3vw, 38px); font-weight: 650; letter-spacing: -.035em; }
+.chat-overview-heading p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.chat-overview-heading .chat-scope-link { padding: 8px 0 0; }
+.chat-overview-page > .search-field { display: flex; width: min(1040px, 100%); margin: 0 auto 32px; }
+.chat-overview-list { max-width: 1040px; margin: 0 auto; }
+.chat-overview-list section + section { margin-top: 32px; }
+.chat-overview-list h2 { margin: 0 0 10px; color: var(--secondary); font-size: 12px; font-weight: 600; }
+.chat-overview-row { display: grid; width: 100%; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 15px; min-height: 76px; padding: 13px 16px; border: 1px solid transparent; border-bottom-color: var(--border); border-radius: 8px; text-align: left; color: var(--text); }
+.chat-overview-row:hover, .chat-overview-row:focus-visible { background: var(--hover); border-color: var(--border-strong); }
+.chat-overview-row > svg { width: 20px; height: 20px; color: var(--secondary); }
+.chat-overview-row > span { display: grid; gap: 4px; min-width: 0; }
+.chat-overview-row strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-overview-row small { font-size: 13px; color: var(--secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-overview-row em, .chat-overview-row time { font-size: 11px; color: var(--muted); font-style: normal; }
+.chat-overview-row time { align-self: start; padding-top: 2px; white-space: nowrap; }
+@media (max-width: 600px) {
+  .chat-overview-page { padding: 20px 14px; }
+  .chat-overview-heading { align-items: center; }
+  .chat-overview-heading .button { padding: 8px; font-size: 0; }
+  .chat-overview-heading .button svg { width: 18px; height: 18px; }
+  .chat-overview-row { gap: 10px; padding-inline: 10px; }
 }

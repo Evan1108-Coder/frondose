@@ -1,0 +1,61 @@
+.ai-connections { max-width: 1220px; margin-inline: auto; padding-bottom: 72px; }
+.ai-connections > .search-field { max-width: 420px; margin: 28px 0 36px; }
+.ai-connection-intro, .ai-connection-footer { display: flex; gap: 12px; align-items: flex-start; padding: 15px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--secondary); font-size: 13px; line-height: 1.55; }
+.ai-connection-intro svg, .ai-connection-footer svg { width: 18px; height: 18px; color: var(--accent); flex: 0 0 auto; }
+.ai-connection-intro p, .ai-connection-footer p { margin: 0; }
+.ai-connection-section { margin-top: 42px; }
+.ai-connection-section-heading { margin-bottom: 18px; }
+.ai-connection-section-heading h2 { margin: 0 0 7px; font-size: 18px; font-weight: 600; letter-spacing: -.015em; }
+.ai-connection-section-heading p { margin: 0; max-width: 790px; color: var(--secondary); line-height: 1.55; font-size: 13px; }
+.ai-connection-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ai-connection-card { min-width: 0; display: flex; flex-direction: column; padding: 20px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); }
+.ai-connection-card-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.ai-connection-card-heading > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.ai-connection-card-heading strong { font-size: 15px; font-weight: 600; }
+.ai-connection-card-heading small { color: var(--secondary); font-size: 11px; }
+.ai-provider-mark { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 9px; color: var(--text); background: var(--hover); font-size: 12px; font-weight: 700; letter-spacing: -.03em; }
+.ai-connection-check { width: 17px; height: 17px; margin-left: auto; color: var(--success, #58ad81); }
+.ai-connection-card > p { min-height: 76px; margin: 20px 0 13px; color: var(--secondary); font-size: 13px; line-height: 1.55; }
+.ai-connection-card dl { margin: 0 0 22px; border-top: 1px solid var(--border); }
+.ai-connection-card dl div { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding-top: 10px; font-size: 12px; line-height: 1.4; }
+.ai-connection-card dt { color: var(--muted); }
+.ai-connection-card dd { margin: 0; color: var(--secondary); }
+.ai-connection-card-actions { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.ai-connection-card-actions a { display: inline-flex; align-items: center; gap: 4px; color: var(--secondary); font-size: 12px; }
+.ai-connection-card-actions a svg, .ai-connection-card-actions .button svg { width: 14px; height: 14px; }
+.ai-connection-pending, .ai-muted { color: var(--muted); font-size: 12px; }
+.ai-account-panel { padding: 22px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); }
+.ai-account-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.ai-account-panel > p { margin: 16px 0 0; font-size: 13px; }
+.ai-local-list { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.ai-local-list > div { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.ai-local-list > div:last-child { border-bottom: 0; }
+.ai-local-list > div > span:nth-child(2) { display: grid; gap: 3px; }
+.ai-local-list strong { font-size: 13px; font-weight: 550; }
+.ai-local-list small { color: var(--muted); font-size: 12px; }
+.ai-local-list .button { margin-left: auto; }
+.ai-direct { padding: 20px 22px; border: 1px solid var(--border); border-radius: 12px; }
+.ai-direct > p { color: var(--secondary); font-size: 12px; line-height: 1.8; margin: 0; }
+.ai-connection-footer { margin-top: 34px; }
+.ai-connection-footer button { padding: 0; border: 0; background: none; color: var(--text); text-decoration: underline; cursor: pointer; }
+.ai-dialog-content { display: grid; gap: 18px; padding: 22px; }
+.ai-dialog-content > p { margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.6; }
+.ai-dialog-content > div:last-child { display: flex; justify-content: flex-end; gap: 9px; }
+.ai-provider-detail { max-width: 980px; margin: 0 auto; }
+.ai-provider-back { padding: 5px 0; margin: 0 0 18px; border: 0; background: transparent; color: var(--secondary); font-size: 13px; cursor: pointer; }
+.ai-provider-back:hover { color: var(--text); }
+.ai-provider-back:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ai-provider-detail > .page-heading { margin-bottom: 24px; }
+.ai-provider-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 16px; }
+.ai-provider-detail-grid > .ai-connection-section { min-width: 0; margin: 0; padding: 24px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); }
+.ai-provider-detail-grid h2 { margin: 0 0 14px; font-size: 17px; font-weight: 600; }
+.ai-provider-detail-grid p { margin: 0 0 22px; color: var(--secondary); font-size: 13px; line-height: 1.6; }
+.ai-provider-detail-grid dl { margin: 0 0 24px; display: grid; gap: 16px; }
+.ai-provider-detail-grid dl div { display: grid; gap: 4px; }
+.ai-provider-detail-grid dt { color: var(--muted); font-size: 12px; }
+.ai-provider-detail-grid dd { margin: 0; color: var(--text); font-size: 13px; line-height: 1.55; text-align: left; overflow-wrap: anywhere; }
+.ai-provider-detail-grid a { display: inline-flex; align-items: center; gap: 6px; color: var(--secondary); font-size: 13px; }
+.ai-provider-detail-grid a svg { width: 14px; height: 14px; }
+@media (max-width: 760px) { .ai-provider-detail-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) { .ai-connection-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .ai-connection-grid { grid-template-columns: 1fr; } .ai-connection-card > p { min-height: 0; } .ai-local-list > div { flex-wrap: wrap; } .ai-local-list .button { margin-left: 46px; } }

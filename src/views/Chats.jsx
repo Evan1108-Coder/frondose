@@ -38,21 +38,6 @@ function draftStorage() { try { return sessionStorage; } catch { return undefine
 export function ChatsView() {
   const { data, page, navigate, edit } = useApp();
   const [query, setQuery] = useState('');
-  const hubRef = useRef(null);
-  const [listWidth, setListWidth] = useState(292);
-  const [listFolded, setListFolded] = useState(false);
-  const [narrow, setNarrow] = useState(false);
-  const [listOpen, setListOpen] = useState(false);
-  const folded = listFolded || (narrow && !listOpen);
-  useEffect(() => {
-    const element = hubRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width < 760));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [data.chats.length]);
-  useEffect(() => { setListOpen(false); }, [page.id]);
-  useEffect(() => { setListOpen(false); }, [narrow]);
   const [, refreshComposers] = useState(0);
   const composers = useRef(new Map());
   const index = useMemo(() => indexChatActivity(data.messages, data.runs), [data.messages, data.runs]);
@@ -60,7 +45,7 @@ export function ChatsView() {
   const scope = { projectId: page.projectId };
   const chats = visible(data.chats).filter(item => !page.projectId || val(item, 'project_id') === project?.id)
     .toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || byUpdated(a, b));
-  const chat = chats.find(item => item.id === page.id) || (!page.id ? chats[0] : null);
+  const chat = chats.find(item => item.id === page.id);
   const create = () => edit('chat', null, project ? { project_id: project.id } : {});
   const filtered = matchingChats(chats, index.messagesByChat, query);
   useEffect(() => { setQuery(''); }, [page.projectId]);
@@ -70,37 +55,20 @@ export function ChatsView() {
   if (page.projectId && !project) return <main className="page"><Empty kind="projects" title="Project unavailable" description="This project may be archived or belong to another workspace." action="All chats" onAction={() => navigate('chats')} /></main>;
   if (page.id && !chat) return <main className="page"><Empty kind="chats" title="Conversation unavailable" description="This chat may be archived or outside this project." action="All chats" onAction={() => navigate('chats', null, scope)} /></main>;
   if (!chats.length) return <main className="page"><Empty kind="chats" title={project ? 'Start the project conversation' : 'Your conversations, connected'} description="Keep ideas, decisions, and agent work in the same conversation. Link a project to bring its context along." action="Create chat" onAction={create} secondaryAction={project ? 'Open project' : 'Explore projects'} onSecondaryAction={() => navigate('projects', project?.id || null)} /></main>;
+  if (chat) return <main className="chat-single-page"><Conversation key={chat.id} chat={chat} index={index} composers={composers.current} scope={scope} onToggleList={() => navigate('chats', null, scope)} onComposerChange={() => refreshComposers(value => value + 1)} /></main>;
   const groups = query ? [['Search results', filtered]] : [['Pinned', filtered.filter(item => item.pinned)], ['Recent', filtered.filter(item => !item.pinned)]];
-  return <main ref={hubRef} style={{ '--chat-list-width': `${listWidth}px` }} className={`chat-hub resizable-chat-hub ${page.id ? 'has-selection' : ''} ${folded ? 'list-folded' : ''} ${narrow ? 'list-narrow' : ''}`}>
-    <aside className="chat-hub-list" aria-label="Conversations">
-      <header><h1>Chats</h1><IconButton label="New chat" onClick={create}><Plus /></IconButton></header>
-      {project ? <button className="chat-scope-link" onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : null}
-      <SearchField value={query} onChange={setQuery} placeholder="Search chats and messages…" label="Search chats" />
-      <div className="chat-hub-items">
-        {groups.map(([label, items]) => items.length ? <section key={label}><h2>{label}</h2>{items.map(item => {
-          const messages = index.messagesByChat.get(item.id) || [], last = messages.at(-1);
-          const active = (index.runsByChat.get(item.id) || []).some(run => ACTIVE_CHAT_RUNS.has(run.status));
-          const linked = data.projects.find(project => project.id === val(item, 'project_id'));
-          return <button className={`chat-hub-item ${chat?.id === item.id ? 'selected' : ''}`} aria-current={chat?.id === item.id ? 'page' : undefined} key={item.id} onClick={() => { setListOpen(false); navigate(item.kind === 'rumbo-agent' ? 'rumbo-agent' : 'chats', item.id, scope); }}>
-            <span className="chat-hub-item-icon"><UiIcon icon={item.pinned ? Pin : MessageCircle} /></span>
-            <span className="chat-hub-item-text"><strong>{item.title}</strong><small>{last?.content || 'Start the conversation'}</small><span>{linked?.name || 'Workspace chat'}{active ? <span className="chat-working-label"><i />Working</span> : null}</span></span>
-            <time>{relative(val(item, 'updated_at'))}</time>
-          </button>;
-        })}</section> : null)}
-        {!filtered.length ? <div className="chat-list-empty"><Search /><p>No matching conversations</p><Button variant="ghost" onClick={() => setQuery('')}>Clear search</Button></div> : null}
-      </div>
-      <footer><MessageCircle /><span>{chats.length} {chats.length === 1 ? 'conversation' : 'conversations'}</span></footer>
-    </aside>
-    <div className="chat-list-resizer" role="separator" tabIndex={0} aria-label="Resize conversation list" aria-orientation="vertical" aria-valuemin={0} aria-valuemax={420} aria-valuenow={folded ? 0 : listWidth}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === 'Home') { event.preventDefault(); setListFolded(!listFolded); } else if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); setListWidth(width => Math.max(220, Math.min(420, width + (event.key === 'ArrowLeft' ? -20 : 20)))); } }}
-      onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); event.preventDefault(); }}
-      onPointerMove={event => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const width = event.clientX - hubRef.current.getBoundingClientRect().left; setListFolded(width < 160); setListWidth(Math.max(220, Math.min(420, width))); }}
-      onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
-    {chat.kind === 'rumbo-agent' ? <section className="chat-thread"><Empty kind="chats" title={chat.title} description="Open this conversation in Rumbo Agent to review its model and context controls." action="Open Rumbo Agent" onAction={() => navigate('rumbo-agent', chat.id)} /></section> : <Conversation key={chat.id} chat={chat} index={index} composers={composers.current} scope={scope} listFolded={folded} onToggleList={() => { setListFolded(folded ? false : true); setListOpen(folded); }} onComposerChange={() => refreshComposers(value => value + 1)} />}
+  return <main className="chat-overview-page"><header className="chat-overview-heading"><div><h1>Conversations</h1>{project ? <button className="chat-scope-link" onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <p>Your conversations and their connected work.</p>}</div><Button icon={Plus} onClick={create}>New conversation</Button></header>
+    <SearchField value={query} onChange={setQuery} placeholder="Search conversations and messages…" label="Search conversations" />
+    <div className="chat-overview-list">{groups.map(([label, items]) => items.length ? <section key={label}><h2>{label}</h2>{items.map(item => {
+      const messages = index.messagesByChat.get(item.id) || [], last = messages.at(-1);
+      const active = (index.runsByChat.get(item.id) || []).some(run => ACTIVE_CHAT_RUNS.has(run.status));
+      const linked = data.projects.find(project => project.id === val(item, 'project_id'));
+      return <button className="chat-overview-row" key={item.id} onClick={() => navigate(item.kind === 'rumbo-agent' ? 'rumbo-agent' : 'chats', item.id, scope)}><UiIcon icon={item.pinned ? Pin : MessageCircle} /><span><strong>{item.title}</strong><small>{last?.content || 'No messages yet'}</small><em>{linked?.name || 'Workspace conversation'}{active ? ' · Working' : ''}</em></span><time>{relative(val(item, 'updated_at'))}</time></button>;
+    })}</section> : null)}{!filtered.length ? <div className="chat-list-empty"><Search /><p>No matching conversations</p><Button variant="ghost" onClick={() => setQuery('')}>Clear search</Button></div> : null}</div>
   </main>;
 }
 
-export function Conversation({ chat, index, composers, scope = {}, onComposerChange = () => {}, listFolded, onToggleList, assistant }) {
+export function Conversation({ chat, index, composers, scope = {}, onComposerChange = () => {}, onToggleList, assistant }) {
   const { data, navigate, edit, archive, perform, notify } = useApp();
   const agents = visible(data.agents);
   if (!composers.has(chat.id)) {
@@ -462,7 +430,7 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
   }
   return <section className="chat-thread" aria-label={chat.title} onKeyDown={event => { if (selectionMode && event.key === 'Escape' && !event.defaultPrevented && !event.target.closest('[role="dialog"]')) { event.preventDefault(); stopSelection(); } }}>
     {assistant ? assistant.header : <header className="chat-thread-header">
-      <IconButton label={listFolded ? 'Show conversations' : 'Hide conversations'} aria-expanded={!listFolded} onClick={onToggleList}><PanelLeft /></IconButton>
+      <IconButton label="All conversations" onClick={onToggleList}><ArrowLeft /></IconButton>
       <div className="chat-thread-title"><h2>{chat.title}</h2><div>{project ? <button onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <span>Workspace conversation</span>}{task ? <><span>/</span><button onClick={() => navigate('tasks', task.id)}>{task.title}</button></> : null}</div></div>
       <div className="chat-thread-tools"><IconButton label={searchOpen ? 'Close message search' : 'Search messages'} onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }} aria-pressed={searchOpen}><Search morphTo={searchOpen ? X : Search} /></IconButton><Button icon={PanelLeft} onClick={() => setContextOpen(true)}>Context</Button><IconButton label="Conversation options" onClick={() => setOptionsOpen(true)}><Ellipsis /></IconButton></div>
     </header>}
@@ -490,18 +458,18 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
           if (slashVisible && slashResults.length && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); selectSlash(slashResults[Math.min(slashIndex, slashResults.length - 1)]); return; }
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && (data.settings?.preferences?.sendKey !== 'modifier' || event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy) event.currentTarget.form.requestSubmit(); }
         }} />
-        {agent ? <details><summary>Context review · {contextReady ? 'selected' : recoveringTurn ? 'delivery recovery' : 'required before sending'}</summary><div className="chat-context-content" style={{ maxHeight: 'min(45vh, 420px)', overflowY: 'auto' }}><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />{recoveringTurn ? <p>An earlier delivery is unconfirmed. Resending keeps the same turn ID to recover it without duplicating work. If the server never received it, context is regenerated. Inspect again to require a newly reviewed context.</p> : null}</div></details> : null}
+        {agent ? <details><summary>{assistant ? 'Review context' : 'Context review'} · {contextReady ? 'ready' : recoveringTurn ? 'delivery recovery' : 'required'}</summary><div className="chat-context-content" style={{ maxHeight: 'min(45vh, 420px)', overflowY: 'auto' }}><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />{recoveringTurn ? <p>An earlier delivery is unconfirmed. Resending keeps the same turn ID to recover it without duplicating work. If the server never received it, context is regenerated. Inspect again to require a newly reviewed context.</p> : null}</div></details> : null}
         <div className="chat-compose-controls"><div className="chat-compose-target">
           {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation' })}><option value="note">Note · only saved here</option>{agents.map(item => <option key={item.id} value={item.id}>{item.name}{agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive ? '' : ' · Not ready'}</option>)}</Select>}
           {agent ? <Select aria-label="Agent access" value={composer.permission === 'conversation' ? 'conversation' : effectivePermission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' && !readOnlyProfile ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
-          <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton>
+          {!assistant ? <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton> : null}
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
           <IconButton label="Select context sources" onClick={() => setContextOpen(true)}><BookOpen /></IconButton>
-          <IconButton label="Save follow-up draft without sending" disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={queueDraft}><Clock /></IconButton>
+          {!assistant ? <IconButton label="Save follow-up draft without sending" disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={queueDraft}><Clock /></IconButton> : null}
         </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker) || Boolean(agent && !slashVisible && !recoveringTurn && !contextReady)} aria-label={agent ? `Send to ${agent.name}` : 'Save note'}>{agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</Button></div>
       </Form>
-      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : <div className="chat-compose-caption"><span>{agent ? contextReady ? 'Context reviewed. Sending is a separate action.' : recoveringTurn ? 'Unconfirmed delivery · keep the same turn ID when retrying.' : 'Open Context review, inspect, and use the context before sending.' : 'Notes stay in this conversation. No agent is contacted.'}</span><span>{data.settings?.preferences?.sendKey === 'modifier' ? 'Cmd / Ctrl + Enter' : 'Enter'} to send · Shift + Enter for a new line</span></div>}
+      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : assistant ? null : <div className="chat-compose-caption"><span>{agent ? contextReady ? 'Context reviewed. Sending is a separate action.' : recoveringTurn ? 'Unconfirmed delivery · keep the same turn ID when retrying.' : 'Open Context review, inspect, and use the context before sending.' : 'Notes stay in this conversation. No agent is contacted.'}</span><span>{data.settings?.preferences?.sendKey === 'modifier' ? 'Cmd / Ctrl + Enter' : 'Enter'} to send · Shift + Enter for a new line</span></div>}
     </div>
     {retryDraft ? <Dialog title="Review retry context" subtitle="Retrying creates a new bounded attempt. Context is regenerated from current accessible sources; the original message stays unchanged." wide onClose={() => { if (!retrying) { setRetryDraft(null); setReviewedRetry(null); } }}><div className="dialog-body chat-context-content"><ErrorMessage error={error} /><NativeToolsChoice checked={retryNativeTools} disabled={Boolean(retrying) || Boolean(composer.retryKeys[retryDraft.message.id])} onChange={value => { setRetryNativeTools(value); setReviewedRetry(null); }} />{composer.retryKeys[retryDraft.message.id] ? <p>An earlier retry delivery is unconfirmed. Its native-tool choice stays fixed while recovering the same turn.</p> : null}{retryAgent ? <ContextInspector key={`retry-context:${retryDraft.message.id}:${retryAgent.version ?? 0}`} request={retryRequest} onReviewed={result => setReviewedRetry({ key: retryInspectionKey, result })} onInvalidated={() => setReviewedRetry(null)} /> : <p>This message’s agent is unavailable. Restore or configure the profile before retrying.</p>}</div><footer className="dialog-footer"><Button disabled={Boolean(retrying)} onClick={() => { setRetryDraft(null); setReviewedRetry(null); }}>Cancel</Button><Button variant="primary" busy={Boolean(retrying)} disabled={!retryContextReady || Boolean(active)} onClick={retryReviewed}>Retry message</Button></footer></Dialog> : null}
     {updatesOpen ? <Dialog title="Conversation updates" subtitle="Progress and decisions about this conversation. Updates are separate from chat messages and never contact an agent." wide onClose={() => { if (updatesPending) notify('Resolve the pending update request before closing.'); else if (updatesDirty) setDiscardUpdates(true); else setUpdatesOpen(false); }}><div className="dialog-body" style={{ padding: 'clamp(12px, 3vw, 24px)' }}><Suspense fallback={<p role="status">Opening conversation updates…</p>}><ActivityFeed key={chat.id} workspaceId={val(chat, 'workspace_id')} targetType="chat" targetId={chat.id} onDirtyChange={setUpdatesDirty} onPendingChange={setUpdatesPending} /></Suspense></div></Dialog> : null}

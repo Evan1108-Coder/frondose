@@ -109,6 +109,35 @@ test('project pictures persist and reject executable or malformed images', async
   await request(`/api/projects/${project.id}`, { method: 'PATCH', body: { image_url: null } });
 });
 
+test('workspace pictures validate, survive export/import, and can be removed', async () => {
+  const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5ioAAAAASUVORK5CYII=';
+  const workspace = (await request('/api/workspaces', { method: 'POST', body: { name: 'Picture QA', image_url: image } })).workspace;
+  assert.equal(workspace.image_url, image);
+  const archive = await request(`/api/export?workspace_id=${workspace.id}`);
+  const imported = await request('/api/import', { method: 'POST', body: archive });
+  assert.equal(imported.bootstrap.workspaces.find(row => row.id === imported.result.id).image_url, image);
+  const invalid = await rawRequest(`/api/workspaces/${workspace.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: 'javascript:alert(1)' }) });
+  assert.equal(invalid.status, 400);
+  await request(`/api/workspaces/${workspace.id}`, { method: 'PATCH', body: { image_url: null } });
+  assert.equal((await request('/api/bootstrap')).workspaces.find(row => row.id === workspace.id).image_url, null);
+});
+
+test('an existing workspace gains the optional picture column without changing its identity', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'rumbo-workspace-picture-migration-'));
+  let local = createLocalApi({ dataDir: directory, seedMode: 'demo' });
+  try {
+    const path = local.dbPath;
+    local.close();
+    const old = new DatabaseSync(path);
+    old.exec('ALTER TABLE workspaces DROP COLUMN image_url');
+    old.close();
+    local = createLocalApi({ dataDir: directory });
+    const workspace = local.snapshot().workspaces.find(row => row.id === 'ws_personal');
+    assert.equal(workspace.name, 'Northstar');
+    assert.equal(workspace.image_url, null);
+  } finally { local.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test("a default install starts as a clean disconnected user", async () => {
   const cleanDir = await mkdtemp(join(tmpdir(), "rumbo-clean-test-"));
   const cleanApi = createLocalApi({ dataDir: cleanDir });
@@ -188,8 +217,13 @@ test("task-linked mock run requests and resolves approval without a provider", a
   assert.equal(events.bootstrap.meta.localOnly, true);
 });
 
-test("all provider probes are account-safe", async () => {
-  for (const provider of ["github", "google-drive", "codex", "claude"]) {
+test("AI provider probes are account-safe while external probes are paused", async () => {
+  for (const provider of ["github", "google-drive"]) {
+    const response = await rawRequest(`/api/connections/${provider}/probe`);
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error.code, 'coming_soon');
+  }
+  for (const provider of ["codex", "claude"]) {
     const payload = await request(`/api/connections/${provider}/probe`);
     assert.equal(payload.safe, true);
     assert.equal(payload.probe.liveAccountChecked, false);
@@ -439,6 +473,7 @@ test('stopping during provider startup prevents spawning and keeps exported cred
   let spawns = 0;
   const token = 'github_pat_only_a_local_test_fixture';
   const local = createLocalApi({ dataDir: directory, integrationOptions: {
+    externalConnectionsPaused: false,
     env: { RUMBO_GOOGLE_CLIENT_SECRET: 'private-google-test-fixture' },
     execute: async (_command, args) => {
       if (args.includes('mcp')) { preflightBegan(); await preflightResult; return { code: 0, stdout: '[]', stderr: '' }; }

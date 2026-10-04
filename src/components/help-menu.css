@@ -27,6 +27,11 @@
 .rumbo-help-menu button svg { width: 17px; height: 17px; color: var(--muted); flex-shrink: 0; }
 .rumbo-help-menu button small { margin-left: auto; color: var(--faint); font-size: 10px; }
 .rumbo-help-menu button:last-child { border-top: 1px solid var(--border-soft); border-radius: 0 0 7px 7px; margin-top: 4px; }
+.rumbo-terms { min-height: 0; overflow-y: auto; margin: 0; padding: 8px 24px 24px; }
+.rumbo-terms > div { padding: 13px 0; border-bottom: 1px solid var(--border-soft); }
+.rumbo-terms > div:last-child { border-bottom: 0; }
+.rumbo-terms dt { color: var(--text); font-size: 13px; font-weight: 600; }
+.rumbo-terms dd { margin: 4px 0 0; color: var(--secondary); font-size: 12px; line-height: 1.65; }
 .rumbo-download-placeholder { padding: 24px; display: grid; justify-items: start; gap: 16px; }
 .rumbo-download-placeholder > svg { width: 32px; height: 32px; color: var(--muted); }
 .rumbo-download-placeholder p { margin: 0; color: var(--muted); line-height: 1.7; }

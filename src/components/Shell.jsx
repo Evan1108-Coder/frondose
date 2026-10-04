@@ -8,7 +8,7 @@ import { readSidebarPreferences, saveSidebarPreferences } from "../lib/sidebar-p
 import { SETTINGS_GROUPS } from '../lib/settings-catalog.js';
 import { Collapse } from "./Collapse.jsx";
 import { UiIcon, ChevronUp, FolderOpen, PanelLeftOpen, PanelLeftClose, Terminal, GitFork, FileText } from "./icons.jsx";
-import { NAV_ITEMS, favoriteKey, organizationCounts, resolveFavorite, runningStatuses, showSidebarItem, isSidebarHidden } from "../lib/organization.js";
+import { NAV_ITEMS, favoriteKey, organizationCounts, resolveFavorite, runningStatuses, showSidebarItem, isSidebarHidden, focusedSidebarHiddenKeys } from "../lib/organization.js";
 import { Ellipsis } from './icons.jsx';
 import { SHORTCUTS } from "../lib/shortcuts.js";
 import { searchCatalog, searchExcerpt } from '../lib/search.js';
@@ -27,6 +27,11 @@ import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 
 const NAV_ICONS = { 'rumbo-agent': Bot, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
+const MORE_DESTINATIONS = [
+  ['Work', 'focus', 'updates', 'tasks', 'work', 'workbench', 'workflows', 'operations'],
+  ['Organize', 'teams', 'agents', 'chats', 'skills', 'library', 'documents', 'memory', 'views'],
+  ['Connect', 'connections', 'settings'],
+];
 
 export function Sidebar({
   mobileOpen,
@@ -51,6 +56,7 @@ export function Sidebar({
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const { colorsFor } = useIconColors();
   const [createOpen, setCreateOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [itemOptions, setItemOptions] = useState(null);
   useEffect(() => {
     if (overlayOpen) {
@@ -68,6 +74,8 @@ export function Sidebar({
   const optionsButton = (view, item) => <IconButton className="icon-button sidebar-item-options" label={`Options for ${item.name || item.title}`} aria-haspopup="dialog" aria-expanded={itemOptions?.view === view && itemOptions.id === item.id} onClick={() => setItemOptions({ view, id: item.id, title: item.name || item.title })}><Ellipsis /></IconButton>;
   const favorites = organization.favorites.map(reference => resolveFavorite(data, reference)).filter(Boolean);
   const counts = organizationCounts(data, organization);
+  const focusedNavigation = organization.navigationMode === 'focused';
+  const hiddenRootKeys = focusedSidebarHiddenKeys(organization);
   const layoutOrder = group => [...organization.order[group]].sort((a, b) => Number(organization.pinnedLayout.includes(b)) - Number(organization.pinnedLayout.includes(a)));
   const sectionStyle = id => ({ order: layoutOrder('sections').indexOf(id) + 1, display: showSidebarItem(id, organization, counts) ? undefined : "none" });
   const badge = (id, label) => !counts[id] || organization.badges === "none" ? null : organization.badges === "dot" ? <i className="live-dot activity-badge" aria-label={`${counts[id]} ${label}`} /> : <small className="nav-count" aria-label={`${counts[id]} ${label}`}>{counts[id]}</small>;
@@ -228,7 +236,7 @@ export function Sidebar({
             aria-expanded={workspaceOpen}
             onClick={() => { setWorkspaceOpen(!workspaceOpen); setCreateOpen(false); }}
           >
-            <RumboSymbol size={34} decorative />
+            {workspace.image_url ? <img className="workspace-picture" src={workspace.image_url} alt="" /> : <RumboSymbol size={34} decorative />}
             <span className="workspace-name">{workspace.name}</span>
             <ChevronDown morphTo={workspaceOpen ? ChevronUp : ChevronDown} interactive={false} />
           </button>
@@ -246,9 +254,7 @@ export function Sidebar({
                     setMobileOpen(false);
                   }}
                 >
-                  <span className="workspace-initial" aria-hidden="true">
-                    {initials(item.name)}
-                  </span>
+                  <span className="workspace-initial" aria-hidden="true">{item.image_url ? <img src={item.image_url} alt="" /> : initials(item.name)}</span>
                   <span>{item.name}</span>
                   {item.id === workspace.id ? <Check /> : null}
                 </button>
@@ -268,7 +274,6 @@ export function Sidebar({
         <div className="sidebar-header-actions">
           <IconButton label={isMobile ? "Close navigation" : collapsed ? "Expand navigation" : "Collapse navigation"}
             onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(!collapsed)}><UiIcon icon={isMobile ? X : collapsed ? PanelLeftOpen : PanelLeftClose} /></IconButton>
-          <IconButton label="Search anything · ⌘ / Ctrl K" onClick={() => { setMobileOpen(false); setWorkspaceOpen(false); setCreateOpen(false); onSearch(); }}><Search /></IconButton>
           <div className="sidebar-create">
             <IconButton ref={createTriggerRef} label="Create new" aria-expanded={createOpen} onClick={() => { setCreateOpen(!createOpen); setWorkspaceOpen(false); }}><SquarePen /></IconButton>
             {createOpen ? <div className="popover create-options">
@@ -280,7 +285,7 @@ export function Sidebar({
         </div>
         </div>
         <nav aria-label="Main navigation">
-          <SidebarLayout organization={organization} arrange={arrange} renderTab={navItem} updateOrganization={updateOrganization} customizeSidebar={customizeSidebar} renderEntity={({ view, id }) => {
+          <SidebarLayout organization={organization} hiddenRootKeys={hiddenRootKeys} arrange={arrange} renderTab={navItem} updateOrganization={updateOrganization} customizeSidebar={customizeSidebar} renderEntity={({ view, id }) => {
             const item = visible(data[view] ?? []).find(item => item.id === id);
             if (!item || isSidebarHidden(organization, view, id)) return null;
             const Icon = NAV_ICONS[view];
@@ -369,36 +374,23 @@ export function Sidebar({
             {sectionHeader("chats", "Conversations", "chats", () => create("chat"))}
             <Collapse id="navigation-chats" className="sidebar-section-content nav-group" open={preferences.sections.chats}>
               {recentChats.map((chat) => <div className="sidebar-entity-row" key={chat.id} {...entityBinding("chats", chat)}><Tooltip label={chat.title}><ColorableNavItem colorId={`entity:chats:${chat.id}`} icon={chat.pinned ? Pin : MessageCircle} label={chat.title}
-                aria-current={page.view === "chats" && page.id === chat.id ? "page" : undefined}
-                className={`nav-item sidebar-chat ${page.view === "chats" && page.id === chat.id ? "active" : ""}`}
-                onClick={() => go("chats", chat.id)}>
+                aria-current={page.id === chat.id && (page.view === "chats" || page.view === "rumbo-agent") ? "page" : undefined}
+                className={`nav-item sidebar-chat ${page.id === chat.id && (page.view === "chats" || page.view === "rumbo-agent") ? "active" : ""}`}
+                onClick={() => go(chat.kind === 'rumbo-agent' ? 'rumbo-agent' : 'chats', chat.id)}>
                 </ColorableNavItem></Tooltip>{optionsButton('chats', chat)}</div>)}
               {!chats.length ? <button className="sidebar-empty-action" onClick={() => create("chat")}><Plus /><span>Start a conversation</span></button>
-                : <button className="sidebar-all-chats" onClick={() => go("chats")}><span>All chats</span><ArrowRight /></button>}
+                : <button className="sidebar-all-chats" onClick={() => go("chats")}><span>All conversations</span><ArrowRight /></button>}
             </Collapse>
           </section>
           </SidebarLayout>
+          {focusedNavigation ? <button type="button" className={`sidebar-more-trigger nav-item ${hiddenRootKeys.includes(page.view) ? 'active' : ''}`} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={() => { setMobileOpen(false); setMoreOpen(true); }}><Ellipsis aria-hidden="true" /><span>More</span></button> : null}
         </nav>
         <div className="sidebar-bottom">
-          <Tooltip label="Your profile"><button
-            className="profile-button"
-            onClick={() => go("settings", "profile")}
-          >
-            <span className="avatar">
-              {data.profile?.avatar_url ? (
-                <img src={data.profile.avatar_url} alt="" />
-              ) : (
-                initials(data.profile?.name)
-              )}
-            </span>
-            <span>
-              <strong>{data.profile?.name ?? "You"}</strong>
-            </span>
-          </button></Tooltip>
           <HelpMenu onNavigate={go} onAction={() => setMobileOpen(false)} overlayOpen={overlayOpen} />
         </div>
       </aside>
       {arrange.dialog}
+      {moreOpen ? <Dialog title="More in Rumbo" subtitle="Every page is still available. Choose All tools in sidebar settings to keep them visible." onClose={() => setMoreOpen(false)} className="sidebar-more-dialog"><div className="sidebar-more-groups">{MORE_DESTINATIONS.map(([title, ...ids]) => <section key={title}><h3>{title}</h3><div>{ids.map(id => { const item = NAV.find(entry => entry.id === id); const Icon = item.icon; return <button type="button" key={id} onClick={() => { setMoreOpen(false); go(id); }}><Icon aria-hidden="true" /><span>{item.label}</span><ArrowRight aria-hidden="true" /></button>; })}</div></section>)}<Button variant="ghost" icon={PanelLeft} onClick={() => { setMoreOpen(false); customizeSidebar(); }}>Customize navigation</Button></div></Dialog> : null}
       {itemOptions ? <Dialog title={itemOptions.title} subtitle="Sidebar options" onClose={() => setItemOptions(null)}><div className="sidebar-item-dialog">
         {itemOptions.view === 'teams' ? <Button icon={Settings} onClick={() => { const teamId = itemOptions.id; setItemOptions(null); go('settings', `team:${teamId}`); }}>Area settings</Button> : null}
         <Button icon={Pin} onClick={() => { toggleFavorite(itemOptions); setItemOptions(null); }}>{favorites.some(item => favoriteKey(item) === favoriteKey(itemOptions)) ? 'Remove from favorites' : 'Add to favorites'}</Button><Button icon={PanelLeftClose} onClick={() => { try { updateOrganization({ ...organization, hiddenItems: [...organization.hiddenItems, { view: itemOptions.view, id: itemOptions.id }] }); setItemOptions(null); notify('Hidden from sidebar. Restore it in Customize sidebar.'); } catch (error) { notify(error.message, 'error'); } }}>Hide from sidebar</Button><p className="organization-note">This does not archive anything or stop active work. You can still find it through search or its collection.</p></div></Dialog> : null}
@@ -408,6 +400,8 @@ export function Sidebar({
 
 export function CommandPalette({ onClose }) {
   const { data, navigate, edit, startSession, customizeSidebar, showShortcuts, organization, experience } = useApp();
+  const [docArticles, setDocArticles] = useState([]);
+  useEffect(() => { let active = true; import('../lib/docs-content.js').then(module => { if (active) setDocArticles(module.DOC_ARTICLES); }); return () => { active = false; }; }, []);
   const [query, setQuery] = useState(""),
     [index, setIndex] = useState(0);
   const resultsRef = useRef(null);
@@ -451,6 +445,7 @@ export function CommandPalette({ onClose }) {
         run: () => navigate("projects", item.id),
       })),
       ...SETTINGS_GROUPS.flatMap(([group, sections]) => sections.map(([id, label]) => ({ id: `setting-${id}`, type: 'Settings', title: `${group} · ${label}`, subtitle: 'Configure your workspace', icon: Settings, run: () => navigate('settings', id) }))),
+      ...docArticles.map(article => ({ id: `doc-${article.id}`, type: 'Documentation', title: article.title, subtitle: article.description, searchText: article.sections?.map(section => `${section.title} ${section.paragraphs?.join(' ') || ''}`).join(' '), icon: BookOpen, run: () => navigate('docs', article.id) })),
       ...visible(data.teams ?? []).map((item) => ({
         id: item.id,
         type: "Area",
@@ -490,7 +485,7 @@ export function CommandPalette({ onClose }) {
       ...featureItems(data, 'saved_view').map(item => ({ id: item.id, type: 'View', title: item.name, subtitle: 'Saved route filters', icon: Compass, run: () => navigate('views', item.id) })),
       ...(data.messages ?? []).filter(item => chats.has(item.chat_id)).map(item => ({ id: item.id, type: 'Message', title: chats.get(item.chat_id).title, subtitle: `${item.sender_name || 'Message'} · ${item.content}`, searchText: item.content, searchOnly: true, icon: MessageCircle, run: () => navigate('chats', item.chat_id, { messageId: item.id }) })),
     ].map(item => { const entity = entities.get(item.id); const projectId = item.type === 'Project' ? item.id : entity?.project_id || chats.get(entity?.chat_id)?.project_id; return { ...item, id: `${item.type}:${item.id}`, projectName: projects.get(projectId)?.name || '', status: entity?.state || entity?.status || '' }; }); },
-    [data, navigate, edit, startSession, customizeSidebar, showShortcuts, organization.favorites, experience?.recent],
+    [data, navigate, edit, startSession, customizeSidebar, showShortcuts, organization.favorites, experience?.recent, docArticles],
   );
   const results = searchCatalog(catalog, query);
   function execute(item) {

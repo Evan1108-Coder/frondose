@@ -81,13 +81,14 @@ function TodaySection({ section, entries, projects, areas, onOpen, onSnooze, opt
 }
 
 export function Home() {
-  const { data, workspace, navigate, experience, updateExperience, status } = useApp();
+  const { data, workspace, navigate, edit, experience, updateExperience, status } = useApp();
   const [tab, setTab] = useState('today');
   const [selection, setSelection] = useState({ workspaceId: workspace.id, areaId: 'all', projectId: 'all' });
   const [refresh, setRefresh] = useState(0);
   const [feed, setFeed] = useState({ query: null, result: null, loading: true, error: null, checkedAt: null });
   const projects = visible(data.projects).filter(project => val(project, 'workspace_id') === workspace.id);
   const areas = visible(data.teams).filter(area => val(area, 'workspace_id') === workspace.id);
+  const firstWork = projects.length === 0 && !visible(data.tasks).some(task => val(task, 'workspace_id') === workspace.id);
   const filters = todayFilters(selection, workspace.id, areas, projects);
   const filteredProjects = projects.filter(project => filters.areaId === 'all' || val(project, 'team_id') === filters.areaId);
   const query = new URLSearchParams({ workspace_id: workspace.id, ...(filters.areaId !== 'all' ? { area_id: filters.areaId } : {}), ...(filters.projectId !== 'all' ? { project_id: filters.projectId } : {}) }).toString();
@@ -121,8 +122,9 @@ export function Home() {
   const recent = experience.recent.map(item => ({ ...item, title: describePage(data, parsePage(item.hash)) })).filter(item => item.title && !['#/overview', '#/today'].includes(item.hash)).slice(0, experience.options.recentLimit);
   const followed = projects.filter(project => experience.followed.includes(project.id));
 
-  return <main className="page home-page today-page"><PageHeader title="Today" description={`Your agents, decisions, and next steps in ${workspace.name}.`}><Button icon={Bot} onClick={() => navigate('agents')}>Agent Studio</Button><Button variant="primary" icon={Workflow} onClick={() => navigate('workflows')}>Workflows</Button></PageHeader>
+  return <main className="page home-page today-page"><PageHeader title="Today" description={`Your agents, decisions, and next steps in ${workspace.name}.`}>{!firstWork ? <><Button icon={Bot} onClick={() => navigate('agents')}>Agent Studio</Button><Button variant="primary" icon={Workflow} onClick={() => navigate('workflows')}>Workflows</Button></> : null}</PageHeader>
     <div className="home-status"><span>Opening Today never starts work.</span><span>Intent → Route → Run → Output → Review → Memory</span></div>
+    {firstWork ? <section className="today-first-action" aria-labelledby="today-first-title"><span className="today-first-eyebrow">A good place to begin</span><h2 id="today-first-title">What do you want to get done?</h2><p>Create a Route for one concrete outcome. You can add context and decide whether an agent should work on it later.</p><Button variant="primary" icon={ArrowRight} onClick={() => edit('task', null, { guided: true })}>Create your first Route</Button><button type="button" className="today-first-secondary" onClick={() => navigate('rumbo-agent')}>Or explore Rumbo Agent</button></section> : null}
     <div className="tabs today-tabs" role="tablist" aria-label="Today sections">{[['today', 'Today'], ['projects', 'Following'], ['recent', 'Recent'], ['activity', 'Activity']].map(([id, label]) => <button type="button" id={`today-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls={`today-panel-${id}`} className={tab === id ? 'active' : ''} key={id} onClick={() => setTab(id)}>{label}{id === 'today' && result && sectionItems('needs_you').length ? ` · ${sectionItems('needs_you').length}` : ''}</button>)}</div>
     <div role="tabpanel" id={`today-panel-${tab}`} aria-labelledby={`today-tab-${tab}`}>
       {tab === 'today' ? <><div className="today-toolbar"><div className="today-filters"><Select aria-label="Today Area filter" value={filters.areaId} onChange={areaId => setSelection({ workspaceId: workspace.id, areaId, projectId: 'all' })}><option value="all">All Areas</option>{areas.map(area => <option key={area.id} value={area.id}>{area.name}</option>)}</Select><Select aria-label="Today project filter" value={filters.projectId} onChange={projectId => setSelection({ workspaceId: workspace.id, areaId: filters.areaId, projectId })}><option value="all">All projects</option>{filteredProjects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</Select></div><Button variant="ghost" icon={RotateCw} disabled={loading} onClick={() => setRefresh(value => value + 1)}>{loading ? 'Refreshing…' : 'Refresh'}</Button></div>

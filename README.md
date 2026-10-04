@@ -4,6 +4,8 @@ A local-first, solo-first AI work environment. Rumbo is evolving around **Intent
 
 This transition is incremental. See the [ordered implementation plan](docs/solo-ai-direction.md), [current product status](docs/product-expansion-status.md), and [schema and migration contract](docs/schema.md). Areas, shared provider connections with independent Agent Studio profiles, versioned Skills, reviewed run context, manually advanced multi-agent Workflows, an opt-in run-private native-tool bridge, and the Today command center are implemented foundations. Skill evaluation records exact case-bound provider artifacts with manual verdicts and same-input comparisons. Routes may explicitly require criterion-level evidence before exact-version output approval, retaining immutable accepted checklists. Broader reliability and automation expansion remain unfinished.
 
+Workspace Settings supports an optional uploaded, square-cropped picture. Custom Route and project statuses can carry a chosen line icon without changing lifecycle behavior. The top header groups global Search (including settings and Docs), Focus, Settings, language status, and profile. The UI is currently fully available only in English; the language control explains that broader translations are not yet shipped. AI provider cards lead to provider-specific setup pages before any external authorization.
+
 ## Organize your workspace
 
 - **Rumbo Agent** is the dedicated assistant entry point, with connection readiness, persistent conversations, a chat switcher, explicit model selection and Settings → Rumbo Agent. Documents, Routes, projects, updates and Workbench can prepare a source-linked request; `/rumbo` prepares a draft, never runs a terminal command. Inspect exact context and explicitly send. Account model catalogs are not currently enumerable through the CLI bridge: provider defaults and configured IDs are labeled accordingly, not presented as verified account availability. Workspace actions remain human-reviewed proposals.
@@ -60,6 +62,10 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 - Rumbo-authored dropdowns, date picker, dialogs, confirmations, validation, and tooltips, with keyboard navigation and focus management. File selection and provider authorization retain their required browser/OS interfaces.
 
 ## Connections
+
+The sidebar's **AI connections** page separates browser sign-in from existing local runners and direct model APIs. OpenRouter has server-side PKCE authorization, an encrypted user-owned key, account checks, account-filtered model listing and an explicitly requested short test prompt. Hugging Face has a scoped OAuth PKCE flow, encrypted user token, account/model checks and an explicit short inference test, but its Connect action requires an operator OAuth app first. Neither is yet wired into Rumbo Agent or Workflows or validated against a real account. GitHub Copilot is a documented next candidate, not an active Rumbo integration. Provider credits or subscriptions remain the user's responsibility. See [AI connection status and setup](docs/ai-connections.md).
+
+The non-AI service marketplace below is preserved under **Settings → Service integrations** but is paused. Existing records remain; new authorization, synchronization, imports and provider actions are disabled until explicitly re-enabled and verified.
 
 The workspace connection marketplace now includes Codex and Claude account management plus OAuth adapters for GitHub, GitHub Actions, GitHub Packages, Google Drive, Docs, Sheets, Slides, Linear, Jira, Slack, Figma, and FigJam. Per-connection controls cover selected resources, enabled actions, agent delegation, cached context, imports, conflicts, and synchronization jobs. GitHub includes a branch/file browser and comparisons. Code appearance preferences are shared with Workbench.
 
