@@ -16,6 +16,7 @@ import {
   useAsync,
 } from "../ui.jsx";
 import { download, initials, val } from "../lib/model.js";
+import { resolveFavorite } from '../lib/organization.js';
 
 const SECTIONS = [
   { id: "profile", label: "Profile", icon: CircleUser },
@@ -375,7 +376,7 @@ function SectionTitle({ title, description }) {
   );
 }
 export function Profile() {
-  const { data, notify } = useApp();
+  const { data, notify, navigate, organization, toggleFavorite } = useApp();
   const [name, setName] = useState(data.profile?.name ?? ""),
     [email, setEmail] = useState(data.profile?.email ?? ""),
     [avatar, setAvatar] = useState(data.profile?.avatar_url ?? null);
@@ -432,6 +433,8 @@ export function Profile() {
           </Button>
         </div>
       </Form>
+      <div className="setting-row"><span><strong>Starred items</strong><small>{organization.favorites.length} personal shortcuts in this workspace.</small></span><Button onClick={() => navigate('starred')}>Open Starred</Button></div>
+      <div className="starred-list">{organization.favorites.map(reference => resolveFavorite(data, reference)).filter(Boolean).map(item => <div className="starred-row" key={`${item.view}:${item.id}`}><button onClick={() => navigate(item.view, item.id)}><strong>{item.title}</strong><small>{item.view === 'work' ? 'Run' : item.view}</small></button><Button onClick={() => toggleFavorite(item)}>Unstar</Button></div>)}</div>
     </>
   );
 }

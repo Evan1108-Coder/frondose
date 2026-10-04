@@ -50,10 +50,12 @@
 .activity-mention-review, .activity-agent-request { padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 7%, transparent); display: grid; gap: 3px; font-size: 12px; }
 .activity-mention-review span, .activity-agent-request span { color: var(--secondary); line-height: 1.45; }
 .activity-list { display: grid; }
-.activity-entry { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; padding: 12px 0; }
+.activity-entry { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 12px 0; }
 .activity-entry-marker { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 3px var(--surface); }
-.activity-decision > .activity-entry-marker, .activity-release > .activity-entry-marker, .activity-outcome > .activity-entry-marker { background: var(--accent); }
-.activity-blocker > .activity-entry-marker, .activity-risk > .activity-entry-marker { background: var(--danger, #d66); }
+.activity-entry-marker:has(svg) { width: 24px; height: 24px; margin-top: 0; border-radius: 6px; background: transparent; box-shadow: none; color: var(--secondary); display: grid; place-items: center; }
+.activity-entry-marker:has(svg) svg { display: block; }
+.activity-decision > .activity-entry-marker, .activity-release > .activity-entry-marker, .activity-outcome > .activity-entry-marker { color: var(--accent-text); }
+.activity-blocker > .activity-entry-marker, .activity-risk > .activity-entry-marker { color: var(--danger, #d66); }
 .activity-entry-body { min-width: 0; display: grid; gap: 8px; }
 .activity-entry header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
 .activity-entry header strong { font-size: 13px; font-weight: 550; }

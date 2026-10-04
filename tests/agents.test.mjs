@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { createLocalApi } from '../server/local-api.mjs';
-import { AGENT_PROVIDERS, agentReadiness, runsForAgent, summarizeAgent } from '../src/lib/agents.js';
+import { AGENT_PROVIDERS, agentReadiness, agentVisibleInSidebar, runsForAgent, summarizeAgent } from '../src/lib/agents.js';
 
 const agent = { id: 'agent_a', name: 'Reviewer', provider: 'codex', workspace_id: 'ws_a', status: 'available' };
 
@@ -36,6 +36,15 @@ test('paused, archived, and unsupported agents cannot launch either type of sess
   }
   assert.match(agentReadiness({ ...agent, status: 'paused' }).description, /already running are not stopped/);
   assert.deepEqual(AGENT_PROVIDERS.claude.capabilities, ['Read and search']);
+});
+
+test('sidebar shows the built-in Rumbo profile and connected working agents only', () => {
+  const connected = { id: 'conn_codex', provider: 'codex', state: 'connected', metadata: { liveAccountChecked: true } };
+  assert.equal(agentVisibleInSidebar({ ...agent, provider_connection_id: connected.id }, [connected]), true);
+  assert.equal(agentVisibleInSidebar({ ...agent, provider_connection_id: connected.id }, []), false);
+  assert.equal(agentVisibleInSidebar({ ...agent, status: 'paused', provider_connection_id: connected.id }, [connected]), false);
+  assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', provider_connection_id: connected.id }, []), true);
+  assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', archived_at: 'now' }, [connected]), false);
 });
 
 test('run attribution survives agent renames and never guesses from a duplicate name', () => {

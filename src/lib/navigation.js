@@ -1,5 +1,5 @@
 const VIEWS = new Set([
-  "overview", "rumbo-agent", "inbox", "projects", "tasks", "chats", "work", "memory",
+  "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
   "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);

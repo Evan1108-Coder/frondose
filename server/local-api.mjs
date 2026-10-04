@@ -428,7 +428,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
     teams: { icon_color: "TEXT NOT NULL DEFAULT ''", tab_icon_color: "TEXT NOT NULL DEFAULT 'team'", empty_icon_color: "TEXT NOT NULL DEFAULT 'team'", tab_label_color: "TEXT NOT NULL DEFAULT 'global'" },
     projects: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', image_url: 'TEXT', start_date: 'TEXT', target_date: 'TEXT', lead: "TEXT NOT NULL DEFAULT ''", workflow_status_id: 'TEXT', labels_json: "TEXT NOT NULL DEFAULT '[]'" },
     tasks: { team_id: 'TEXT REFERENCES teams(id) ON DELETE SET NULL', workflow_status_id: 'TEXT' },
-    runs: { source_message_id: 'TEXT REFERENCES messages(id) ON DELETE SET NULL', work_mode: "TEXT NOT NULL DEFAULT 'project'", timeout_ms: 'INTEGER NOT NULL DEFAULT 1800000' },
+    runs: { source_message_id: 'TEXT REFERENCES messages(id) ON DELETE SET NULL', work_mode: "TEXT NOT NULL DEFAULT 'project'", timeout_ms: 'INTEGER NOT NULL DEFAULT 1800000', archived_at: 'TEXT' },
   };
   for (const [table, columns] of Object.entries(additions)) {
     const existing = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name));
@@ -1208,6 +1208,23 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId));
         if (!run) return fail(res, 404, 'not_found', 'Run not found.');
         return send(res, 200, { run, events: rows(db.prepare('SELECT * FROM run_events WHERE run_id=? ORDER BY sequence'), runId), approvals: rows(db.prepare('SELECT * FROM approvals WHERE run_id=? ORDER BY created_at'), runId) });
+      }
+      if (req.method === 'PATCH' && path.match(/^\/runs\/[^/]+$/)) {
+        const runId = path.split('/')[2];
+        const run = db.prepare('SELECT * FROM runs WHERE id=?').get(runId);
+        if (!run) return fail(res, 404, 'not_found', 'Run not found.');
+        const patch = body;
+        if (!patch || Object.keys(patch).length !== 1 || !['title', 'archived_at'].includes(Object.keys(patch)[0])) throw validationError('Change only the run title or archive state.');
+        if (Object.hasOwn(patch, 'title')) {
+          if (typeof patch.title !== 'string' || !patch.title.trim() || patch.title.trim().length > 200) throw validationError('Run title must be between 1 and 200 characters.');
+          db.prepare('UPDATE runs SET title=?,updated_at=? WHERE id=?').run(patch.title.trim(), now(), runId);
+        } else {
+          if (patch.archived_at !== null && patch.archived_at !== true) throw validationError('Archive a run with true, or restore it with null.');
+          if (patch.archived_at && ['queued', 'starting', 'running', 'needs_input', 'paused'].includes(run.status)) throw validationError('Stop the active run before archiving it.');
+          if (patch.archived_at) governance.authorize(run.workspace_id, actor.id, 'agents.delete', run.project_id ? { scope_type: 'project', scope_id: run.project_id } : {});
+          db.prepare('UPDATE runs SET archived_at=?,updated_at=? WHERE id=?').run(patch.archived_at ? now() : null, now(), runId);
+        }
+        return send(res, 200, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), bootstrap: snapshot(db) });
       }
       const taskRunMatch = path.match(/^\/tasks\/([^/]+)\/runs$/);
       const chatTurnMatch = path.match(/^\/chats\/([^/]+)\/turns$/);

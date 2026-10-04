@@ -2164,6 +2164,20 @@ dd {
   text-align: left;
   margin-bottom: 7px;
 }
+.session-list-row { position: relative; border-radius: 8px; }
+.starred-list { display: grid; gap: 8px; max-width: 800px; }
+.starred-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.starred-row > button:first-child { flex: 1; min-width: 0; text-align: left; display: grid; gap: 3px; }
+.starred-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.starred-row small { color: var(--secondary); }
+.session-list-row.active { background: var(--hover); }
+.session-list-row .session-list-item { padding-right: 82px; margin-bottom: 7px; }
+.session-list-actions { position: absolute; right: 5px; top: 11px; display: flex; gap: 2px; opacity: 0; }
+.session-list-row:hover .session-list-actions, .session-list-row:focus-within .session-list-actions { opacity: 1; }
+.session-list-actions button { width: 24px; height: 28px; display: grid; place-items: center; color: var(--secondary); border-radius: 5px; }
+.session-list-actions button:hover { background: var(--surface); color: var(--text); }
+.session-list-actions svg { width: 14px; height: 14px; }
+@media (hover: none) { .session-list-actions { opacity: 1; } }
 .session-list-item.active {
   background: var(--hover);
 }
@@ -2261,6 +2275,8 @@ dd {
   z-index: 1;
   flex-shrink: 0;
 }
+.event-marker:has(svg) { width: 24px; padding-top: 3px; color: var(--secondary); }
+.event-marker:has(svg) svg { position: relative; z-index: 1; background: var(--surface); }
 .event-marker:after {
   content: "";
   position: absolute;

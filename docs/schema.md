@@ -6,6 +6,8 @@ Updated October 4, 2026. SQLite is the local source of truth. `server/schema.sql
 
 `workspaces.image_url` is an optional, additively migrated image field. Existing rows remain unchanged. The workspace editor reuses the PNG/JPEG/WebP crop flow and the server's bounded image validation. Workspace JSON export includes the image; import validates and restores it into a new workspace. Clearing a picture writes `NULL` and returns to the Rumbo symbol. Custom Route and project status resources retain their lifecycle category while an optional catalog-backed icon choice is stored in their existing payload; no status identifiers or linked work items are rewritten.
 
+`runs.archived_at` is an additive nullable timestamp. Runs can be renamed and recoverably archived after stopping; archiving never cascades into their events, approvals, captured context or review records. The Runs page separates Archived from live history and allows restoration. Stars are personal browser/workspace navigation preferences, not server-side run fields or shared permissions.
+
 ## Rumbo Agent compatibility storage
 
 Rumbo Agent uses existing `chats` (`kind='rumbo-agent'`), agent profiles, messages, runs, settings and chat-collaboration storage rather than a second execution engine. Workspace-scoped preferences contain provider/model/context defaults only. Explicit chat creation uses an actor/workspace-bound request identity for replay protection; source references in chat collaboration retain provenance and are revalidated through the canonical context compiler. Effective model/reasoning are captured with the user turn and used for retry validation. Existing records are not renamed or deleted, and opening the assistant does not provision an account/profile or start a run.

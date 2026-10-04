@@ -5,7 +5,7 @@ function withFixedTop(layout) {
   return { ...layout, root: [...FIXED_SIDEBAR_TOP, ...layout.root.filter(key => !isFixedSidebarEntry(key))],
     groups: layout.groups.map(group => ({ ...group, items: group.items.filter(key => !isFixedSidebarEntry(key)) })) };
 }
-export const SIDEBAR_TABS = ['overview', 'rumbo-agent', 'focus', 'inbox', 'updates', 'work', 'workbench', 'operations', 'workflows', 'views', 'tasks', 'skills', 'library', 'documents', 'memory', 'connections'];
+export const SIDEBAR_TABS = ['overview', 'rumbo-agent', 'starred', 'focus', 'inbox', 'updates', 'work', 'workbench', 'operations', 'workflows', 'views', 'tasks', 'skills', 'library', 'documents', 'memory', 'connections'];
 const staticIds = new Set([...BUILTIN_GROUPS, ...SIDEBAR_TABS]);
 export const entityKey = (view, id) => 'entity:' + view + ':' + id;
 export function parseEntityKey(key) {

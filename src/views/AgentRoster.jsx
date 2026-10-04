@@ -198,7 +198,6 @@ export function AgentsView() {
                 </div>;
               }) : <div className="agent-search-empty"><h3>No matching agents</h3><p>Try a different name, provider, or status.</p><Button onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</Button></div>}
             </div>
-            <p className="agent-roster-note"><ShieldCheck />Profiles share their provider connection, but keep separate instructions and session history.</p>
           </section>
           {selected ? <div className="agent-inspector"><button className="agent-mobile-back text-button" onClick={() => navigate("agents")}><ArrowLeft />All agents</button><AgentDetail key={selected.id} agent={selected} summary={summaries.get(selected.id)} onConnect={setConnectionProvider} onPause={() => pause(selected)} onDuplicate={() => duplicate(selected)} busy={busy} /></div> : null}
         </div>}

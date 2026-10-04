@@ -45,6 +45,14 @@ export function agentReadiness(agent, connection) {
   return result("needs_connection", "Connect account", description, "connect");
 }
 
+/** Keep setup-only profiles in Agent Studio, not the working-agent sidebar. */
+export function agentVisibleInSidebar(agent, connections = []) {
+  if (!agent || val(agent, 'archived_at')) return false;
+  if (typeof agent.id === 'string' && agent.id.startsWith('rumbo_agent_')) return true;
+  const connection = connections.find(item => item.provider === agent.provider && (!agent.provider_connection_id || item.id === agent.provider_connection_id));
+  return agentReadiness(agent, connection).state === 'ready';
+}
+
 /** Names are labels, never identity: duplicate or renamed agents must not steal sessions. */
 export function runsForAgent(agent, runs = []) {
   if (!agent?.id) return [];

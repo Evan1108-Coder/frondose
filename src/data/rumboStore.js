@@ -229,7 +229,7 @@ export function createRumboStore(api) {
       if (api[name]) actions[name] = mutation(name, collection);
     }
   }
-  for (const name of ["workspaceItemAction", "startRun", "startSession", "sendChatTurn", "stopRun", "resolveApproval", "updateProfile", "updateSettings", "probeConnection", "connectConnection", "checkConnection", "disconnectConnection"]) {
+  for (const name of ["workspaceItemAction", "startRun", "startSession", "sendChatTurn", "stopRun", "updateRun", "resolveApproval", "updateProfile", "updateSettings", "probeConnection", "connectConnection", "checkConnection", "disconnectConnection"]) {
     if (api[name]) actions[name] = mutation(name);
   }
   return { getSnapshot: () => snapshot, subscribe, actions: Object.freeze(actions) };

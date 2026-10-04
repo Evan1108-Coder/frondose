@@ -163,3 +163,6 @@
   .integration-catalog article > div { min-width: 150px; }
   .integration-catalog article > .button { margin-left: auto; }
 }
+.activity-icon-setting-label { display: inline-flex; align-items: center; gap: 12px; }
+.activity-icon-setting-label svg { color: var(--accent-text); flex-shrink: 0; }
+.activity-icon-setting-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }

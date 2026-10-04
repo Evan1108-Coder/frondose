@@ -180,6 +180,7 @@ export const rumboApi = {
   startRun: (taskId, input = {}, options) => post(`${pathFor("tasks", taskId)}/runs`, input, options),
   startSession: (input, options) => post(`${API_ROOT}/runs`, input, options),
   stopRun: (runId, options) => post(`${pathFor("runs", runId)}/stop`, {}, options),
+  updateRun: (runId, input, options) => entity(patch(pathFor('runs', runId), input, options), 'run'),
   resolveApproval: (runId, approvalId, decision, options) =>
     post(`${pathFor("runs", runId)}/approvals/${encodeURIComponent(approvalId)}`, { decision }, options),
 

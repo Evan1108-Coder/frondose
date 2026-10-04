@@ -205,6 +205,7 @@ CREATE TABLE IF NOT EXISTS runs (
   title TEXT NOT NULL,
   prompt TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL DEFAULT 'mock',
+  archived_at TEXT,
   work_mode TEXT NOT NULL DEFAULT 'project',
   timeout_ms INTEGER NOT NULL DEFAULT 1800000,
   requires_approval INTEGER NOT NULL DEFAULT 0,

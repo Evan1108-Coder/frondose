@@ -3,8 +3,10 @@ import { SkillFromRunButton } from '../components/SkillFromRun.jsx';
 import { ContextInspector } from '../components/ContextInspector.jsx';
 import { CapturedRunContextButton } from '../components/CapturedRunContext.jsx';
 import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
+import { ActivityTypeIcon } from '../components/ActivityTypeIcon.jsx';
+import { runActivityType } from '../lib/activity-icons.js';
 import { lazy, Suspense, useState } from "react";
-import { Play, Square, Terminal, ShieldCheck, Check, X, ArrowRight, Download, Clock, MessageCircle, FileText, Plus, FlaskConical } from "../components/icons.jsx";
+import { Play, Square, Terminal, ShieldCheck, Check, X, ArrowRight, Download, Clock, MessageCircle, FileText, Plus, FlaskConical, Pencil, Pin, PinOff, Archive, RotateCcw } from "../components/icons.jsx";
 import { rumboActions } from "../data/useRumbo.js";
 import { Form } from "../components/Form.jsx";
 import { agentReadiness } from "../lib/agents.js";
@@ -345,16 +347,17 @@ function Approval({ approval, run }) {
 }
 
 export function WorkView() {
-  const { data, page, navigate, startSession, perform, notify } = useApp();
+  const { data, workspace, page, navigate, startSession, perform, notify, organization, toggleFavorite } = useApp();
   const [filter, setFilter] = useState("all");
+  const [rename, setRename] = useState(null);
+  const [archive, setArchive] = useState(null);
+  const [draftTitle, setDraftTitle] = useState('');
   const runs = data.runs
     .toSorted(byUpdated)
-    .filter((run) =>
-      filter === "all" || filter === "active"
-        ? filter !== "active" || activeRun(run)
-        : !activeRun(run),
-    );
+    .filter((run) => filter === 'archived' ? Boolean(run.archived_at) : !run.archived_at && (filter === 'all' || filter === 'active' && activeRun(run) || filter === 'finished' && !activeRun(run)));
   const run = runs.find((item) => item.id === page.id) ?? runs[0];
+  const starred = item => organization.favorites.some(favorite => favorite.view === 'work' && favorite.id === item.id);
+  const updateRun = (item, patch, message) => perform(() => rumboActions.updateRun(item.id, patch), message);
   const approvals = data.approvals.filter(
     (item) => val(item, "run_id") === run?.id && item.status === "pending",
   );
@@ -397,6 +400,7 @@ export function WorkView() {
           ["all", "All sessions"],
           ["active", "Active"],
           ["finished", "Finished"],
+          ["archived", "Archived"],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -411,11 +415,8 @@ export function WorkView() {
         <div className="work-layout">
           <aside className="session-list">
             {runs.map((item) => (
-              <button
-                key={item.id}
-                className={`session-list-item ${item.id === run?.id ? "active" : ""}`}
-                onClick={() => navigate("work", item.id)}
-              >
+              <div key={item.id} className={`session-list-row ${item.id === run?.id ? "active" : ""}`}>
+              <button className={`session-list-item ${item.id === run?.id ? "active" : ""}`} onClick={() => navigate("work", item.id)}>
                 <ProviderIcon provider={item.provider} />
                 <span>
                   <strong>{item.title}</strong>
@@ -426,6 +427,8 @@ export function WorkView() {
                   <Status value={item.status} />
                 </span>
               </button>
+              <div className="session-list-actions"><button aria-label={`Rename ${item.title}`} onClick={() => { setRename(item); setDraftTitle(item.title); }}><Pencil /></button><button aria-label={`${starred(item) ? 'Unstar' : 'Star'} ${item.title}`} aria-pressed={starred(item)} onClick={() => toggleFavorite({ view: 'work', id: item.id })}>{starred(item) ? <PinOff /> : <Pin />}</button><button aria-label={`${item.archived_at ? 'Restore' : 'Delete'} ${item.title}`} onClick={() => item.archived_at ? updateRun(item, { archived_at: null }, 'Run restored') : setArchive(item)}>{item.archived_at ? <RotateCcw /> : <Archive />}</button></div>
+              </div>
             ))}
             {!runs.length ? (
               <p className="section-empty">No sessions in this view.</p>
@@ -527,7 +530,7 @@ export function WorkView() {
                     events.map((event) => (
                       <div key={event.id} className="event-row">
                         <span className="event-marker">
-                          <i />
+                          <ActivityTypeIcon workspaceId={workspace.id} type={runActivityType(event)} size={15} />
                         </span>
                         <div>
                           <strong>{event.summary}</strong>
@@ -619,6 +622,8 @@ export function WorkView() {
           onSecondaryAction={() => navigate("connections")}
         />
       )}
+      {rename ? <Dialog title="Rename run" onClose={() => setRename(null)}><Field label="Run name"><input autoFocus maxLength={200} value={draftTitle} onChange={event => setDraftTitle(event.target.value)} /></Field><div className="dialog-footer"><Button onClick={() => setRename(null)}>Cancel</Button><Button variant="primary" disabled={!draftTitle.trim()} onClick={async () => { if (await updateRun(rename, { title: draftTitle.trim() }, 'Run renamed')) setRename(null); }}>Save name</Button></div></Dialog> : null}
+      {archive ? <Dialog title="Delete run?" onClose={() => setArchive(null)}><p>This moves the run to Archived. Its events and review history remain available, and you can restore it later.</p>{activeRun(archive) ? <p>Stop this active run before archiving it.</p> : null}<div className="dialog-footer"><Button onClick={() => setArchive(null)}>Cancel</Button><Button disabled={activeRun(archive)} onClick={async () => { if (await updateRun(archive, { archived_at: true }, 'Run archived')) { setArchive(null); navigate('work'); } }}>Move to Archived</Button></div></Dialog> : null}
     </main>
   );
 }

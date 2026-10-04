@@ -3,6 +3,8 @@ import { House, Inbox, Folder, GitBranch, MessageCircle, Play, Bot, Plug, Settin
 import { Button, Dialog, IconButton, SearchField, useApp } from "../ui.jsx";
 import { byUpdated, initials, val, visible } from "../lib/model.js";
 import { RumboSymbol } from "./Brand.jsx";
+import { AgentIdentity } from './AgentIdentity.jsx';
+import { agentVisibleInSidebar } from '../lib/agents.js';
 import { Tooltip } from "./Tooltip.jsx";
 import { readSidebarPreferences, saveSidebarPreferences } from "../lib/sidebar-preferences.js";
 import { SETTINGS_GROUPS } from '../lib/settings-catalog.js';
@@ -25,7 +27,7 @@ import { SidebarLayout } from './SidebarLayout.jsx';
 import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 
-const NAV_ICONS = { 'rumbo-agent': Bot, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+const NAV_ICONS = { 'rumbo-agent': Bot, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
 const MORE_DESTINATIONS = [
   ['Work', 'focus', 'updates', 'tasks', 'work', 'workbench', 'workflows', 'operations'],
@@ -70,7 +72,8 @@ export function Sidebar({
   const teams = sidebarItems('teams');
   const chats = sortSidebarEntities(sidebarItems('chats').toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || byUpdated(a, b)), organization.entityOrder.chats);
   const recentChats = chats.slice(0, 8);
-  const agents = sidebarItems('agents');
+  const connectedAgent = agent => agentVisibleInSidebar(agent, data.connections);
+  const agents = sidebarItems('agents').filter(connectedAgent);
   const optionsButton = (view, item) => <IconButton className="icon-button sidebar-item-options" label={`Options for ${item.name || item.title}`} aria-haspopup="dialog" aria-expanded={itemOptions?.view === view && itemOptions.id === item.id} onClick={() => setItemOptions({ view, id: item.id, title: item.name || item.title })}><Ellipsis /></IconButton>;
   const favorites = organization.favorites.map(reference => resolveFavorite(data, reference)).filter(Boolean);
   const counts = organizationCounts(data, organization);
@@ -287,10 +290,10 @@ export function Sidebar({
         <nav aria-label="Main navigation">
           <SidebarLayout organization={organization} hiddenRootKeys={hiddenRootKeys} arrange={arrange} renderTab={navItem} updateOrganization={updateOrganization} customizeSidebar={customizeSidebar} renderEntity={({ view, id }) => {
             const item = visible(data[view] ?? []).find(item => item.id === id);
-            if (!item || isSidebarHidden(organization, view, id)) return null;
+            if (!item || isSidebarHidden(organization, view, id) || view === 'agents' && !connectedAgent(item)) return null;
             const Icon = NAV_ICONS[view];
             if (view === 'teams') return <div className="project-nav-row" {...entityBinding(view, item)}><TeamIconButton team={item} size={19} /><button className="project-nav-name" style={{ color: colorsFor(`entity:teams:${id}`, item.tab_label_color === 'global' ? undefined : item).label || undefined }} onClick={() => go(view, id)}><span>{item.name}</span></button></div>;
-            return <ColorableNavItem colorId={`entity:${view}:${id}`} icon={Icon} label={item.name || item.title} team={data.teams.find(t => t.id === item.team_id)} {...entityBinding(view, item)} onClick={() => go(view, id)} />;
+            return <ColorableNavItem colorId={`entity:${view}:${id}`} icon={view === 'agents' ? () => <AgentIdentity agent={item} compact /> : Icon} label={item.name || item.title} team={data.teams.find(t => t.id === item.team_id)} {...entityBinding(view, item)} onClick={() => go(view, id)} />;
           }}>
           <div className="nav-group main-nav">
             {layoutOrder('primary').filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id))}
@@ -308,7 +311,7 @@ export function Sidebar({
             <Collapse id="navigation-agents" className="sidebar-section-content nav-group" open={preferences.sections.agents}>
               {agents.map(agent => {
                 const active = data.runs.filter(run => val(run, "agent_id") === agent.id && runningStatuses.has(run.status)).length;
-                return <div className="sidebar-entity-row" key={agent.id} {...entityBinding("agents", agent)}><Tooltip label={`${agent.name}${active ? ` · ${active} active sessions` : agent.status === "paused" ? " · Paused" : " · Agent profile"}`}><ColorableNavItem colorId={`entity:agents:${agent.id}`} icon={Bot} label={agent.name} className={page.view === 'agents' && page.id === agent.id ? 'active' : ''} onClick={() => go('agents', agent.id)}>{active && organization.badges !== 'none' ? organization.badges === 'dot' ? <i className="live-dot" /> : <small className="nav-count">{active}</small> : null}</ColorableNavItem></Tooltip>{optionsButton('agents', agent)}</div>;
+                return <div className="sidebar-entity-row" key={agent.id} {...entityBinding("agents", agent)}><Tooltip label={`${agent.name}${active ? ` · ${active} active sessions` : agent.status === "paused" ? " · Paused" : " · Agent profile"}`}><ColorableNavItem colorId={`entity:agents:${agent.id}`} icon={() => <AgentIdentity agent={agent} compact />} label={agent.name} className={page.view === 'agents' && page.id === agent.id ? 'active' : ''} onClick={() => go('agents', agent.id)}>{active && organization.badges !== 'none' ? organization.badges === 'dot' ? <i className="live-dot" /> : <small className="nav-count">{active}</small> : null}</ColorableNavItem></Tooltip>{optionsButton('agents', agent)}</div>;
               })}
               {!agents.length ? <button className="sidebar-empty-action" onClick={() => create("agent")}><Plus /><span>Create an agent</span></button> : null}
             </Collapse>

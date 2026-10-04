@@ -98,6 +98,23 @@ test("health and bootstrap expose local-only seeded data", async () => {
   assert.ok(Array.isArray(bootstrap.events));
 });
 
+test('runs can be renamed and recoverably archived without losing their history', async () => {
+  const run = (await request('/api/tasks/task_popup/runs', { method: 'POST', body: { scenario: 'success', provider: 'codex' } })).run;
+  assert.ok(run, 'mock run created');
+  const renamed = await request(`/api/runs/${run.id}`, { method: 'PATCH', body: { title: 'Reviewed session' } });
+  assert.equal(renamed.run.title, 'Reviewed session');
+  if (['queued', 'starting', 'running', 'needs_input', 'paused'].includes(renamed.run.status)) await request(`/api/runs/${run.id}/stop`, { method: 'POST' });
+  const before = await request(`/api/runs/${run.id}`);
+  const archived = await request(`/api/runs/${run.id}`, { method: 'PATCH', body: { archived_at: true } });
+  assert.ok(archived.run.archived_at);
+  assert.equal((await request(`/api/runs/${run.id}`)).events.length, before.events.length);
+  assert.equal((await request('/api/bootstrap')).runs.find(item => item.id === run.id).archived_at, archived.run.archived_at);
+  const restored = await request(`/api/runs/${run.id}`, { method: 'PATCH', body: { archived_at: null } });
+  assert.equal(restored.run.archived_at, null);
+  const invalid = await rawRequest(`/api/runs/${run.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'Good', status: 'failed' }) });
+  assert.equal(invalid.status, 400);
+});
+
 test('project pictures persist and reject executable or malformed images', async () => {
   const bootstrap = await request('/api/bootstrap');
   const project = bootstrap.projects[0];

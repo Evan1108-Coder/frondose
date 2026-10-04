@@ -16,6 +16,7 @@ import { AttachmentLinks, AskUpdateAgent, UpdateAttachments, UpdateWorkChanges, 
 
 import { useUnsavedUpdate, useUpdateEditorsState, requestUpdateNavigation } from './UnsavedUpdates.jsx';
 import { ActivityTimeline } from './ActivityTimeline.jsx';
+import { ActivityTypeIcon } from './ActivityTypeIcon.jsx';
 import { RumboAgentEntryDialog, RumboAgentEntryButton } from './RumboAgentEntry.jsx';
 import { rumboAgentActivitySource } from '../lib/rumbo-agent-entry.js';
 
@@ -115,7 +116,7 @@ export function ActivityEntry({ entry, workspaceId = entry.workspace_id, showTar
   const mentions = mentionedAgents(entry.content, visible(data.agents));
   async function mutate(action) { if (busy) return; setBusy(true); setError(null); try { const response = await action(); if (response.result?.approval_required || !response.result?.id) { setError(new Error('This action needs approval. The update has not been changed.')); return; } onChanged(response.result); setPicker(false); } catch (cause) { setError(cause); } finally { setBusy(false); } }
   function react(reaction, mine) { return mutate(() => rumboApi.reactActivity(entry.id, { workspace_id: workspaceId, reaction: { id: reaction.id, color: reaction.color || null }, action: mine ? 'remove' : 'add' })); }
-  return <article id={activityAnchor(entry.id)} className={`activity-entry activity-${entry.update_type}${focused ? ' activity-focused' : ''}${entry.archived_at ? ' activity-archived' : ''}`}><div className="activity-entry-marker" aria-hidden="true" /><div className="activity-entry-body">
+  return <article id={activityAnchor(entry.id)} className={`activity-entry activity-${entry.update_type}${focused ? ' activity-focused' : ''}${entry.archived_at ? ' activity-archived' : ''}`}><div className="activity-entry-marker" aria-hidden="true"><ActivityTypeIcon workspaceId={workspaceId} type={entry.update_type} size={17} /></div><div className="activity-entry-body">
     <header><span className="activity-type">{TYPE_LABELS[entry.update_type] || 'Update'}</span>{draft ? <span className="activity-type">Private draft</span> : null}{entry.archived_at ? <span className="activity-type">Archived</span> : null}{entry.health && entry.health !== 'none' ? <span className={`activity-health health-${entry.health}`}>{HEALTH_LABELS[entry.health]}</span> : null}<strong>{entry.actor_name}</strong><time dateTime={entry.published_at || entry.created_at}>{relative(entry.published_at || entry.created_at)}</time></header>
     {entry.imported ? <span className="activity-target">Imported history · author not verified</span> : null}{showTarget && entry.target ? <span className="activity-target">{entry.target.type} · {entry.target.title}</span> : null}{entry.title ? <h3 className="activity-entry-title"><a href={activityLink(entry)}>{entry.title}</a></h3> : null}<DocumentContent content={entry.content} emojis={emojis} /><WorkChangeSummary value={JSON.parse(entry.work_changes_json || '{}')} /><AttachmentLinks value={JSON.parse(entry.attachments_json || '[]')} />
     {mentions.length ? <div className="activity-agent-request"><strong>Agent mention recorded</strong><span>{mentions.map(agent => `@${agent.name}`).join(', ')} was mentioned. No agent was started.</span></div> : null}<ErrorMessage error={error} />

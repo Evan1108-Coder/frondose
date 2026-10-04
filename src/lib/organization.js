@@ -4,6 +4,7 @@ import { normalizeSidebarLayout } from './sidebar-layout.js';
 export const NAV_ITEMS = [
   { id: "overview", label: "Today", key: "O" },
   { id: "rumbo-agent", label: "Rumbo Agent", key: "" },
+  { id: "starred", label: "Starred", key: "Z" },
   { id: "focus", label: "Focus", key: "F" },
   { id: "inbox", label: "Inbox", key: "I" },
   { id: "updates", label: "Updates", key: "U" },
@@ -25,12 +26,12 @@ export const NAV_ITEMS = [
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
-  primary: ["overview", "rumbo-agent", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
+  primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
   sections: ["favorites", "agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
 export const SECTION_LABELS = { favorites: "Favorites", agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
-export const FOCUSED_SIDEBAR_ROOT = new Set(['overview', 'rumbo-agent', 'inbox', 'projects']);
+export const FOCUSED_SIDEBAR_ROOT = new Set(['overview', 'rumbo-agent', 'starred', 'inbox', 'projects']);
 export function focusedSidebarHiddenKeys(organization) {
   if (organization.navigationMode !== 'focused') return [];
   return organization.layout.root.filter(key => Object.values(SIDEBAR_GROUPS).flat().includes(key) && !FOCUSED_SIDEBAR_ROOT.has(key));
@@ -132,7 +133,7 @@ export function focusItems(data, seenFailures = []) {
 }
 export function organizationCounts(data, preferences) {
   const items = focusItems(data, preferences.seenFailures);
-  return { overview: 0, focus: items.filter(i => i.group === "attention").length,
+  return { overview: 0, starred: preferences.favorites.filter(f => resolveFavorite(data, f)).length, focus: items.filter(i => i.group === "attention").length,
     inbox: (data.approvals ?? []).filter(a => a.status === "pending").length,
     work: (data.runs ?? []).filter(r => runningStatuses.has(r.status)).length,
     workbench: visible(data.projects).length,

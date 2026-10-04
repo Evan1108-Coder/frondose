@@ -6,7 +6,7 @@ import { pageHash, parsePage } from "../src/lib/navigation.js";
 
 test("organization preferences normalize hostile data, preserve ordering and add new defaults", () => {
   const prefs = normalizeOrganization({ version: 1, order: { primary: ["work", "work", "garbage"] }, visibility: { focus: "hidden", agents: "bogus" }, badges: "rainbow", density: "small", favorites: [{ view: "agents", id: "a" }, { view: "agents", id: "a" }, { view: "settings", id: "profile" }, { view: "chats", id: "../bad" }, null] });
-  assert.deepEqual(prefs.order.primary, ["work", "overview", "rumbo-agent", "focus", "inbox", "updates", "workbench", "workflows", "operations"]);
+  assert.deepEqual(prefs.order.primary, ["work", "overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "workbench", "workflows", "operations"]);
   assert.equal(prefs.visibility.focus, "hidden"); assert.equal(prefs.visibility.agents, "always");
   assert.equal(prefs.badges, "count"); assert.equal(prefs.density, "comfortable");
   assert.deepEqual(prefs.favorites, [{ view: "agents", id: "a" }]);
@@ -64,6 +64,14 @@ test("visibility follows actual counts regardless of badge presentation", () => 
   assert.equal(showSidebarItem("chats",prefs,counts),false);
   assert.equal(showSidebarItem("agents",prefs,counts),false);
   assert.equal(parsePage(pageHash("focus")).view,"focus");
+});
+test('Starred is a navigable, restorable destination and archived runs leave the list', () => {
+  assert.equal(parsePage(pageHash('starred')).view, 'starred');
+  const prefs = normalizeOrganization({ version: 1, favorites: [{ view: 'work', id: 'complete' }], visibility: { starred: 'hidden' } });
+  assert.ok(prefs.layout.root.includes('starred'));
+  assert.equal(showSidebarItem('starred', prefs, organizationCounts(data, prefs)), false);
+  assert.equal(resolveFavorite(data, { view: 'work', id: 'complete' }).title, 'Complete');
+  assert.equal(resolveFavorite({ ...data, runs: [{ ...data.runs.find(run => run.id === 'complete'), archived_at: 'now' }] }, { view: 'work', id: 'complete' }), null);
 });
 test("shortcut registry has unique actions and creates only dialogs, never approvals or launches", () => {
   assert.equal(new Set(SHORTCUTS.map(i=>i.id)).size,SHORTCUTS.length);

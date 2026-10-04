@@ -54,6 +54,7 @@ import { SidebarEditor } from "./components/SidebarEditor.jsx";
 import { NavigationHistory } from './components/NavigationHistory.jsx';
 import { GlobalToolbar } from './components/GlobalToolbar.jsx';
 import { FocusView } from "./views/Focus.jsx";
+import { StarredView } from "./views/Starred.jsx";
 import { Home } from './views/Home.jsx';
 const OperationsView = lazy(() => import('./views/Operations.jsx').then(module => ({ default: module.OperationsView })));
 const DocumentsView = lazy(() => import('./views/WorkspaceContent.jsx').then(m => ({ default: m.DocumentsView })));
@@ -395,6 +396,7 @@ export function App() {
   const view = {
     overview: <Home />,
     focus: <FocusView />,
+    starred: <StarredView />,
     inbox: <InboxView />,
     updates: <UpdatesView />,
     skills: <Suspense fallback={<p role="status">Opening Skills…</p>}><SkillsView /></Suspense>,
