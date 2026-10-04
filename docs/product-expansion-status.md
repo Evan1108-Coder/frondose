@@ -124,7 +124,7 @@ Conversation additions include replies/threads, quotation, bookmarks, visible re
 
 The send/retry pipeline is tested with injected provider implementations: duplicate protection, restart persistence, failed/empty replies, stops and strict context attachment validation. **Real Codex/Claude replies and current account compatibility still need the owner's test.**
 
-Message actions now include explicit multi-selection, copy/export and cancellation. Hover or keyboard focus exposes React. The reaction picker has 253 distinct line icons (16 original Rumbo glyphs plus Lucide), 631 Unicode emojis, searchable categories, preset icon colors and custom hex tints. Reactions persist through reload and workspace export/import with scope checks. General-chat Codex launch overrides no longer recreate transportless MCP entries when user configuration is ignored; failed configuration and empty replies remain explicit errors. No global provider configuration was edited.
+Message actions now include explicit multi-selection, copy/export and cancellation. Hover or keyboard focus exposes React. The reaction picker has 268 distinct line icons (31 original Rumbo glyphs plus Lucide), 631 Unicode emojis, searchable categories, preset icon colors and custom hex tints. Reactions persist through reload and workspace export/import with scope checks. General-chat Codex launch overrides no longer recreate transportless MCP entries when user configuration is ignored; failed configuration and empty replies remain explicit errors. No global provider configuration was edited.
 
 ### Pictures, resources and visual feedback
 
