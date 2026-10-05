@@ -15,7 +15,7 @@ The handbook lives at `#/docs`. Article routes are `#/docs/<article-id>`; catego
 
 `public/docs/` contains paired light/dark PNG captures of the real Rumbo interface, made with an isolated sample workspace. They are not user data, generated product mockups, or production account captures. Theme changes select the matching image immediately. Preserve both images when updating a feature screenshot.
 
-Projects, chats and teams are main-panel crops, 1088 × 912. Appearance settings show the complete settings screen, 1440 × 980. The renderer uses those intrinsic dimensions to reserve layout space without stretching the capture. Workbench has no screenshot rather than showing a fabricated execution result.
+Projects, chats, teams and Playbooks are main-panel crops, 1088 × 912. Appearance settings, Field defaults, and the structured-template dialog show the complete settings screen, 1440 × 980. The renderer uses those intrinsic dimensions to reserve layout space without stretching the capture. Workbench has no screenshot rather than showing a fabricated execution result. The new pairs use an isolated sample workspace; the Playbooks capture shows a real completed local draft action, and no AI account was contacted.
 
 ## Verify edits
 

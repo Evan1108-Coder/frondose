@@ -2,6 +2,8 @@ import { requestUpdateNavigation, UnsavedUpdatesDialog } from './components/Unsa
 import { notify } from './lib/notifications.js';
 import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
 import { IconColorsProvider } from './components/IconColors.jsx';
+import { FieldDefaultsProvider } from './components/FieldDefaultsProvider.jsx';
+import { fieldDefinitionsForWorkspace } from './lib/field-inventory.js';
 import {
   Component,
   lazy,
@@ -14,6 +16,7 @@ import {
 } from "react";
 import { ArrowRight, CircleCheck, CircleAlert, X, Menu, ChevronRight, RotateCcw, LoaderCircle, Pin, PinOff } from "./components/icons.jsx";
 import { rumboActions, useRumboData, useRumboStatus } from "./data/useRumbo.js";
+import { apiRequest } from './data/api.js';
 import {
   AppContext,
   Button,
@@ -65,6 +68,7 @@ const LibraryView = lazy(() => import('./views/Library.jsx').then(module => ({ d
 const UpdatesView = lazy(() => import('./views/Updates.jsx').then(module => ({ default: module.UpdatesView })));
 const SkillsView = lazy(() => import('./views/Skills.jsx').then(module => ({ default: module.SkillsView })));
 const WorkflowsView = lazy(() => import('./views/Workflows.jsx').then(module => ({ default: module.WorkflowsView })));
+const PlaybooksView = lazy(() => import('./views/Playbooks.jsx').then(module => ({ default: module.PlaybooksView })));
 
 function readPage() {
   return parsePage(location.hash);
@@ -159,6 +163,15 @@ export function App() {
   const workspace =
     visible(rawData?.workspaces).find((item) => item.id === workspaceId) ??
     visible(rawData?.workspaces)[0];
+  const previousInboxVisit = useRef({ workspaceId: null, view: null });
+  useEffect(() => {
+    const prior = previousInboxVisit.current;
+    previousInboxVisit.current = { workspaceId: workspace?.id ?? null, view: page.view };
+    if (!workspace?.id || page.view !== 'inbox' || prior.workspaceId === workspace.id && prior.view === 'inbox') return;
+    apiRequest('/api/playbooks/dispatch-event', { method: 'POST', body: { workspace_id: workspace.id, event: 'inbox.opened', idempotency_key: crypto.randomUUID() } })
+      .then(({ result }) => { if (result?.length) rumboActions.refresh().catch(() => {}); })
+      .catch(problem => notify(`Inbox Playbook trigger failed: ${problem.message}`, 'error'));
+  }, [workspace?.id, page.view, notify]);
   const organization = useMemo(() => organizationState && organizationState.workspaceId === workspace?.id ? organizationState.value : readOrganization(localStorage, workspace?.id), [workspace?.id, organizationState]);
   const experience = useMemo(() => experienceState && experienceState.workspaceId === workspace?.id ? experienceState.value : readExperience(localStorage, workspace?.id), [workspace?.id, experienceState]);
   const updateExperience = useCallback(value => {
@@ -406,6 +419,7 @@ export function App() {
     chats: <Suspense fallback={<div className="app-loading" role="status">Opening chats…</div>}><ChatsView /></Suspense>,
     'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Rumbo Agent…</div>}><RumboAgent /></Suspense>,
     work: <WorkView />,
+    playbooks: <Suspense fallback={<p role="status">Opening Playbooks…</p>}><PlaybooksView /></Suspense>,
     workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={page.id ?? page.projectId} /></Suspense>,
     library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={page.id} /></Suspense>,
     operations: <OperationsView />,
@@ -421,9 +435,10 @@ export function App() {
     (project) => project.id === (page.projectId ?? (["projects", "workbench"].includes(page.view) ? page.id : null)),
   );
   const currentTeam = page.view === 'teams' ? visible(data.teams).find(team => team.id === page.id) : null;
+  const fieldDefinitions = fieldDefinitionsForWorkspace(data);
   return (
     <AppContext.Provider value={context}>
-      <IconColorsProvider><UnsavedUpdatesDialog />
+      <FieldDefaultsProvider workspaceId={workspace.id} definitions={fieldDefinitions}><IconColorsProvider><UnsavedUpdatesDialog />
       <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
         <a
           href="#main-content"
@@ -506,7 +521,7 @@ export function App() {
         ) : null}
       </div>
       {rawData.meta?.sampleWorkspace ? <aside className="sample-workspace-label" aria-label="Sample workspace information">SAMPLE WORKSPACE · View only · Fictional people, simulated connections & example results · No live AI</aside> : null}
-      </IconColorsProvider>
+      </IconColorsProvider></FieldDefaultsProvider>
     </AppContext.Provider>
   );
 }

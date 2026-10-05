@@ -203,6 +203,10 @@ export function SessionDialog({ defaults = {}, onClose }) {
           </div>
           <Field label="What should the agent do?">
             <textarea
+              data-field-default-key="session.new.prompt"
+              data-field-default-page="Start a session"
+              data-field-default-label="What should the agent do?"
+              data-field-default-mode="create"
               autoFocus
               required
               rows={4}

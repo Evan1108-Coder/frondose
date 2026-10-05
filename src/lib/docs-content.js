@@ -4,6 +4,7 @@ import { DOC_WORKFLOWS } from './docs-workflows.js';
 import { DOC_GOVERNANCE } from './docs-governance.js';
 import { DOC_CONNECTIONS } from './docs-connections.js';
 import { DOC_COLLABORATION } from './docs-collaboration.js';
+import { DOC_PLAYBOOKS } from './docs-playbooks.js';
 export const DOC_GROUPS = [
   { id: 'getting-started', title: 'Getting started', description: 'Your first workspace, a clear brief, and a useful result.' },
   { id: 'workspace', title: 'Your workspace', description: 'Find, organize, and return to the work that matters.' },
@@ -119,7 +120,7 @@ const REFERENCE_ARTICLES = [
   ], { related: ['routes', 'projects', 'saved-views'], appLink: { view: 'settings', id: 'route-labels', label: 'Manage Route labels' } }),
 
   article('templates-recurrence', 'projects-routes', 'Templates and repeating Routes', 'Reuse a strong starting point without triggering unattended work.', [
-    section('templates', 'Save the repeatable part', ['Route templates hold a brief or checklist, starting stage, priority, and suggested agents. Project templates provide a brief, goal, and milestone titles. Chat templates supply participants and an opening note. Creating content from a template starts with saved structure; it does not start an agent.']),
+    section('templates', 'Save the repeatable part', ['Route templates hold a brief or checklist, starting stage, priority, and suggested agents. Project templates provide a brief, goal, and milestone titles. Chat templates supply participants and an opening note. Each can also define custom questions whose answers are saved with the created item. Creating content from a template starts with saved structure; it does not start an agent.']),
     section('repeating', 'Generate due work deliberately', ['Repeating Routes store an interval and date schedule with pause and resume controls. When an occurrence is due, generation is an explicit action. Rumbo protects against replaying the same request into duplicate work, but the current feature is supervised recurrence rather than a background scheduler.']),
     section('practical', 'Keep templates adaptable', [], { bullets: ['Include a short scope and an acceptance checklist.', 'Leave room for the current source links and constraints.', 'Review suggested assignees instead of assuming they are still appropriate.', 'Pause recurring work when the underlying need ends.', 'Check generated Routes before preparing execution.'], note: 'Neither a repeating Route nor a template schedules an AI run or sends a reminder automatically.' }),
   ], { related: ['routes', 'coordination'], appLink: { view: 'settings', id: 'repeating', label: 'Open repeating Routes' } }),
@@ -510,4 +511,4 @@ const REFERENCE_ARTICLES = [
   ], { related: ['developer-testing', 'developer-architecture', 'preferences'] }),
 ];
 
-export const DOC_ARTICLES = [...REFERENCE_ARTICLES, ...DOC_WORKFLOWS, ...DOC_GOVERNANCE, ...DOC_CONNECTIONS, ...DOC_COLLABORATION];
+export const DOC_ARTICLES = [...REFERENCE_ARTICLES, ...DOC_WORKFLOWS, ...DOC_GOVERNANCE, ...DOC_CONNECTIONS, ...DOC_COLLABORATION, ...DOC_PLAYBOOKS];

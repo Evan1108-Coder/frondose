@@ -150,6 +150,55 @@ CREATE TABLE IF NOT EXISTS tasks (
   UNIQUE(workspace_id, number)
 );
 
+-- Playbooks are separate from manual agent Workflows and legacy workspace rules.
+-- Definition revisions are immutable; each execution pins one revision.
+CREATE TABLE IF NOT EXISTS playbooks (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  definition_json TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT NOT NULL,
+  archived_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS playbooks_workspace ON playbooks(workspace_id, archived_at, updated_at);
+CREATE TABLE IF NOT EXISTS playbook_versions (
+  playbook_id TEXT NOT NULL REFERENCES playbooks(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  definition_json TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(playbook_id, version)
+);
+CREATE TABLE IF NOT EXISTS playbook_runs (
+  id TEXT PRIMARY KEY,
+  playbook_id TEXT NOT NULL REFERENCES playbooks(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  playbook_version INTEGER NOT NULL,
+  trigger_type TEXT NOT NULL,
+  trigger_key TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  finished_at TEXT,
+  UNIQUE(playbook_id, trigger_key)
+);
+CREATE INDEX IF NOT EXISTS playbook_runs_workspace ON playbook_runs(workspace_id, created_at);
+CREATE TABLE IF NOT EXISTS playbook_step_receipts (
+  run_id TEXT NOT NULL REFERENCES playbook_runs(id) ON DELETE CASCADE,
+  step_index INTEGER NOT NULL,
+  action_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(run_id, step_index)
+);
+
 CREATE TABLE IF NOT EXISTS chats (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -673,3 +722,33 @@ CREATE INDEX IF NOT EXISTS idx_members_team ON team_members(team_id);
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
 CREATE INDEX IF NOT EXISTS idx_documents_team ON documents(team_id);
 CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id);
+
+-- Answers to custom template fields remain structured and pinned to the
+-- definition used at creation. They are fetched only after the parent item's
+-- current read scope is checked; never include this table in broad bootstrap.
+CREATE TABLE IF NOT EXISTS workspace_template_instances (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  template_id TEXT REFERENCES workspace_items(id) ON DELETE SET NULL,
+  template_version INTEGER NOT NULL,
+  entity_type TEXT NOT NULL CHECK(entity_type IN ('tasks','projects','chats')),
+  entity_id TEXT NOT NULL,
+  fields_json TEXT NOT NULL,
+  values_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(entity_type,entity_id)
+);
+CREATE INDEX IF NOT EXISTS workspace_template_instances_scope
+  ON workspace_template_instances(workspace_id,entity_type,entity_id);
+CREATE TRIGGER IF NOT EXISTS template_instances_after_task_delete
+AFTER DELETE ON tasks BEGIN
+  DELETE FROM workspace_template_instances WHERE entity_type='tasks' AND entity_id=OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS template_instances_after_project_delete
+AFTER DELETE ON projects BEGIN
+  DELETE FROM workspace_template_instances WHERE entity_type='projects' AND entity_id=OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS template_instances_after_chat_delete
+AFTER DELETE ON chats BEGIN
+  DELETE FROM workspace_template_instances WHERE entity_type='chats' AND entity_id=OLD.id;
+END;

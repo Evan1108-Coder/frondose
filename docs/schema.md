@@ -1,6 +1,14 @@
 # Schema and migration contract
 
-Updated October 4, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+Updated October 5, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+
+## Structured templates and Playbooks
+
+`workspace_items.payload_json` keeps each Route, Project or Chat template definition, including its validated custom fields. `workspace_template_instances` pins the field definition and submitted answers to the created Route (`tasks`), project or conversation, with the template version and workspace ID. It is not part of broad bootstrap data: `GET /api/template-instances/:type/:id?workspace_id=…` first checks the canonical destination item's current read scope. Hard deletion of a destination item removes its instance through a trigger; workspace deletion cascades. Existing templates without custom fields remain valid and create their legacy content unchanged.
+
+`playbooks`, `playbook_versions`, `playbook_runs` and `playbook_step_receipts` are separate from manual agent Workflows and older preview-and-apply Route rules. Definitions have optimistic versions, bounded action steps, and a manual, Inbox-open or scheduled trigger. Each run pins a version and a unique trigger key; receipts record actual results or failures. The scheduler checks due local minutes while one server process is running. Missed times are not replayed, and runs left uncertain by a restart are marked interrupted rather than retried. Execution rechecks the actor's automation-management capability and each action's write/scope capability. A completed receipt does not imply an agent ran or a human accepted the output.
+
+Field defaults are browser-personal, workspace-keyed storage in `src/lib/field-defaults.js`; no database table is created. The current workspace JSON export/import excludes Playbooks, their receipts, template-instance answers and browser-personal field defaults. Keep a consistent SQLite backup plus any desired browser-local data separately. Before this additive migration, the live SQLite database was backed up to the private `.rumbo/backups/pre-playbooks-2026-10-05.sqlite`; this path is not a Git artifact.
 
 ## Workspace pictures and status icons
 

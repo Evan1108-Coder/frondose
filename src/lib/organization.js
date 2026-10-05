@@ -9,6 +9,7 @@ export const NAV_ITEMS = [
   { id: "inbox", label: "Inbox", key: "I" },
   { id: "updates", label: "Updates", key: "U" },
   { id: "work", label: "Runs", key: "W" },
+  { id: "playbooks", label: "Playbooks", key: "Q" },
   { id: "workbench", label: "Workbench", key: "B" },
   { id: "operations", label: "Coordination", key: "D" },
   { id: "workflows", label: "Workflows", key: "Y" },
@@ -26,7 +27,7 @@ export const NAV_ITEMS = [
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
-  primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
+  primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "playbooks", "workbench", "workflows", "operations"],
   sections: ["favorites", "agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };

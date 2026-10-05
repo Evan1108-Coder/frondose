@@ -6,6 +6,7 @@ import { ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
 import { guardRouteMutation } from './route-hierarchy.mjs';
 import { changeContext } from './change-context.mjs';
 import { bumpAgentProfileVersion } from './agent-profiles.mjs';
+import { normalizeTemplateFields, resolveTemplateValues, saveTemplateInstance } from './structured-templates.mjs';
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
 const decode = row => row ? { ...row, payload: JSON.parse(row.payload_json), payload_json: undefined } : null;
@@ -51,7 +52,9 @@ export function payloadFor(db, kind, input, workspaceId, { allowArchived = false
   const fields = RESOURCE_TYPES[kind]?.fields;
   if (!fields) throw validationError('Unknown workspace resource.');
   const result = {};
-  for (const key of Object.keys(input)) if (!Object.hasOwn(fields, key) && key !== 'route_id' && !(kind === 'emoji' && key === 'shortcode')) throw validationError(`Unknown field: ${key}.`);
+  const isTemplate = kind.endsWith('_template');
+  for (const key of Object.keys(input)) if (!Object.hasOwn(fields, key) && key !== 'route_id' && !(kind === 'emoji' && key === 'shortcode') && !(isTemplate && key === 'fields')) throw validationError(`Unknown field: ${key}.`);
+  if (isTemplate) result.fields = normalizeTemplateFields(input.fields);
   if (kind === 'emoji' && input.shortcode !== undefined) {
     if (typeof input.shortcode !== 'string' || !/^[a-z0-9_-]{1,160}$/.test(input.shortcode)) throw validationError('Invalid emoji shortcode.');
     result.shortcode = input.shortcode;
@@ -189,20 +192,25 @@ function executeAction(db, item, body, snapshot, options = {}) {
       result = { count: matches.length };
     } else if (body.action === 'instantiate' && item.kind.endsWith('_template')) {
       if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 160) throw validationError('Give the new item a name.');
+      const templateFields = normalizeTemplateFields(p.fields);
+      const fieldValues = resolveTemplateValues(templateFields, body.field_values ?? {});
       if (item.kind === 'route_template') {
         const id = uid('task'), number = db.prepare('SELECT COALESCE(MAX(number),0)+1 AS n FROM tasks WHERE workspace_id=?').get(item.workspace_id).n;
         db.prepare('INSERT INTO tasks (id,workspace_id,number,title,description,status,priority,assignee_agent_ids_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(id, item.workspace_id, number, body.name.trim(), p.content, p.status, p.priority, JSON.stringify(p.agent_ids), time, time);
+        saveTemplateInstance(db, { workspaceId: item.workspace_id, templateId: item.id, templateVersion: item.version, entityType: 'tasks', entityId: id, fields: templateFields, values: fieldValues, createdAt: time });
         recordChange(db, 'tasks', null, { id, workspace_id: item.workspace_id, title: body.name.trim() }, 'created from template');
         result = { view: 'tasks', id };
       } else if (item.kind === 'project_template') {
         const id = uid('project');
         db.prepare('INSERT INTO projects (id,workspace_id,name,identifier,description,goal,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)').run(id, item.workspace_id, body.name.trim(), id.slice(-12).toUpperCase(), p.content, p.goal, 'planned', time, time);
+        saveTemplateInstance(db, { workspaceId: item.workspace_id, templateId: item.id, templateVersion: item.version, entityType: 'projects', entityId: id, fields: templateFields, values: fieldValues, createdAt: time });
         for (const title of p.milestones.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 50)) db.prepare('INSERT INTO milestones (id,workspace_id,project_id,title,created_at,updated_at) VALUES (?,?,?,?,?,?)').run(uid('milestone'), item.workspace_id, id, title, time, time);
         recordChange(db, 'projects', null, { id, workspace_id: item.workspace_id, name: body.name.trim() }, 'created from template');
         result = { view: 'projects', id };
       } else {
         const id = uid('chat');
         db.prepare('INSERT INTO chats (id,workspace_id,title,kind,participant_agent_ids_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').run(id, item.workspace_id, body.name.trim(), 'general', JSON.stringify(p.agent_ids), time, time);
+        saveTemplateInstance(db, { workspaceId: item.workspace_id, templateId: item.id, templateVersion: item.version, entityType: 'chats', entityId: id, fields: templateFields, values: fieldValues, createdAt: time });
         if (p.content) db.prepare('INSERT INTO messages (id,chat_id,sender_type,sender_name,content,kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(uid('message'), id, 'user', 'You', p.content, 'note', time, time);
         recordChange(db, 'chats', null, { id, workspace_id: item.workspace_id, title: body.name.trim() }, 'created from template');
         result = { view: 'chats', id };

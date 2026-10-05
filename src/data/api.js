@@ -136,6 +136,7 @@ export const rumboApi = {
   importWorkspace: input => post(`${API_ROOT}/import`, input),
   updateWorkspaceItem: (id, input) => patch(pathFor('workspace-items', id), input),
   workspaceItemAction: (id, input) => post(`${pathFor('workspace-items', id)}/action`, input),
+  templateInstance: (entityType, entityId, workspaceId, options) => get(`${API_ROOT}/template-instances/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}?workspace_id=${encodeURIComponent(workspaceId)}`, options),
   history: (id, workspaceId) => get(`${pathFor('history', id)}?workspace_id=${encodeURIComponent(workspaceId)}`),
   bootstrap: (options) => get(`${API_ROOT}/bootstrap`, options),
   events: (since, options) => {

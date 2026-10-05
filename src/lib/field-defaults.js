@@ -1,0 +1,148 @@
+// Personal, browser-local form preferences. These are deliberately not workspace
+// data: exports, collaborators and imported workspaces must not inherit them.
+export const FIELD_DEFAULTS_EVENT = 'rumbo:field-defaults-changed';
+const VERSION = 1;
+const MAX_VALUE_LENGTH = 4000;
+const MAX_VALUES = 9;
+const SAFE_KEY = /^[a-z0-9][a-z0-9:._-]{0,159}$/i;
+const SENSITIVE = /password|passcode|secret|token|api.?key|credential|payment|card|cvc|cvv|bank|account.?number|private.?key|authorization/i;
+const SEARCH = /search|filter|query/i;
+
+export function fieldDefaultsStorageKey(workspaceId) {
+  return `rumbo:field-defaults:v${VERSION}:${String(workspaceId || 'unknown')}`;
+}
+
+function inventoryStorageKey(workspaceId) {
+  return `rumbo:field-inventory:v${VERSION}:${String(workspaceId || 'unknown')}`;
+}
+
+function getStorage(storage) {
+  try { return storage ?? globalThis.localStorage; } catch { return null; }
+}
+
+function readJson(key, storage) {
+  try { return JSON.parse(getStorage(storage)?.getItem(key) || 'null'); } catch { return null; }
+}
+
+function writeJson(key, value, storage) {
+  try { getStorage(storage)?.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+}
+
+function notify(workspaceId) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(FIELD_DEFAULTS_EVENT, { detail: { workspaceId } }));
+}
+
+export function normalizeFieldDefinition(input) {
+  const key = String(input?.key ?? '').trim();
+  if (!SAFE_KEY.test(key)) return null;
+  const page = String(input?.page ?? 'Other').trim().slice(0, 100) || 'Other';
+  const label = String(input?.label ?? key).trim().slice(0, 120) || key;
+  const type = String(input?.type ?? 'text').toLowerCase();
+  const sensitive = input?.sensitive === true || SENSITIVE.test(`${key} ${label} ${type}`);
+  const search = input?.search === true || type === 'search' || SEARCH.test(`${key} ${label}`);
+  const supported = ['text', 'textarea', 'email', 'url', 'tel', 'number', 'date', 'time', 'datetime-local', 'select'].includes(type);
+  const eligible = supported && !sensitive && !search && input?.eligible !== false;
+  return { key, page, label, type, eligible, reason: eligible ? null : sensitive ? 'Sensitive field' : search ? 'Search/filter field' : 'Unsupported field' };
+}
+
+export function readFieldInventory(workspaceId, storage) {
+  const value = readJson(inventoryStorageKey(workspaceId), storage);
+  return Array.isArray(value) ? value.map(normalizeFieldDefinition).filter(Boolean) : [];
+}
+
+export function registerFieldDefinition(workspaceId, definition, storage) {
+  const next = normalizeFieldDefinition(definition);
+  if (!next) return null;
+  const entries = readFieldInventory(workspaceId, storage);
+  const previous = entries.find(entry => entry.key === next.key);
+  if (previous && JSON.stringify(previous) === JSON.stringify(next)) return next;
+  const revised = [...entries.filter(entry => entry.key !== next.key), next].sort((a, b) => a.page.localeCompare(b.page) || a.label.localeCompare(b.label));
+  if (writeJson(inventoryStorageKey(workspaceId), revised, storage)) notify(workspaceId);
+  return next;
+}
+
+function normalizeValue(value, index) {
+  if (!value || typeof value !== 'object') return null;
+  const text = typeof value.value === 'string' ? value.value.slice(0, MAX_VALUE_LENGTH) : '';
+  const slot = Number(value.slot);
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_VALUES) return null;
+  return { id: String(value.id || `value-${index}`).slice(0, 80), name: String(value.name || `Value ${slot}`).slice(0, 80), value: text, slot, enabled: value.enabled !== false };
+}
+
+export function normalizeFieldDefaults(input) {
+  const fields = Object.create(null);
+  if (input?.fields && typeof input.fields === 'object' && !Array.isArray(input.fields)) {
+    for (const [key, entry] of Object.entries(input.fields)) {
+      if (!SAFE_KEY.test(key) || !entry || typeof entry !== 'object') continue;
+      const usedSlots = new Set(), usedIds = new Set();
+      const values = (Array.isArray(entry.values) ? entry.values : []).map(normalizeValue).filter(value => {
+        if (!value || usedSlots.has(value.slot) || usedIds.has(value.id)) return false;
+        usedSlots.add(value.slot);
+        usedIds.add(value.id);
+        return true;
+      }).slice(0, MAX_VALUES);
+      fields[key] = { enabled: entry.enabled !== false, primaryId: values.some(value => value.id === entry.primaryId) ? entry.primaryId : values[0]?.id ?? null, values };
+    }
+  }
+  return { version: VERSION, enabled: input?.enabled !== false, shortcutsEnabled: input?.shortcutsEnabled !== false, fields };
+}
+
+export function readFieldDefaults(workspaceId, storage) {
+  return normalizeFieldDefaults(readJson(fieldDefaultsStorageKey(workspaceId), storage));
+}
+
+export function saveFieldDefaults(workspaceId, settings, storage) {
+  const normalized = normalizeFieldDefaults(settings);
+  if (!writeJson(fieldDefaultsStorageKey(workspaceId), normalized, storage)) return false;
+  notify(workspaceId);
+  return normalized;
+}
+
+export function updateFieldDefaults(workspaceId, updater, storage) {
+  const current = readFieldDefaults(workspaceId, storage);
+  return saveFieldDefaults(workspaceId, typeof updater === 'function' ? updater(current) : { ...current, ...updater }, storage);
+}
+
+export function updateFieldEntry(workspaceId, key, patch, storage) {
+  if (!SAFE_KEY.test(String(key))) return false;
+  return updateFieldDefaults(workspaceId, current => ({ ...current, fields: { ...current.fields, [key]: { ...(current.fields[key] || { enabled: true, primaryId: null, values: [] }), ...patch } } }), storage);
+}
+
+export function resolveFieldValue(settings, definition, slot = null) {
+  const normalized = normalizeFieldDefinition(definition);
+  if (!normalized?.eligible || !settings?.enabled) return null;
+  const entry = settings.fields?.[normalized.key];
+  if (!entry?.enabled) return null;
+  const available = entry.values?.filter(value => value.enabled && value.value) ?? [];
+  // Keep Command 1 intuitive even if a single saved option was moved to a
+  // different numbered slot. Its configured slot remains a second alias.
+  if (slot === 1 && available.length === 1) return available[0];
+  return entry.values?.find(value => value.enabled && value.value && (slot == null ? value.id === entry.primaryId : value.slot === slot)) ?? null;
+}
+
+export function isEligibleFieldElement(element) {
+  if (!element?.matches?.('input, textarea, select')) return false;
+  const type = element.tagName === 'TEXTAREA' ? 'textarea' : element.tagName === 'SELECT' ? 'select' : (element.type || 'text').toLowerCase();
+  if (element.disabled || element.readOnly || element.autocomplete === 'off' && element.dataset.fieldDefaultAllow !== 'true') return false;
+  if (element.closest('[data-field-defaults-exclude]')) return false;
+  const key = element.dataset.fieldDefaultKey;
+  if (!key) return false;
+  const definition = normalizeFieldDefinition({ key, page: element.dataset.fieldDefaultPage, label: element.dataset.fieldDefaultLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent || element.placeholder || key, type });
+  return Boolean(definition?.eligible);
+}
+
+export function definitionForElement(element) {
+  if (!isEligibleFieldElement(element)) return null;
+  return normalizeFieldDefinition({ key: element.dataset.fieldDefaultKey, page: element.dataset.fieldDefaultPage, label: element.dataset.fieldDefaultLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent || element.placeholder || element.dataset.fieldDefaultKey, type: element.tagName === 'TEXTAREA' ? 'textarea' : element.tagName === 'SELECT' ? 'select' : element.type || 'text' });
+}
+
+export function fieldDefaultShortcutSlot(event) {
+  if (event.isComposing || event.key === 'Process' || event.repeat) return null;
+  const number = Number(event.code?.match(/^Digit([1-9])$/)?.[1] || event.key?.match(/^[1-9]$/)?.[0]);
+  if (!number) return null;
+  // Cmd/Ctrl+1…9 is attempted, but browsers may reserve it for tabs.
+  // Alt+Shift+1…9 is the dependable alternative on desktop browsers.
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) return number;
+  if (event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey) return number;
+  return null;
+}

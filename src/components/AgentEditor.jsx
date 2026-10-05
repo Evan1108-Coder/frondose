@@ -28,6 +28,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
   const scopedWorkspace = item ? val(item, "workspace_id") : workspace?.id;
   const choices = agentDefaultChoices(data, scopedWorkspace, form.default_area_id);
   const connections = (data.connections ?? []).filter(connection => connection.provider === form.provider);
+  const defaultField = (name, label) => ({ 'data-field-default-key': `agent.new.${name}`, 'data-field-default-page': 'New agent', 'data-field-default-label': label, 'data-field-default-mode': item ? 'edit' : 'create' });
 
   useEffect(() => {
     if (discarding) keepEditingRef.current?.focus();
@@ -155,24 +156,24 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
             <p className="agent-editor-future-note">Profiles share their connected account’s credentials and usage limits. Rumbo does not import ordinary ChatGPT or Claude chat history.</p>
 
             <Field label="Name">
-              <input autoFocus name="name" required maxLength={200} value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="e.g. Code reviewer" disabled={busy} aria-invalid={validation?.field === "name" || undefined} />
+              <input {...defaultField('name', 'Name')} autoFocus name="name" required maxLength={200} value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="e.g. Code reviewer" disabled={busy} aria-invalid={validation?.field === "name" || undefined} />
             </Field>
             <Field label="Description">
-              <input name="description" maxLength={1000} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder="A short description of what this agent does" disabled={busy} />
+              <input {...defaultField('description', 'Description')} name="description" maxLength={1000} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder="A short description of what this agent does" disabled={busy} />
             </Field>
-            <Field label="Role" hint="A short responsibility, separate from the profile name."><input name="role" maxLength={200} value={form.role} onChange={event => change("role", event.target.value)} placeholder="For example: implementation reviewer" disabled={busy} /></Field>
+            <Field label="Role" hint="A short responsibility, separate from the profile name."><input {...defaultField('role', 'Role')} name="role" maxLength={200} value={form.role} onChange={event => change("role", event.target.value)} placeholder="For example: implementation reviewer" disabled={busy} /></Field>
             <Field label="Instructions" hint="Applied to this agent's sessions. Permissions are chosen before each run.">
-              <textarea name="instructions" rows={4} maxLength={100000} value={form.instructions} onChange={(event) => change("instructions", event.target.value)} placeholder="Describe how this agent should work, what to focus on, and how to report results." disabled={busy} />
+              <textarea {...defaultField('instructions', 'Instructions')} name="instructions" rows={4} maxLength={100000} value={form.instructions} onChange={(event) => change("instructions", event.target.value)} placeholder="Describe how this agent should work, what to focus on, and how to report results." disabled={busy} />
             </Field>
             <Field label="Default working folder" hint="Optional. A linked project folder takes precedence. Rumbo checks the folder when a session starts.">
-              <input name="working_directory" value={form.working_directory} maxLength={2000} spellCheck={false} onChange={(event) => change("working_directory", event.target.value)} placeholder="/Users/you/Projects/example" disabled={busy} aria-invalid={validation?.field === "working_directory" || undefined} />
+              <input {...defaultField('folder', 'Default working folder')} name="working_directory" value={form.working_directory} maxLength={2000} spellCheck={false} onChange={(event) => change("working_directory", event.target.value)} placeholder="/Users/you/Projects/example" disabled={busy} aria-invalid={validation?.field === "working_directory" || undefined} />
             </Field>
             <section className="agent-editor-section" aria-label="Execution defaults"><h3>Execution defaults</h3>
-              <Field label="Model identifier" hint="Optional provider identifier. Rumbo does not verify model availability here; the connected provider can reject an unsupported model."><input name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>
+              <Field label="Model identifier" hint="Optional provider identifier. Rumbo does not verify model availability here; the connected provider can reject an unsupported model."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>
               {form.provider === "codex" ? <Select label="Reasoning effort" name="reasoning_effort" value={form.reasoning_effort} disabled={busy} onChange={value => change("reasoning_effort", value)}><option value="">Provider default</option>{AGENT_REASONING_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : <p>Reasoning-effort selection is not supported for Claude in Rumbo.</p>}
               <p>Model and reasoning support depend on your installed provider client and selected model. Saving does not test your account.</p>
               <Select label="Permission policy" name="permission_policy" value={form.permission_policy} disabled={busy} onChange={value => change("permission_policy", value)}><option value="review">Review required — no automatic write approval</option><option value="read-only">Read-only — do not request project edits</option></Select>
-              <Field label="Expected output behavior" hint="Describe the format, evidence, stopping condition, and what must be reviewed. Instructions never grant permissions."><textarea name="output_behavior" rows={3} maxLength={10000} value={form.output_behavior} disabled={busy} onChange={event => change("output_behavior", event.target.value)} placeholder="Return findings with evidence, unresolved questions, and a reviewable output." /></Field>
+              <Field label="Expected output behavior" hint="Describe the format, evidence, stopping condition, and what must be reviewed. Instructions never grant permissions."><textarea {...defaultField('output-behavior', 'Expected output behavior')} name="output_behavior" rows={3} maxLength={10000} value={form.output_behavior} disabled={busy} onChange={event => change("output_behavior", event.target.value)} placeholder="Return findings with evidence, unresolved questions, and a reviewable output." /></Field>
             </section>
             <section className="agent-editor-section" aria-label="Context preferences"><h3>Context preferences</h3><p>Context Inspector resolves configured Context Packs and Area instructions from currently accessible sources at preview and launch. These defaults are not access grants. Review included, excluded, and truncated content before a run.</p>
               <Select label="Memory policy" name="memory_policy" value={form.memory_policy} disabled={busy} onChange={value => change("memory_policy", value)}><option value="reviewed">Eligible reviewed memory only</option><option value="none">Do not include saved agent memory</option></Select>

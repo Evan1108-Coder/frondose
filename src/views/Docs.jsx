@@ -25,7 +25,7 @@ function DocsScreenshot({ name, theme, caption }) {
   const article = DOC_ARTICLES.find(item => item.id === page.id);
   if (article?.connectionProvider) return <ConnectionIllustration article={article} />;
   if (!SCREENSHOTS.has(name)) return null;
-  return <figure className="docs-screenshot"><img src={`/docs/${name}-${theme}.png`} alt={`${caption} in Rumbo, ${theme} theme`} loading="lazy" width={name === 'settings' ? 1440 : 1088} height={name === 'settings' ? 980 : 912} /><figcaption>{caption} · Example workspace</figcaption></figure>;
+  return <figure className="docs-screenshot"><img src={`/docs/${name}-${theme}.png`} alt={`${caption} in Rumbo, ${theme} theme`} loading="lazy" width={['settings', 'structured-templates', 'field-defaults'].includes(name) ? 1440 : 1088} height={['settings', 'structured-templates', 'field-defaults'].includes(name) ? 980 : 912} /><figcaption>{caption} · Example workspace</figcaption></figure>;
 }
 function ConnectionIllustration({ article }) {
   const previews = CONNECTION_PREVIEWS[article.connectionProvider];

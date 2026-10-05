@@ -4,7 +4,7 @@
 .in-settings .app-main { grid-column: 1 / -1; border: 0; border-radius: 0; min-width: 0; }
 .in-settings .main-scroll { padding: 0; overflow: hidden; }
 .settings-center { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); gap: 24px; height: 100%; min-height: 0; width: 100%; }
-.settings-rail { padding: 12px 10px 10px; background: var(--nav); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.settings-rail { padding: 12px 10px 10px; background: linear-gradient(160deg, color-mix(in srgb, var(--nav) 98%, var(--accent) 2%) 0%, var(--nav) 56%, color-mix(in srgb, var(--nav) 99%, var(--surface) 1%) 100%); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .settings-brand { display: flex; align-items: center; gap: 4px; padding: 4px 2px 23px; min-height: 61px; font-size: 14px; font-weight: 570; flex-shrink: 0; }
 .settings-brand .workspace-picture { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; flex: none; }
 .settings-brand strong { font-weight: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -67,6 +67,25 @@
 .workflow-groups .resource-row:last-child { border-bottom: 0; }
 .workflow-empty { color: var(--faint); font-size: 12px; margin: 18px 0; }
 .settings-resource-form { display: grid; gap: 20px; padding: 24px; }
+.template-fields-editor { border-top: 1px solid var(--border-soft); padding-top: 18px; display: grid; gap: 14px; min-width: 0; }
+.template-fields-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.template-fields-heading h3 { font-size: 15px; margin: 0 0 5px; }
+.template-fields-heading p, .template-fields-empty { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0; }
+.template-fields-heading .button { flex: none; }
+.template-field-card { min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
+.template-field-card legend { padding: 0 7px; color: var(--muted); font-size: 12px; }
+.template-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.template-field-grid .field { min-width: 0; }
+.template-field-grid input, .template-field-grid textarea, .template-field-grid select { width: 100%; }
+.template-field-card-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
+.template-field-card-actions > label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.template-field-card-actions > label input { accent-color: var(--accent); }
+.template-field-card-actions > div { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.template-field-card-actions .button { min-width: 36px; min-height: 32px; padding: 5px 9px; }
+.template-field-card-actions .button svg { width: 15px; height: 15px; }
+.template-answer-fields { display: grid; gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
+.template-answer-fields .field input, .template-answer-fields .field textarea, .template-answer-fields .field select { width: 100%; }
+@media (max-width: 650px) { .template-fields-heading, .template-field-card-actions { align-items: stretch; flex-direction: column; } .template-field-grid { grid-template-columns: minmax(0, 1fr); } }
 .resource-ref-field { border: 1px solid var(--border); border-radius: 6px; padding: 12px; max-height: 210px; overflow: auto; }
 .resource-ref-field legend { font-size: 13px; color: var(--muted); padding: 0 6px; }
 .resource-ref-field label { display: flex; align-items: center; gap: 10px; padding: 7px 4px; font-size: 14px; }

@@ -25,6 +25,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { isRecord, mergeSettings, validateAvatar, validateRecord, validationError } from './validation.mjs';
 import { createIntegrationService } from './integration-service.mjs';
 import { installWorkspaceFeatures, featureSnapshot, featureRoute, recordChange, validateCustomFields } from './workspace-features.mjs';
+import { templateInstanceFor } from './structured-templates.mjs';
 import { importWorkspace } from './workspace-import.mjs';
 import { createWorkbenchService } from './workbench-service.mjs';
 import { installWorkbenchCheckpoints, createWorkbenchCheckpointService } from './workbench-checkpoint-service.mjs';
@@ -43,6 +44,7 @@ import { createGovernanceService, governanceRoute } from './governance-service.m
 import { createAccessBoundary } from './access-boundary.mjs';
 import { createConnectionPlatform } from './connection-platform.mjs';
 import { installAiConnections, createAiConnectionsService } from './ai-connections-service.mjs';
+import { createPlaybooksService, playbooksRoute } from './playbooks-service.mjs';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
 import { subRoutesRoute } from './sub-routes-service.mjs';
 import { guardRouteMutation, guardRouteDeletion, hierarchyTransaction, routeGraph, inspectRouteGraph, authorizeRouteNodes } from './route-hierarchy.mjs';
@@ -436,6 +438,8 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
     for (const [column, definition] of Object.entries(columns)) if (!existing.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
   db.exec('CREATE INDEX IF NOT EXISTS runs_agent_id ON runs(agent_id)');
+  // A process cannot safely resume an uncertain Playbook write after restart.
+  db.prepare("UPDATE playbook_runs SET status='interrupted',error='Server restarted before completion; inspect receipts and run again explicitly.',finished_at=? WHERE status='running'").run(now());
   installWorkspaceFeatures(db);
   installWorkflow(db);
   installChatCollaboration(db);
@@ -506,16 +510,17 @@ function snapshot(db) {
   };
 }
 
-export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {} } = {}) {
+export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, playbookOptions = {} } = {}) {
   const externalConnectionsPaused = integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
-  let identity, governance, access, connectionPlatform, aiConnections;
+  let identity, governance, access, connectionPlatform, aiConnections, playbooks;
   function installAccess() {
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
     governance = createGovernanceService({ db: store.db });
     for (const workspace of store.db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
     access = createAccessBoundary({ db: store.db, governance });
+    playbooks = createPlaybooksService({ db: store.db, allowed: access.allowed, now: playbookOptions.now });
     governance.registerCapabilities([
       { id: 'connections.view', label: 'Inspect connection setup and health', category: 'Connections' },
       { id: 'connections.sync', label: 'Synchronize selected resources', category: 'Connections' },
@@ -545,6 +550,12 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     });
   }
   installAccess();
+  // The local server, not page views, advances due schedules. The unique
+  // (playbook, local minute) receipt makes repeated ticks idempotent.
+  const playbookScheduleTimer = setInterval(() => {
+    if (!closed) playbooks.dispatchDue();
+  }, playbookOptions.scheduleIntervalMs ?? 15_000);
+  playbookScheduleTimer.unref?.();
   function authorizeAgentProposal(run, proposal, reviewer) {
     const sponsorId = store.db.prepare('SELECT actor_id FROM agent_run_sponsors WHERE run_id=?').get(run.id)?.actor_id;
     if (!sponsorId) throw Object.assign(new Error('This older run has no authenticated sponsor. Start a fresh run.'), { statusCode: 403 });
@@ -980,6 +991,22 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return access.filter(data, actor);
       };
       const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : 1_000_000) : {};
+      const templateInstanceMatch = path.match(/^\/template-instances\/(tasks|projects|chats)\/([^/]+)$/);
+      if (templateInstanceMatch && req.method === 'GET') {
+        const [, entityType, encodedId] = templateInstanceMatch;
+        const entityId = decodeURIComponent(encodedId);
+        const workspaceId = url.searchParams.get('workspace_id');
+        if (!workspaceId) throw validationError('Choose a workspace.');
+        const entity = db.prepare(`SELECT * FROM ${entityType} WHERE id=? AND workspace_id=?`).get(entityId, workspaceId);
+        if (!entity || !access.filter({ [entityType]: [present(entity)] }, actor)[entityType]?.some(row => row.id === entityId)) {
+          return fail(res, 404, 'not_found', 'This item is unavailable.');
+        }
+        const result = templateInstanceFor(db, { workspaceId, entityType, entityId, canRead: () => true });
+        return send(res, 200, { result });
+      }
+      // Playbooks authorize their workspace, actor, every action and each
+      // scoped target themselves. Generic access routing has no Playbook IDs.
+      if (await playbooksRoute({ service: playbooks, req, res, path, url, body, send, actor })) return;
       if (path === '/ai-connections' && req.method === 'GET') return send(res, 200, { result: await aiConnections.list(url.searchParams.get('workspace_id'), actor) });
       if (path === '/ai-connections/openrouter/start' && req.method === 'POST') return send(res, 200, { result: await aiConnections.start(body, actor, req.headers.host) });
       if (path === '/ai-connections/openrouter/check' && req.method === 'POST') return send(res, 200, { result: await aiConnections.check(body.workspace_id, actor) });
@@ -1572,6 +1599,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
 
   function close() {
     if (closed) return;
+    clearInterval(playbookScheduleTimer);
     finalizeInterruptedRunUsage(store.db, 'server_interrupted');
     closed = true;
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);

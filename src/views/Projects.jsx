@@ -31,6 +31,7 @@ import { ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ActivityTimeline } from '../components/ActivityTimeline.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { RumboAgentEntryButton } from '../components/RumboAgentEntry.jsx';
+import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import { routeForestRows } from '../lib/sub-routes.js';
 import './route-hierarchy-list.css';
 
@@ -505,6 +506,7 @@ function RouteDetail({ route }) {
               </button>
             ) : null}
           </section>
+          <TemplateInstanceDetails workspaceId={route.workspace_id} entityType="tasks" entityId={route.id} />
           <section>
             <div className="section-heading">
               <h2>Conversations</h2>

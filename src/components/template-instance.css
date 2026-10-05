@@ -1,0 +1,9 @@
+.template-instance-details { margin: 18px 0; padding: 18px 20px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--surface); min-width: 0; }
+.template-instance-details h2 { margin: 0 0 14px; font-size: 15px; font-weight: 580; }
+.template-instance-details dl { display: grid; gap: 0; margin: 0; }
+.template-instance-details dl > div { display: grid; grid-template-columns: minmax(110px, 28%) minmax(0, 1fr); gap: 16px; padding: 10px 0; border-top: 1px solid var(--border-soft); }
+.template-instance-details dt { color: var(--muted); font-size: 13px; }
+.template-instance-details dd { margin: 0; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.template-instance-empty, .template-instance-error { color: var(--muted); font-size: 13px; }
+.template-instance-error { margin: 14px 0; }
+@media (max-width: 600px) { .template-instance-details dl > div { grid-template-columns: minmax(0, 1fr); gap: 5px; } }

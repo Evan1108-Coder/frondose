@@ -42,6 +42,8 @@ const actions = {
 export function EntityDialog({ kind, item, defaults = {}, onClose }) {
   const { data, workspace, navigate, notify, setWorkspace, page } = useApp();
   const base = item ?? defaults;
+  const defaultScope = { workspace: ['workspace', 'New workspace'], project: ['project', 'New project'], task: ['route', 'New Route'], chat: ['chat', 'New conversation'], agent: ['agent', 'New agent'], memory: ['memory', 'New memory note'] }[kind];
+  const defaultField = (name, label) => defaultScope ? { 'data-field-default-key': `${defaultScope[0]}.new.${name}`, 'data-field-default-page': defaultScope[1], 'data-field-default-label': label, 'data-field-default-mode': item ? 'edit' : 'create' } : {};
   const [form, setForm] = useState({
     title: base.title ?? base.name ?? "",
     image_url: base.image_url ?? null,
@@ -201,6 +203,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
             }
           >
             <input
+              {...defaultField(kind === 'project' || kind === 'workspace' || kind === 'agent' ? 'name' : 'title', ['workspace', 'project', 'agent'].includes(kind) ? 'Name' : 'Title')}
               autoFocus
               required
               maxLength={200}
@@ -221,6 +224,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           {["workspace", "project", "task"].includes(kind) ? (
             <Field label="Description">
               <textarea
+                {...defaultField('description', 'Description')}
                 rows={3}
                 value={form.description}
                 onChange={(e) => change("description", e.target.value)}
@@ -254,6 +258,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               <ImageField value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} />
               <Field label="Project brief" hint="The goal and success criteria. Markdown headings and lists are supported.">
                 <textarea
+                  {...defaultField('brief', 'Project brief')}
                   rows={5}
                   value={form.goal}
                   onChange={(e) => change("goal", e.target.value)}
@@ -264,17 +269,18 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               <LabelPicker kind="project" value={form.labels} onChange={labels => change('labels', labels)} />
               <div className="form-grid">
                 <Select label="Area" value={form.team_id} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
-                <Field label="Project lead"><input value={form.lead} maxLength={200} onChange={(event) => change("lead", event.target.value)} placeholder="Name of the project lead" /></Field>
+                <Field label="Project lead"><input {...defaultField('lead', 'Project lead')} value={form.lead} maxLength={200} onChange={(event) => change("lead", event.target.value)} placeholder="Name of the project lead" /></Field>
               </div>
               <div className="form-grid">
-                <Field label="Start date"><DateField value={form.start_date} onChange={(value) => change("start_date", value)} /></Field>
-                <Field label="Target date"><DateField value={form.target_date} onChange={(value) => change("target_date", value)} /></Field>
+                <Field label="Start date"><DateField {...defaultField('start-date', 'Start date')} data-field-default-allow="true" value={form.start_date} onChange={(value) => change("start_date", value)} /></Field>
+                <Field label="Target date"><DateField {...defaultField('target-date', 'Target date')} data-field-default-allow="true" value={form.target_date} onChange={(value) => change("target_date", value)} /></Field>
               </div>
               <Field
                 label="Working folder"
                 hint="Absolute path to the project folder on this computer. Used when you start a live session."
               >
                 <input
+                  {...defaultField('folder', 'Working folder')}
                   value={form.local_path}
                   onChange={(e) => change("local_path", e.target.value)}
                   placeholder="/Users/you/Projects/my-project"
@@ -282,6 +288,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               </Field>
               <Field label="GitHub repository">
                 <input
+                  {...defaultField('github', 'GitHub repository')}
                   type="url"
                   value={form.github_url}
                   onChange={(e) => change("github_url", e.target.value)}
@@ -312,6 +319,8 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                 <LabelPicker value={form.labels} onChange={labels => change('labels', labels)} />
                 <Field label="Due date">
                   <DateField
+                    {...defaultField('due-date', 'Due date')}
+                    data-field-default-allow="true"
                     value={form.due_at}
                     onChange={(value) => change("due_at", value)}
                   />
@@ -398,6 +407,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                 hint="These instructions travel with this agent when a session starts."
               >
                 <textarea
+                  {...defaultField('instructions', 'Instructions')}
                   rows={5}
                   value={form.instructions}
                   onChange={(e) => change("instructions", e.target.value)}
@@ -409,6 +419,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                 hint="Optional. The linked project folder takes precedence."
               >
                 <input
+                  {...defaultField('folder', 'Default working folder')}
                   value={form.working_directory}
                   onChange={(e) => change("working_directory", e.target.value)}
                   placeholder="/Users/you/Projects"
@@ -427,6 +438,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
               hint="Saved notes can be included in a session’s context."
             >
               <textarea
+                {...defaultField('content', 'Content')}
                 required
                 rows={8}
                 value={form.content}

@@ -60,7 +60,9 @@ export function ResourcePage({ kind, allowCreate = true }) {
 export function ResourceEditor({ kind, item, onClose }) {
   const { data, workspace, notify } = useApp();
   const spec = RESOURCE_TYPES[kind];
+  const isTemplate = kind.endsWith('_template');
   const defaults = Object.fromEntries(Object.entries(spec.fields).map(([key, field]) => [key, item?.payload[key] ?? (field.type === 'refs' ? [] : field.type === 'choice' ? field.options[0] : field.type === 'color' ? '#93949c' : '')]));
+  if (isTemplate) defaults.fields = item?.payload.fields ?? [];
   const [name, setName] = useState(item?.name ?? ''), [payload, setPayload] = useState(defaults), [discard, setDiscard] = useState(false), [iconOpen, setIconOpen] = useState(false);
   const initial = useRef(JSON.stringify({ name: item?.name ?? '', payload: defaults }));
   const { busy, error, execute } = useAsync();
@@ -72,9 +74,42 @@ export function ResourceEditor({ kind, item, onClose }) {
       <Field label="Name"><input autoFocus required maxLength={160} value={name} onChange={e => setName(e.target.value)} /></Field>
       {'icon' in spec.fields ? <Field label="Status icon"><div className="resource-icon-picker"><span aria-hidden="true">{payload.icon ? <ReactionGlyph id={payload.icon} color={payload.color} size={24} /> : <FileText />}</span><Button onClick={() => setIconOpen(true)}>{payload.icon ? 'Change icon' : 'Choose icon'}</Button>{payload.icon ? <Button variant="ghost" onClick={() => change('icon', '')}>Remove</Button> : null}</div></Field> : null}
       {Object.entries(spec.fields).filter(([key]) => key !== 'icon').map(([key, field]) => field.type === 'image' ? <ImageField key={key} label={field.label} value={isEmojiImage(payload[key]) ? payload[key] : null} disabled={busy} onChange={value => change(key, value ?? '')} /> : field.type === 'choice' ? <Select key={key} label={field.label} value={payload[key]} onChange={v => change(key, v)}>{field.options.map(v => <option key={v} value={v}>{pretty(v)}</option>)}</Select> : field.type === 'refs' ? <fieldset className="resource-ref-field" key={key}><legend>{field.label}</legend>{visible(data[field.collection]).length ? visible(data[field.collection]).map(row => <label key={row.id}><input type="checkbox" checked={payload[key].includes(row.id)} onChange={e => change(key, e.target.checked ? [...payload[key], row.id] : payload[key].filter(id => id !== row.id))} /><span>{row.name ?? row.title}</span></label>) : <p>No {field.collection.replaceAll('_', ' ')} yet. You can add them later.</p>}</fieldset> : field.type === 'color' ? <Field key={key} label={field.label}><div className="resource-colors">{['#93949c', '#e06b75', '#dfae67', '#76ad91', '#6da8d6', '#9890cf'].map(color => <button type="button" aria-label={`Color ${color}`} aria-pressed={payload[key] === color} key={color} style={{ background: color }} onClick={() => change(key, color)} />)}<input aria-label="Hex color" pattern="#[a-fA-F0-9]{6}" value={payload[key]} maxLength={7} onChange={e => change(key, e.target.value)} /></div></Field> : <Field key={key} label={field.label}>{field.type === 'textarea' ? <textarea rows={5} maxLength={50000} value={payload[key]} onChange={e => change(key, e.target.value)} /> : <input maxLength={field.max ?? 500} value={payload[key]} onChange={e => change(key, e.target.value)} />}</Field>)}
+      {isTemplate ? <TemplateFieldsEditor fields={payload.fields} onChange={fields => change('fields', fields)} /> : null}
       <ErrorMessage error={error} /><footer className="form-submit-row"><Button onClick={close}>Cancel</Button><Button type="submit" variant="primary" busy={busy}>Save {spec.singular}</Button></footer>
     </Form>}{iconOpen ? createPortal(<ReactionPicker iconsOnly title="Choose status icon" selected={payload.icon ? [{ id: payload.icon }] : []} initialColor={payload.color} onClose={() => setIconOpen(false)} onSelect={icon => { change('icon', icon.id); setIconOpen(false); }} />, document.body) : null}
   </Dialog>;
+}
+
+function TemplateFieldsEditor({ fields, onChange }) {
+  const update = (id, patch) => onChange(fields.map(field => field.id === id ? { ...field, ...patch } : field));
+  const move = (index, direction) => {
+    const next = [...fields];
+    [next[index], next[index + direction]] = [next[index + direction], next[index]];
+    onChange(next);
+  };
+  const add = () => onChange([...fields, { id: `field_${crypto.randomUUID().replaceAll('-', '').slice(0, 18)}`, label: '', type: 'text', required: false, default_value: '', placeholder: '' }]);
+  return <section className="template-fields-editor" aria-label="Custom template fields">
+    <div className="template-fields-heading"><div><h3>Custom input fields</h3><p>Give each part of the brief its own answer. Answers stay separate from the description, even if you later edit this template.</p></div><Button icon={Plus} disabled={fields.length >= 24} onClick={add}>Add field</Button></div>
+    {fields.map((field, index) => <fieldset className="template-field-card" key={field.id}>
+      <legend>Field {index + 1}</legend>
+      <div className="template-field-grid">
+        <Field label="Label"><input required maxLength={100} value={field.label} onChange={event => update(field.id, { label: event.target.value })} placeholder="For example, Problem" /></Field>
+        <Field label="Input type"><select value={field.type} onChange={event => {
+          const type = event.target.value;
+          if (type === 'select') update(field.id, { type, options: ['Option 1', 'Option 2'], default_value: 'Option 1' });
+          else update(field.id, { type, options: undefined });
+        }}><option value="text">Short text</option><option value="textarea">Long text</option><option value="select">Choose one</option></select></Field>
+        <Field label="Placeholder"><input maxLength={250} value={field.placeholder ?? ''} onChange={event => update(field.id, { placeholder: event.target.value })} /></Field>
+        {field.type === 'select' ? <Field label="Options, one per line"><textarea rows={3} maxLength={2500} value={(field.options ?? []).join('\n')} onChange={event => {
+          const options = event.target.value.split('\n').map(value => value.trim());
+          update(field.id, { options, default_value: options.includes(field.default_value) ? field.default_value : '' });
+        }} /></Field> : null}
+        <Field label="Default value">{field.type === 'select' ? <select value={field.default_value ?? ''} onChange={event => update(field.id, { default_value: event.target.value })}><option value="">No default</option>{(field.options ?? []).filter(Boolean).map((option, optionIndex) => <option value={option} key={`${option}-${optionIndex}`}>{option}</option>)}</select> : field.type === 'textarea' ? <textarea rows={3} maxLength={20000} value={field.default_value ?? ''} onChange={event => update(field.id, { default_value: event.target.value })} /> : <input maxLength={500} value={field.default_value ?? ''} onChange={event => update(field.id, { default_value: event.target.value })} />}</Field>
+      </div>
+      <div className="template-field-card-actions"><label><input type="checkbox" checked={Boolean(field.required)} onChange={event => update(field.id, { required: event.target.checked })} />Required when using template</label><div><Button aria-label={`Move field ${index + 1} up`} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></Button><Button aria-label={`Move field ${index + 1} down`} disabled={index === fields.length - 1} onClick={() => move(index, 1)}><ArrowDown /></Button><Button variant="ghost" onClick={() => onChange(fields.filter(row => row.id !== field.id))}>Remove</Button></div></div>
+    </fieldset>)}
+    {!fields.length ? <p className="template-fields-empty">No custom fields yet. The original brief remains available.</p> : null}
+  </section>;
 }
 
 function ResourceAction({ kind, item, archive, matches, onClose }) {
@@ -82,6 +117,7 @@ function ResourceAction({ kind, item, archive, matches, onClose }) {
   const { busy, error, execute } = useAsync();
   const [name, setName] = useState(item.name), [agent, setAgent] = useState(''), [target, setTarget] = useState('');
   const p = item.payload;
+  const [fieldValues, setFieldValues] = useState(() => Object.fromEntries((p.fields ?? []).map(field => [field.id, field.default_value ?? ''])));
   const action = actionName(kind);
   const refs = ['document_ids', 'memory_ids'].flatMap(key => (p[key] ?? []).map(id => (key === 'document_ids' ? data.documents : data.memory_notes).find(row => row.id === id)).filter(Boolean));
   const context = [p.content, ...refs.map(row => `${row.title}\n${row.content}${row.archived_at ? '\n[Archived source]' : ''}`)].filter(Boolean).join('\n\n');
@@ -90,13 +126,14 @@ function ResourceAction({ kind, item, archive, matches, onClose }) {
     if (archive) { await rumboActions.updateWorkspaceItem(item.id, { version: item.version, archived_at: new Date().toISOString() }); notify('Archived. Restore it from the Archived filter.'); }
     else if (kind === 'request' && p.route_id) navigate('tasks', p.route_id);
     else if (kind === 'emoji' || kind === 'context_pack') { await navigator.clipboard.writeText(kind === 'emoji' ? isEmojiImage(p.symbol) ? emojiShortcode(item) : p.symbol : context); notify('Copied'); }
-    else { const result = await rumboActions.workspaceItemAction(item.id, { version: item.version, action, name, agent_id: agent, target_id: target, ids: matches?.map(row => row.id) }); if (result?.view) navigate(result.view, result.id); else notify(`${result.count} items updated`); }
+    else { const result = await rumboActions.workspaceItemAction(item.id, { version: item.version, action, name, field_values: kind.endsWith('_template') ? fieldValues : undefined, agent_id: agent, target_id: target, ids: matches?.map(row => row.id) }); if (result?.view) navigate(result.view, result.id); else notify(`${result.count} items updated`); }
     onClose();
   });
   const hasAction = archive || action || ['emoji', 'context_pack'].includes(kind);
   return <Dialog title={archive ? `Archive ${item.name}?` : item.name} onClose={() => !busy && onClose()}><div className="settings-action-body">
     {archive ? <p>This item will leave active lists. You can restore it later. Statuses still in use cannot be archived.</p> : <>
       {kind.endsWith('_template') ? <Field label="Name for the new item" hint="Creates workspace content only. No agent starts."><input required value={name} maxLength={160} onChange={e => setName(e.target.value)} /></Field> : null}
+      {kind.endsWith('_template') && p.fields?.length ? <TemplateAnswers item={item} values={fieldValues} onChange={setFieldValues} /> : null}
       {kind.endsWith('_label') ? <><p>Replace this label on all linked work with another label, then archive it. Work is preserved.</p><Select label="Merge into" value={target} onChange={setTarget}><option value="">Choose label</option>{featureItems(data, kind).filter(i => i.id !== item.id).map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</Select></> : null}
       {kind === 'preset' ? <><p>This replaces the selected profile’s instructions. Its previous version remains in the audit history.</p><Select label="Agent" value={agent} onChange={setAgent}><option value="">Choose agent</option>{visible(data.agents).filter(a => a.workspace_id).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</Select><pre>{p.content}</pre></> : null}
       {kind === 'context_pack' ? <><p>{context.length.toLocaleString()} characters · Copy this explicitly into the conversation. Archived sources are marked. Nothing has been sent.</p><pre className="context-preview">{context || 'This pack has no context yet.'}</pre></> : null}
@@ -111,3 +148,12 @@ function ResourceAction({ kind, item, archive, matches, onClose }) {
   </div></Dialog>;
 }
 function actionName(kind) { return kind.endsWith('_template') ? 'instantiate' : kind.endsWith('_label') ? 'merge-label' : ({ preset: 'apply-preset', request: 'convert', automation: 'apply-rule' })[kind]; }
+
+function TemplateAnswers({ item, values, onChange }) {
+  const update = (id, value) => onChange(current => ({ ...current, [id]: value }));
+  return <div className="template-answer-fields" aria-label="Template answers">{item.payload.fields.map(field => {
+    const label = `${field.label}${field.required ? ' · required' : ''}`;
+    const defaults = { 'data-field-default-key': `template.${item.id}.${field.id}`, 'data-field-default-page': `${item.name} template`, 'data-field-default-label': field.label, 'data-field-default-mode': 'create' };
+    return <Field key={field.id} label={label}>{field.type === 'textarea' ? <textarea {...defaults} rows={4} maxLength={20000} required={field.required} placeholder={field.placeholder} value={values[field.id] ?? ''} onChange={event => update(field.id, event.target.value)} /> : field.type === 'select' ? <select required={field.required} value={values[field.id] ?? ''} onChange={event => update(field.id, event.target.value)}><option value="">Choose an option</option>{field.options.map(option => <option key={option} value={option}>{option}</option>)}</select> : <input {...defaults} required={field.required} maxLength={500} placeholder={field.placeholder} value={values[field.id] ?? ''} onChange={event => update(field.id, event.target.value)} />}</Field>;
+  })}</div>;
+}

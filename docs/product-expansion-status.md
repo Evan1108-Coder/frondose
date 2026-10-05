@@ -1,6 +1,12 @@
 # Rumbo product expansion — implementation and limits
 
-Updated October 4, 2026. This is a coverage ledger, not a statement that every roadmap item is finished. Rumbo is moving toward a solo-first personal AI work environment through the [ordered vertical slices](solo-ai-direction.md). The app remains a **localhost development product**, with optional local accounts and enforced workspace access. Automated and isolated QA must not connect real AI accounts, invoke paid agents or populate the user's real workspace.
+Updated October 5, 2026. This is a coverage ledger, not a statement that every roadmap item is finished. Rumbo is moving toward a solo-first personal AI work environment through the [ordered vertical slices](solo-ai-direction.md). The app remains a **localhost development product**, with optional local accounts and enforced workspace access. Automated and isolated QA must not connect real AI accounts, invoke paid agents or populate the user's real workspace.
+
+## October 5: templates, field defaults, and Playbooks
+
+Route, Project and Chat templates can now define bounded custom text, long-text and choice questions. Their answers are pinned separately to each created item and are read only after the item's current access check. Settings → Field defaults supports 49 explicitly wired non-sensitive input fields plus active template text questions; values are browser-personal, can be switched off individually, and have numbered shortcuts and immediate undo. This is not universal input coverage: specialized controls, credentials, passwords and search are excluded. Playbooks is a new tab with real local draft-creation actions for Routes, documents, projects and conversations. Definitions are versioned; manual, Inbox-open and weekday/time-zone triggers create receipts with idempotency and per-step permission rechecks. A schedule runs only while the local server is on and does not replay missed times. No agent or external-service action is represented as available. Existing manually advanced Workflows and preview-and-apply Route rules remain separate.
+
+The in-app Docs now has three dedicated guides with real light/dark screenshots from an isolated sample workspace. See [the feature and limitation guide](templates-defaults-playbooks.md). Full public, multi-instance scheduling, export/import of Playbooks and template answers, universal defaults, external action adapters and agent actions remain future work; this local slice must not be described as that entire system.
 
 ## October 4: workspace controls and visual refinement
 
