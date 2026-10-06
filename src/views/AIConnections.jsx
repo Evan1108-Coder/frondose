@@ -1,60 +1,153 @@
-import { useEffect, useState } from 'react';
-import { apiRequest } from '../data/api.js';
+import { useEffect, useMemo, useState } from 'react';
+import { apiRequest, rumboApi } from '../data/api.js';
 import { Button, Dialog, ErrorMessage, PageHeader, SearchField, Select, useApp } from '../ui.jsx';
-import { ArrowRight, Check, ExternalLink, Plug, ShieldCheck } from '../components/icons.jsx';
+import { ArrowRight, Check, ExternalLink, Plug, Terminal } from '../components/icons.jsx';
+import { ServiceLogo } from '../components/ServiceLogo.jsx';
+import { ConnectionDialog } from './Connections.jsx';
 import './ai-connections.css';
 
-const details = [
-  { id: 'openrouter', name: 'OpenRouter', kind: 'Browser sign-in', models: 'GPT, Claude, Gemini, DeepSeek, Qwen, Llama, and other models in its catalog', billing: 'Your OpenRouter credits or limits', description: 'Authorize Rumbo on OpenRouter. OpenRouter creates a user-controlled key; Rumbo encrypts it on the server.', docs: 'https://openrouter.ai/docs/guides/overview/auth/oauth' },
-  { id: 'huggingface', name: 'Hugging Face Inference', kind: 'Browser sign-in · operator setup required', models: 'Models served by Hugging Face Inference Providers', billing: 'Your Hugging Face account', description: 'Sign in with the inference-api scope. The Rumbo operator must register a Hugging Face OAuth app first.', docs: 'https://huggingface.co/docs/hub/oauth' },
-  { id: 'copilot', name: 'GitHub Copilot', kind: 'Browser sign-in · in development', models: 'Models made available through your Copilot subscription', billing: 'Your GitHub Copilot subscription and limits', description: 'GitHub documents OAuth for SaaS apps using the server-side Copilot SDK. Rumbo needs a GitHub OAuth app, a hosted SDK runtime, and per-user isolation.', docs: 'https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/github-oauth' },
+const PROVIDERS = [
+  { id: 'openrouter', name: 'OpenRouter', category: 'sign-in', route: 'Browser sign-in', usage: 'Your OpenRouter credits or limits', description: 'Authorize Rumbo on OpenRouter. OpenRouter creates a user-controlled key that Rumbo stores encrypted.', models: 'Models available to your OpenRouter account', docs: 'https://openrouter.ai/docs/guides/overview/auth/oauth', abilities: ['Check the authorized account', 'Browse the models visible to that account', 'Send one explicit, potentially billed model test'], limitation: 'This connection does not yet power Rumbo agents or Playbooks.' },
+  { id: 'huggingface', name: 'Hugging Face Inference', category: 'sign-in', route: 'Browser sign-in', usage: 'Your Hugging Face account', description: 'Sign in with the inference-api scope after the Rumbo operator registers its OAuth app.', models: 'Models served through Hugging Face Inference Providers', docs: 'https://huggingface.co/docs/hub/oauth', abilities: ['Check the authorized account', 'Browse available inference models', 'Send one explicit, potentially billed model test'], limitation: 'Operator OAuth setup is required before sign-in. This connection does not yet power agents.' },
+  { id: 'copilot', name: 'GitHub Copilot', category: 'sign-in', route: 'Browser sign-in planned', usage: 'Your Copilot subscription and limits', description: 'A hosted GitHub OAuth and Copilot SDK integration is planned but has not been implemented in Rumbo.', models: 'Models allowed by your Copilot account', docs: 'https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/github-oauth', abilities: [], limitation: 'Coming soon. No authorization or model execution is available yet.' },
+  { id: 'codex', name: 'Codex', category: 'local', route: 'Local CLI', usage: 'Your Codex account', description: 'Use a Codex runner already installed and signed in on this machine for explicit reviewed work.', models: 'Models allowed by your signed-in Codex account', abilities: ['Run reviewed requests in conversations and linked project work', 'Review context and permissions before a run', 'Inspect results and proposed Rumbo actions'], limitation: 'A local CLI sign-in is not a public website OAuth connection.' },
+  { id: 'claude', name: 'Claude Code', category: 'local', route: 'Local CLI', usage: 'Your Claude Code account', description: 'Use a Claude Code runner already installed and signed in on this machine for explicit reviewed work.', models: 'Models allowed by your signed-in Claude Code account', abilities: ['Run reviewed analysis requests', 'Inspect results and proposed Rumbo actions'], limitation: 'The current Claude runner is restricted; account sign-in alone does not enable project editing.' },
 ];
-const directProviders = ['OpenAI API', 'Anthropic API', 'Google Gemini API', 'xAI', 'Mistral', 'DeepSeek', 'Groq', 'Together AI', 'Fireworks AI', 'Cohere', 'Perplexity', 'Moonshot/Kimi', 'Alibaba/Qwen', 'Z.ai/GLM'];
+const DIRECT_PROVIDERS = ['OpenAI API', 'Anthropic API', 'Google Gemini API', 'xAI', 'Mistral', 'DeepSeek', 'Groq', 'Together AI', 'Fireworks AI', 'Cohere', 'Perplexity', 'Moonshot/Kimi', 'Alibaba/Qwen', 'Z.ai/GLM'];
+const isLocal = provider => provider.category === 'local';
+const logoName = provider => provider.id === 'codex' ? 'Codex' : provider.id === 'claude' ? 'Claude' : provider.id === 'copilot' ? 'GitHub' : provider.name;
+
+function ProviderMark({ provider, large = false }) {
+  return <span className={`ai-provider-mark ${large ? 'large' : ''}`} aria-hidden="true">
+    {provider.id === 'openrouter' ? <span className="ai-openrouter-mark">↔</span> : <ServiceLogo name={logoName(provider)} />}
+  </span>;
+}
+
+function providerStatus(provider, state, runner) {
+  if (isLocal(provider)) return runner?.state === 'connected' ? 'Ready on this machine' : 'Not ready on this machine';
+  if (state?.[provider.id]?.state === 'connected') return 'Connected';
+  if (provider.id === 'copilot') return 'Coming soon';
+  if (provider.id === 'huggingface' && !state?.huggingface_configured) return 'Setup required';
+  return 'Not connected';
+}
 
 export function AIConnectionsView() {
   const { workspace, data, navigate, page } = useApp();
-  const [state, setState] = useState(null), [models, setModels] = useState([]), [selected, setSelected] = useState(''), [query, setQuery] = useState('');
-  const [busy, setBusy] = useState(false), [error, setError] = useState(null), [result, setResult] = useState(null), [confirm, setConfirm] = useState(null);
+  const [state, setState] = useState(null);
+  const [models, setModels] = useState([]);
+  const [selected, setSelected] = useState('');
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [runnerDialog, setRunnerDialog] = useState(null);
+  const detail = PROVIDERS.find(item => item.id === page.id);
+  const runners = new Map((data.connections ?? []).filter(item => ['codex', 'claude'].includes(item.provider)).map(item => [item.provider, item]));
+  const matching = useMemo(() => PROVIDERS.filter(item =>
+    (filter === 'all' || item.category === filter) &&
+    `${item.name} ${item.route} ${item.models} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase())
+  ), [filter, query]);
+
   const load = async () => {
     const response = await apiRequest(`/api/ai-connections?workspace_id=${encodeURIComponent(workspace.id)}`);
     setState(response.result);
   };
   useEffect(() => {
     let active = true;
-    apiRequest(`/api/ai-connections?workspace_id=${encodeURIComponent(workspace.id)}`).then(response => { if (active) setState(response.result); }).catch(cause => { if (active) setError(cause); });
+    setState(null);
+    setError(null);
+    apiRequest(`/api/ai-connections?workspace_id=${encodeURIComponent(workspace.id)}`)
+      .then(response => { if (active) setState(response.result); })
+      .catch(cause => { if (active) setError(cause); });
     return () => { active = false; };
   }, [workspace.id]);
-  const run = async action => { setBusy(true); setError(null); setResult(null); try { await action(); } catch (cause) { setError(cause); } finally { setBusy(false); } };
-  const post = (provider, path, extra = {}) => apiRequest(`/api/ai-connections/${provider}/${path}`, { method: 'POST', body: { workspace_id: workspace.id, ...extra }, timeoutMs: path === 'test' ? 45_000 : 25_000 }).then(response => response.result);
-  const start = provider => run(async () => { const response = await post(provider, 'start'); const url = new URL(response.authorization_url); if (url.origin !== (provider === 'openrouter' ? 'https://openrouter.ai' : 'https://huggingface.co')) throw new Error('Provider authorization address was invalid.'); window.location.assign(url.href); });
+  const run = async action => {
+    setBusy(true); setError(null); setResult(null);
+    try { await action(); } catch (cause) { setError(cause); } finally { setBusy(false); }
+  };
+  const post = (provider, path, extra = {}) => apiRequest(`/api/ai-connections/${provider}/${path}`, {
+    method: 'POST', body: { workspace_id: workspace.id, ...extra }, timeoutMs: path === 'test' ? 45_000 : 25_000,
+  }).then(response => response.result);
+  const start = provider => run(async () => {
+    const response = await post(provider, 'start');
+    const url = new URL(response.authorization_url);
+    if (url.origin !== (provider === 'openrouter' ? 'https://openrouter.ai' : 'https://huggingface.co')) throw new Error('Provider authorization address was invalid.');
+    window.location.assign(url.href);
+  });
   const check = provider => run(async () => { const checked = await post(provider, 'check'); await load(); setResult({ type: 'check', provider, data: checked }); });
-  const openModels = provider => run(async () => { const response = await apiRequest(`/api/ai-connections/${provider}/models?workspace_id=${encodeURIComponent(workspace.id)}`, { timeoutMs: 25_000 }); setModels(response.result); setSelected(''); setConfirm({ type: 'test', provider }); });
+  const openModels = provider => run(async () => {
+    const response = await apiRequest(`/api/ai-connections/${provider}/models?workspace_id=${encodeURIComponent(workspace.id)}`, { timeoutMs: 25_000 });
+    setModels(response.result); setSelected(''); setConfirm({ type: 'test', provider });
+  });
   const test = provider => run(async () => { const checked = await post(provider, 'test', { model: selected }); await load(); setResult({ type: 'test', provider, data: checked }); setConfirm(null); });
   const disconnect = provider => run(async () => { await post(provider, 'disconnect'); await load(); setModels([]); setConfirm(null); setResult({ type: 'disconnect', provider }); });
-  const matching = details.filter(item => `${item.name} ${item.models} ${item.description}`.toLowerCase().includes(query.toLowerCase()));
-  const detail = details.find(item => item.id === page.id);
-  const localRunners = data.connections.filter(item => ['codex', 'claude'].includes(item.provider));
+  const openRunner = provider => run(async () => {
+    const response = await rumboApi.connectionSetups();
+    setRunnerDialog({ provider, setup: response.result.setups?.find(item => item.provider === provider) });
+  });
+
+  const connected = detail && state?.[detail.id]?.state === 'connected';
+  const canAuthorize = detail?.id === 'openrouter' || detail?.id === 'huggingface' && state?.huggingface_configured;
+  const status = detail ? providerStatus(detail, state, runners.get(detail.id)) : null;
+
   return <main className="page ai-connections">
-    {detail ? <section className="ai-provider-detail"><button type="button" className="ai-provider-back" onClick={() => navigate('connections')}>← All AI connections</button><PageHeader title={detail.name} description={detail.description} /><div className="ai-provider-detail-grid"><section className="ai-connection-section"><h2>Connection</h2><p>{state?.[detail.id]?.state === 'connected' ? `${state[detail.id].account_label || 'Account authorized'} · authorization does not guarantee every model works.` : detail.kind}</p><div className="ai-account-actions">{detail.id === 'openrouter' || detail.id === 'huggingface' && state?.huggingface_configured ? <Button variant="primary" busy={busy} disabled={!state} onClick={() => start(detail.id)}>{state?.[detail.id]?.state === 'connected' ? 'Reconnect account' : `Connect ${detail.name}`} <ExternalLink /></Button> : <p className="ai-connection-pending">{detail.id === 'huggingface' ? 'The Rumbo operator must register an OAuth app before sign-in is available.' : 'A hosted GitHub OAuth and Copilot SDK service is not implemented yet.'}</p>}{state?.[detail.id]?.state === 'connected' ? <><Button busy={busy} onClick={() => check(detail.id)}>Check authorization</Button><Button busy={busy} onClick={() => openModels(detail.id)}>Test a model</Button><Button onClick={() => setConfirm({ type: 'disconnect', provider: detail.id })}>Disconnect</Button></> : null}</div>{result?.provider === detail.id && result.type === 'check' ? <p role="status">Authorization checked. A model request is a separate test.</p> : result?.provider === detail.id && result.type === 'test' ? <p role="status">{result.data.model} replied: “{result.data.reply}”. This test may use provider credits.</p> : null}{result?.provider === detail.id && result.type === 'disconnect' ? <p role="status">Saved Rumbo credentials removed. Revoke provider access separately if needed.</p> : null}</section><section className="ai-connection-section"><h2>Before you connect</h2><dl><div><dt>Models</dt><dd>{detail.models}</dd></div><div><dt>Billing and limits</dt><dd>{detail.billing}</dd></div><div><dt>What this enables</dt><dd>Account authorization and an explicit model test. Agent and Workflow execution still requires a separate supported runner and reviewed permissions.</dd></div></dl><a href={detail.docs} target="_blank" rel="noreferrer">Provider documentation <ExternalLink /></a></section></div></section> : <>
-    <PageHeader title="AI connections" description="Choose how Rumbo reaches an AI model. Provider accounts and Rumbo agent profiles are separate." />
-    <div className="ai-connection-intro"><ShieldCheck /><p>Opening this page does not sign in or spend credits. A connected account is not automatically available to an agent or Workflow; each execution path needs reviewed context and permissions.</p></div>
-    <SearchField value={query} onChange={setQuery} placeholder="Search AI providers and models…" />
-    <ErrorMessage error={error} />
-    {!state && !error ? <p role="status" className="ai-muted">Checking your AI connections…</p> : null}
-    <section className="ai-connection-section"><div className="ai-connection-section-heading"><h2>Sign in through a provider website</h2><p>These routes use your account, not a shared Rumbo model key. Provider credits, subscriptions, restrictions, and rate limits still apply.</p></div>
-      <div className="ai-connection-grid">{matching.map(item => <article className="ai-connection-card" key={item.id}>
-        <div className="ai-connection-card-heading"><span className={`ai-provider-mark ai-provider-${item.id}`}>{item.id === 'openrouter' ? 'O' : item.id === 'huggingface' ? 'HF' : 'GH'}</span><span><strong>{item.name}</strong><small>{state?.[item.id]?.state === 'connected' ? 'Account authorized · model test separate' : item.kind}</small></span>{state?.[item.id]?.state === 'connected' ? <Check className="ai-connection-check" /> : null}</div>
-        <p>{item.description}</p><dl><div><dt>Models</dt><dd>{item.models}</dd></div><div><dt>Usage</dt><dd>{item.billing}</dd></div></dl>
-        <div className="ai-connection-card-actions"><Button variant="primary" onClick={() => navigate('connections', item.id)}>{state?.[item.id]?.state === 'connected' ? `Manage ${item.name}` : `Explore ${item.name}`} <ArrowRight /></Button></div>
-      </article>)}</div>{!matching.length ? <p className="ai-muted">No AI connections match your search.</p> : null}
-    </section>
-    {['openrouter', 'huggingface'].filter(provider => state?.[provider]?.state === 'connected').map(provider => <section key={provider} className="ai-connection-section ai-account-panel"><div className="ai-connection-section-heading"><h2>{provider === 'openrouter' ? 'OpenRouter' : 'Hugging Face'} account</h2><p>{state[provider].account_label || 'Authorized account'} · Last checked {state[provider].checked_at ? new Date(state[provider].checked_at).toLocaleString() : 'not yet'}. Authorization does not prove every model works.</p></div><div className="ai-account-actions"><Button busy={busy} onClick={() => check(provider)}>Check authorization</Button><Button busy={busy} onClick={() => openModels(provider)}>Choose model to test</Button><Button onClick={() => setConfirm({ type: 'disconnect', provider })}>Disconnect from Rumbo</Button></div>{state[provider].model_tested_at ? <p className="ai-muted">Last successful model test: {new Date(state[provider].model_tested_at).toLocaleString()}.</p> : null}{result?.provider === provider && result.type === 'check' ? <p role="status">{provider === 'openrouter' ? `OpenRouter accepted the saved key. Remaining limit: ${result.data.key.limit_remaining ?? 'unknown'}.` : 'Hugging Face accepted the saved authorization.'}</p> : result?.provider === provider && result.type === 'test' ? <p role="status">{result.data.model} replied: “{result.data.reply}”. This test may use your provider credits.</p> : null}</section>)}
-    {result?.type === 'disconnect' ? <p role="status">Rumbo removed its saved {result.provider === 'openrouter' ? 'OpenRouter' : 'Hugging Face'} credentials. Revoke access at the provider too if you want it invalidated there.</p> : null}
-    <section className="ai-connection-section"><div className="ai-connection-section-heading"><h2>Existing local runners</h2><p>Codex and Claude Code can run through a machine where their CLIs are already signed in. This does not give a visitor to a public Rumbo site access to their ChatGPT or Claude subscription.</p></div><div className="ai-local-list">{localRunners.map(item => <div key={item.provider}><span className="ai-provider-mark">{item.provider === 'codex' ? 'C' : 'Cl'}</span><span><strong>{item.provider === 'codex' ? 'Codex' : 'Claude Code'}</strong><small>{item.state === 'connected' ? 'Ready on this machine' : 'Not ready on this machine'}</small></span><Button onClick={() => navigate('settings', 'integrations')}>Manage runner <ArrowRight /></Button></div>)}</div></section>
-    <section className="ai-connection-section ai-direct"><div className="ai-connection-section-heading"><h2>Direct model APIs</h2><p>These are model providers, not verified one-click Rumbo connections. We have not established a public user-sign-in route for their direct APIs. Access would require a user API credential or Rumbo-funded billing, so no “Connect” button is shown.</p></div><p>{directProviders.join(' · ')}</p></section>
+    {detail ? <section className="ai-provider-detail">
+      <button type="button" className="ai-provider-back" onClick={() => navigate('connections')}>← AI connections</button>
+      <div className="ai-provider-hero">
+        <ProviderMark provider={detail} large />
+        <div className="ai-provider-identity"><h1>{detail.name}</h1><p>{detail.description}</p><span className="ai-provider-status">{status}</span></div>
+        <div className="ai-provider-main-action">
+          {isLocal(detail) ? <Button variant="primary" busy={busy} onClick={() => openRunner(detail.id)}>Manage runner <ArrowRight /></Button>
+            : connected ? <Button onClick={() => openModels(detail.id)} disabled={busy}>Test a model</Button>
+            : canAuthorize ? <Button variant="primary" disabled={!state || busy} busy={busy} onClick={() => start(detail.id)}>Connect {detail.name} <ExternalLink /></Button>
+            : <span className="ai-unavailable-action">{detail.id === 'copilot' ? 'Coming soon' : 'Operator setup required'}</span>}
+        </div>
+      </div>
+      <div className="ai-provider-overview">
+        <div className="ai-provider-meta"><div><small>Built by</small><strong>Rumbo</strong></div><div><small>Connection route</small><strong>{detail.route}</strong></div>{detail.docs ? <div><small>Docs</small><a href={detail.docs} target="_blank" rel="noreferrer">Provider guide <ExternalLink /></a></div> : null}</div>
+        <div className="ai-provider-examples">
+          <article><span className="ai-example-label">What this enables</span><h2>{detail.abilities.length ? 'Work you can do' : 'Not available yet'}</h2>{detail.abilities.length ? <ul>{detail.abilities.map(ability => <li key={ability}><Check />{ability}</li>)}</ul> : <p>Rumbo cannot authorize or execute this provider today.</p>}</article>
+          <article><span className="ai-example-label">Before you continue</span><h2>Account and review</h2><ul><li><Check />{detail.usage}</li><li><Check />Agent permissions remain separate from account access</li><li><Check />Opening this page never starts a run or spends credits</li></ul></article>
+        </div>
+        <div className="ai-provider-description"><h2>Overview</h2><p>{detail.limitation}</p><p>Available models: {detail.models}. A provider account check does not certify every model or tool.</p>
+          {connected ? <div className="ai-account-actions"><Button busy={busy} onClick={() => check(detail.id)}>Check authorization</Button><Button busy={busy} onClick={() => openModels(detail.id)}>Choose a model to test</Button><Button onClick={() => setConfirm({ type: 'disconnect', provider: detail.id })}>Disconnect from Rumbo</Button></div> : null}
+          {result?.provider === detail.id && result.type === 'check' ? <p role="status">Authorization checked. A model request is a separate test.</p> : null}
+          {result?.provider === detail.id && result.type === 'test' ? <p role="status">{result.data.model} replied: “{result.data.reply}”. This test may use provider credits.</p> : null}
+          {result?.provider === detail.id && result.type === 'disconnect' ? <p role="status">Saved Rumbo credentials removed. Revoke provider access separately if needed.</p> : null}
+        </div>
+      </div>
+    </section> : <>
+      <PageHeader title="AI connections" description="Choose a connection. Account access and agent permissions are separate." />
+      <div className="ai-catalog-controls">
+        <div className="ai-filter-tabs" role="group" aria-label="Filter AI connections">
+          {[[ 'all', 'All' ], [ 'sign-in', 'Sign in' ], [ 'local', 'Local' ]].map(([id, label]) => <button type="button" key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}
+        </div>
+        <SearchField value={query} onChange={setQuery} placeholder="Search providers…" />
+      </div>
+      <ErrorMessage error={error} />
+      {!state && !error ? <p role="status" className="ai-muted">Checking connection status…</p> : null}
+      <div className="ai-provider-table" role="list" aria-label="AI providers">
+        <div className="ai-provider-table-head" aria-hidden="true"><span>Provider</span><span>Route</span><span>This connection will use</span><span>Status</span></div>
+        {matching.map(provider => {
+          const statusText = providerStatus(provider, state, runners.get(provider.id));
+          const connectedProvider = state?.[provider.id]?.state === 'connected';
+          const action = isLocal(provider) ? 'Manage' : provider.id === 'copilot' ? 'Coming soon' : provider.id === 'huggingface' && !state?.huggingface_configured ? 'Setup required' : connectedProvider ? 'Manage' : 'Connect';
+          return <button type="button" role="listitem" key={provider.id} className="ai-provider-row" onClick={() => navigate('connections', provider.id)} aria-label={`View ${provider.name} connection details · ${statusText}`}>
+            <span className="ai-provider-name"><ProviderMark provider={provider} /><strong>{provider.name}</strong></span>
+            <span className="ai-provider-route">{isLocal(provider) ? <Terminal /> : <ExternalLink />}{provider.route}</span>
+            <span className="ai-provider-usage">{provider.usage}</span>
+            <span className={`ai-provider-row-action ${action === 'Connect' ? 'primary' : ''} ${['Coming soon', 'Setup required'].includes(action) ? 'unavailable' : ''}`}>{action}</span>
+          </button>;
+        })}
+        {!matching.length ? <p className="ai-empty-match">No AI connections match your search.</p> : null}
+      </div>
+      <details className="ai-direct-note"><summary>Direct model APIs require separate credentials</summary><p>{DIRECT_PROVIDERS.join(' · ')}</p><p>Rumbo does not currently offer one-click browser sign-in for these direct APIs.</p></details>
+      <div className="ai-plugin-note"><Plug /><span>Service integrations are now called <strong>Plugins</strong>. They remain Coming soon and are separate from AI connections.</span><button type="button" onClick={() => navigate('settings', 'integrations')}>View Plugins <ArrowRight /></button></div>
     </>}
+    {runnerDialog ? <ConnectionDialog provider={runnerDialog.provider} setup={runnerDialog.setup} onClose={() => setRunnerDialog(null)} /> : null}
     {confirm?.type === 'test' ? <Dialog title={`Test a ${confirm.provider === 'openrouter' ? 'OpenRouter' : 'Hugging Face'} model`} subtitle="This sends a short test prompt and may spend your provider credits. It does not enable agent runs." onClose={() => setConfirm(null)}><div className="ai-dialog-content"><Select label="Model from provider catalog" value={selected} onChange={setSelected}><option value="">Choose a model</option>{models.filter(item => !item.output_modalities.length || item.output_modalities.includes('text')).map(item => <option key={item.id} value={item.id}>{item.name} · {item.id}</option>)}</Select><p>Passing this test verifies one model request only. It does not certify other models or tool access.</p><div><Button onClick={() => setConfirm(null)}>Cancel</Button><Button variant="primary" disabled={!selected || busy} busy={busy} onClick={() => test(confirm.provider)}>Send test request</Button></div></div></Dialog> : null}
     {confirm?.type === 'disconnect' ? <Dialog title={`Disconnect ${confirm.provider === 'openrouter' ? 'OpenRouter' : 'Hugging Face'}?`} subtitle="Rumbo will delete its encrypted credential. This does not revoke access at the provider." onClose={() => setConfirm(null)}><div className="ai-dialog-content"><p>You can revoke the grant separately in the provider's account settings.</p><div><Button onClick={() => setConfirm(null)}>Keep connection</Button><Button variant="primary" busy={busy} onClick={() => disconnect(confirm.provider)}>Remove from Rumbo</Button></div></div></Dialog> : null}
-    <div className="ai-connection-footer"><Plug /><p>Service connections such as GitHub repositories, Drive, Jira, and Slack are paused. Their saved records are still available in <button onClick={() => navigate('settings', 'integrations')}>Settings → Integrations</button>.</p></div>
   </main>;
 }

@@ -82,6 +82,21 @@ test('route, project, and chat instances preserve independent fields and legacy 
   }
 }));
 
+test('changing a template pins new answers without rewriting earlier instances', async () => fixture(async ({ call, workspace, instances }) => {
+  const original = (await call('/workspace-items', { workspace_id: workspace.id, kind: 'route_template', name: 'Versioned route', payload: { fields: FIELDS } })).result;
+  const first = (await call(`/workspace-items/${original.id}/action`, { version: original.version, action: 'instantiate', name: 'Before edit' }, 'POST', 200)).result;
+  const changedFields = FIELDS.map(field => field.id === 'agent_task' ? { ...field, default_value: 'Review the evidence' } : field);
+  const edited = (await call(`/workspace-items/${original.id}`, { version: original.version, payload: { ...original.payload, fields: changedFields } }, 'PATCH', 200)).result;
+  const second = (await call(`/workspace-items/${original.id}/action`, { version: edited.version, action: 'instantiate', name: 'After edit' }, 'POST', 200)).result;
+  const before = instances().find(instance => instance.entity_id === first.id);
+  const after = instances().find(instance => instance.entity_id === second.id);
+  assert.equal(before.template_version, original.version);
+  assert.equal(after.template_version, edited.version);
+  assert.equal(before.values.agent_task, 'Investigate');
+  assert.equal(after.values.agent_task, 'Review the evidence');
+  assert.equal(before.fields.find(field => field.id === 'agent_task').default_value, 'Investigate');
+}));
+
 test('invalid answers roll back instance and destination; old templates still instantiate', async () => fixture(async ({ call, api, workspace, instances, db }) => {
   const template = (await call('/workspace-items', { workspace_id: workspace.id, kind: 'route_template', name: 'Strict route', payload: { fields: FIELDS } })).result;
   await call(`/workspace-items/${template.id}/action`, { version: template.version, action: 'instantiate', name: 'Should fail', field_values: { impact: 'Invalid' } }, 'POST', 400);

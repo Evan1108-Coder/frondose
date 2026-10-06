@@ -38,20 +38,21 @@ export function ConnectionPlatformView() {
   const refresh = async () => setConnections(await get(`/connections?workspace_id=${encodeURIComponent(workspace.id)}`));
   const legacy = data.connections ?? [];
   const connected = provider => connections.some(item => item.provider === provider && ['connected', 'ready'].includes(item.state)) || legacy.some(item => item.provider === provider && item.state === 'connected');
-  const filtered = catalog.filter(item => (category === 'all' || item.category === category || (category === 'enabled' && item.availability !== 'coming_soon' && connected(item.id))) && `${item.name} ${item.category} ${item.description ?? ''} ${item.features?.map(feature => feature.label).join(' ')}`.toLowerCase().includes(query.toLowerCase()));
-  const provider = catalog.find(item => item.id === selected);
+  const pluginCatalog = catalog.filter(item => !['codex', 'claude'].includes(item.id));
+  const filtered = pluginCatalog.filter(item => (category === 'all' || item.category === category || (category === 'enabled' && item.availability !== 'coming_soon' && connected(item.id))) && `${item.name} ${item.category} ${item.description ?? ''} ${item.features?.map(feature => feature.label).join(' ')}`.toLowerCase().includes(query.toLowerCase()));
+  const provider = pluginCatalog.find(item => item.id === selected);
   return <main className={`page connection-platform${provider ? ' cp-detail-page' : ''}`}>
     {provider ? provider.availability === 'coming_soon' ? <ComingSoonDetail provider={provider} onBack={() => setSelected(null)} /> : <ProviderDetail key={`${workspace.id}:${provider.id}`} provider={provider} connections={connections.filter(item => item.provider === provider.id)} onBack={() => setSelected(null)} onChange={refresh} /> : <>
-      <PageHeader title="Connections" description="Connect an AI runner for agent work. Other services are coming soon." />
-      <div className="cp-search"><SearchField value={query} onChange={setQuery} placeholder="Search connections and capabilities…" /><Select label="Category" value={category} onChange={setCategory}><option value="all">All connections</option><option value="enabled">Connected</option>{[...new Set(catalog.map(item => item.category))].map(item => <option key={item} value={item}>{readable(item)}</option>)}</Select></div>
+      <PageHeader title="Plugins" description="External services are Coming soon. AI providers are managed separately in AI connections." />
+      <div className="cp-search"><SearchField value={query} onChange={setQuery} placeholder="Search plugins and capabilities…" /><Select label="Category" value={category} onChange={setCategory}><option value="all">All plugins</option><option value="enabled">Connected</option>{[...new Set(pluginCatalog.map(item => item.category))].map(item => <option key={item} value={item}>{readable(item)}</option>)}</Select></div>
       <ErrorMessage error={error} />
       {error ? <Button onClick={() => setRevision(value => value + 1)}>Try again</Button> : null}
-      {loading ? <p className="cp-empty" role="status">Loading connections…</p> : !filtered.length ? <p className="cp-empty">No connections match your search.</p> : <div className="cp-grid">{filtered.map(item => <button className="cp-card" key={item.id} onClick={() => setSelected(item.id)}>
+      {loading ? <p className="cp-empty" role="status">Loading plugins…</p> : !filtered.length ? <p className="cp-empty">No plugins match your search.</p> : <div className="cp-grid">{filtered.map(item => <button className="cp-card" key={item.id} onClick={() => setSelected(item.id)}>
         <div className="cp-card-heading"><ServiceLogo name={item.id} /><span><strong>{item.name}</strong><small>{item.availability === 'coming_soon' ? 'Coming soon' : connected(item.id) ? 'Connected' : readable(item.category)}</small></span>{item.availability !== 'coming_soon' && connected(item.id) ? <Check className="cp-connected" /> : null}</div>
         <p>{connectionPresentation(item).description}</p>
         <div className="cp-card-footer"><span>{item.availability === 'coming_soon' ? 'Unavailable for now' : item.execution === 'existing_runner' ? 'Agent account & execution' : `${item.features?.length ?? 0} ${item.features?.length === 1 ? 'capability' : 'capabilities'}`}</span><ArrowRight /></div>
       </button>)}</div>}
-      <div className="cp-footnote"><ShieldCheck /><span>Opening Connections does not authorize accounts or start agent work. Existing external-service records remain saved while those integrations are paused.</span></div>
+      <div className="cp-footnote"><ShieldCheck /><span>Plugin authorization and actions are paused. Existing connection records are preserved.</span></div>
     </>}
   </main>;
 }
@@ -59,7 +60,7 @@ export function ConnectionPlatformView() {
 function ComingSoonDetail({ provider, onBack }) {
   const presentation = connectionPresentation(provider);
   return <>
-    <Button icon={ArrowLeft} variant="ghost" onClick={onBack}>All connections</Button>
+    <Button icon={ArrowLeft} variant="ghost" onClick={onBack}>All plugins</Button>
     <header className="cp-detail-heading"><ServiceLogo name={provider.id} /><div className="cp-detail-identity"><h1>{provider.name}</h1><p>{presentation.description}</p><span className="cp-pill">Coming soon</span></div></header>
     <section className="cp-account-section cp-detail-body" aria-labelledby="connection-paused-title"><div className="cp-section-heading"><h2 id="connection-paused-title">Not available yet</h2><p>Rumbo is focusing on AI-agent connections first. {provider.name} authorization, synchronization, and actions are paused. Existing connection records are preserved; no new access is requested.</p></div><div className="cp-account-panel"><p>When this integration returns, Rumbo will ask you to review its permissions and reconnect as needed. This page is a preview, not a working connection.</p></div></section>
   </>;

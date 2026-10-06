@@ -1,0 +1,79 @@
+@media (min-width: 801px) {
+  .sidebar-resize-handle {
+    position: absolute;
+    z-index: 65;
+    inset: 0 -7px 0 auto;
+    width: 14px;
+    cursor: col-resize;
+    touch-action: none;
+    border-radius: 8px;
+    outline: none;
+  }
+  .sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    width: 2px;
+    top: 24px;
+    bottom: 24px;
+    left: 6px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 120ms;
+  }
+  .sidebar-resize-handle:hover::after,
+  .sidebar-resize-handle:focus-visible::after,
+  .sidebar-resizing .sidebar-resize-handle::after { background: var(--accent); }
+  .sidebar-resize-handle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .sidebar-resizing, .sidebar-resizing * { cursor: col-resize !important; user-select: none !important; }
+  .rumbo-app.sidebar-auto-hidden { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .rumbo-app.sidebar-auto-hidden > .app-main { grid-column: 1; grid-row: 1; }
+  .rumbo-app.sidebar-auto-hidden > .sidebar.sidebar-v2 {
+    position: fixed;
+    inset: 12px auto 12px 12px;
+    width: var(--sidebar);
+    transform: translateX(calc(-100% - 24px));
+    pointer-events: none;
+    z-index: 64;
+    transition: transform 200ms var(--ease-drawer);
+  }
+  .rumbo-app.sidebar-auto-hidden.sidebar-peek > .sidebar.sidebar-v2 { transform: translateX(0); pointer-events: auto; box-shadow: 14px 0 36px #0004; }
+  .sidebar-edge-reveal { position: fixed; z-index: 63; left: 0; top: 12px; bottom: 12px; width: 12px; padding: 0; border: 0; background: transparent; }
+  .sidebar-edge-reveal:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--hover); }
+  .rumbo-app.sidebar-auto-hidden .topbar > .navigation-trigger { display: inline-grid; }
+  .rumbo-app.sidebar-preview-mode:not(.in-settings) { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 12px; perspective: 900px; }
+  .rumbo-app.sidebar-preview-mode:not(.in-settings) > .sidebar.sidebar-v2 { grid-column: 1; grid-row: 1; min-width: 0; width: 100%; }
+  .rumbo-app.sidebar-preview-mode:not(.in-settings) > .app-main,
+  .rumbo-app.sidebar-preview-mode.in-settings .settings-canvas {
+    position: fixed;
+    z-index: 60;
+    left: var(--preview-x);
+    top: var(--preview-y);
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 24px);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    transform-origin: top left;
+    transform: scale(var(--preview-scale)) rotateY(-2deg) rotateX(1deg);
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    box-shadow: 0 24px 64px #0008, 0 2px 10px #0005;
+    pointer-events: none;
+  }
+  .rumbo-app.sidebar-preview-mode.in-settings .settings-center { grid-template-columns: minmax(0, 1fr); transform: none; }
+  .rumbo-app.sidebar-preview-mode.in-settings .settings-rail { position: fixed; z-index: 35; inset: 64px 12px 12px; width: auto; }
+  .sidebar-page-preview-controls { position: fixed; z-index: 70; border-radius: 15px; }
+  .sidebar-page-preview-open { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; place-items: end center; padding: 0 12px 16px; border-radius: inherit; cursor: zoom-in; background: transparent; }
+  .sidebar-page-preview-open > span { display: inline-block; padding: 7px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-size: 12px; box-shadow: 0 4px 14px #0004; opacity: 0; transform: translateY(5px); transition: opacity 160ms, transform 160ms; }
+  .sidebar-page-preview-controls:hover .sidebar-page-preview-open > span,.sidebar-page-preview-open:focus-visible > span { opacity: 1; transform: translateY(0); }
+  .sidebar-page-preview-move,.sidebar-page-preview-resize { position: absolute; z-index: 2; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); box-shadow: 0 3px 10px #0004; font-size: 11px; touch-action: none; }
+  .sidebar-page-preview-move { top: 8px; right: 8px; padding: 6px 9px; cursor: move; }
+  .sidebar-page-preview-resize { bottom: -8px; right: -8px; width: 43px; height: 28px; cursor: nwse-resize; }
+  .sidebar-page-preview-controls button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+}
+@media (max-width: 800px) { .sidebar-resize-handle, .sidebar-edge-reveal { display: none; } }
+@media (prefers-reduced-motion: reduce) { .rumbo-app.sidebar-auto-hidden > .sidebar.sidebar-v2 { transition: none; } }
+:root[data-motion="reduced"] .rumbo-app.sidebar-auto-hidden > .sidebar.sidebar-v2,
+:root[data-input-modality="keyboard"] .rumbo-app.sidebar-auto-hidden > .sidebar.sidebar-v2 { transition: none; }
+@media (prefers-reduced-motion: reduce) { .sidebar-page-preview-open > span { transition: none; transform: none; } }
+:root[data-motion="reduced"] .sidebar-page-preview-open > span { transition: none; transform: none; }

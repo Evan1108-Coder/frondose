@@ -65,6 +65,16 @@
 .playbook-confirm { padding: 0 24px 24px; }
 .playbook-confirm p { color: var(--secondary); font-size: 13px; line-height: 1.6; }
 .playbook-confirm > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.playbooks-action-catalog { margin: 0 0 18px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.playbooks-action-catalog > summary { padding: 11px 14px; color: var(--secondary); font-size: 12px; cursor: pointer; }
+.playbooks-action-catalog > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.playbooks-action-catalog > div { padding: 4px 16px 18px; max-height: 430px; overflow: auto; border-top: 1px solid var(--border-soft); }
+.playbooks-action-catalog h2 { margin: 18px 0 8px; color: var(--text); font-size: 13px; }
+.playbooks-action-catalog p { max-width: 780px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.playbooks-action-catalog ul { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+.playbooks-action-catalog li { padding: 10px; border: 1px solid var(--border-soft); border-radius: 7px; display: grid; gap: 4px; }
+.playbooks-action-catalog li strong { font-size: 12px; font-weight: 600; }
+.playbooks-action-catalog li span { color: var(--muted); font-size: 11px; line-height: 1.45; }
 .playbooks-page button:focus-visible, .playbook-editor button:focus-visible, .playbook-history summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 1050px) { .playbooks-layout { grid-template-columns: minmax(0, 1fr); } .playbooks-list { border-right: 0; border-bottom: 1px solid var(--border); } .playbook-detail { padding: 20px; } }
 @media (max-width: 650px) { .playbook-detail-actions { width: 100%; } .playbook-trigger-fields { grid-template-columns: minmax(0, 1fr); } .playbook-editor { padding: 8px 16px 20px; } }

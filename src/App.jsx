@@ -56,6 +56,9 @@ import { resolveShortcut } from "./lib/shortcuts.js";
 import { SidebarEditor } from "./components/SidebarEditor.jsx";
 import { NavigationHistory } from './components/NavigationHistory.jsx';
 import { GlobalToolbar } from './components/GlobalToolbar.jsx';
+import './components/sidebar-resize.css';
+import { canShowSidebarPreview, clampPagePreview, clampSidebarWidth, normalizeSidebarSize, shouldEnterSidebarPreview, sidebarWidthFromPointer } from './lib/sidebar-size.js';
+import { SidebarPagePreview } from './components/SidebarPagePreview.jsx';
 import { FocusView } from "./views/Focus.jsx";
 import { StarredView } from "./views/Starred.jsx";
 import { Home } from './views/Home.jsx';
@@ -106,6 +109,43 @@ export function App() {
   const [page, setPage] = useState(readPage);
   const [workspaceId, setWorkspaceId] = usePreference("rumbo.workspace", null),
     [collapsed, setCollapsed] = usePreference("rumbo.sidebar.collapsed", false);
+  const [savedSidebarSize, setSavedSidebarSize] = usePreference('rumbo.sidebar.size', null);
+  const sidebarSize = normalizeSidebarSize(savedSidebarSize, typeof window === 'undefined' ? 1280 : window.innerWidth);
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [previewPlacement, setPreviewPlacement] = useState(null);
+  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  useEffect(() => {
+    const measure = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  useEffect(() => { if (!canShowSidebarPreview(viewport.width, viewport.height)) setPreviewMode(false); }, [viewport.width, viewport.height]);
+  const previewActive = previewMode && canShowSidebarPreview(viewport.width, viewport.height) && page.view !== 'docs';
+  const previewGeometry = previewActive ? clampPagePreview(previewPlacement, viewport.width, viewport.height) : null;
+  const resizeSidebar = useCallback((clientX, returnWidth) => {
+    if (shouldEnterSidebarPreview(clientX, window.innerWidth, window.innerHeight)) {
+      setPreviewMode(true);
+      setSidebarPeek(false);
+      setSavedSidebarSize(current => ({ ...normalizeSidebarSize(current, window.innerWidth), width: returnWidth ? clampSidebarWidth(returnWidth, window.innerWidth) : normalizeSidebarSize(current, window.innerWidth).width, hidden: false }));
+      setCollapsed(false);
+      return;
+    }
+    setPreviewMode(false);
+    const width = sidebarWidthFromPointer(clientX, window.innerWidth);
+    if (width) {
+      setSavedSidebarSize(current => ({ ...normalizeSidebarSize(current, window.innerWidth), width, hidden: false }));
+      setCollapsed(false);
+    }
+  }, [setSavedSidebarSize, setCollapsed]);
+  const hideSidebar = useCallback(previousWidth => {
+    setPreviewMode(false);
+    setSavedSidebarSize(current => ({ ...normalizeSidebarSize(current, window.innerWidth), width: previousWidth ? clampSidebarWidth(previousWidth, window.innerWidth) : normalizeSidebarSize(current, window.innerWidth).width, hidden: true }));
+    setSidebarPeek(false);
+    setCollapsed(false);
+    if (document.documentElement.dataset.inputModality === 'keyboard') requestAnimationFrame(() => document.querySelector('.navigation-trigger')?.focus());
+  }, [setSavedSidebarSize, setCollapsed]);
+  const restoreSidebar = useCallback(() => { setPreviewMode(false); setSavedSidebarSize(current => ({ ...normalizeSidebarSize(current, window.innerWidth), hidden: false })); setSidebarPeek(false); setCollapsed(false); }, [setSavedSidebarSize, setCollapsed]);
   const [mobileOpen, setMobileOpen] = useState(false),
     [commandOpen, setCommandOpen] = useState(false),
     [helpOpen, setHelpOpen] = useState(false),
@@ -399,6 +439,7 @@ export function App() {
     showFeedback: () => { setMobileOpen(false); setFeedbackOpen(true); },
     customizeSidebar: () => { setMobileOpen(false); setSidebarEditorOpen(true); },
     organization, updateOrganization, toggleFavorite, experience, updateExperience,
+    sidebarSizing: { width: previewActive ? viewport.width - 24 : sidebarSize.width ?? clampSidebarWidth(280, window.innerWidth), preview: previewActive, hidden: sidebarSize.hidden, peek: sidebarPeek, setPeek: setSidebarPeek, resize: resizeSidebar, hide: hideSidebar, restore: restoreSidebar },
   };
   if (!workspace)
     return (
@@ -439,7 +480,7 @@ export function App() {
   return (
     <AppContext.Provider value={context}>
       <FieldDefaultsProvider workspaceId={workspace.id} definitions={fieldDefinitions}><IconColorsProvider><UnsavedUpdatesDialog />
-      <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`}>
+      <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${sidebarSize.hidden ? 'sidebar-auto-hidden' : ''} ${sidebarPeek ? 'sidebar-peek' : ''} ${previewActive ? 'sidebar-preview-mode' : ''} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`} style={previewGeometry ? { '--sidebar': `${viewport.width - 24}px`, '--preview-x': `${previewGeometry.x}px`, '--preview-y': `${previewGeometry.y}px`, '--preview-scale': previewGeometry.scale } : sidebarSize.width != null && (!collapsed || page.view === 'settings') ? { '--sidebar': `${sidebarSize.width}px` } : undefined}>
         <a
           href="#main-content"
           className="skip-link"
@@ -459,13 +500,15 @@ export function App() {
           onSearch={() => setCommandOpen(true)}
           onHelp={() => setHelpOpen(true)}
           overlayOpen={Boolean(commandOpen || helpOpen || feedbackOpen || editor || session || sidebarEditorOpen)}
+          sidebarSizing={context.sidebarSizing}
         />
-        <div className="app-main" inert={mobileOpen ? true : undefined}>
+        {sidebarSize.hidden ? <button type="button" className="sidebar-edge-reveal" aria-label="Show navigation" onPointerEnter={() => setSidebarPeek(true)} onFocus={() => setSidebarPeek(true)} onClick={restoreSidebar} /> : null}
+        <div className="app-main" inert={mobileOpen || previewActive && page.view !== 'settings' ? true : undefined}>
           <header className="topbar">
             <IconButton
-              label="Open navigation"
+              label={sidebarSize.hidden ? "Show navigation" : "Open navigation"}
               className="icon-button navigation-trigger"
-              onClick={() => setMobileOpen(true)}
+              onClick={() => matchMedia('(max-width: 800px)').matches ? setMobileOpen(true) : restoreSidebar()}
             >
               <Menu morphTo={mobileOpen ? X : Menu} />
             </IconButton>
@@ -494,13 +537,14 @@ export function App() {
             </div>
           </header>
           <div id="main-content" className="main-scroll" tabIndex={-1}>
-            <ScreenBoundary key={`${page.view}-${workspace.id}-${page.projectId ?? "all"}`}>
+            <div className="view-entrance" key={`${page.view}-${page.id ?? 'all'}-${page.section ?? ''}-${workspace.id}-${page.projectId ?? "all"}`}><ScreenBoundary>
               <Suspense fallback={<div className="app-loading" role="status">Opening {NAV.find(item => item.id === page.view)?.label?.toLowerCase() || 'page'}…</div>}>
                 {view}
               </Suspense>
-            </ScreenBoundary>
+            </ScreenBoundary></div>
           </div>
         </div>
+        {previewGeometry ? <SidebarPagePreview geometry={previewGeometry} onChange={next => setPreviewPlacement(clampPagePreview(next, window.innerWidth, window.innerHeight))} onOpen={() => { restoreSidebar(); requestAnimationFrame(() => document.getElementById('main-content')?.focus()); }} onExit={restoreSidebar} /> : null}
         </>}
         {feedbackOpen ? <Suspense fallback={<p role="status">Opening feedback…</p>}><FeedbackDialog onClose={() => setFeedbackOpen(false)} /></Suspense> : null}
         {commandOpen ? (

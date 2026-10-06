@@ -5,7 +5,7 @@ const VERSION = 1;
 const MAX_VALUE_LENGTH = 4000;
 const MAX_VALUES = 9;
 const SAFE_KEY = /^[a-z0-9][a-z0-9:._-]{0,159}$/i;
-const SENSITIVE = /password|passcode|secret|token|api.?key|credential|payment|card|cvc|cvv|bank|account.?number|private.?key|authorization/i;
+const SENSITIVE = /password|passcode|secret|token|api.?key|credential|payment|card|cvc|cvv|bank|account.?number|private.?key|authorization|one.?time.?code|social.?security|passport/i;
 const SEARCH = /search|filter|query/i;
 
 export function fieldDefaultsStorageKey(workspaceId) {
@@ -45,6 +45,21 @@ export function normalizeFieldDefinition(input) {
   return { key, page, label, type, eligible, reason: eligible ? null : sensitive ? 'Sensitive field' : search ? 'Search/filter field' : 'Unsupported field' };
 }
 
+export function validFieldDefaultValue(definition, value) {
+  const field = normalizeFieldDefinition(definition);
+  if (!field?.eligible || typeof value !== 'string' || !value || value.length > MAX_VALUE_LENGTH) return false;
+  if (field.type === 'date') {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!parts) return false;
+    const year = Number(parts[1]), month = Number(parts[2]), day = Number(parts[3]);
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return year >= 1000 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+  }
+  if (field.type === 'number') return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value) && Number.isFinite(Number(value));
+  return true;
+}
+
 export function readFieldInventory(workspaceId, storage) {
   const value = readJson(inventoryStorageKey(workspaceId), storage);
   return Array.isArray(value) ? value.map(normalizeFieldDefinition).filter(Boolean) : [];
@@ -73,7 +88,7 @@ export function normalizeFieldDefaults(input) {
   const fields = Object.create(null);
   if (input?.fields && typeof input.fields === 'object' && !Array.isArray(input.fields)) {
     for (const [key, entry] of Object.entries(input.fields)) {
-      if (!SAFE_KEY.test(key) || !entry || typeof entry !== 'object') continue;
+      if (!SAFE_KEY.test(key) || !normalizeFieldDefinition({ key })?.eligible || !entry || typeof entry !== 'object') continue;
       const usedSlots = new Set(), usedIds = new Set();
       const values = (Array.isArray(entry.values) ? entry.values : []).map(normalizeValue).filter(value => {
         if (!value || usedSlots.has(value.slot) || usedIds.has(value.id)) return false;
@@ -104,7 +119,7 @@ export function updateFieldDefaults(workspaceId, updater, storage) {
 }
 
 export function updateFieldEntry(workspaceId, key, patch, storage) {
-  if (!SAFE_KEY.test(String(key))) return false;
+  if (!normalizeFieldDefinition({ key })?.eligible) return false;
   return updateFieldDefaults(workspaceId, current => ({ ...current, fields: { ...current.fields, [key]: { ...(current.fields[key] || { enabled: true, primaryId: null, values: [] }), ...patch } } }), storage);
 }
 
@@ -113,27 +128,41 @@ export function resolveFieldValue(settings, definition, slot = null) {
   if (!normalized?.eligible || !settings?.enabled) return null;
   const entry = settings.fields?.[normalized.key];
   if (!entry?.enabled) return null;
-  const available = entry.values?.filter(value => value.enabled && value.value) ?? [];
+  const available = entry.values?.filter(value => value.enabled && validFieldDefaultValue(normalized, value.value)) ?? [];
   // Keep Command 1 intuitive even if a single saved option was moved to a
   // different numbered slot. Its configured slot remains a second alias.
   if (slot === 1 && available.length === 1) return available[0];
-  return entry.values?.find(value => value.enabled && value.value && (slot == null ? value.id === entry.primaryId : value.slot === slot)) ?? null;
+  return entry.values?.find(value => value.enabled && validFieldDefaultValue(normalized, value.value) && (slot == null ? value.id === entry.primaryId : value.slot === slot)) ?? null;
+}
+
+function fieldElementType(element) {
+  // DateField uses a text input with a calendar, but its tagged semantic value
+  // is an ISO calendar date. Keep that type when the live field is discovered.
+  if (element.dataset.fieldDefaultAllow === 'true' && element.placeholder === 'YYYY-MM-DD') return 'date';
+  return element.tagName === 'TEXTAREA' ? 'textarea' : element.tagName === 'SELECT' ? 'select' : (element.type || 'text').toLowerCase();
+}
+
+function fieldElementDefinition(element) {
+  const key = element.dataset.fieldDefaultKey;
+  if (!key) return null;
+  const type = fieldElementType(element);
+  const label = element.dataset.fieldDefaultLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent || element.placeholder || key;
+  const metadata = [element.name, element.id, element.placeholder, element.autocomplete].filter(Boolean).join(' ');
+  return normalizeFieldDefinition({ key, page: element.dataset.fieldDefaultPage, label, type, sensitive: SENSITIVE.test(metadata) });
 }
 
 export function isEligibleFieldElement(element) {
   if (!element?.matches?.('input, textarea, select')) return false;
-  const type = element.tagName === 'TEXTAREA' ? 'textarea' : element.tagName === 'SELECT' ? 'select' : (element.type || 'text').toLowerCase();
+  const type = fieldElementType(element);
   if (element.disabled || element.readOnly || element.autocomplete === 'off' && element.dataset.fieldDefaultAllow !== 'true') return false;
   if (element.closest('[data-field-defaults-exclude]')) return false;
-  const key = element.dataset.fieldDefaultKey;
-  if (!key) return false;
-  const definition = normalizeFieldDefinition({ key, page: element.dataset.fieldDefaultPage, label: element.dataset.fieldDefaultLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent || element.placeholder || key, type });
+  const definition = fieldElementDefinition(element);
   return Boolean(definition?.eligible);
 }
 
 export function definitionForElement(element) {
   if (!isEligibleFieldElement(element)) return null;
-  return normalizeFieldDefinition({ key: element.dataset.fieldDefaultKey, page: element.dataset.fieldDefaultPage, label: element.dataset.fieldDefaultLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent || element.placeholder || element.dataset.fieldDefaultKey, type: element.tagName === 'TEXTAREA' ? 'textarea' : element.tagName === 'SELECT' ? 'select' : element.type || 'text' });
+  return fieldElementDefinition(element);
 }
 
 export function fieldDefaultShortcutSlot(event) {

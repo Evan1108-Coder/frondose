@@ -18,6 +18,8 @@ test("surface motion excludes command palette and does not use restartable keyfr
   assert.match(css, /prefers-reduced-motion: reduce/);
   assert.match(css, /\[data-motion="reduced"\]/);
   assert.match(css, /\.toast \{ opacity: 0; transform: translate\(-50%, var\(--motion-travel\)\)/);
+  assert.match(css, /\.dialog-backdrop\[data-closing="true"\]/);
+  assert.match(css, /\.view-entrance >/);
 });
 test("input modality is tracked before workspace onboarding completes", () => {
   const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");

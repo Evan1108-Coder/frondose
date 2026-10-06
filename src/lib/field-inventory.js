@@ -1,5 +1,17 @@
 // Stable, searchable names for the new-item fields whose defaults are actually
 // wired into their forms. Do not advertise a field here until it is tagged.
+import { RESOURCE_TYPES } from './settings-catalog.js';
+
+const RESOURCE_FIELD_DEFINITIONS = Object.entries(RESOURCE_TYPES).flatMap(([kind, spec]) => {
+  const page = `New ${spec.singular} · ${spec.title}`;
+  return [
+    { key: `resource.${kind}.new.name`, page, label: 'Name', type: 'text' },
+    ...Object.entries(spec.fields)
+      .filter(([key, field]) => ['text', 'textarea'].includes(field.type) && !['query', 'requester', 'owner'].includes(key))
+      .map(([key, field]) => ({ key: `resource.${kind}.new.${key}`, page, label: field.label, type: field.type })),
+  ];
+});
+
 export const STATIC_FIELD_DEFINITIONS = Object.freeze([
   { key: 'workspace.new.name', page: 'New workspace', label: 'Name', type: 'text' },
   { key: 'workspace.new.description', page: 'New workspace', label: 'Description', type: 'textarea' },
@@ -50,12 +62,28 @@ export const STATIC_FIELD_DEFINITIONS = Object.freeze([
   { key: 'route.repeat.name', page: 'Repeat Route', label: 'Repeating route name', type: 'text' },
   { key: 'route.repeat.interval', page: 'Repeat Route', label: 'Repeat every (days)', type: 'number' },
   { key: 'route.repeat.first-date', page: 'Repeat Route', label: 'First occurrence (UTC date)', type: 'date' },
+  { key: 'area.new.name', page: 'New Area', label: 'Name', type: 'text' },
+  { key: 'area.new.description', page: 'New Area', label: 'Description', type: 'textarea' },
+  { key: 'document.new.title', page: 'New document', label: 'Title', type: 'text' },
+  { key: 'document.new.content', page: 'New document', label: 'Content', type: 'textarea' },
+  { key: 'milestone.new.title', page: 'New milestone', label: 'Title', type: 'text' },
+  { key: 'milestone.new.description', page: 'New milestone', label: 'Description', type: 'textarea' },
+  { key: 'milestone.new.target-date', page: 'New milestone', label: 'Target date', type: 'date' },
+  { key: 'skill.new.name', page: 'New Skill', label: 'Name', type: 'text' },
+  { key: 'skill.new.purpose', page: 'New Skill', label: 'Purpose', type: 'textarea' },
+  { key: 'skill.new.instructions', page: 'New Skill', label: 'Versioned instructions', type: 'textarea' },
+  { key: 'skill.new.capabilities', page: 'New Skill', label: 'Required capabilities', type: 'textarea' },
+  { key: 'skill.new.output-format', page: 'New Skill', label: 'Expected output format', type: 'textarea' },
+  { key: 'skill-from-run.new.name', page: 'New Skill from run', label: 'Skill name', type: 'text' },
+  { key: 'skill-from-run.new.purpose', page: 'New Skill from run', label: 'Reusable purpose', type: 'textarea' },
+  { key: 'skill-from-run.new.instructions', page: 'New Skill from run', label: 'Reusable instructions', type: 'textarea' },
+  ...RESOURCE_FIELD_DEFINITIONS,
 ]);
 
 export function fieldDefinitionsForWorkspace(data) {
   const custom = (data?.workspace_items ?? [])
     .filter(item => !item.archived_at && ['route_template', 'project_template', 'chat_template'].includes(item.kind))
-    .flatMap(item => (Array.isArray(item.payload?.fields) ? item.payload.fields : []).map(field => ({
+    .flatMap(item => (Array.isArray(item.payload?.fields) ? item.payload.fields : []).filter(field => ['text', 'textarea'].includes(field.type)).map(field => ({
       key: `template.${item.id}.${field.id}`,
       page: `${item.name} template`,
       label: field.label,

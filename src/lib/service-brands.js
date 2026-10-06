@@ -1,5 +1,6 @@
 import openai from '@iconify-icons/logos/openai-icon';
 import claude from '@iconify-icons/logos/claude-icon';
+import huggingFace from '@iconify-icons/logos/hugging-face-icon';
 import github from '@iconify-icons/logos/github-icon';
 import drive from '@iconify-icons/logos/google-drive-2020';
 import google from '@iconify-icons/logos/google-icon';
@@ -18,6 +19,7 @@ import githubActions from '@iconify-icons/logos/github-actions';
 const entries = [
   ['openai', openai, ['codex', 'chatgpt'], ['openai.com', 'chatgpt.com']],
   ['claude', claude, ['anthropic'], ['claude.ai', 'anthropic.com']],
+  ['hugging-face', huggingFace, ['hugging face', 'hugging face inference', 'huggingface'], ['huggingface.co']],
   ['github', github, ['github-packages', 'github packages'], ['github.com']],
   ['github-actions', githubActions, ['github actions'], []],
   ['linear', linear, [], ['linear.app']],

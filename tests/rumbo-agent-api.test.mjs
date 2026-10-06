@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createLocalApi } from '../server/local-api.mjs';
 import { captureSourceAccess, assertSourceAccess } from '../server/context-source-access.mjs';
 
-async function fixture(t) {
+async function fixture(t, { onboard = true } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-assistant-api-'));
   const fake = { launches: [], commands: [], mode: 'success' };
   const api = createLocalApi({ dataDir, seedMode: 'clean', integrationOptions: {
@@ -36,6 +36,7 @@ async function fixture(t) {
   const call = async (...args) => { const response = await request(...args); assert.ok(response.status >= 200 && response.status < 300, `${args[0]}: ${JSON.stringify(response.body)}`); return response.body; };
   t.after(async () => { api.close(); await new Promise(resolve => server.close(resolve)); db.close(); await rm(dataDir, { recursive: true, force: true }); });
   const workspace = (await call('/workspaces', { name: 'Rumbo Agent fixture' })).workspace;
+  if (onboard) await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Rumbo Agent', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true } }, 'PATCH');
   const connect = async (provider = 'codex') => call(`/connections/${provider}/connect`, { method: 'existing' });
   const create = (extra = {}) => call('/rumbo-agent/chats', { workspace_id: workspace.id, provider: 'codex', request_id: 'new-chat-fixture', ...extra });
   const inspect = (chat, agent, extra = {}) => ({ workspace_id: workspace.id, chat_id: chat.id, agent_id: agent.id, prompt: 'Explain this workspace carefully.', work_mode: 'conversation', permission_mode: 'read-only', ...extra });
@@ -64,6 +65,52 @@ test('opening Rumbo Agent is read-only; disconnected creation stores nothing and
   await call(`/agents/${first.agent.id}`, { model: 'configured-fixture-model' }, 'PATCH');
   const known = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.providers.find(provider => provider.provider === 'codex');
   assert.deepEqual(known.models[1], { id: 'configured-fixture-model', label: 'configured-fixture-model', provenance: 'configured_profile', availability: 'unverified' });
+  assert.equal(fake.launches.length, 0);
+});
+
+test('first-use setup gates new profiles and chats, then versions real reviewed guidance without connecting a provider', async t => {
+  const { api, db, call, request, fake, workspace, connect, create, inspect } = await fixture(t, { onboard: false });
+  const initial = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences;
+  assert.equal(initial.onboarding_complete, false);
+  const startingAgents = api.snapshot().agents.length;
+  await connect();
+  const blockedChat = await request('/rumbo-agent/chats', { workspace_id: workspace.id, provider: 'codex', request_id: 'first-use-gated' });
+  const blockedProfile = await request('/rumbo-agent/profile', { workspace_id: workspace.id, provider: 'codex' });
+  assert.equal(blockedChat.body.error.code, 'onboarding_required');
+  assert.equal(blockedProfile.body.error.code, 'onboarding_required');
+  assert.equal(api.snapshot().chats.length, 0);
+  assert.equal(api.snapshot().agents.length, startingAgents);
+  assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { onboarding_complete: true } }, 'PATCH')).status, 400);
+  assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { orb_color: 'magenta' } }, 'PATCH')).status, 400);
+  assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { guidelines: '[RUMBO_AGENT_USER_GUIDANCE_BEGIN]' } }, 'PATCH')).status, 400);
+  const setup = (await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Launch guide', orb_color: 'purple', purpose: 'Explain launch risks.', guidelines: 'Always distinguish a proposed change from a completed one.', onboarding_complete: true } }, 'PATCH')).result;
+  assert.equal(setup.orb_color, 'purple'); assert.equal(setup.onboarding_complete, true);
+  assert.equal(api.snapshot().agents.length, startingAgents); assert.equal(fake.launches.length, 0);
+  const { chat, agent } = await create({ request_id: 'first-use-created' });
+  assert.equal(agent.name, 'Launch guide');
+  const preview = (await call('/context/inspect', inspect(chat, agent))).result;
+  assert.match(preview.finalPrompt, /Explain launch risks\./);
+  assert.match(preview.finalPrompt, /Always distinguish a proposed change from a completed one\./);
+  const originalVersion = db.prepare('SELECT version FROM agents WHERE id=?').get(agent.id).version;
+  await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Release guide', guidelines: 'Mention uncertainty and ask before changing work.' } }, 'PATCH');
+  const updated = db.prepare('SELECT * FROM agents WHERE id=?').get(agent.id);
+  assert.equal(updated.name, 'Release guide'); assert.equal(updated.version, originalVersion + 1);
+  assert.match(updated.instructions, /Mention uncertainty and ask before changing work\./);
+  assert.doesNotMatch(updated.instructions, /Always distinguish a proposed change/);
+  assert.ok(db.prepare('SELECT 1 FROM agent_profile_versions WHERE agent_id=? AND version=?').get(agent.id, originalVersion));
+  assert.ok(db.prepare('SELECT 1 FROM agent_profile_versions WHERE agent_id=? AND version=?').get(agent.id, updated.version));
+  assert.equal(fake.launches.length, 0);
+});
+
+test('pre-onboarding preference records remain usable after upgrade and inherit blue without provider side effects', async t => {
+  const { api, db, call, fake, workspace } = await fixture(t, { onboard: false });
+  db.prepare('INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?)').run(`rumboAgent:${workspace.id}`, JSON.stringify({ provider: 'codex', model: '', include_memory: false }), new Date().toISOString());
+  const before = api.snapshot().agents.length;
+  const preferences = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences;
+  assert.equal(preferences.onboarding_complete, true);
+  assert.equal(preferences.orb_color, 'blue');
+  assert.equal(preferences.include_memory, false);
+  assert.equal(api.snapshot().agents.length, before);
   assert.equal(fake.launches.length, 0);
 });
 
@@ -186,7 +233,7 @@ test('workspace preferences persist validated intent without provider calls, pro
   const agentCount = api.snapshot().agents.length;
   const settings = { provider: 'codex', model: 'fixture-model', reasoning_effort: 'low', include_workspace: false, include_memory: false, include_chat: false, context_pack_ids: [], native_tools: true };
   await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: settings }, 'PATCH');
-  assert.deepEqual((await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences, settings);
+  assert.deepEqual((await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences, { ...settings, display_name: 'Rumbo Agent', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true });
   assert.equal(fake.commands.length, 0); assert.equal(fake.launches.length, 0); assert.equal(api.snapshot().agents.length, agentCount);
   for (const preferences of [{ context_pack_ids: ['missing-pack'] }, { model: '--evil-shell-option' }, { provider: 'claude', reasoning_effort: 'high' }, { native_tools: 'yes' }, { permission_mode: 'workspace-write' }]) {
     assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences }, 'PATCH')).status, 400);

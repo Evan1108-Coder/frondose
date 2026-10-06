@@ -6,6 +6,11 @@
 .global-search svg { width: 15px; height: 15px; flex: none; }
 .global-search span { flex: 1; }
 .global-search kbd { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.global-quick-access { display: flex; align-items: center; gap: 2px; max-width: min(38vw, 420px); min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.global-quick-access::-webkit-scrollbar { display: none; }
+.global-quick-access .global-tool { flex: none; }
+.global-pinned-item { position: relative; }
+.global-pinned-item::after { content: ''; position: absolute; width: 3px; height: 3px; border-radius: 50%; bottom: 2px; background: var(--accent); }
 .global-tool, .global-language { display: grid; place-items: center; width: 30px; height: 30px; flex: none; }
 .global-tool svg { width: 17px; height: 17px; }
 .global-tool[aria-current="page"] { color: var(--text); background: var(--selected); }
@@ -15,4 +20,12 @@
 .global-language-dialog { padding: 22px 26px; display: grid; gap: 18px; }
 .global-language-dialog p { margin: 0; color: var(--secondary); font-size: 14px; line-height: 1.6; }
 .global-language-dialog button { justify-self: end; padding: 9px 14px; background: var(--selected); border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
-@media (max-width: 760px) { .global-search { width: 32px; padding: 0 8px; } .global-search span, .global-search kbd { display: none; } }
+.header-shortcut-settings { border-top: 1px solid var(--border-soft); padding: 22px 0 24px; }
+.header-shortcut-settings h3 { margin: 0 0 6px; color: var(--text); font-size: 14px; font-weight: 600; }
+.header-shortcut-settings p { max-width: 600px; margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.header-shortcut-settings > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.header-shortcut-settings label { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 7px; color: var(--secondary); font-size: 12px; cursor: pointer; }
+.header-shortcut-settings label:has(input:checked) { background: var(--selected); color: var(--text); }
+.header-shortcut-settings input { accent-color: var(--accent); }
+.header-shortcut-settings label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+@media (max-width: 760px) { .global-search { width: 32px; padding: 0 8px; } .global-search span, .global-search kbd { display: none; } .global-quick-access { max-width: min(38vw, 170px); } }

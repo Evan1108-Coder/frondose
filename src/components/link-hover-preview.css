@@ -1,0 +1,7 @@
+.link-hover-preview { position: relative; display: inline-flex; min-width: 0; }
+.link-hover-preview-card { position: absolute; z-index: 20; left: 50%; bottom: calc(100% + 12px); width: min(300px, 80vw); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 38px rgba(0,0,0,.23); color: var(--text); text-align: left; line-height: 1.45; pointer-events: none; opacity: 0; visibility: hidden; transform: translate(-50%, 7px) scale(.97); transition: opacity 170ms ease, transform 210ms cubic-bezier(.2,.8,.2,1), visibility 170ms; }
+.link-hover-preview:hover .link-hover-preview-card,.link-hover-preview:focus-within .link-hover-preview-card { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); }
+.link-hover-preview-domain { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.link-hover-preview-card strong { font-size: 13px; font-weight: 600; }
+.link-hover-preview-card small { font-size: 11px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .link-hover-preview-card { transition: none; transform: translate(-50%, 0); } }

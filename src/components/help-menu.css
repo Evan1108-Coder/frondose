@@ -21,6 +21,13 @@
 .sidebar-custom-editor input { flex: 1; min-width: 130px; }
 .rumbo-help-trigger:hover, .rumbo-help-trigger[aria-expanded="true"] { color: var(--text); background: var(--hover); }
 .rumbo-help-menu { position: fixed; z-index: 300; width: 252px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 80px); overflow-y: auto; padding: 6px; background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px #0003; }
+.rumbo-help-menu { opacity: 1; transform: scale(1); transform-origin: left bottom; transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out); }
+.rumbo-help-menu[data-closing="true"] { opacity: 0; transform: scale(.92) translateY(3px); pointer-events: none; }
+@starting-style { .rumbo-help-menu { opacity: 0; transform: scale(.88) translateY(4px); } }
+:root[data-input-modality="keyboard"] .rumbo-help-menu { transition: none; }
+@media (prefers-reduced-motion: reduce) { .rumbo-help-menu, .rumbo-help-menu[data-closing="true"] { transform: none; transition: opacity 80ms; } }
+:root[data-motion="reduced"] .rumbo-help-menu,
+:root[data-motion="reduced"] .rumbo-help-menu[data-closing="true"] { transform: none; transition: opacity 80ms; }
 .rumbo-help-menu-label { padding: 8px 10px 7px; color: var(--faint); font-size: 11px; font-weight: 600; }
 .rumbo-help-menu button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; text-align: left; border-radius: 7px; font-size: 13px; }
 .rumbo-help-menu button:hover, .rumbo-help-menu button:focus-visible { background: var(--hover); }

@@ -1,4 +1,4 @@
-export const BUILTIN_GROUPS = ['favorites', 'agents', 'teams', 'projects', 'chats'];
+export const BUILTIN_GROUPS = ['agents', 'teams', 'projects', 'chats'];
 export const FIXED_SIDEBAR_TOP = ['overview', 'rumbo-agent'];
 export const isFixedSidebarEntry = key => FIXED_SIDEBAR_TOP.includes(key);
 function withFixedTop(layout) {

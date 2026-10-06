@@ -1,0 +1,18 @@
+.rumbo-agent-orb { --orb-pointer-x: 50%; --orb-pointer-y: 50%; display: inline-grid; place-items: center; position: relative; flex: none; width: min(34vw, 400px); aspect-ratio: 1; isolation: isolate; }
+.rumbo-agent-orb::before { content: ''; position: absolute; z-index: -1; inset: -11%; border-radius: 50%; background: radial-gradient(circle at var(--orb-pointer-x) var(--orb-pointer-y), color-mix(in srgb, var(--accent) 26%, transparent), transparent 49%); opacity: .48; filter: blur(23px); pointer-events: none; transition: opacity 280ms ease; }
+.rumbo-agent-orb::after { content: ''; position: absolute; z-index: -2; inset: -38% 12% 48%; background: linear-gradient(to top, #9cc8ff20, transparent 76%); clip-path: polygon(42% 100%, 58% 100%, 100% 0, 0 0); filter: blur(14px); transform-origin: 50% 100%; transform: rotate(var(--orb-beam-tilt, 0deg)); opacity: .28; pointer-events: none; transition: transform 180ms ease, opacity 240ms ease; }
+.rumbo-agent-orb:hover::before { opacity: .82; }
+.rumbo-agent-orb:hover::after { opacity: .52; }
+.rumbo-agent-orb img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; filter: drop-shadow(0 24px 70px rgba(0, 0, 0, .3)); }
+.rumbo-agent-orb-compact { width: 30px; }
+.rumbo-agent-orb-compact::before, .rumbo-agent-orb-compact::after { display: none; }
+.rumbo-agent-orb-compact img { filter: none; }
+.rumbo-agent-color-choice { margin: 0; padding: 0; border: 0; }
+.rumbo-agent-color-choice legend { margin-bottom: 12px; color: var(--secondary); font-size: 12px; letter-spacing: .025em; }
+.rumbo-agent-color-choice > div { display: flex; flex-wrap: wrap; gap: 12px; }
+.rumbo-agent-color-swatch { width: 37px; height: 37px; padding: 3px; border: 1px solid transparent; border-radius: 50%; background: transparent; cursor: pointer; }
+.rumbo-agent-color-swatch span { display: block; width: 100%; height: 100%; border-radius: 50%; box-shadow: inset -4px -5px 9px #0005, inset 3px 3px 7px #fff4; }
+.rumbo-agent-color-swatch[aria-pressed="true"] { border-color: #dfebff; box-shadow: 0 0 0 3px #ffffff18; }
+.rumbo-agent-color-swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.rumbo-agent-color-blue span { background: #4d64e8; }.rumbo-agent-color-cyan span { background: #67c9ed; }.rumbo-agent-color-green span { background: #55caa9; }.rumbo-agent-color-gold span { background: #e8b14e; }.rumbo-agent-color-coral span { background: #ea7e81; }.rumbo-agent-color-purple span { background: #9874de; }
+@media (prefers-reduced-motion: reduce) { .rumbo-agent-orb::before { transition: none; opacity: .38; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 26%, transparent), transparent 49%); } .rumbo-agent-orb::after { display: none; } }

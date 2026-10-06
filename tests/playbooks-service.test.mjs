@@ -3,12 +3,16 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { createPlaybooksService } from '../server/playbooks-service.mjs';
+import { installWorkspaceFeatures } from '../server/workspace-features.mjs';
 
 function fixture() {
   const db = new DatabaseSync(':memory:');
   db.exec(readFileSync(new URL('../server/schema.sql', import.meta.url), 'utf8'));
   for (const table of ['workspaces', 'projects', 'tasks', 'chats']) db.exec(`ALTER TABLE ${table} ADD COLUMN archived_at TEXT`);
   db.exec('ALTER TABLE tasks ADD COLUMN team_id TEXT');
+  db.exec('ALTER TABLE projects ADD COLUMN start_date TEXT');
+  db.exec('ALTER TABLE projects ADD COLUMN target_date TEXT');
+  installWorkspaceFeatures(db);
   db.exec(`INSERT INTO workspaces(id,name,slug,created_at,updated_at) VALUES('ws','Lab','lab','now','now'),('other','Other','other','now','now');
     INSERT INTO projects(id,workspace_id,name,identifier,created_at,updated_at) VALUES('project','ws','Project','P','now','now'),('foreign','other','Other','O','now','now');`);
   let current = new Date('2026-10-05T12:00:00.000Z');
@@ -127,5 +131,83 @@ test('project and conversation actions create local drafts without a provider ru
     assert.equal(f.db.prepare("SELECT status FROM projects WHERE name='Planned project'").get().status, 'planned');
     assert.equal(f.db.prepare("SELECT kind FROM chats WHERE title='Planning room'").get().kind, 'general');
     assert.equal(f.db.prepare('SELECT COUNT(*) n FROM runs').get().n, 0);
+  } finally { f.close(); }
+});
+
+test('catalog advertises executable fields and separately marks paused Plugin and AI actions unavailable', () => {
+  const f = fixture(); try {
+    const catalog = f.service.catalog();
+    assert.equal(catalog.actions.length, 13);
+    assert.deepEqual(catalog.actions.find(item => item.id === 'route.set_priority').config_fields.find(item => item.key === 'priority').options, ['no_priority', 'low', 'medium', 'high', 'urgent']);
+    assert.ok(catalog.unavailable.plugins.some(item => item.id === 'plugin.github.create_issue'));
+    assert.ok(catalog.unavailable.plugins.every(item => item.status === 'coming_soon'));
+    assert.equal(catalog.unavailable.ai[0].status, 'not_supported');
+    for (const item of catalog.unavailable.plugins) assert.throws(() => f.service.create({ ...f.base(), definition: { trigger: { type: 'manual' }, steps: [{ action_id: item.id, config: {} }] } }, f.actor), /unavailable action/);
+  } finally { f.close(); }
+});
+
+test('planned milestone and Project updates validate calendar dates, permissions and audit attribution', () => {
+  const f = fixture(); try {
+    assert.throws(() => f.service.create({ ...f.base(), definition: { trigger: { type: 'manual' }, steps: [{ action_id: 'milestone.create_planned', config: { project_id: 'project', title: 'Kickoff', target_date: '2026-02-30' } }] } }, f.actor), /real YYYY-MM-DD/);
+    const book = f.service.create({ workspace_id: 'ws', name: 'Project planning', definition: { trigger: { type: 'manual' }, steps: [
+      { action_id: 'milestone.create_planned', config: { project_id: 'project', title: 'Kickoff', description: 'Review the plan', target_date: '2026-10-14' } },
+      { action_id: 'project.set_goal', config: { project_id: 'project', goal: 'Ship a small test' } },
+      { action_id: 'project.set_target_date', config: { project_id: 'project', target_date: '2026-11-01' } },
+    ] } }, f.actor);
+    const run = f.service.run(book.id, { idempotency_key: 'project_actions_123' }, f.actor);
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    assert.deepEqual({ ...f.db.prepare('SELECT title,status,target_date FROM milestones').get() }, { title: 'Kickoff', status: 'planned', target_date: '2026-10-14' });
+    assert.deepEqual({ ...f.db.prepare("SELECT goal,target_date FROM projects WHERE id='project'").get() }, { goal: 'Ship a small test', target_date: '2026-11-01' });
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM change_attribution WHERE source='Playbook' AND actor_id='owner'").get().n, 3);
+    assert.equal(f.service.run(book.id, { idempotency_key: 'project_actions_123' }, f.actor).id, run.id);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM milestones').get().n, 1);
+    f.denied.add('projects.read');
+    const denied = f.service.run(book.id, { idempotency_key: 'project_actions_456' }, f.actor);
+    assert.equal(denied.status, 'failed');
+    assert.equal(denied.receipts[0].status, 'completed', 'earlier step has an explicit receipt');
+    assert.equal(denied.receipts[1].status, 'failed', 'Project read permission is checked for updates');
+  } finally { f.close(); }
+});
+
+test('Route priority and rename update only active in-workspace Routes', () => {
+  const f = fixture(); try {
+    f.db.exec("INSERT INTO tasks(id,workspace_id,project_id,number,title,created_at,updated_at) VALUES('route','ws','project',1,'Before','now','now'),('foreign-route','other','foreign',1,'Foreign','now','now')");
+    assert.throws(() => f.service.create({ ...f.base(), definition: { trigger: { type: 'manual' }, steps: [{ action_id: 'route.set_priority', config: { route_id: 'route', priority: 'critical' } }] } }, f.actor), /supported priority/);
+    const book = f.service.create({ workspace_id: 'ws', name: 'Triage', definition: { trigger: { type: 'manual' }, steps: [
+      { action_id: 'route.set_priority', config: { route_id: 'route', priority: 'high' } },
+      { action_id: 'route.rename', config: { route_id: 'route', title: 'After' } },
+    ] } }, f.actor);
+    assert.equal(f.service.run(book.id, { idempotency_key: 'route_actions_123' }, f.actor).status, 'completed');
+    assert.deepEqual({ ...f.db.prepare("SELECT title,priority FROM tasks WHERE id='route'").get() }, { title: 'After', priority: 'high' });
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM change_log WHERE entity_id='route'").get().n, 2);
+    const cross = f.service.create({ workspace_id: 'ws', name: 'Cross scope', definition: { trigger: { type: 'manual' }, steps: [{ action_id: 'route.rename', config: { route_id: 'foreign-route', title: 'Not allowed' } }] } }, f.actor);
+    assert.equal(f.service.run(cross.id, { idempotency_key: 'foreign_route_123' }, f.actor).status, 'failed');
+    assert.equal(f.db.prepare("SELECT title FROM tasks WHERE id='foreign-route'").get().title, 'Foreign');
+    f.db.exec("UPDATE tasks SET archived_at='now' WHERE id='route'");
+    assert.equal(f.service.run(book.id, { idempotency_key: 'archived_route_123' }, f.actor).status, 'failed');
+  } finally { f.close(); }
+});
+
+test('conversation actions rename, pin, unpin and save a local-only note with idempotent receipts', () => {
+  const f = fixture(); try {
+    f.db.exec("INSERT INTO chats(id,workspace_id,project_id,title,created_at,updated_at) VALUES('chat','ws','project','Before','now','now'),('foreign-chat','other','foreign','Foreign','now','now')");
+    const book = f.service.create({ workspace_id: 'ws', name: 'Conversation', definition: { trigger: { type: 'manual' }, steps: [
+      { action_id: 'chat.rename', config: { chat_id: 'chat', title: 'After' } },
+      { action_id: 'chat.pin', config: { chat_id: 'chat' } },
+      { action_id: 'chat.add_local_note', config: { chat_id: 'chat', content: 'Check findings with a person.' } },
+      { action_id: 'chat.unpin', config: { chat_id: 'chat' } },
+    ] } }, f.actor);
+    const run = f.service.run(book.id, { idempotency_key: 'chat_actions_123' }, f.actor);
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    assert.deepEqual({ ...f.db.prepare("SELECT title,pinned FROM chats WHERE id='chat'").get() }, { title: 'After', pinned: 0 });
+    const note = f.db.prepare("SELECT sender_type,sender_id,kind,content,metadata_json FROM messages WHERE chat_id='chat'").get();
+    assert.deepEqual([note.sender_type, note.sender_id, note.kind, note.content], ['user', 'owner', 'note', 'Check findings with a person.']);
+    assert.equal(JSON.parse(note.metadata_json).delivery, 'note');
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM runs').get().n, 0);
+    assert.equal(f.service.run(book.id, { idempotency_key: 'chat_actions_123' }, f.actor).id, run.id);
+    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM messages').get().n, 1);
+    const cross = f.service.create({ workspace_id: 'ws', name: 'Cross chat', definition: { trigger: { type: 'manual' }, steps: [{ action_id: 'chat.add_local_note', config: { chat_id: 'foreign-chat', content: 'No.' } }] } }, f.actor);
+    assert.equal(f.service.run(cross.id, { idempotency_key: 'foreign_chat_123' }, f.actor).status, 'failed');
+    assert.equal(f.db.prepare("SELECT COUNT(*) n FROM messages WHERE chat_id='foreign-chat'").get().n, 0);
   } finally { f.close(); }
 });

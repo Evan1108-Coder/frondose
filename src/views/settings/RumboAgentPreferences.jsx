@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Form } from '../../components/Form.jsx';
+import { RumboAgentOrb, RumboAgentColorChoice } from '../../components/RumboAgentOrb.jsx';
 import { apiRequest } from '../../data/api.js';
 import { Button, ErrorMessage, Select, Toggle, useApp } from '../../ui.jsx';
 import { visible } from '../../lib/model.js';
+import { announceRumboAgentAppearance } from '../../lib/rumbo-agent-appearance.js';
 import '../rumbo-agent.css';
 
 const asList = value => Array.isArray(value) ? value : [];
@@ -21,7 +23,7 @@ export function RumboAgentPreferences() {
     apiRequest(`/api/rumbo-agent?workspace_id=${encodeURIComponent(workspace.id)}`, { signal: controller.signal }).then(response => {
       if (controller.signal.aborted) return;
       const result = response.result || {}, preferences = result.preferences || {};
-      const next = { provider: preferences.provider || '', model: preferences.model || '', reasoning_effort: preferences.reasoning_effort || '', include_memory: preferences.include_memory !== false, include_chat: preferences.include_chat !== false, include_workspace: preferences.include_workspace !== false, context_pack_ids: asList(preferences.context_pack_ids), native_tools: preferences.native_tools === true };
+      const next = { provider: preferences.provider || '', model: preferences.model || '', reasoning_effort: preferences.reasoning_effort || '', include_memory: preferences.include_memory !== false, include_chat: preferences.include_chat !== false, include_workspace: preferences.include_workspace !== false, context_pack_ids: asList(preferences.context_pack_ids), native_tools: preferences.native_tools === true, display_name: preferences.display_name || 'Rumbo Agent', orb_color: preferences.orb_color || 'blue', purpose: preferences.purpose || '', guidelines: preferences.guidelines || '', onboarding_complete: preferences.onboarding_complete === true };
       setState({ ...result, providers: asList(result.providers) }); setForm(next); setSaved(next);
     }).catch(cause => { if (!controller.signal.aborted) setError(cause); });
     return () => controller.abort();
@@ -44,11 +46,12 @@ export function RumboAgentPreferences() {
     try {
       const response = await apiRequest('/api/rumbo-agent/preferences', { method: 'PATCH', body: { workspace_id: workspace.id, preferences: form } });
       if (workspaceRef.current !== requestWorkspace) return;
-      const preferences = response.result?.preferences || response.result || form, next = { ...form, ...preferences }; setForm(next); setSaved(next); notify('Rumbo Agent preferences saved. They do not grant access or start an agent.');
+      const preferences = response.result?.preferences || response.result || form, next = { ...form, ...preferences }; setForm(next); setSaved(next); announceRumboAgentAppearance(requestWorkspace, next); notify('Rumbo Agent preferences saved. They do not grant access or start an agent.');
     } catch (cause) { setError(cause); }
     finally { setBusy(false); }
   }
-  return <><h1>Rumbo Agent</h1><p>Choose defaults for new Rumbo Agent drafts. Every send still requires exact context review; these preferences never grant workspace or native-tool authority.</p><Form className="settings-group" onSubmit={save}><section className="settings-panel">
+  return <><h1>Rumbo Agent</h1><p>Choose your assistant’s identity and defaults for new drafts. Every send still requires exact context review; these preferences never grant workspace or native-tool authority.</p><Form className="settings-group" onSubmit={save}><section className="settings-panel">
+    <div className="setting-row rumbo-agent-identity-setting"><span><strong>Agent identity</strong><small>Name and color appear in Rumbo Agent. Purpose and guidelines are included in the Agent’s versioned instructions and reviewed before each send.</small></span><div className="rumbo-agent-identity-fields"><RumboAgentOrb color={form.orb_color} compact /><label>Agent name<input required maxLength={60} value={form.display_name} onChange={event => patch({ display_name: event.target.value })} /></label><RumboAgentColorChoice value={form.orb_color} onChange={orb_color => patch({ orb_color })} /><label>Purpose<textarea maxLength={500} rows={2} value={form.purpose} onChange={event => patch({ purpose: event.target.value })} /></label><label>Guidelines<textarea maxLength={4000} rows={4} value={form.guidelines} onChange={event => patch({ guidelines: event.target.value })} /></label></div></div>
     <div className="setting-row"><span><strong>Model provider</strong><small>Only providers reported by the local Rumbo service are listed. Saving does not connect an account.</small></span><Select aria-label="Default Rumbo Agent provider" value={form.provider} onChange={provider => patch({ provider, model: '', reasoning_effort: '' })}>{state.providers.map(item => <option key={providerId(item)} value={providerId(item)}>{providerName(item)}{providerConnected(item) ? ' · connected' : ' · disconnected'}</option>)}</Select></div>
     <div className="setting-row"><span><strong>Model</strong><small>Automatic lets the provider choose. Other entries are configured IDs, not proof that your account can run them.</small></span><div className="rumbo-agent-setting-controls"><Select aria-label="Default Rumbo Agent model" value={form.model} disabled={!form.provider} onChange={model => patch({ model })}><option value="">Automatic</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)} · unverified</option>)}{customModel ? <option value={form.model} title={form.model}>{form.model} · unverified</option> : null}</Select></div></div>
     <div className="setting-row"><span><strong>Reasoning effort</strong><small>Only values reported for the selected provider are offered and the provider validates the choice again at launch.</small></span><Select aria-label="Default reasoning effort" value={form.reasoning_effort} disabled={!form.provider} onChange={reasoning_effort => patch({ reasoning_effort })}><option value="">Provider default</option>{reasoningEfforts.map(value => <option key={value} value={value}>{value}</option>)}</Select></div>

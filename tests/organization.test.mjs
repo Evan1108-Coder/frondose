@@ -12,6 +12,16 @@ test("organization preferences normalize hostile data, preserve ordering and add
   assert.deepEqual(prefs.favorites, [{ view: "agents", id: "a" }]);
   assert.deepEqual(normalizeOrganization({version: 2, favorites: [{view:"agents",id:"x"}]}).favorites, []);
 });
+test("pinned placement and floating dock position remain browser-local and bounded", () => {
+  const defaults = normalizeOrganization(null);
+  assert.equal(defaults.showPinnedInHeader, true);
+  assert.deepEqual(defaults.dockPosition, { x: 0.5, y: 0.9 });
+  const prefs = normalizeOrganization({ ...defaults, showPinnedInHeader: false, dockPosition: { x: 5, y: -2 }, pinnedLayout: ['projects', 'projects', 'not-a-tab'] });
+  assert.equal(prefs.showPinnedInHeader, false);
+  assert.deepEqual(prefs.dockPosition, { x: 0.97, y: 0.05 });
+  assert.deepEqual(prefs.pinnedLayout, ['projects']);
+  assert.deepEqual(normalizeOrganization({ ...defaults, dockPosition: { x: 'bad', y: Infinity } }).dockPosition, defaults.dockPosition);
+});
 test("sidebar preferences are workspace-local, and storage failures are not silently reported saved", () => {
   const map = new Map(), storage = { getItem: k => map.get(k), setItem: (k,v) => map.set(k,v) };
   saveOrganization(storage, "one", { ...normalizeOrganization(null), shortcuts: false });

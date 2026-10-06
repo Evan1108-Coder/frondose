@@ -1,4 +1,4 @@
-/* Motion explains a state change; navigation and live data never animate in. */
+/* Motion explains a state change; a newly selected page gets one short entrance. */
 :root {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -16,9 +16,9 @@
 
 .app-main {
   background: linear-gradient(145deg,
-    color-mix(in srgb, var(--bg), var(--surface) 34%) 0%,
+    color-mix(in srgb, var(--bg), var(--surface) 10%) 0%,
     var(--bg) 48%,
-    color-mix(in srgb, var(--bg), var(--surface) 55%) 100%);
+    color-mix(in srgb, var(--bg), var(--surface) 14%) 100%);
 }
 .main-scroll { background: transparent; }
 
@@ -52,6 +52,8 @@
   transition: transform var(--motion-dialog) var(--ease-out), opacity var(--motion-fade) var(--ease-out);
 }
 .dialog-backdrop { transition: opacity var(--motion-fade) var(--ease-out); }
+.dialog-backdrop[data-closing="true"] { opacity: 0; pointer-events: none; }
+.dialog-backdrop[data-closing="true"] .dialog:not(.command-dialog) { opacity: 0; transform: translateY(var(--motion-travel)) scale(var(--motion-scale)); }
 .popover,
 .rumbo-select-panel,
 .rumbo-date-panel,
@@ -83,6 +85,25 @@
   .toast { opacity: 0; transform: translate(-50%, var(--motion-travel)); }
 }
 
+/* The keyed route wrapper remounts only for navigation, not for live data. */
+.view-entrance { min-height: 100%; min-width: 0; }
+.view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 180ms var(--ease-out), transform 240ms var(--ease-out);
+}
+.view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) > :is(header, section, article, .settings-rail, .settings-canvas) {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 180ms var(--ease-out), transform 240ms var(--ease-out);
+}
+.view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) > :is(header, section, article, .settings-rail, .settings-canvas):nth-child(2) { transition-delay: 25ms; }
+.view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) > :is(header, section, article, .settings-rail, .settings-canvas):nth-child(3) { transition-delay: 45ms; }
+@starting-style {
+  .view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) { opacity: .75; transform: translateY(8px); }
+  .view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) > :is(header, section, article, .settings-rail, .settings-canvas) { opacity: .75; transform: translateY(8px); }
+}
+
 /* Frequent, keyboard-driven interactions must not wait for visual motion. */
 .command-dialog,
 .dialog-backdrop:has(.command-dialog),
@@ -90,6 +111,8 @@
   animation: none;
   transition: none;
 }
+:root[data-input-modality="keyboard"] .view-entrance > *,
+:root[data-input-modality="keyboard"] .view-entrance > * > * { transition: none; }
 
 @media (max-width: 800px) {
   .sidebar.sidebar-v2 { transition: transform 220ms var(--ease-drawer); }
@@ -113,6 +136,7 @@
   .sidebar.sidebar-v2 { transition: none; }
   :root :is(.button, .icon-button):not(:disabled):active { transform: none; }
   .spin { animation: none; }
+  .view-entrance > *, .view-entrance > * > * { transform: none !important; transition: opacity 80ms !important; transition-delay: 0ms !important; }
 }
 :root[data-motion="reduced"] {
   --motion-travel: 0px;
@@ -131,3 +155,5 @@
 :root[data-motion="reduced"] .sidebar.sidebar-v2 { transition: none; }
 :root[data-motion="reduced"] :is(.button, .icon-button):not(:disabled):active { transform: none; }
 :root[data-motion="reduced"] .spin { animation: none; }
+:root[data-motion="reduced"] .view-entrance > *,
+:root[data-motion="reduced"] .view-entrance > * > * { transform: none !important; transition: opacity 80ms !important; transition-delay: 0ms !important; }

@@ -20,7 +20,9 @@ test('Playbooks API serves catalog, CRUD, manual receipts and event dispatch on 
   try {
     const catalog = await call('/playbooks/catalog');
     assert.equal(catalog.status, 200);
-    assert.deepEqual(catalog.payload.result.actions.map(action => action.id), ['route.create_draft', 'document.create_draft', 'project.create_draft', 'chat.create_draft']);
+    assert.equal(catalog.payload.result.actions.length, 13);
+    assert.ok(catalog.payload.result.actions.some(action => action.id === 'milestone.create_planned' && action.availability === 'available'));
+    assert.ok(catalog.payload.result.unavailable.plugins.some(action => action.id === 'plugin.github.create_issue' && action.status === 'coming_soon'));
     const definition = { trigger: { type: 'manual' }, steps: [{ action_id: 'route.create_draft', config: { title: 'API smoke', description: 'Playbook test', project_id: 'proj_sourcelens' } }] };
     const created = await call('/playbooks', 'POST', { workspace_id: 'ws_personal', name: 'Smoke', definition });
     assert.equal(created.status, 201, JSON.stringify(created.payload));

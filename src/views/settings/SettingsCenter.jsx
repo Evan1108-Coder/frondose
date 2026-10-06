@@ -13,6 +13,9 @@ import { Button, Dialog, ErrorMessage, Field, Select, Toggle, Empty, useApp, use
 import { ArrowLeft, ArrowRight, Plus, Search, Settings, Users, Bot, FileText, ShieldCheck, Plug, Activity, Download, Pencil, Check, Clock } from '../../components/icons.jsx';
 import { CircleUser, Paintbrush, Bell, Code, Sparkles, LayoutGrid, GitBranch, Inbox, Folder, BookOpen, Play, GitFork, Compass, MessageCircle, Archive, Database, Link, CircleDot } from '../../components/icons.jsx';
 import { RumboSymbol } from '../../components/Brand.jsx';
+import { SidebarResizeHandle } from '../../components/SidebarResizeHandle.jsx';
+import { RumboAgentOrb } from '../../components/RumboAgentOrb.jsx';
+import { useRumboAgentAppearance } from '../../lib/rumbo-agent-appearance.js';
 import { rumboActions } from '../../data/useRumbo.js';
 import { rumboApi } from '../../data/api.js';
 import { SETTINGS_GROUPS, PAGE_RESOURCE, pretty, featureItems } from '../../lib/settings-catalog.js';
@@ -30,35 +33,45 @@ import { ConnectionPlatformView } from '../ConnectionPlatform.jsx';
 import './settings-center.css';
 import { SlidersHorizontal, Focus, Tag, Tags, ListChecks, PanelsTopLeft, Radio, Waypoints, Shapes, ScrollText, ChartNoAxesCombined, ReceiptText, BadgeCheck, ShieldUser, KeyRound, UserRound, UserRoundCog, Network, Cable, AppWindow, Webhook, Gauge, ClipboardCheck, ListOrdered, Route, TimerReset, Workflow, Target, Flag, NotebookPen, MessageSquareText, Package, LibraryBig, ArchiveRestore, History, FolderKanban, SquareStack, Smile, Terminal, Keyboard } from '../../components/icons.jsx';
 
-const ICONS = { Personal: Settings, Routes: FileText, Projects: FileText, 'Agents & work': Bot, Collaboration: Users, Connections: Plug, Administration: ShieldCheck };
+const ICONS = { Personal: Settings, Routes: FileText, Projects: FileText, 'Agents & work': Bot, Collaboration: Users, Plugins: Plug, Administration: ShieldCheck };
 const WorkspaceUsage = lazy(() => import('../../components/RunUsage.jsx').then(module => ({ default: module.WorkspaceUsage })));
 const PAGE_ICONS = { 'rumbo-agent': MessageCircle, awareness: Database, preferences: SlidersHorizontal, profile: CircleUser, appearance: Paintbrush, 'field-defaults': Keyboard, 'home-attention': Focus, notifications: Bell, 'code-reviews': Code, 'personal-security': KeyRound, accounts: UserRoundCog, personalization: Sparkles, 'route-labels': Tag, 'project-labels': Tags, 'route-templates': ListChecks, 'project-templates': PanelsTopLeft, 'route-workflow': Route, 'project-statuses': Waypoints, repeating: TimerReset, intake: Inbox, updates: Flag, agents: Bot, collections: Shapes, presets: ScrollText, context: BookOpen, permissions: ShieldCheck, workbench: Terminal, coordination: Network, 'output-policy': Package, queue: ListOrdered, handoffs: GitFork, automations: Workflow, chats: MessageSquareText, documents: NotebookPen, views: SquareStack, requests: Radio, goals: Target, reviews: ClipboardCheck, emojis: Smile, integrations: Cable, workspace: FolderKanban, teams: Users, members: UserRound, security: ShieldUser, applications: AppWindow, api: Webhook, billing: ReceiptText, usage: Gauge, retention: ArchiveRestore, storage: Download, audit: History };
 export function SettingsCenter() {
-  const { data, page, navigate, workspace } = useApp();
+  const { data, page, navigate, workspace, sidebarSizing } = useApp();
+  const agentAppearance = useRumboAgentAppearance(workspace?.id);
   const { colorsFor } = useIconColors();
   const [query, setQuery] = useState('');
+  const [isMobile, setIsMobile] = useState(() => matchMedia('(max-width: 800px)').matches);
   const railNav = useRef(null);
-  const sections = SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id, label, group })));
+  useEffect(() => {
+    const media = matchMedia('(max-width: 800px)');
+    const change = () => setIsMobile(media.matches);
+    media.addEventListener('change', change);
+    return () => media.removeEventListener('change', change);
+  }, []);
+  const settingLabel = (id, label) => id === 'rumbo-agent' ? agentAppearance.display_name : label;
+  const sections = SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id, label: settingLabel(id, label), group })));
   const teamId = page.id?.startsWith('team:') ? page.id.slice(5) : null;
   const section = sections.find(s => s.id === page.id) ?? { id: page.id === 'archive' ? 'archive' : teamId ? page.id : 'preferences', label: teamId ? 'Area settings' : page.id === 'archive' ? 'Archive' : 'Preferences', group: teamId ? 'Your Areas' : 'Personal' };
   useEffect(() => { const selected = railNav.current?.querySelector('.active'); if (selected) selected.scrollIntoView({ block: 'nearest', behavior: document.documentElement.dataset.motion === 'reduced' ? 'instant' : 'smooth' }); }, [section.id]);
   const teams = visible(data.teams);
-  return <main className="settings-center">
-    <aside className="settings-rail">
+  return <main className={`settings-center ${sidebarSizing?.hidden ? 'settings-sidebar-hidden' : ''} ${sidebarSizing?.peek ? 'settings-sidebar-peek' : ''}`}>
+    <aside className="settings-rail" inert={!isMobile && sidebarSizing?.hidden && !sidebarSizing?.peek ? true : undefined} onPointerLeave={() => { if (sidebarSizing?.hidden) sidebarSizing.setPeek(false); }}>
+      {!sidebarSizing?.hidden ? <SidebarResizeHandle width={sidebarSizing?.width ?? 280} preview={sidebarSizing?.preview} onResize={sidebarSizing?.resize} onHide={sidebarSizing?.hide} onRestore={sidebarSizing?.restore} /> : null}
       <div className="settings-brand">{workspace.image_url ? <img className="workspace-picture" src={workspace.image_url} alt="" /> : <RumboSymbol size={34} decorative />}<strong>{workspace.name}</strong></div>
       <button className="settings-back" onClick={() => navigate('overview')}><ArrowLeft />Back to workspace</button>
       <div className="settings-search"><Search /><input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={e => setQuery(e.target.value)} /></div>
       <div className="settings-mobile-jump"><Select aria-label="Settings page" value={section.id} onChange={v => navigate('settings', v)}>{sections.map(s => <option key={s.id} value={s.id}>{s.group} · {s.label}</option>)}</Select></div>
       <nav ref={railNav} aria-label="Settings sections">{SETTINGS_GROUPS.map(([group, items]) => {
-        const filtered = items.filter(([id, label]) => `${group} ${label}`.toLowerCase().includes(query.toLowerCase()));
+        const filtered = items.filter(([id, label]) => `${group} ${settingLabel(id, label)}`.toLowerCase().includes(query.toLowerCase()));
         const Icon = ICONS[group];
-        return filtered.length ? <section key={group}><h2>{group}</h2>{filtered.map(([id, label]) => { const PageIcon = PAGE_ICONS[id] ?? Icon; return <ColorableNavItem key={id} colorId={`settings:${id}`} icon={PageIcon} label={label} className={section.id === id ? 'active' : ''} aria-current={section.id === id ? 'page' : undefined} onClick={() => navigate('settings', id)} />; })}</section> : null;
+        return filtered.length ? <section key={group}><h2>{group}</h2>{filtered.map(([id, label]) => { const PageIcon = id === 'rumbo-agent' ? () => <RumboAgentOrb color={agentAppearance.orb_color} compact /> : PAGE_ICONS[id] ?? Icon; return <ColorableNavItem key={id} colorId={`settings:${id}`} icon={PageIcon} label={settingLabel(id, label)} className={section.id === id ? 'active' : ''} aria-current={section.id === id ? 'page' : undefined} onClick={() => { sidebarSizing?.setPeek(false); navigate('settings', id); }} />; })}</section> : null;
       })}
-        {teams.length ? <section><h2>Your Areas</h2>{teams.filter(t => t.name.toLowerCase().includes(query.toLowerCase())).map(t => <button key={t.id} className={teamId === t.id ? 'active' : ''} onClick={() => navigate('settings', `team:${t.id}`)}><TeamIcon team={t} /><span style={{ color: colorsFor(`team:${t.id}:identity`, t).label || undefined }}>{t.name}</span></button>)}</section> : null}
+        {teams.length ? <section><h2>Your Areas</h2>{teams.filter(t => t.name.toLowerCase().includes(query.toLowerCase())).map(t => <button key={t.id} className={teamId === t.id ? 'active' : ''} onClick={() => { sidebarSizing?.setPeek(false); navigate('settings', `team:${t.id}`); }}><TeamIcon team={t} /><span style={{ color: colorsFor(`team:${t.id}:identity`, t).label || undefined }}>{t.name}</span></button>)}</section> : null}
         {!sections.some(s => `${s.group} ${s.label}`.toLowerCase().includes(query.toLowerCase())) && !teams.some(t => t.name.toLowerCase().includes(query.toLowerCase())) ? <p className="settings-no-results">No matching settings</p> : null}
       </nav>
     </aside>
-    <div className="settings-canvas"><div className="settings-breadcrumb">Settings <span>/</span> {section.group} <span>/</span> {section.label}</div><section className={`settings-body ${PAGE_RESOURCE[section.id] ? 'settings-body-wide' : ''}`} key={`${workspace.id}-${section.id}`}>
+    <div className="settings-canvas" inert={sidebarSizing?.preview ? true : undefined}><div className="settings-breadcrumb">Settings <span>/</span> {section.group} <span>/</span> {section.label}</div><section className={`settings-body ${PAGE_RESOURCE[section.id] ? 'settings-body-wide' : ''}`} key={`${workspace.id}-${section.id}`}>
       {section.id === 'field-defaults' ? <FieldDefaultsSettings workspaceId={workspace.id} definitions={fieldDefinitionsForWorkspace(data)} /> : section.id === 'updates' ? <><Heading title="Updates" description="Write updates on their work items and read them together in the workspace feed." /><Group title="Shared updates"><LinkRow title="Open Updates" description="Publish progress, risks, decisions, and outcomes. Save private drafts, reply, and inspect revision history." action={() => navigate('updates')} label="Open Updates" /><Row title="Visibility" description="Drafts are private to their author. Published updates follow their work item's permissions. External notification delivery is not enabled."><span>Target-scoped</span></Row></Group><ActivityIconSettings />{(data.workspace_items ?? []).some(item => item.kind === 'update') ? <details><summary>Historical settings updates</summary><p>These older multi-project notes remain available for editing and history. They are not automatically copied into the new feed. Create new updates from Updates or their work item.</p><ResourcePage kind="update" allowCreate={false} /></details> : null}</> : ['home-attention', 'workbench', 'coordination', 'output-policy'].includes(section.id) ? <ExperienceSettings section={section.id} /> : PAGE_RESOURCE[section.id] ? <ResourcePage kind={PAGE_RESOURCE[section.id]} /> : <SettingsContent section={section.id} teamId={teamId} />}
     </section></div>
   </main>;

@@ -8,6 +8,8 @@ import { CodeViewer } from '../components/CodeViewer.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { SlashCommandMenu } from '../components/SlashCommandMenu.jsx';
 import { readWorkbenchLayout, saveWorkbenchLayout, workbenchRequest } from '../lib/workbench.js';
+import { terminalArrivals } from '../lib/terminal-arrival.js';
+import { LinkHoverPreview } from '../components/LinkHoverPreview.jsx';
 import { visible } from '../lib/model.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
 import { RumboAgentEntryButton, RumboAgentEntryDialog } from '../components/RumboAgentEntry.jsx';
@@ -135,7 +137,7 @@ function ProjectWorkbench({ project }) {
     </div> : null}
     {root && layout.tab === 'files' ? <FilesPanel key={checkpointRevision} scope={scope} layout={layout} patchLayout={patchLayout} settings={settings} favorite={favorite} /> : null}
     {root && layout.tab === 'changes' ? <ReviewPanel targetType="project" targetId={project.id} projectId={project.id} environmentId={scope.environmentId} defaultOpen /> : null}
-    {root && layout.tab === 'commands' ? <div className="wb-commands"><div className="wb-command-main"><div className="section-heading"><div><h2>Project commands</h2><p className="muted">Saved actions are suggestions until you choose to run them.</p></div><Button icon={Plus} onClick={() => setDialog({ type: 'command' })}>Save command</Button></div>{summary.commands.map(command => <CommandRow key={command.id} item={command} onRun={() => setDialog({ type: 'terminal', command: command.command, name: command.name })} onRemove={async () => { try { await workbenchRequest(scope, `commands/${command.id}`, { method: 'DELETE' }); await refresh(); notify('Saved command removed. Terminal history is unchanged.'); } catch (cause) { setError(cause); } }} />)}{!summary.commands.length ? <p className="wb-inline-empty">Save the commands you use often, such as tests or your development server.</p> : null}<h3>Discovered package scripts</h3>{scripts.map(script => <CommandRow key={script.name} item={script} onRun={() => setDialog({ type: 'terminal', command: script.command, name: script.name })} />)}{!scripts.length ? <p className="muted">No package.json scripts found in this environment.</p> : null}</div><aside className="wb-preview-panel"><ExternalLink /><h2>Open a development preview</h2><p>Start a development server, then verify its port. Preview opens in a separate browser tab; Rumbo does not proxy it or assume it belongs to this project.</p><Field label="Preview port"><input inputMode="numeric" value={layout.previewPort} onChange={event => { patchLayout({ previewPort: event.target.value }); setPreview(null); }} /></Field><Button busy={busy} onClick={async () => { setBusy(true); setError(null); try { setPreview(await workbenchRequest(scope, 'preview', { method: 'POST', body: { port: layout.previewPort } })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Verify port</Button>{preview ? <a className="button secondary" href={preview.url} target="_blank" rel="noreferrer">Open {preview.port}<ExternalLink /></a> : null}</aside></div> : null}
+    {root && layout.tab === 'commands' ? <div className="wb-commands"><div className="wb-command-main"><div className="section-heading"><div><h2>Project commands</h2><p className="muted">Saved actions are suggestions until you choose to run them.</p></div><Button icon={Plus} onClick={() => setDialog({ type: 'command' })}>Save command</Button></div>{summary.commands.map(command => <CommandRow key={command.id} item={command} onRun={() => setDialog({ type: 'terminal', command: command.command, name: command.name })} onRemove={async () => { try { await workbenchRequest(scope, `commands/${command.id}`, { method: 'DELETE' }); await refresh(); notify('Saved command removed. Terminal history is unchanged.'); } catch (cause) { setError(cause); } }} />)}{!summary.commands.length ? <p className="wb-inline-empty">Save the commands you use often, such as tests or your development server.</p> : null}<h3>Discovered package scripts</h3>{scripts.map(script => <CommandRow key={script.name} item={script} onRun={() => setDialog({ type: 'terminal', command: script.command, name: script.name })} />)}{!scripts.length ? <p className="muted">No package.json scripts found in this environment.</p> : null}</div><aside className="wb-preview-panel"><ExternalLink /><h2>Open a development preview</h2><p>Start a development server, then verify its port. Preview opens in a separate browser tab; Rumbo does not proxy it or assume it belongs to this project.</p><Field label="Preview port"><input inputMode="numeric" value={layout.previewPort} onChange={event => { patchLayout({ previewPort: event.target.value }); setPreview(null); }} /></Field><Button busy={busy} onClick={async () => { setBusy(true); setError(null); try { setPreview(await workbenchRequest(scope, 'preview', { method: 'POST', body: { port: layout.previewPort } })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Verify port</Button>{preview ? <LinkHoverPreview href={preview.url} title={`Development server · port ${preview.port}`} description="Port was verified by Rumbo. The page itself has not been captured or inspected." className="button secondary">Open {preview.port}<ExternalLink /></LinkHoverPreview> : null}</aside></div> : null}
     {root && layout.tab === 'terminal' ? <section className="wb-terminal-panel"><div className="wb-terminal-tabs">{terminals.map(item => <button className={terminal?.id === item.id ? 'active' : ''} key={item.id} onClick={() => patchLayout({ terminalId: item.id })}><Terminal /><span>{item.name}</span><small>{item.status}</small></button>)}{!terminals.length ? <span className="muted">No terminals in this environment</span> : null}</div><div className="wb-slash-launcher"><Terminal /><input aria-label="Rumbo terminal command" value={terminalSlash} placeholder="Type / for Rumbo commands; shell paths stay in the terminal" onChange={event => { setTerminalSlash(event.target.value); setTerminalSlashIndex(0); }} onKeyDown={event => {
       if (terminalSlashResults.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); setTerminalSlashIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + terminalSlashResults.length) % terminalSlashResults.length); }
       else if (event.key === 'Escape') { event.preventDefault(); setTerminalSlash(''); }
@@ -170,8 +172,10 @@ function CommandRow({ item, onRun, onRemove }) {
 function TerminalPane({ scope, terminal, fontSize, onEnded }) {
   const host = useRef(null), instance = useRef(null), cursor = useRef(0), ended = useRef(false);
   const [error, setError] = useState(null);
+  const [arrivals, setArrivals] = useState(null);
+  const arrivalTimer = useRef(null);
   useEffect(() => {
-    let cancelled = false, pollTimer, flushTimer, observer, input = '', inputBusy = false, disposeInput;
+    let cancelled = false, pollTimer, flushTimer, observer, input = '', inputBusy = false, disposeInput, initialPoll = true, pendingLine = '';
     const pendingScope = scope;
     const inputQueue = [];
     async function sendInput() {
@@ -196,8 +200,18 @@ function TerminalPane({ scope, terminal, fontSize, onEnded }) {
           try {
             const result = await workbenchRequest(pendingScope, `terminals/${terminal.id}`, { body: { cursor: cursor.current } });
             if (cancelled) return;
-            if (result.reset) xterm.reset();
-            if (result.output) xterm.write(result.output);
+            if (result.reset) { xterm.reset(); pendingLine = ''; initialPoll = true; }
+            if (result.output) {
+              xterm.write(result.output);
+              const next = terminalArrivals(pendingLine, result.output, { initial: initialPoll });
+              pendingLine = next.pending;
+              if (next.lines.length) {
+                setArrivals({ lines: next.lines, cursor: result.cursor });
+                clearTimeout(arrivalTimer.current);
+                arrivalTimer.current = setTimeout(() => setArrivals(null), 1400);
+              }
+            }
+            initialPoll = false;
             cursor.current = result.cursor;
             const running = ['running', 'stopping'].includes(result.status);
             xterm.options.disableStdin = !running;
@@ -209,10 +223,10 @@ function TerminalPane({ scope, terminal, fontSize, onEnded }) {
       } catch (cause) { if (!cancelled) setError(cause); }
     }
     setup();
-    return () => { cancelled = true; clearTimeout(pollTimer); clearTimeout(flushTimer); observer?.disconnect(); disposeInput?.dispose(); instance.current?.dispose(); instance.current = null; };
+    return () => { cancelled = true; clearTimeout(pollTimer); clearTimeout(flushTimer); clearTimeout(arrivalTimer.current); observer?.disconnect(); disposeInput?.dispose(); instance.current?.dispose(); instance.current = null; };
   }, [terminal.id]);
   useEffect(() => { if (instance.current) instance.current.options.fontSize = fontSize; }, [fontSize]);
-  return <><ErrorMessage error={error} /><div ref={host} className="wb-xterm" aria-label={`Interactive terminal ${terminal.name}`} /></>;
+  return <><ErrorMessage error={error} /><div className="wb-terminal-canvas"><div ref={host} className="wb-xterm" aria-label={`Interactive terminal ${terminal.name}`} />{arrivals ? <div className="wb-terminal-arrivals" aria-hidden="true" key={arrivals.cursor}>{arrivals.lines.map((line, index) => <span key={`${index}:${line}`}>{line}</span>)}</div> : null}</div></>;
 }
 
 function WorkbenchDialog({ dialog, scope, root, settings, branches, onClose, onSaved, onSettings }) {

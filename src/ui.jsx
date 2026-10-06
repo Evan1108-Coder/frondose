@@ -8,6 +8,7 @@ import { UiIcon } from "./components/icons.jsx";
 import { ServiceLogo } from './components/ServiceLogo.jsx';
 import { useApp as useAppContext } from './app-context.js';
 import { ErrorNotification } from './components/Notifications.jsx';
+import { currentMotionPreference } from './lib/motion.js';
 
 export { AppContext, useApp } from "./app-context.js";
 export { EmptyState as Empty } from "./components/EmptyState.jsx";
@@ -148,11 +149,25 @@ export function Dialog({
   const ref = useRef(null);
   const originRef = useRef(null);
   const backdropStart = useRef(false);
+  const closeTimer = useRef(null);
+  const closingRef = useRef(false);
+  const [closing, setClosing] = useState(false);
   // Capture before the commit: a child autoFocus can already own focus by the
   // time this dialog's effect runs, and that child disappears when we close.
   const openerRef = useRef(typeof document === 'undefined' ? null : document.activeElement);
   const closeRef = useRef(onClose);
+  const requestCloseRef = useRef(null);
   closeRef.current = onClose;
+  const requestClose = () => {
+    if (closingRef.current) return;
+    const { fadeMs } = currentMotionPreference();
+    if (!fadeMs || className.includes('command-dialog')) { closeRef.current(); return; }
+    closingRef.current = true;
+    setClosing(true);
+    closeTimer.current = window.setTimeout(() => closeRef.current(), fadeMs);
+  };
+  requestCloseRef.current = requestClose;
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
   useLayoutEffect(() => {
     const origin = originRef.current, backdrop = ref.current?.closest('.dialog-backdrop');
     if (!origin || !backdrop) return;
@@ -163,6 +178,13 @@ export function Dialog({
       const value = inherited.getPropertyValue(property);
       if (value) backdrop.style.setProperty(property, value);
       else backdrop.style.removeProperty(property);
+    }
+    const opener = openerRef.current?.getBoundingClientRect?.();
+    const panel = ref.current?.getBoundingClientRect();
+    if (opener && panel && opener.width && panel.width) {
+      const x = Math.max(0, Math.min(panel.width, opener.left + opener.width / 2 - panel.left));
+      const y = Math.max(0, Math.min(panel.height, opener.top + opener.height / 2 - panel.top));
+      ref.current.style.transformOrigin = `${x}px ${y}px`;
     }
   });
   useEffect(() => {
@@ -181,7 +203,7 @@ export function Dialog({
         if (ref.current?.querySelector("[data-rumbo-popup]")) return;
         event.preventDefault();
         event.stopPropagation();
-        closeRef.current();
+        requestCloseRef.current();
       }
       if (event.key !== "Tab") return;
       const items = focusable();
@@ -220,11 +242,12 @@ export function Dialog({
   const dialog = (
     <div
       className="dialog-backdrop"
+      data-closing={closing ? 'true' : undefined}
       onPointerDown={(event) => {
         backdropStart.current = event.target === event.currentTarget;
       }}
       onPointerUp={(event) => {
-        if (backdropStart.current && event.target === event.currentTarget) onClose();
+        if (backdropStart.current && event.target === event.currentTarget) requestClose();
         backdropStart.current = false;
       }}
     >
@@ -241,7 +264,7 @@ export function Dialog({
             <h2>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
-          <IconButton label="Close dialog" onClick={onClose}>
+          <IconButton label="Close dialog" onClick={requestClose}>
             <X />
           </IconButton>
         </header>

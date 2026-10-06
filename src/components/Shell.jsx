@@ -24,10 +24,18 @@ import { TeamIconButton } from './TeamAppearance.jsx';
 import { areaContactsVisible } from '../lib/areas.js';
 import { ColorableNavItem, useIconColors } from './IconColors.jsx';
 import { SidebarLayout } from './SidebarLayout.jsx';
+import { SidebarResizeHandle } from './SidebarResizeHandle.jsx';
 import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
+import { RumboAgentOrb } from './RumboAgentOrb.jsx';
+import { useRumboAgentAppearance } from '../lib/rumbo-agent-appearance.js';
 
-const NAV_ICONS = { 'rumbo-agent': Bot, starred: Pin, skills: ScrollText, workflows: Workflow, playbooks: ListChecks, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+function RumboAgentNavIcon() {
+  const { workspace } = useApp();
+  const appearance = useRumboAgentAppearance(workspace?.id);
+  return <RumboAgentOrb color={appearance.orb_color} compact />;
+}
+const NAV_ICONS = { 'rumbo-agent': RumboAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, playbooks: ListChecks, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
 const MORE_DESTINATIONS = [
   ['Work', 'focus', 'updates', 'tasks', 'work', 'playbooks', 'workbench', 'workflows', 'operations'],
@@ -43,6 +51,7 @@ export function Sidebar({
   onSearch,
   onHelp,
   overlayOpen,
+  sidebarSizing,
 }) {
   const {
     data,
@@ -57,6 +66,7 @@ export function Sidebar({
   } = useApp();
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const { colorsFor } = useIconColors();
+  const agentAppearance = useRumboAgentAppearance(workspace?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [itemOptions, setItemOptions] = useState(null);
@@ -79,7 +89,7 @@ export function Sidebar({
   const counts = organizationCounts(data, organization);
   const focusedNavigation = organization.navigationMode === 'focused';
   const hiddenRootKeys = focusedSidebarHiddenKeys(organization);
-  const layoutOrder = group => [...organization.order[group]].sort((a, b) => Number(organization.pinnedLayout.includes(b)) - Number(organization.pinnedLayout.includes(a)));
+  const layoutOrder = group => organization.order[group];
   const sectionStyle = id => ({ order: layoutOrder('sections').indexOf(id) + 1, display: showSidebarItem(id, organization, counts) ? undefined : "none" });
   const badge = (id, label) => !counts[id] || organization.badges === "none" ? null : organization.badges === "dot" ? <i className="live-dot activity-badge" aria-label={`${counts[id]} ${label}`} /> : <small className="nav-count" aria-label={`${counts[id]} ${label}`}>{counts[id]}</small>;
   const entity = page.view === "tasks" ? data.tasks.find((item) => item.id === page.id)
@@ -154,6 +164,7 @@ export function Sidebar({
   const go = (view, id, options) => {
     navigate(view, id, options);
     setMobileOpen(false);
+    sidebarSizing?.setPeek(false);
     setWorkspaceOpen(false);
     setCreateOpen(false);
   };
@@ -198,10 +209,11 @@ export function Sidebar({
   const navItem = (id, label) => {
     if (!showSidebarItem(id, organization, counts)) return null;
     const item = NAV.find((entry) => entry.id === id), Icon = item.icon;
+    const itemLabel = label ?? (id === 'rumbo-agent' ? agentAppearance.display_name : item.label);
     const active = page.view === id && ((collapsed && !isMobile) || !activeProject);
-    return <Tooltip key={id} label={`${label ?? item.label}${organization.shortcuts ? ` · G ${item.key}` : ""}`}><ColorableNavItem compact={collapsed && !isMobile} colorId={`main:${id}`} icon={Icon} label={label ?? item.label} className={active ? 'active' : ''}
-      {...layoutBinding(id, label ?? item.label)} aria-current={active ? "page" : undefined} onClick={() => go(id)}>
-      {badge(id, `${item.label.toLowerCase()} items`)}
+    return <Tooltip key={id} label={`${itemLabel}${organization.shortcuts ? ` · G ${item.key}` : ""}`}><ColorableNavItem compact={collapsed && !isMobile} colorId={`main:${id}`} icon={Icon} label={itemLabel} className={active ? 'active' : ''}
+      {...layoutBinding(id, itemLabel)} aria-current={active ? "page" : undefined} onClick={() => go(id)}>
+      {badge(id, `${itemLabel.toLowerCase()} items`)}
     </ColorableNavItem></Tooltip>;
   };
   const sectionHeader = (section, label, target, onCreate) => <div className="sidebar-section-heading" {...layoutBinding(section, label)}>
@@ -227,9 +239,11 @@ export function Sidebar({
       <aside
         ref={sidebarRef}
         data-spacing={organization.density}
-        inert={isMobile && !mobileOpen ? true : undefined}
+        inert={isMobile && !mobileOpen || !isMobile && sidebarSizing?.hidden && !sidebarSizing?.peek ? true : undefined}
         className={`sidebar sidebar-v2 ${mobileOpen ? "mobile-open" : ""} ${collapsed ? "collapsed" : ""}`}
+        onPointerLeave={() => { if (sidebarSizing?.hidden) sidebarSizing.setPeek(false); }}
       >
+        {!sidebarSizing?.hidden ? <SidebarResizeHandle width={sidebarSizing?.width ?? 280} preview={sidebarSizing?.preview} onResize={sidebarSizing?.resize} onHide={sidebarSizing?.hide} onRestore={sidebarSizing?.restore} /> : null}
         <div className="sidebar-workspace-row">
         <div className="workspace-picker">
           <button
@@ -298,13 +312,6 @@ export function Sidebar({
           <div className="nav-group main-nav">
             {layoutOrder('primary').filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id))}
           </div>
-          <section data-layout-id="favorites" className="sidebar-section favorites-navigation" style={sectionStyle("favorites")}>
-            {sectionHeader("favorites", "Favorites")}
-            <Collapse id="navigation-favorites" className="sidebar-section-content nav-group" open={preferences.sections.favorites}>
-              {favorites.map(item => { const Icon = NAV.find(entry => entry.id === item.view)?.icon ?? Pin; return <div className="favorite-nav-row" key={favoriteKey(item)}><Tooltip label={`${item.title} · ${NAV.find(entry => entry.id === item.view)?.label}`}><ColorableNavItem colorId={`entity:${item.view}:${item.id}`} icon={Icon} label={item.title} className={page.view === item.view && page.id === item.id ? 'active' : ''} onClick={() => go(item.view, item.id)} /></Tooltip><IconButton label={`Remove ${item.title} from favorites`} onClick={() => toggleFavorite(item)}><X /></IconButton></div>; })}
-              {!favorites.length ? <p className="sidebar-empty-action">Open an item and use its pin to keep it here.</p> : null}
-            </Collapse>
-          </section>
           <section data-layout-id="agents" className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
             <div className="collapsed-section-link">{navItem("agents")}</div>
             {sectionHeader("agents", "Agents", "agents", () => create("agent"))}

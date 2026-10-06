@@ -4,6 +4,7 @@ import {
   fieldDefaultsStorageKey, fieldDefaultShortcutSlot, normalizeFieldDefaults,
   normalizeFieldDefinition, readFieldDefaults, readFieldInventory,
   registerFieldDefinition, resolveFieldValue, saveFieldDefaults, updateFieldEntry,
+  definitionForElement, validFieldDefaultValue,
 } from '../src/lib/field-defaults.js';
 
 function memoryStorage() {
@@ -17,6 +18,12 @@ test('preferences are browser-personal and isolated by workspace', () => {
   saveFieldDefaults('one', { enabled: false }, storage);
   assert.equal(readFieldDefaults('one', storage).enabled, false);
   assert.equal(readFieldDefaults('two', storage).enabled, true);
+});
+
+test('failed browser storage writes are reported instead of claiming a save', () => {
+  const unavailable = { getItem: () => null, setItem: () => { throw new Error('quota exceeded'); } };
+  assert.equal(saveFieldDefaults('one', { enabled: false }, unavailable), false);
+  assert.equal(readFieldDefaults('one', unavailable).enabled, true);
 });
 
 test('nine unique numbered values maximum and a valid primary', () => {
@@ -40,6 +47,40 @@ test('sensitive, search and unsupported fields are excluded even if configured',
   assert.equal(normalizeFieldDefinition({ key: 'search.work', label: 'Search work' }).eligible, false);
   assert.equal(normalizeFieldDefinition({ key: 'file.upload', type: 'file' }).eligible, false);
   assert.equal(resolveFieldValue(settings, { key: 'auth.token', label: 'API token' }), null);
+  assert.equal(updateFieldEntry('one', 'auth.token', { values: [{ id: 'x', slot: 1, value: 'SECRET' }] }, memoryStorage()), false);
+  assert.equal(normalizeFieldDefaults({ fields: { 'auth.token': { values: [{ id: 'x', slot: 1, value: 'SECRET' }] } } }).fields['auth.token'], undefined);
+});
+
+test('discovered date picker keeps semantic date type and rejects invalid calendar values', () => {
+  const element = {
+    matches: () => true, closest: () => null, getAttribute: () => null,
+    tagName: 'INPUT', type: 'text', autocomplete: 'off', placeholder: 'YYYY-MM-DD',
+    dataset: { fieldDefaultKey: 'route.new.due-date', fieldDefaultPage: 'New Route', fieldDefaultLabel: 'Due date', fieldDefaultAllow: 'true' },
+  };
+  const definition = definitionForElement(element);
+  assert.equal(definition?.type, 'date');
+  assert.equal(validFieldDefaultValue(definition, '2028-02-29'), true);
+  assert.equal(validFieldDefaultValue(definition, '2027-02-29'), false);
+  assert.equal(validFieldDefaultValue(definition, '2028-13-01'), false);
+  assert.equal(validFieldDefaultValue(definition, 'next week'), false);
+  const settings = normalizeFieldDefaults({ fields: { 'route.new.due-date': { primaryId: 'invalid', values: [{ id: 'invalid', slot: 1, value: 'next week' }] } } });
+  assert.equal(resolveFieldValue(settings, definition), null);
+});
+
+test('sensitive control metadata blocks defaults even when its registered label is generic', () => {
+  const element = {
+    matches: () => true, closest: () => null, getAttribute: () => null,
+    tagName: 'INPUT', type: 'text', autocomplete: 'one-time-code', name: 'verification_token',
+    dataset: { fieldDefaultKey: 'new.reference', fieldDefaultLabel: 'Reference', fieldDefaultMode: 'create' },
+  };
+  assert.equal(definitionForElement(element), null);
+});
+
+test('numeric defaults are finite numbers, not arbitrary text', () => {
+  const definition = { key: 'route.repeat.interval', label: 'Repeat every', type: 'number' };
+  assert.equal(validFieldDefaultValue(definition, '30'), true);
+  assert.equal(validFieldDefaultValue(definition, 'not-a-number'), false);
+  assert.equal(validFieldDefaultValue(definition, 'Infinity'), false);
 });
 
 test('inventory is grouped metadata and configurable entries remain separate', () => {

@@ -1,13 +1,15 @@
 import { useEffect } from 'react';
 import {
   FIELD_DEFAULTS_EVENT, definitionForElement, fieldDefaultShortcutSlot,
-  readFieldDefaults, registerFieldDefinition, resolveFieldValue,
+  readFieldDefaults, registerFieldDefinition, resolveFieldValue, validFieldDefaultValue,
 } from '../lib/field-defaults.js';
 
 // Using the native setter and an input/change event keeps controlled React
 // forms' onChange handlers in the loop; changing element.value alone does not.
-export function replaceFieldValue(element, value) {
+export function replaceFieldValue(element, value, { restore = false } = {}) {
   const text = String(value);
+  const definition = definitionForElement(element);
+  if (!definition || !restore && (!validFieldDefaultValue(definition, text) || element.maxLength >= 0 && text.length > element.maxLength)) return false;
   if (element.tagName === 'SELECT') {
     if (![...element.options].some(option => option.value === text)) return false;
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
@@ -19,8 +21,13 @@ export function replaceFieldValue(element, value) {
   const prototype = element.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
   if (!setter) return false;
+  const previous = element.value;
   setter.call(element, text);
-  if (element.value !== text) return false;
+  const validity = element.validity;
+  if (element.value !== text || !restore && (validity?.typeMismatch || validity?.patternMismatch || validity?.rangeOverflow || validity?.rangeUnderflow || validity?.stepMismatch || validity?.badInput)) {
+    setter.call(element, previous);
+    return false;
+  }
   element.dispatchEvent(new Event('input', { bubbles: true }));
   return true;
 }
@@ -75,7 +82,7 @@ export function FieldDefaultsProvider({ workspaceId, definitions = [], children 
         event.preventDefault();
         undo.delete(element);
         programmatic = true;
-        try { replaceFieldValue(element, previous.previous); } finally { programmatic = false; }
+        try { replaceFieldValue(element, previous.previous, { restore: true }); } finally { programmatic = false; }
         return;
       }
       if (!settings.shortcutsEnabled) return;

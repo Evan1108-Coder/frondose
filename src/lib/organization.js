@@ -28,10 +28,11 @@ export const NAV_ITEMS = [
 ];
 export const SIDEBAR_GROUPS = {
   primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "playbooks", "workbench", "workflows", "operations"],
-  sections: ["favorites", "agents", "teams", "projects", "workspace", "views", "chats"],
+  sections: ["agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
-export const SECTION_LABELS = { favorites: "Favorites", agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
+export const SECTION_LABELS = { agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
+export const HEADER_QUICK_ACCESS = ['focus', 'inbox', 'starred', 'work', 'playbooks', 'projects', 'chats', 'connections', 'settings'];
 export const FOCUSED_SIDEBAR_ROOT = new Set(['overview', 'rumbo-agent', 'starred', 'inbox', 'projects']);
 export function focusedSidebarHiddenKeys(organization) {
   if (organization.navigationMode !== 'focused') return [];
@@ -44,7 +45,7 @@ export function favoriteKey(item) { return `${item.view}:${item.id}`; }
 export function normalizeOrganization(value) {
   const input = value?.version === 1 ? value : {};
   const order = Object.fromEntries(Object.entries(SIDEBAR_GROUPS).map(([key, defaults]) => [key, ids(input.order?.[key], defaults)]));
-  const visibility = Object.fromEntries(Object.values(SIDEBAR_GROUPS).flat().map(id => [id, ["always", "activity", "hidden"].includes(input.visibility?.[id]) ? input.visibility[id] : id === "favorites" ? "activity" : "always"]));
+  const visibility = Object.fromEntries(Object.values(SIDEBAR_GROUPS).flat().map(id => [id, ["always", "activity", "hidden"].includes(input.visibility?.[id]) ? input.visibility[id] : "always"]));
   visibility['rumbo-agent'] = 'always';
   const favorites = [], seen = new Set();
   for (const item of Array.isArray(input.favorites) ? input.favorites.slice(0, 100) : []) {
@@ -58,9 +59,12 @@ export function normalizeOrganization(value) {
   }
   const layout = normalizeSidebarLayout(input.layout, order);
   for (const group of layout.groups) visibility[group.id] = input.visibility?.[group.id] === 'hidden' ? 'hidden' : 'always';
-  const pinnedLayout = (Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => Object.values(SIDEBAR_GROUPS).flat().includes(id) || layout.groups.some(g => g.id === id));
+  const pinnedLayout = [...new Set((Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => NAV_ITEMS.some(item => item.id === id)))];
   const entityOrder = Object.fromEntries(['projects', 'teams', 'agents', 'chats'].map(view => [view, [...new Set((Array.isArray(input.entityOrder?.[view]) ? input.entityOrder[view] : []).filter(validString))].slice(0, 500)]));
   return { version: 1, order, visibility, favorites, hiddenItems, pinnedLayout, entityOrder, layout,
+    quickAccess: [...new Set((Array.isArray(input.quickAccess) ? input.quickAccess : ['focus', 'settings']).filter(id => HEADER_QUICK_ACCESS.includes(id)))].slice(0, 8),
+    showPinnedInHeader: input.showPinnedInHeader !== false,
+    dockPosition: Number.isFinite(input.dockPosition?.x) && Number.isFinite(input.dockPosition?.y) ? { x: Math.min(0.97, Math.max(0.03, input.dockPosition.x)), y: Math.min(0.95, Math.max(0.05, input.dockPosition.y)) } : { x: 0.5, y: 0.9 },
     navigationMode: input.navigationMode === 'focused' || input.navigationMode === 'full' ? input.navigationMode : value?.version === 1 ? 'full' : 'focused',
     badges: ["count", "dot", "none"].includes(input.badges) ? input.badges : "count",
     density: input.density === "compact" ? "compact" : "comfortable",

@@ -1,0 +1,9 @@
+# Sidebar sizing and interface motion
+
+The main workspace sidebar and the Settings rail use one browser-local width. On desktop, drag the rail's right edge or focus its separator and press Left/Right to change the width in 24px increments. End enters a full-width navigation mode; Home hides the rail. A hidden rail can be restored with the header's Show navigation button, or temporarily revealed by hovering at the far left edge. Selecting a destination closes the temporary reveal. Mobile retains its separate drawer and does not use the resize handle.
+
+In normal mode, desktop width is bounded between 200px and 62% of the viewport, leaving at least 300px of room for the page. Dragging to within 72px of the left edge hides the rail while preserving the width it had before the drag. Dragging beyond 80% of a viewport at least 1000×600 enters full-width navigation mode. The active page becomes a small, slightly tilted preview. Use its Move/Resize handles (pointer or arrow keys), or click Open page to restore the normal layout. The preview itself is inert, so tiny scaled controls cannot be activated accidentally. The mode is temporary; the normal width and hidden state are personal to this browser and do not change shared workspace data. On smaller viewports, the full-width mode is unavailable and the ordinary width cap remains.
+
+Dialogs and the Help menu have a short close phase after pointer dismissal. Escape and keyboard-driven actions close immediately. A selected page gets one short upward entrance; live data refreshes do not replay it. Reduced-motion settings remove travel and scale, keeping at most a brief fade. The sidebar and Settings rail use a static, barely tinted gradient; the main canvas remains nearly neutral.
+
+This is a bounded layout preview, not a separate browser window. Dragging or resizing it changes only the on-screen preview; the page returns to its actual size before it can be interacted with.

@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { validationError } from './validation.mjs';
+import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
+import { recordChange } from './workspace-features.mjs';
+import { changeContext } from './change-context.mjs';
+import { activeHierarchyTarget, routeScope } from './route-hierarchy.mjs';
 
 const ACTIONS = Object.freeze([
   { id: 'route.create_draft', label: 'Create a draft Route', description: 'Create a backlog Route without starting an agent.', permission: 'routes.write', config_fields: [
@@ -21,6 +25,42 @@ const ACTIONS = Object.freeze([
     { key: 'title', label: 'Title', type: 'text', required: true },
     { key: 'project_id', label: 'Project', type: 'project', required: false },
   ] },
+  { id: 'milestone.create_planned', label: 'Create a planned milestone', description: 'Add a planned checkpoint to an active Project.', permission: 'projects.write', config_fields: [
+    { key: 'project_id', label: 'Project', type: 'project', required: true },
+    { key: 'title', label: 'Title', type: 'text', required: true },
+    { key: 'description', label: 'Description', type: 'textarea', required: false },
+    { key: 'target_date', label: 'Target date', type: 'date', required: false },
+  ] },
+  { id: 'route.set_priority', label: 'Set Route priority', description: 'Change priority on an accessible, active Route without changing its lifecycle stage.', permission: 'routes.write', config_fields: [
+    { key: 'route_id', label: 'Route ID', type: 'id', required: true },
+    { key: 'priority', label: 'Priority', type: 'choice', required: true, options: ['no_priority', 'low', 'medium', 'high', 'urgent'] },
+  ] },
+  { id: 'route.rename', label: 'Rename a Route', description: 'Rename an accessible, active Route.', permission: 'routes.write', config_fields: [
+    { key: 'route_id', label: 'Route ID', type: 'id', required: true },
+    { key: 'title', label: 'New title', type: 'text', required: true },
+  ] },
+  { id: 'project.set_goal', label: 'Set a Project goal', description: 'Replace the goal on an accessible, active Project.', permission: 'projects.write', config_fields: [
+    { key: 'project_id', label: 'Project', type: 'project', required: true },
+    { key: 'goal', label: 'Goal', type: 'textarea', required: true },
+  ] },
+  { id: 'project.set_target_date', label: 'Set a Project target date', description: 'Set a calendar target date; this does not promise completion.', permission: 'projects.write', config_fields: [
+    { key: 'project_id', label: 'Project', type: 'project', required: true },
+    { key: 'target_date', label: 'Target date', type: 'date', required: true },
+  ] },
+  { id: 'chat.rename', label: 'Rename a conversation', description: 'Change the title of an accessible conversation without sending a message.', permission: 'chats.write', config_fields: [
+    { key: 'chat_id', label: 'Conversation ID', type: 'id', required: true },
+    { key: 'title', label: 'New title', type: 'text', required: true },
+  ] },
+  { id: 'chat.pin', label: 'Pin a conversation', description: 'Pin an accessible conversation in Rumbo.', permission: 'chats.write', config_fields: [
+    { key: 'chat_id', label: 'Conversation ID', type: 'id', required: true },
+  ] },
+  { id: 'chat.unpin', label: 'Unpin a conversation', description: 'Remove a conversation pin without deleting the conversation.', permission: 'chats.write', config_fields: [
+    { key: 'chat_id', label: 'Conversation ID', type: 'id', required: true },
+  ] },
+  { id: 'chat.add_local_note', label: 'Add a local conversation note', description: 'Save a user note without contacting an AI provider.', permission: 'chats.write', config_fields: [
+    { key: 'chat_id', label: 'Conversation ID', type: 'id', required: true },
+    { key: 'content', label: 'Note', type: 'textarea', required: true },
+  ] },
 ]);
 const ACTION_BY_ID = new Map(ACTIONS.map(action => [action.id, action]));
 const EVENTS = ['inbox.opened'];
@@ -36,9 +76,13 @@ const string = (value, label, max, required = true) => {
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(value) ? value : (() => { throw validationError('Provide an idempotency key of 8–128 letters, numbers, underscores or hyphens.'); })();
 const json = value => JSON.parse(value);
 const output = row => row && { ...row, enabled: Boolean(row.enabled), definition: json(row.definition_json), definition_json: undefined };
+const calendarDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
 export function playbookCatalog() {
-  return { actions: ACTIONS.map(({ permission, ...action }) => action), triggers: [
+  return { actions: ACTIONS.map(({ permission, ...action }) => ({ ...action, category: action.id.split('.')[0], availability: 'available' })), unavailable: {
+    plugins: Object.values(CONNECTOR_CATALOG).flatMap(provider => provider.actions.map(action => ({ id: `plugin.${provider.id}.${action.id}`, label: `${provider.name}: ${action.label}`, provider: provider.id, status: 'coming_soon', reason: 'Plugin connections are paused; this action cannot run in a Playbook.' }))),
+    ai: [{ id: 'ai.run_agent', label: 'Run an AI agent', status: 'not_supported', reason: 'Agent execution needs its own reviewed context, permissions, and provider readiness; Playbooks cannot launch agents.' }],
+  }, triggers: [
     { type: 'manual', label: 'Run button' },
     { type: 'event', label: 'When something happens', events: EVENTS },
     { type: 'schedule', label: 'At a scheduled time', frequency: 'daily or selected weekdays', timezone: 'IANA timezone' },
@@ -78,7 +122,12 @@ function normalizeDefinition(value) {
       if (value === undefined || value === null || value === '') {
         if (field.required) throw validationError(`${field.label} is required in step ${index + 1}.`);
         config[field.key] = '';
-      } else config[field.key] = string(value, field.label, field.type === 'textarea' ? 50_000 : field.type === 'project' ? 128 : 200);
+      } else {
+        const normalized = string(value, field.label, field.type === 'textarea' ? 50_000 : ['project', 'id'].includes(field.type) ? 128 : 200);
+        if (field.type === 'choice' && !field.options.includes(normalized)) throw validationError(`Choose a supported ${field.label.toLowerCase()} in step ${index + 1}.`);
+        if (field.type === 'date' && !calendarDate(normalized)) throw validationError(`${field.label} must be a real YYYY-MM-DD date in step ${index + 1}.`);
+        config[field.key] = normalized;
+      }
     }
     return { action_id: action.id, config };
   });
@@ -153,6 +202,36 @@ export function createPlaybooksService({ db, allowed, now = () => new Date() }) 
     authorize(ws, actor, permission, { scope_type: 'project', scope_id: projectId });
     return project;
   };
+  const routeFor = (ws, routeId, actor) => {
+    const route = db.prepare('SELECT * FROM tasks WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(routeId, ws);
+    if (!route) throw error('Route unavailable in this workspace.', 404);
+    activeHierarchyTarget(db, route);
+    authorize(ws, actor, 'routes.read', routeScope(route));
+    authorize(ws, actor, 'routes.write', routeScope(route));
+    return route;
+  };
+  const chatFor = (ws, chatId, actor) => {
+    const chat = db.prepare('SELECT * FROM chats WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(chatId, ws);
+    if (!chat) throw error('Conversation unavailable in this workspace.', 404);
+    const route = chat.task_id ? db.prepare('SELECT * FROM tasks WHERE id=? AND workspace_id=?').get(chat.task_id, ws) : null;
+    if (chat.task_id && !route) throw error('The linked Route is unavailable.', 404);
+    if (route) {
+      activeHierarchyTarget(db, route);
+      authorize(ws, actor, 'routes.read', routeScope(route));
+      if (chat.project_id && chat.project_id !== route.project_id) throw error('The conversation has inconsistent Project and Route links.', 409);
+    }
+    if (chat.project_id) projectFor(ws, chat.project_id, actor, 'projects.read');
+    const scope = chat.project_id ? { scope_type: 'project', scope_id: chat.project_id } : route ? routeScope(route) : {};
+    authorize(ws, actor, 'chats.read', scope);
+    authorize(ws, actor, 'chats.write', scope);
+    return chat;
+  };
+  const saveChange = (table, before, after, date) => {
+    if (before && after?.id) db.prepare(`UPDATE ${table} SET updated_at=? WHERE id=?`).run(date, after.id);
+    const current = after?.id && db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(after.id);
+    recordChange(db, table, before, current, before ? 'updated' : 'created');
+    return current;
+  };
   const apply = (step, ws, actor, date) => {
     const action = ACTION_BY_ID.get(step.action_id);
     if (!action) throw error('This action is no longer available.', 409, 'action_unavailable');
@@ -163,23 +242,63 @@ export function createPlaybooksService({ db, allowed, now = () => new Date() }) 
       const id = `task_${randomUUID()}`;
       const next = db.prepare('SELECT COALESCE(MAX(number),0)+1 AS number FROM tasks WHERE workspace_id=?').get(ws).number;
       db.prepare('INSERT INTO tasks(id,workspace_id,project_id,team_id,number,title,description,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id, ws, project?.id ?? null, project?.team_id ?? null, next, config.title, config.description, 'backlog', date, date);
+      saveChange('tasks', null, { id }, date);
       return { route_id: id, number: next };
     }
     if (step.action_id === 'document.create_draft') {
       const id = `doc_${randomUUID()}`;
       db.prepare('INSERT INTO documents(id,workspace_id,project_id,title,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id, ws, project?.id ?? null, config.title, config.content, date, date);
+      saveChange('documents', null, { id }, date);
       return { document_id: id };
     }
     if (step.action_id === 'project.create_draft') {
       const id = `project_${randomUUID()}`;
       const identifier = `PB${randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`;
       db.prepare('INSERT INTO projects(id,workspace_id,name,identifier,description,goal,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id, ws, config.name, identifier, config.description, config.goal, 'planned', date, date);
+      saveChange('projects', null, { id }, date);
       return { project_id: id };
     }
     if (step.action_id === 'chat.create_draft') {
       const id = `chat_${randomUUID()}`;
       db.prepare('INSERT INTO chats(id,workspace_id,project_id,title,kind,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id, ws, project?.id ?? null, config.title, 'general', date, date);
+      saveChange('chats', null, { id }, date);
       return { chat_id: id };
+    }
+    if (step.action_id === 'milestone.create_planned') {
+      const id = `milestone_${randomUUID()}`;
+      db.prepare('INSERT INTO milestones(id,workspace_id,project_id,title,description,status,target_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id, ws, project.id, config.title, config.description, 'planned', config.target_date || null, date, date);
+      saveChange('milestones', null, { id }, date);
+      return { milestone_id: id };
+    }
+    if (step.action_id === 'route.set_priority' || step.action_id === 'route.rename') {
+      const route = routeFor(ws, config.route_id, actor);
+      const field = step.action_id === 'route.set_priority' ? 'priority' : 'title';
+      db.prepare(`UPDATE tasks SET ${field}=?,updated_at=? WHERE id=?`).run(config[field], date, route.id);
+      saveChange('tasks', route, { id: route.id }, date);
+      return { route_id: route.id, [field]: config[field] };
+    }
+    if (step.action_id === 'project.set_goal' || step.action_id === 'project.set_target_date') {
+      authorize(ws, actor, 'projects.read', { scope_type: 'project', scope_id: project.id });
+      const field = step.action_id === 'project.set_goal' ? 'goal' : 'target_date';
+      if (field === 'target_date' && project.start_date && project.start_date > config.target_date) throw validationError('Target date must not precede the Project start date.');
+      db.prepare(`UPDATE projects SET ${field}=?,updated_at=? WHERE id=?`).run(config[field], date, project.id);
+      saveChange('projects', project, { id: project.id }, date);
+      return { project_id: project.id, [field]: config[field] };
+    }
+    if (['chat.rename', 'chat.pin', 'chat.unpin', 'chat.add_local_note'].includes(step.action_id)) {
+      const chat = chatFor(ws, config.chat_id, actor);
+      if (step.action_id === 'chat.add_local_note') {
+        const id = `msg_${randomUUID()}`;
+        db.prepare('INSERT INTO messages(id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id, chat.id, 'user', actor.id, actor.name || 'Member', config.content, 'note', '[]', JSON.stringify({ delivery: 'note', source: 'playbook' }), date, date);
+        db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(date, chat.id);
+        recordChange(db, 'messages', null, { ...db.prepare('SELECT * FROM messages WHERE id=?').get(id), workspace_id: ws, title: chat.title }, 'created');
+        return { chat_id: chat.id, message_id: id };
+      }
+      const field = step.action_id === 'chat.rename' ? 'title' : 'pinned';
+      const value = field === 'title' ? config.title : step.action_id === 'chat.pin' ? 1 : 0;
+      db.prepare(`UPDATE chats SET ${field}=?,updated_at=? WHERE id=?`).run(value, date, chat.id);
+      saveChange('chats', chat, { id: chat.id }, date);
+      return { chat_id: chat.id, [field]: value };
     }
     throw error('This action is unavailable.', 409, 'action_unavailable');
   };
@@ -199,7 +318,7 @@ export function createPlaybooksService({ db, allowed, now = () => new Date() }) 
         transaction(() => {
           // Re-check membership and permission at every step; saved definitions confer no grants.
           authorize(book.workspace_id, actor, 'automations.manage');
-          const value = apply(step, book.workspace_id, actor, instant());
+          const value = changeContext.run({ actor, source: 'Playbook' }, () => apply(step, book.workspace_id, actor, instant()));
           db.prepare('INSERT INTO playbook_step_receipts(run_id,step_index,action_id,status,result_json,created_at) VALUES(?,?,?,?,?,?)').run(id, index, step.action_id, 'completed', JSON.stringify(value), instant());
         });
       } catch (cause) {

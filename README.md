@@ -8,7 +8,7 @@ Workspace Settings supports an optional uploaded, square-cropped picture. Custom
 
 ## Organize your workspace
 
-- **Rumbo Agent** is the dedicated assistant entry point, with connection readiness, persistent conversations, a chat switcher, explicit model selection and Settings → Rumbo Agent. Documents, Routes, projects, updates and Workbench can prepare a source-linked request; `/rumbo` prepares a draft, never runs a terminal command. Inspect exact context and explicitly send. Account model catalogs are not currently enumerable through the CLI bridge: provider defaults and configured IDs are labeled accordingly, not presented as verified account availability. Workspace actions remain human-reviewed proposals.
+- **Rumbo Agent** is the dedicated assistant entry point, with a first-use name/purpose/guidelines quiz and six-color visual identity. Existing conversations remain readable; setup gates new ones. Connection readiness, persistent conversations, a chat switcher, explicit model selection and Settings → Rumbo Agent remain available. Documents, Routes, projects, updates and Workbench can prepare a source-linked request; `/rumbo` prepares a draft, never runs a terminal command. Inspect exact context and explicitly send. Account model catalogs are not currently enumerable through the CLI bridge: provider defaults and configured IDs are labeled accordingly, not presented as verified account availability. Workspace actions remain human-reviewed proposals. See [Rumbo Agent setup and boundaries](docs/rumbo-agent-onboarding.md).
 
 - **Today** separates human decisions, executing work, outputs awaiting review, proposed next actions and recent context. Area/Project filters apply to this read-only summary; snoozing remains a browser-personal preference. Failed runs, repeated recorded error codes, due knowledge reviews and outdated Workflow profile pins are inspectable without launching work. Following, Recent, Activity and check-ins remain available. New navigation labels retain existing stored links and sidebar customization.
 - **Customize sidebar** is available in the workspace menu, sidebar footer, Settings → Appearance, and search. Reorder sections with accessible up/down controls, choose Always show / With activity / Hide, set count/dot/no badges, and choose row spacing. Save applies the layout; Cancel discards it; Reset layout preserves favorites and shortcut preferences. These preferences belong to this browser and workspace, not other teammates or devices.
@@ -19,7 +19,7 @@ Workspace Settings supports an optional uploaded, square-cropped picture. Custom
 
 A local-first workspace for projects, conversations, and AI workers. A **Route** connects an intention to its project, chat, agent sessions, and outcome.
 
-## Run locally
+## Setup
 
 Requires Node.js 22.5 or newer. Use a current Node release for the built-in SQLite runtime.
 
@@ -30,11 +30,12 @@ npm run dev
 
 Open [Rumbo](http://127.0.0.1:4174). The server binds to loopback only. A new installation starts with an empty workspace setup; existing local records are preserved during schema upgrades.
 
-## What is implemented
+## Usage
 
 See [product expansion status](docs/product-expansion-status.md) for the detailed implementation/limitations ledger. New connected workflows include project Workbench (files, Git, real terminals), Home, supervised work plans and repeat Routes, versioned outputs/review, immutable context, knowledge revisions, document and saved-view pages, and project timelines. **The full proposed roadmap is not finished, and this build is not a public multi-user service.**
 
 - Floating sidebar with an extremely subtle navigation-only gradient, centered empty states, responsive layouts, dark/light/system themes, comfortable/compact density, interruptible disclosures, reduced motion, accessible dialogs, and keyboard navigation.
+- Resizable workspace and Settings sidebars, edge hover-reveal after hiding, an optional full-width sidebar with an inert draggable/resizable page miniature, configurable header quick access, and a draggable edge-snapping dock for pins hidden from the header. See [sidebar sizing and motion](docs/sidebar-motion-and-sizing.md). Workbench arrival and linked-content previews are documented in [Workbench motion](docs/workbench-motion.md).
 - Create and switch workspaces. Create, edit, search, archive, and restore projects, Routes, chats, agents, and memory notes.
 - Full project spaces with a Markdown brief, Area, lead, start/target dates, milestones, routes, documents, related conversations, activity, repository/folder links, and project memory.
 - Areas organize domains such as Product, Engineering, Research or Personal administration. Existing Team IDs, resources, ownership, history and access grants are preserved. Areas retain scoped projects, Routes, updates, resources and documents; Contacts is optional and existing directory entries are retained.
@@ -52,12 +53,12 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 - Agent instructions and default folders. Preview the selected project, route, chat, and working folder before starting work; choose whether to include chat and memory. See [agent behavior and verification](docs/agents-refresh.md).
 - Live Codex sessions for analysis or project edits. Live Claude sessions for restricted read/search analysis. Stream events and responses into the local session history and linked chat; stop active work.
 - Runs can be renamed and starred or recoverably archived after stopping. Starred collects personal shortcuts across the workspace and is linked from Profile; sidebar tabs can be hidden and restored in Customize sidebar. Update and run-event icons have distinct Rumbo-authored glyphs in the shared Icons catalog, with personal per-workspace choices in Settings → Milestones & updates.
-- Structured Route, Project and Chat templates can ask up to 24 custom questions and save their pinned answers with each created item. Settings → Field defaults offers browser-personal values for 49 explicitly wired, non-sensitive fields plus active template questions, with primary values, per-field switches, numbered shortcuts and immediate undo. This is not a blanket autofill for every control.
-- Playbooks provide versioned, permission-checked sequences of four actual local draft-creation actions. Manual, Inbox-open and local-server scheduled triggers have run receipts and idempotency; they do not launch agents or access external services. Missed schedules are not replayed, and workspace JSON exports do not yet include Playbooks. See [templates, field defaults and Playbooks](docs/templates-defaults-playbooks.md) and the in-app Docs articles.
+- Structured Route, Project and Chat templates can ask up to 24 custom questions and save their pinned answers with each created item. Settings → Field defaults offers browser-personal values for 107 explicitly wired, non-sensitive creation fields plus active template questions, with primary values, per-field switches, numbered shortcuts and immediate undo. This is not a blanket autofill for every control.
+- Playbooks provide versioned, permission-checked sequences of 13 actual local actions for draft creation, milestones, scoped Route/Project updates, and conversation organization. Manual, Inbox-open and local-server scheduled triggers have run receipts and idempotency; they do not launch agents or access external services. Paused Plugin actions are cataloged as Coming soon, not executable. Missed schedules are not replayed, and workspace JSON exports do not yet include Playbooks. See [templates, field defaults and Playbooks](docs/templates-defaults-playbooks.md) and the in-app Docs articles.
 - Reviewed live runs may explicitly opt into a private per-run MCP bridge. Read tools return only context captured in that run's approved manifest. Write tools create idempotent pending-review requests; permission requests never grant access, handoffs never start agents, memory remains draft, and submitted output remains review-needed. The bridge is revoked when the run stops or completes and has no browser invocation endpoint.
 - Clearly labeled local simulations for testing session events, approval, denial, and stopping without contacting accounts.
 - Inbox for outstanding decisions and session updates. Read state and notification preferences persist.
-- Real connection setup, explicit sign-in checks, progress, disconnect, and resource browsing. See the provider table below.
+- Local Codex/Claude runner setup, plus explicit OpenRouter and configured Hugging Face browser authorization, account checks, model discovery, tests and disconnect. Non-AI Plugins remain paused. See the provider table below.
 - Searchable slash commands in chat and Workbench. The registry includes Rumbo, agent, Git, and connection namespaces; only commands with a real handler are executable. Catalog-only and external connection commands are labeled as previews. Workbench Git/shell commands always open the existing machine/command review and confirmation dialog before execution; raw terminal input is never intercepted.
 - Typed project and Route updates with threaded replies, recoverable archiving, and recorded `@agent` requests. An agent mention in an update does not contact or start that agent; users must review and launch agent work separately.
 - Profile/image settings, workspace editing, appearance, session defaults, JSON exports, archive restore, and diagnostics.
@@ -68,22 +69,26 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 
 The sidebar's **AI connections** page separates browser sign-in from existing local runners and direct model APIs. OpenRouter has server-side PKCE authorization, an encrypted user-owned key, account checks, account-filtered model listing and an explicitly requested short test prompt. Hugging Face has a scoped OAuth PKCE flow, encrypted user token, account/model checks and an explicit short inference test, but its Connect action requires an operator OAuth app first. Neither is yet wired into Rumbo Agent or Workflows or validated against a real account. GitHub Copilot is a documented next candidate, not an active Rumbo integration. Provider credits or subscriptions remain the user's responsibility. See [AI connection status and setup](docs/ai-connections.md).
 
-The non-AI service marketplace below is preserved under **Settings → Service integrations** but is paused. Existing records remain; new authorization, synchronization, imports and provider actions are disabled until explicitly re-enabled and verified.
+The non-AI service marketplace below is preserved under **Settings → Plugins** but is paused. Existing records remain; new authorization, synchronization, imports and provider actions are disabled until explicitly re-enabled and verified.
 
-The workspace connection marketplace now includes Codex and Claude account management plus OAuth adapters for GitHub, GitHub Actions, GitHub Packages, Google Drive, Docs, Sheets, Slides, Linear, Jira, Slack, Figma, and FigJam. Per-connection controls cover selected resources, enabled actions, agent delegation, cached context, imports, conflicts, and synchronization jobs. GitHub includes a branch/file browser and comparisons. Code appearance preferences are shared with Workbench.
+The Plugin catalog describes planned adapters for GitHub, GitHub Actions, GitHub Packages, Google Drive, Docs, Sheets, Slides, Linear, Jira, Slack, Figma, and FigJam. Adapter code and fixture tests are retained, but their live account/resource/action paths are blocked in this release. Catalog controls and older records do not imply working authorization or synchronization.
 
 See [workspace connector setup and exact supported operations](server/connectors/README.md). These adapters require operator-owned provider application registrations before a user can authorize an account. Their implemented action sets are intentionally explicit: this is not complete feature parity with each external product, a native Slides/Figma editor, or arbitrary two-way synchronization.
 
-The existing installation-level connections remain available separately:
+The active local runner and browser-account routes are separate:
 
-| Provider     | Implemented path                                         | Scope                                                           |
-| ------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
-| Codex        | Existing CLI sign-in or provider browser sign-in         | Analysis or edits inside a chosen project folder                |
-| Claude       | Existing Claude Code sign-in or provider browser sign-in | Read/search analysis; requires a CLI supporting restricted mode |
-| GitHub       | CLI account, browser sign-in, or fine-grained token      | Repository listing and project links                            |
-| Google Drive | OAuth with a registered Google client                    | File metadata and links; no file contents or editing            |
+| Provider | Implemented path | Current scope |
+| --- | --- | --- |
+| Codex | Existing local CLI sign-in | Reviewed analysis or project work on this machine; not public subscription OAuth |
+| Claude Code | Existing local CLI sign-in | Restricted read/search analysis on this machine |
+| OpenRouter | Browser authorization | Account check, model discovery, explicit model test; not agent execution |
+| Hugging Face Inference | Browser OAuth after operator setup | Account check, model discovery, explicit test; not agent execution |
 
-[Connection setup and provider limitations](docs/connection-setup.md) documents prerequisites, environment variables, permissions, and billing boundaries. Google needs an OAuth application registration before its sign-in flow can run. User authorization and live provider compatibility must be verified with the account owner; automated tests do not contact real accounts or consume model usage.
+[AI connections and navigation](docs/ai-connections-navigation.md) explains current routes, Plugin boundaries, header shortcuts and the floating dock. [Connection setup and provider limitations](docs/connection-setup.md) documents prerequisites and future Plugin boundaries. Live provider compatibility still needs account-owner verification; automated tests do not contact real accounts or consume model usage.
+
+## Validation
+
+Run `npm test`, `npm run build`, and `npm run test:sites` from the repository root. The [October 2026 checkpoint](docs/october-2026-checkpoint.md) records the current test counts, browser smoke checks, and known limits. Passing local tests does not verify account-specific AI models, provider billing, Plugin authorization, or public hosting.
 
 ## Local data and permissions
 

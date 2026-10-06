@@ -2,17 +2,27 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen, Keyboard, PanelLeft, Settings } from './icons.jsx';
 import { Dialog, useApp } from '../ui.jsx';
+import { currentMotionPreference } from '../lib/motion.js';
 import './help-menu.css';
 
 export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
   const { navigate, customizeSidebar, showShortcuts } = useApp();
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   const [position, setPosition] = useState({ left: 8, bottom: 64 });
-  const trigger = useRef(null), menu = useRef(null);
+  const trigger = useRef(null), menu = useRef(null), closeTimer = useRef(null);
   const initialItem = useRef('first');
   const id = useId();
-  useEffect(() => { if (overlayOpen) setOpen(false); }, [overlayOpen]);
+  useEffect(() => { if (overlayOpen) { window.clearTimeout(closeTimer.current); setOpen(false); setClosing(false); } }, [overlayOpen]);
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+  const close = callback => {
+    if (!open || closing) return;
+    const { fadeMs } = currentMotionPreference();
+    if (!fadeMs) { setOpen(false); callback?.(); return; }
+    setClosing(true);
+    closeTimer.current = window.setTimeout(() => { setOpen(false); setClosing(false); callback?.(); }, Math.min(fadeMs, 160));
+  };
   useEffect(() => {
     if (!open) return;
     const positionMenu = () => {
@@ -21,16 +31,17 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
     };
     positionMenu();
     const frame = requestAnimationFrame(() => {
+      if (closing) return;
       const buttons = menu.current?.querySelectorAll('[role="menuitem"]');
       buttons?.[initialItem.current === 'last' ? buttons.length - 1 : 0]?.focus();
     });
     const outside = event => {
-      if (!menu.current?.contains(event.target) && !trigger.current?.contains(event.target)) setOpen(false);
+      if (!menu.current?.contains(event.target) && !trigger.current?.contains(event.target)) close();
     };
     const escape = event => {
       if (event.key !== 'Escape') return;
       event.preventDefault(); event.stopPropagation();
-      setOpen(false); trigger.current?.focus();
+      close(); trigger.current?.focus();
     };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape, true);
@@ -41,12 +52,10 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
       document.removeEventListener('keydown', escape, true);
       window.removeEventListener('resize', positionMenu);
     };
-  }, [open]);
+  }, [open, closing]);
   const run = action => {
-    setOpen(false);
     trigger.current?.focus();
-    onAction?.();
-    action();
+    close(() => { onAction?.(); action(); });
   };
   const go = onNavigate ?? navigate;
   const items = [
@@ -57,12 +66,12 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
     ['Settings', Settings, () => go('settings')],
   ];
   return <>
-    <button type="button" ref={trigger} className="rumbo-help-trigger" aria-label="Help and resources" aria-haspopup="menu" aria-controls={open ? id : undefined} aria-expanded={open} onClick={() => { initialItem.current = 'first'; setOpen(current => !current); }} onKeyDown={event => {
+    <button type="button" ref={trigger} className="rumbo-help-trigger" aria-label="Help and resources" aria-haspopup="menu" aria-controls={open ? id : undefined} aria-expanded={open} onClick={() => { initialItem.current = 'first'; if (open) close(); else { window.clearTimeout(closeTimer.current); setClosing(false); setOpen(true); } }} onKeyDown={event => {
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
       event.preventDefault(); initialItem.current = event.key === 'ArrowUp' ? 'last' : 'first'; setOpen(true);
     }}><span aria-hidden="true">?</span></button>
-    {open ? createPortal(<div id={id} ref={menu} className="rumbo-help-menu" role="menu" aria-label="Help and resources" data-rumbo-popup style={position} onBlur={event => {
-      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== trigger.current) setOpen(false);
+    {open ? createPortal(<div id={id} ref={menu} className="rumbo-help-menu" role="menu" aria-label="Help and resources" data-rumbo-popup data-closing={closing ? 'true' : undefined} style={position} onBlur={event => {
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget !== trigger.current) close();
     }} onKeyDown={event => {
       const buttons = [...event.currentTarget.querySelectorAll('[role="menuitem"]')];
       const index = buttons.indexOf(document.activeElement);
@@ -70,7 +79,7 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
         event.preventDefault();
         buttons[event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length]?.focus();
       }
-      if (event.key === 'Tab') { setOpen(false); trigger.current?.focus(); }
+      if (event.key === 'Tab') close();
       if (event.key.length === 1 && /[a-z]/i.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
         const ordered = [...buttons.slice(index + 1), ...buttons.slice(0, index + 1)];
         const match = ordered.find(button => button.textContent.toLowerCase().startsWith(event.key.toLowerCase()));
