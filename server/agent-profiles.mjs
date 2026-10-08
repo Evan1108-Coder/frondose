@@ -102,7 +102,7 @@ export function validateAgentProfile(db, record, { actor, allowed, importing = f
     const connection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(record.provider_connection_id);
     if (!connection) throw validationError('The selected provider connection no longer exists.');
     if (connection.provider !== record.provider) throw validationError('The provider connection must match the agent provider.');
-  } else if (!importing && record.provider_connection_id === undefined && ['codex', 'claude'].includes(record.provider)) {
+  } else if (!importing && record.provider_connection_id === undefined && ['codex', 'claude', 'openrouter', 'huggingface'].includes(record.provider)) {
     const connection = db.prepare('SELECT id FROM connections WHERE provider=?').get(record.provider);
     if (!connection) throw validationError('Create the provider connection before saving this agent.');
     record.provider_connection_id = connection.id;

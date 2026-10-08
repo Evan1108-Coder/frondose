@@ -1,18 +1,19 @@
-// Stable, searchable names for the new-item fields whose defaults are actually
-// wired into their forms. Do not advertise a field here until it is tagged.
+// Semantic legacy keys remain compatible. The Vite source analyzer adds all
+// other input sites before any page/dialog has been visited.
 import { RESOURCE_TYPES } from './settings-catalog.js';
+import { SOURCE_FIELD_DEFINITIONS } from './field-source-inventory.js';
 
 const RESOURCE_FIELD_DEFINITIONS = Object.entries(RESOURCE_TYPES).flatMap(([kind, spec]) => {
   const page = `New ${spec.singular} · ${spec.title}`;
   return [
     { key: `resource.${kind}.new.name`, page, label: 'Name', type: 'text' },
     ...Object.entries(spec.fields)
-      .filter(([key, field]) => ['text', 'textarea'].includes(field.type) && !['query', 'requester', 'owner'].includes(key))
+      .filter(([, field]) => ['text', 'textarea'].includes(field.type))
       .map(([key, field]) => ({ key: `resource.${kind}.new.${key}`, page, label: field.label, type: field.type })),
   ];
 });
 
-export const STATIC_FIELD_DEFINITIONS = Object.freeze([
+const LEGACY_FIELD_DEFINITIONS = [
   { key: 'workspace.new.name', page: 'New workspace', label: 'Name', type: 'text' },
   { key: 'workspace.new.description', page: 'New workspace', label: 'Description', type: 'textarea' },
   { key: 'project.new.name', page: 'New project', label: 'Name', type: 'text' },
@@ -36,8 +37,6 @@ export const STATIC_FIELD_DEFINITIONS = Object.freeze([
   { key: 'agent.new.output-behavior', page: 'New agent', label: 'Expected output behavior', type: 'textarea' },
   { key: 'memory.new.title', page: 'New memory note', label: 'Title', type: 'text' },
   { key: 'memory.new.content', page: 'New memory note', label: 'Content', type: 'textarea' },
-  { key: 'playbook.new.name', page: 'New Playbook', label: 'Name', type: 'text' },
-  { key: 'playbook.new.description', page: 'New Playbook', label: 'Description', type: 'textarea' },
   { key: 'session.new.prompt', page: 'Start a session', label: 'What should the agent do?', type: 'textarea' },
   { key: 'conversation.compose.message', page: 'Conversation composer', label: 'Message', type: 'textarea' },
   { key: 'rumbo-agent.new.request', page: 'Rumbo Agent new conversation', label: 'Request', type: 'textarea' },
@@ -78,7 +77,11 @@ export const STATIC_FIELD_DEFINITIONS = Object.freeze([
   { key: 'skill-from-run.new.purpose', page: 'New Skill from run', label: 'Reusable purpose', type: 'textarea' },
   { key: 'skill-from-run.new.instructions', page: 'New Skill from run', label: 'Reusable instructions', type: 'textarea' },
   ...RESOURCE_FIELD_DEFINITIONS,
-]);
+];
+
+export const STATIC_FIELD_DEFINITIONS = Object.freeze([...new Map([
+  ...SOURCE_FIELD_DEFINITIONS, ...LEGACY_FIELD_DEFINITIONS,
+].map(definition => [definition.key, definition])).values()]);
 
 export function fieldDefinitionsForWorkspace(data) {
   const custom = (data?.workspace_items ?? [])

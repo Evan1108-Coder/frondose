@@ -48,6 +48,8 @@
 .rumbo-agent-conversation .chat-compose textarea { display: block; resize: vertical; width: 100%; border: 0; outline: 0; border-radius: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; line-height: 1.6; min-height: 68px; max-height: 180px; padding: 0 3px 12px; box-shadow: none; }
 .rumbo-agent-compose:focus-within, .rumbo-agent-conversation .chat-compose:focus-within { border-color: var(--border-strong); box-shadow: 0 18px 55px rgba(0,0,0,.18), 0 0 0 2px color-mix(in srgb, var(--text) 28%, transparent); }
 .rumbo-agent-controls { flex-wrap: wrap; padding: 5px 0; }
+.rumbo-model-choice { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }
+.rumbo-model-choice .rumbo-select { max-width: 280px; }
 .rumbo-agent-provider { display: inline-flex; align-items: center; gap: 7px; }
 .rumbo-agent-action-list { display: grid; gap: 8px; }
 .rumbo-agent-action-list .button { justify-content: flex-start; }

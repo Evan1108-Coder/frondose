@@ -77,7 +77,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   async function requestJson(url, options = {}) {
     let response;
     const provider = new URL(url).hostname === 'openrouter.ai' ? 'OpenRouter' : 'Hugging Face';
-    try { response = await fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(20_000) }); }
+    try { response = await fetchImpl(url, { ...options, redirect: 'error', signal: options.signal || AbortSignal.timeout(20_000) }); }
     catch { throw failure('provider_unreachable', `${provider} could not be reached. Try again later.`, 502); }
     if (!response.ok) throw failure(response.status === 401 ? 'reconnect_required' : response.status === 429 ? 'rate_limited' : 'provider_error', response.status === 401 ? `${provider} rejected this authorization. Reconnect.` : response.status === 429 ? `${provider} rate limit reached. Try later.` : `${provider} returned HTTP ${response.status}.`, response.status === 401 ? 409 : response.status === 429 ? 429 : 502);
     if (Number(response.headers?.get('content-length')) > MAX_RESPONSE_BYTES) throw failure('provider_response_too_large', `${provider} response was too large.`, 502);
@@ -96,7 +96,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       content = Buffer.concat(chunks).toString('utf8');
     } else {
       content = await response.text();
-      if (content.length > MAX_RESPONSE_BYTES) throw failure('provider_response_too_large', `${provider} response was too large.`, 502);
+      if (Buffer.byteLength(content, 'utf8') > MAX_RESPONSE_BYTES) throw failure('provider_response_too_large', `${provider} response was too large.`, 502);
     }
     try { return JSON.parse(content); } catch { throw failure('provider_response', `${provider} returned an unreadable response.`, 502); }
   }
@@ -187,11 +187,11 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     return clientId;
   };
   const hfRedirect = host => `${callbackOrigin(host)}${HF_CALLBACK}`;
-  async function hfToken(fields) {
+  async function hfToken(fields, signal) {
     const clientId = hfClientId();
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
     if (env.RUMBO_HF_CLIENT_SECRET) headers.Authorization = `Basic ${Buffer.from(`${clientId}:${env.RUMBO_HF_CLIENT_SECRET}`).toString('base64')}`;
-    const result = await hfJson('/oauth/token', { method: 'POST', headers, body: new URLSearchParams({ client_id: clientId, ...fields }).toString() });
+    const result = await hfJson('/oauth/token', { method: 'POST', headers, body: new URLSearchParams({ client_id: clientId, ...fields }).toString(), ...(signal ? { signal } : {}) });
     if (typeof result.access_token !== 'string' || !result.access_token) throw failure('oauth_invalid', 'Hugging Face did not return an access token.', 502);
     return { access_token: result.access_token, refresh_token: result.refresh_token || null, expires_at: Number.isFinite(Number(result.expires_in)) ? Date.now() + Number(result.expires_in) * 1000 : null };
   }
@@ -222,7 +222,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       .run(id, attempt.workspace_id, actor.id, seal(id, JSON.stringify(credential)), typeof identity.name === 'string' ? identity.name.slice(0, 120) : 'Hugging Face account', timestamp, null, timestamp, timestamp);
     return publicRow(read(attempt.workspace_id, actor.id, 'huggingface'));
   }
-  async function hfCredential(workspaceId, actor) {
+  async function hfCredential(workspaceId, actor, signal) {
     const row = read(workspaceId, actor.id, 'huggingface');
     if (!row) throw failure('not_connected', 'Connect your Hugging Face account first.', 409);
     let credential;
@@ -230,12 +230,13 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     catch { throw failure('credential_unreadable', 'Reconnect your Hugging Face account.', 409); }
     if (credential.expires_at && credential.expires_at < Date.now() + 60_000) {
       if (!credential.refresh_token) throw failure('reconnect_required', 'Your Hugging Face session expired. Reconnect.', 409);
-      const refreshed = await hfToken({ grant_type: 'refresh_token', refresh_token: credential.refresh_token });
+      const refreshed = await hfToken({ grant_type: 'refresh_token', refresh_token: credential.refresh_token }, signal);
       credential = { ...credential, ...refreshed, refresh_token: refreshed.refresh_token || credential.refresh_token };
       const updated = db.prepare('UPDATE ai_account_connections SET encrypted_credential=?,updated_at=? WHERE id=? AND encrypted_credential=?').run(seal(row.id, JSON.stringify(credential)), now(), row.id, row.encrypted_credential);
       if (!updated.changes) throw failure('connection_changed', 'Hugging Face authorization changed during refresh. Retry.', 409);
     }
-    return { row, token: credential.access_token };
+    if (typeof credential.access_token !== 'string' || !credential.access_token || credential.access_token.length > 8192) throw failure('credential_unreadable', 'Reconnect your Hugging Face account.', 409);
+    return { row: read(workspaceId, actor.id, 'huggingface'), token: credential.access_token };
   }
   async function hfCheck(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
@@ -270,5 +271,105 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     db.prepare("DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider='huggingface'").run(workspaceId, actor.id);
     return { disconnected: true, remote_access_revoked: false };
   }
-  return { start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect };
+  function readyState(provider, workspaceId, actor) {
+    const capabilities = { provider, model_required: true, execution_mode: 'browser-api', native_tools: false, file_tools: false };
+    try {
+      requireActor(actor);
+      if (!['openrouter', 'huggingface'].includes(provider)) throw failure('unsupported_provider', 'Choose OpenRouter or Hugging Face.', 400);
+      if (!db.prepare('SELECT id FROM workspaces WHERE id=?').get(workspaceId)) throw failure('workspace_missing', 'Workspace unavailable.', 404);
+      const authorization = authorize(workspaceId, actor);
+      if (authorization?.then) {
+        authorization.catch(() => {});
+        throw failure('authorization_pending', 'Synchronous workspace authorization is required for readiness.', 409);
+      }
+      if (provider === 'huggingface') hfClientId();
+      const row = read(workspaceId, actor.id, provider);
+      if (!row || row.state !== 'connected') throw failure('not_connected', 'Connect this AI account first.', 409);
+      const secret = unseal(row.id, row.encrypted_credential);
+      if (provider === 'openrouter' && (!secret.startsWith('sk-or-') || secret.length > 4096)) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
+      if (provider === 'huggingface') {
+        let credential;
+        try { credential = JSON.parse(secret); } catch { throw failure('credential_unreadable', 'Reconnect this AI account.', 409); }
+        if (typeof credential.access_token !== 'string' || !credential.access_token) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
+        if (credential.expires_at && credential.expires_at < Date.now() + 60_000 && !credential.refresh_token) throw failure('reconnect_required', 'Your Hugging Face session expired. Reconnect.', 409);
+      }
+      return { ...capabilities, state: 'connected' };
+    } catch (error) {
+      return { ...capabilities, state: 'not_connected', error_code: error.code || 'access_denied', reason: error.message || 'This AI account is unavailable.' };
+    }
+  }
+
+  async function startAgentRun({ provider, workspaceId, actor, prompt, model, timeoutMs = 120_000, signal }, { onEvent = () => {}, onComplete = () => {} } = {}) {
+    if (!['openrouter', 'huggingface'].includes(provider)) throw failure('unsupported_provider', 'Choose OpenRouter or Hugging Face.');
+    if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100_000) throw failure('invalid_prompt', 'Write an instruction between 1 and 100,000 characters.');
+    if (typeof model !== 'string' || !/^[\w./:~-]{2,200}$/.test(model)) throw failure('invalid_model', 'Choose an explicit provider model before starting this run.');
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1800000) throw failure('invalid_timeout', 'Choose an execution limit between one second and thirty minutes.');
+    if (signal?.aborted) throw failure('session_cancelled', 'This run was cancelled before it started.', 409);
+    await requireWorkspace(workspaceId, actor);
+    if (provider === 'huggingface') hfClientId();
+    const initial = read(workspaceId, actor.id, provider);
+    if (!initial || initial.state !== 'connected') throw failure('not_connected', 'Connect this AI account first.', 409);
+    // Read/decrypt only the current actor's connection. No key check, model probe,
+    // tool bridge, project folder or automatic fallback request is performed.
+    if (provider === 'openrouter') {
+      const credential = unseal(initial.id, initial.encrypted_credential);
+      if (!credential.startsWith('sk-or-') || credential.length > 4096) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
+    }
+    const abort = new AbortController();
+    let settled = false, timedOut = false, stopped = false, timeout;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', stop);
+      onComplete(result);
+    };
+    const stop = () => {
+      if (settled) return;
+      stopped = true;
+      abort.abort();
+      finish({ status: 'stopped', text: '', error_code: 'session_cancelled' });
+    };
+    signal?.addEventListener('abort', stop, { once: true });
+    timeout = setTimeout(() => {
+      if (settled) return;
+      timedOut = true;
+      abort.abort();
+      finish({ status: 'failed', text: '', error: 'The provider execution time limit was reached. Delivery may be uncertain; this request was not retried.', error_code: 'execution_timeout' });
+    }, timeoutMs);
+    if (signal?.aborted) stop();
+    void (async () => {
+      try {
+        if (settled) return;
+        const credential = provider === 'huggingface' ? await hfCredential(workspaceId, actor, abort.signal) : { row: initial, token: unseal(initial.id, initial.encrypted_credential) };
+        if (settled) return;
+        await requireWorkspace(workspaceId, actor);
+        const current = read(workspaceId, actor.id, provider);
+        if (!current || current.state !== 'connected' || current.id !== initial.id || current.encrypted_credential !== credential.row?.encrypted_credential) throw failure('connection_changed', 'This AI authorization changed before execution. Start a freshly reviewed run.', 409);
+        if (settled) return;
+        const result = await requestJson(provider === 'openrouter' ? `${BASE}/api/v1/chat/completions` : `${HF_ROUTER}/v1/chat/completions`, {
+          method: 'POST', headers: { Authorization: `Bearer ${credential.token}`, 'Content-Type': 'application/json' }, signal: abort.signal,
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 8192, stream: false }),
+        });
+        if (settled) return;
+        if (result?.error) throw failure('provider_error', 'The provider returned an execution error. This request was not retried.', 502);
+        const choice = result?.choices?.[0], content = choice?.message?.content;
+        const responseText = typeof content === 'string' ? content : Array.isArray(content) ? content.filter(part => part?.type === 'text' && typeof part.text === 'string').map(part => part.text).join('') : '';
+        const text = responseText.replaceAll(credential.token, '[redacted authorization]');
+        if (!text.trim()) throw failure('model_response', 'The model request completed without a text response.', 502);
+        if (text.length > 100_000) throw failure('model_response_too_large', 'The model response exceeded the supported text size.', 502);
+        if (choice.finish_reason && choice.finish_reason !== 'stop') throw failure('model_response_incomplete', 'The provider did not return a complete final reply. No actions were extracted.', 502);
+        // Usage is raw allowlisted provider evidence, not CLI usage or billing.
+        const usage = {};
+        for (const name of ['prompt_tokens', 'completion_tokens', 'total_tokens']) if (Number.isSafeInteger(result.usage?.[name]) && result.usage[name] >= 0) usage[name] = result.usage[name];
+        onEvent({ type: 'agent.message', summary: text.slice(0, 12_000), payload: { text } });
+        finish({ status: 'completed', text, provider, model, ...(Object.keys(usage).length ? { usage: { source: 'chat_completion', ...usage } } : {}) });
+      } catch (error) {
+        if (settled || timedOut || stopped) return;
+        finish({ status: 'failed', text: '', error: error.code ? error.message : 'The provider request could not complete. Delivery may be uncertain; it was not retried.', error_code: error.code || 'provider_unreachable' });
+      }
+    })();
+    return { stop };
+  }
+  return { start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun };
 }

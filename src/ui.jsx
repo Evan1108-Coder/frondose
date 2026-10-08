@@ -87,11 +87,13 @@ export function SearchField({
   onChange,
   placeholder = "Search…",
   label,
+  ...props
 }) {
   return (
     <div className="search-field">
       <Search />
       <input
+        {...props}
         type="search"
         aria-label={label ?? placeholder}
         placeholder={placeholder}
@@ -145,6 +147,7 @@ export function Dialog({
   children,
   wide = false,
   className = "",
+  closeDisabled = false,
 }) {
   const ref = useRef(null);
   const originRef = useRef(null);
@@ -159,12 +162,12 @@ export function Dialog({
   const requestCloseRef = useRef(null);
   closeRef.current = onClose;
   const requestClose = () => {
-    if (closingRef.current) return;
+    if (closingRef.current || closeDisabled) return;
     const { fadeMs } = currentMotionPreference();
     if (!fadeMs || className.includes('command-dialog')) { closeRef.current(); return; }
     closingRef.current = true;
     setClosing(true);
-    closeTimer.current = window.setTimeout(() => closeRef.current(), fadeMs);
+    closeTimer.current = window.setTimeout(() => { if (closeRef.current() === false) { closingRef.current = false; setClosing(false); } }, fadeMs);
   };
   requestCloseRef.current = requestClose;
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -264,7 +267,7 @@ export function Dialog({
             <h2>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
-          <IconButton label="Close dialog" onClick={requestClose}>
+          <IconButton label="Close dialog" disabled={closeDisabled} onClick={requestClose}>
             <X />
           </IconButton>
         </header>

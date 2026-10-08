@@ -5,8 +5,7 @@ const VERSION = 1;
 const MAX_VALUE_LENGTH = 4000;
 const MAX_VALUES = 9;
 const SAFE_KEY = /^[a-z0-9][a-z0-9:._-]{0,159}$/i;
-const SENSITIVE = /password|passcode|secret|token|api.?key|credential|payment|card|cvc|cvv|bank|account.?number|private.?key|authorization|one.?time.?code|social.?security|passport/i;
-const SEARCH = /search|filter|query/i;
+const SENSITIVE = /password|passcode|secret|(?:access|refresh|auth|verification|bearer)[._ -]?token|\btoken\b|api.?key|credential|payment|credit.?card|card.?number|cvc|cvv|bank.?account|account.?number|private.?key|authorization|one.?time.?code|social.?security|passport/i;
 
 export function fieldDefaultsStorageKey(workspaceId) {
   return `rumbo:field-defaults:v${VERSION}:${String(workspaceId || 'unknown')}`;
@@ -25,7 +24,7 @@ function readJson(key, storage) {
 }
 
 function writeJson(key, value, storage) {
-  try { getStorage(storage)?.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
+  try { const target = getStorage(storage); if (!target?.setItem) return false; target.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
 }
 
 function notify(workspaceId) {
@@ -39,10 +38,9 @@ export function normalizeFieldDefinition(input) {
   const label = String(input?.label ?? key).trim().slice(0, 120) || key;
   const type = String(input?.type ?? 'text').toLowerCase();
   const sensitive = input?.sensitive === true || SENSITIVE.test(`${key} ${label} ${type}`);
-  const search = input?.search === true || type === 'search' || SEARCH.test(`${key} ${label}`);
-  const supported = ['text', 'textarea', 'email', 'url', 'tel', 'number', 'date', 'time', 'datetime-local', 'select'].includes(type);
-  const eligible = supported && !sensitive && !search && input?.eligible !== false;
-  return { key, page, label, type, eligible, reason: eligible ? null : sensitive ? 'Sensitive field' : search ? 'Search/filter field' : 'Unsupported field' };
+  const supported = ['text', 'search', 'textarea', 'email', 'url', 'tel', 'number', 'date', 'time', 'datetime-local', 'select'].includes(type);
+  const eligible = supported && !sensitive && input?.eligible !== false;
+  return { key, page, label, type, eligible, reason: eligible ? null : sensitive ? 'Sensitive field' : 'Unsupported field', ...(SAFE_KEY.test(input?.sourceKey ?? '') && input.sourceKey !== key ? { sourceKey: input.sourceKey } : {}) };
 }
 
 export function validFieldDefaultValue(definition, value) {
@@ -57,6 +55,13 @@ export function validFieldDefaultValue(definition, value) {
     return year >= 1000 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
   }
   if (field.type === 'number') return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value) && Number.isFinite(Number(value));
+  if (field.type === 'time') return /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/.test(value);
+  if (field.type === 'datetime-local') {
+    const parts = value.split('T');
+    return parts.length === 2 && validFieldDefaultValue({ ...field, type: 'date' }, parts[0]) && validFieldDefaultValue({ ...field, type: 'time' }, parts[1]);
+  }
+  if (field.type === 'email') return /^[^\s@]+@[^\s@]+$/.test(value); // native typeMismatch checks the destination's exact HTML grammar
+  if (field.type === 'url') { try { return Boolean(new URL(value).protocol); } catch { return false; } }
   return true;
 }
 
@@ -74,6 +79,22 @@ export function registerFieldDefinition(workspaceId, definition, storage) {
   const revised = [...entries.filter(entry => entry.key !== next.key), next].sort((a, b) => a.page.localeCompare(b.page) || a.label.localeCompare(b.label));
   if (writeJson(inventoryStorageKey(workspaceId), revised, storage)) notify(workspaceId);
   return next;
+}
+
+// Batch discovery performs one storage read/write, not one per input.
+export function registerFieldDefinitions(workspaceId, definitions, storage) {
+  const entries = new Map(readFieldInventory(workspaceId, storage).map(entry => [entry.key, entry]));
+  let changed = false;
+  for (const definition of definitions) {
+    const next = normalizeFieldDefinition(definition);
+    if (!next?.eligible) continue;
+    if (JSON.stringify(entries.get(next.key)) !== JSON.stringify(next)) { entries.set(next.key, next); changed = true; }
+  }
+  if (!changed) return true;
+  const revised = [...entries.values()].sort((a, b) => a.page.localeCompare(b.page) || a.label.localeCompare(b.label));
+  if (!writeJson(inventoryStorageKey(workspaceId), revised, storage)) return false;
+  notify(workspaceId);
+  return true;
 }
 
 function normalizeValue(value, index) {
@@ -126,7 +147,10 @@ export function updateFieldEntry(workspaceId, key, patch, storage) {
 export function resolveFieldValue(settings, definition, slot = null) {
   const normalized = normalizeFieldDefinition(definition);
   if (!normalized?.eligible || !settings?.enabled) return null;
-  const entry = settings.fields?.[normalized.key];
+  // A shared-component source default covers dynamic variants when no more
+  // specific field entry exists. An explicitly disabled/empty field entry
+  // remains authoritative and never falls through to a generic value.
+  const entry = settings.fields?.[normalized.key] ?? settings.fields?.[normalized.sourceKey];
   if (!entry?.enabled) return null;
   const available = entry.values?.filter(value => value.enabled && validFieldDefaultValue(normalized, value.value)) ?? [];
   // Keep Command 1 intuitive even if a single saved option was moved to a
@@ -136,25 +160,41 @@ export function resolveFieldValue(settings, definition, slot = null) {
 }
 
 function fieldElementType(element) {
+  if (element.type === 'text' && /^hh:mm$/i.test(element.placeholder || '')) return 'time';
   // DateField uses a text input with a calendar, but its tagged semantic value
   // is an ISO calendar date. Keep that type when the live field is discovered.
+  if (element.placeholder === 'YYYY-MM-DD' && element.closest?.('.date-field')) return 'date';
   if (element.dataset.fieldDefaultAllow === 'true' && element.placeholder === 'YYYY-MM-DD') return 'date';
   return element.tagName === 'TEXTAREA' ? 'textarea' : element.tagName === 'SELECT' ? 'select' : (element.type || 'text').toLowerCase();
 }
 
+function stableSlug(text) { return String(text ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'field'; }
+function textForSelector(element, selector) { return element?.querySelector?.(selector)?.textContent?.trim() || ''; }
+
 function fieldElementDefinition(element) {
-  const key = element.dataset.fieldDefaultKey;
-  if (!key) return null;
   const type = fieldElementType(element);
-  const label = element.dataset.fieldDefaultLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent || element.placeholder || key;
-  const metadata = [element.name, element.id, element.placeholder, element.autocomplete].filter(Boolean).join(' ');
-  return normalizeFieldDefinition({ key, page: element.dataset.fieldDefaultPage, label, type, sensitive: SENSITIVE.test(metadata) });
+  const dialog = element.closest?.('[role="dialog"], form');
+  const pageRoot = element.closest?.('[data-field-default-page], #main-content');
+  const page = element.dataset.fieldDefaultPage || element.dataset.fieldDefaultSourcePage || textForSelector(dialog, 'h1,h2,[data-dialog-title]') || textForSelector(pageRoot, 'h1') || 'Workspace';
+  const label = element.dataset.fieldDefaultLabel || element.dataset.fieldDefaultSourceLabel || element.getAttribute('aria-label') || element.labels?.[0]?.textContent?.trim() || element.name || element.placeholder || type;
+  const section = element.closest?.('fieldset, section, [role="group"]');
+  const sectionName = section?.getAttribute?.('aria-label') || textForSelector(section, 'legend,h2,h3,h4');
+  // Fallback is semantic. Never depend on React useId(), DOM position, or a
+  // list index. Source-instrumented controls normally do not need this path.
+  const key = element.dataset.fieldDefaultKey || element.dataset.fieldDefaultSource || `discovered.${stableSlug(page)}.${stableSlug(sectionName)}.${stableSlug(element.name || label)}.${type}`;
+  const metadata = [element.name, element.id, element.placeholder, element.autocomplete, element.getAttribute('aria-label')].filter(Boolean).join(' ');
+  const scopeLabel = dialog?.getAttribute?.('aria-label') || textForSelector(dialog, 'h1,h2,[data-dialog-title]');
+  const sensitiveForm = /authentication|sign.?in|sign.?up|security|payment|billing|credential/i.test(scopeLabel) || Boolean(dialog?.querySelector?.('[data-field-default-sensitive]')) || [...(dialog?.querySelectorAll?.('input, textarea') ?? [])].some(control => SENSITIVE.test([control.type, control.name, control.id, control.placeholder, control.autocomplete, control.getAttribute('aria-label')].filter(Boolean).join(' ')));
+  return normalizeFieldDefinition({ key, sourceKey: element.dataset.fieldDefaultSource, page, label, type, sensitive: Boolean(sensitiveForm) || SENSITIVE.test(metadata) });
 }
 
 export function isEligibleFieldElement(element) {
   if (!element?.matches?.('input, textarea, select')) return false;
   const type = fieldElementType(element);
-  if (element.disabled || element.readOnly || element.autocomplete === 'off' && element.dataset.fieldDefaultAllow !== 'true') return false;
+  // Native choices are only supported when deliberately registered. This
+  // avoids treating custom template choice questions as free-text inputs.
+  if (type === 'select' && !element.dataset.fieldDefaultKey) return false;
+  if (element.disabled || element.readOnly) return false;
   if (element.closest('[data-field-defaults-exclude]')) return false;
   const definition = fieldElementDefinition(element);
   return Boolean(definition?.eligible);

@@ -1,16 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { favoriteForPage, focusItems, focusedSidebarHiddenKeys, moveItem, normalizeOrganization, organizationCounts, readOrganization, resolveFavorite, saveOrganization, showSidebarItem } from "../src/lib/organization.js";
+import { NAV_ITEMS, HEADER_QUICK_ACCESS, favoriteForPage, focusItems, focusedSidebarHiddenKeys, moveItem, normalizeOrganization, organizationCounts, readOrganization, resolveFavorite, saveOrganization, showSidebarItem } from "../src/lib/organization.js";
 import { resolveShortcut, SHORTCUTS } from "../src/lib/shortcuts.js";
 import { pageHash, parsePage } from "../src/lib/navigation.js";
 
 test("organization preferences normalize hostile data, preserve ordering and add new defaults", () => {
   const prefs = normalizeOrganization({ version: 1, order: { primary: ["work", "work", "garbage"] }, visibility: { focus: "hidden", agents: "bogus" }, badges: "rainbow", density: "small", favorites: [{ view: "agents", id: "a" }, { view: "agents", id: "a" }, { view: "settings", id: "profile" }, { view: "chats", id: "../bad" }, null] });
-  assert.deepEqual(prefs.order.primary, ["work", "overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "playbooks", "workbench", "workflows", "operations"]);
+  assert.deepEqual(prefs.order.primary, ["work", "overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "workbench", "workflows", "operations"]);
   assert.equal(prefs.visibility.focus, "hidden"); assert.equal(prefs.visibility.agents, "always");
   assert.equal(prefs.badges, "count"); assert.equal(prefs.density, "comfortable");
   assert.deepEqual(prefs.favorites, [{ view: "agents", id: "a" }]);
   assert.deepEqual(normalizeOrganization({version: 2, favorites: [{view:"agents",id:"x"}]}).favorites, []);
+});
+test('retired Playbooks references disappear without losing unrelated navigation preferences', () => {
+  const saved = { version: 1, order: { primary: ['workflows', 'playbooks', 'inbox'] },
+    pinnedLayout: ['playbooks', 'projects'], quickAccess: ['focus', 'playbooks', 'settings'],
+    visibility: { playbooks: 'hidden', workflows: 'hidden', 'custom:work': 'hidden' },
+    favorites: [{ view: 'projects', id: 'p' }], hiddenItems: [{ view: 'chats', id: 'c' }],
+    entityOrder: { projects: ['p', 'q'] }, seenFailures: ['failure'], navigationMode: 'full',
+    layout: { root: ['playbooks', 'projects', 'custom:work'], groups: [{ id: 'custom:work', name: 'Mine', collapsed: true, items: ['playbooks', 'workflows', 'entity:projects:p'] }] } };
+  const prefs = normalizeOrganization(saved);
+  assert.ok(!NAV_ITEMS.some(item => item.id === 'playbooks'));
+  assert.ok(!HEADER_QUICK_ACCESS.includes('playbooks'));
+  assert.ok(!prefs.order.primary.includes('playbooks'));
+  assert.equal(prefs.visibility.playbooks, undefined);
+  assert.deepEqual(prefs.pinnedLayout, ['projects']);
+  assert.deepEqual(prefs.quickAccess, ['focus', 'settings']);
+  assert.ok(!prefs.layout.root.includes('playbooks'));
+  assert.deepEqual(prefs.layout.groups, [{ id: 'custom:work', name: 'Mine', collapsed: true, items: ['workflows', 'entity:projects:p'] }]);
+  assert.equal(prefs.visibility.workflows, 'hidden');
+  assert.equal(prefs.visibility['custom:work'], 'hidden');
+  assert.deepEqual(prefs.favorites, saved.favorites);
+  assert.deepEqual(prefs.hiddenItems, saved.hiddenItems);
+  assert.deepEqual(prefs.entityOrder.projects, ['p', 'q']);
+  assert.deepEqual(prefs.seenFailures, ['failure']);
+  assert.equal(prefs.navigationMode, 'full');
+  assert.deepEqual(normalizeOrganization(prefs), prefs);
 });
 test("pinned placement and floating dock position remain browser-local and bounded", () => {
   const defaults = normalizeOrganization(null);

@@ -23,6 +23,8 @@ function reader(db) {
       ? db.prepare('SELECT inspection_json FROM run_context_snapshots WHERE run_id=?').get(key)
       : table === 'rumbo_chat_binding' && existing.has('chat_collaboration') && id(key)
       ? db.prepare('SELECT payload_json FROM chat_collaboration WHERE chat_id=?').get(key)
+      : table === 'chat_snapshot' && existing.has('chat_context_snapshots') && id(key)
+      ? db.prepare('SELECT * FROM chat_context_snapshots WHERE id=?').get(key)
       : table === 'current_skill_version' && existing.has('skill_versions') && existing.has('skills') && id(key)
       ? db.prepare('SELECT v.* FROM skill_versions v JOIN skills s ON s.id=v.skill_id AND s.version=v.number WHERE s.id=?').get(key)
       : TABLES.has(table) && existing.has(table) && id(key) ? db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(key) : null;
@@ -95,6 +97,28 @@ function references(read, table, key, workspaceId, path = new Set(), inspectDefi
     // mutable latest_run_id is delivery state, not a content dependency (and
     // following it would make retry captures recursively depend on themselves).
     const metadata = parse(row.metadata_json);
+    let attachments;
+    try { attachments = typeof row.attachments_json === 'string' ? JSON.parse(row.attachments_json) : []; } catch { deny(); }
+    if (!Array.isArray(attachments)) deny();
+    const marked = attachments.filter(file => record(file) && Object.hasOwn(file, 'rumbo_context_snapshot'));
+    if (metadata?.context_snapshot_id || marked.length) {
+      // A marker is not authorization. It must identify one canonical immutable
+      // snapshot with exactly matching server-saved content and chat/workspace.
+      if (!id(metadata?.context_snapshot_id) || marked.length !== 1 || marked[0] !== attachments[0]) deny();
+      const snapshot = read('chat_snapshot', metadata.context_snapshot_id), file = marked[0];
+      const saved = parse(snapshot?.source_access_json);
+      if (!snapshot || snapshot.chat_id !== row.chat_id || snapshot.workspace_id !== workspaceId
+        || file.rumbo_context_snapshot !== snapshot.id || file.content !== snapshot.content
+        || file.type !== 'text/markdown' || file.name !== `rumbo-context-${snapshot.id}.md`
+        || !saved || saved.version !== 1 || saved.workspace_id !== workspaceId
+        || !Array.isArray(saved.sources) || saved.sources.length > 1000
+        || !Array.isArray(saved.connections) || saved.connections.length
+        || !saved.sources.some(ref => ref?.table === 'chats' && ref.id === row.chat_id)
+        || !saved.sources.some(ref => ref?.table === 'workspaces' && ref.id === workspaceId)) deny();
+      // This private column was captured by the server at snapshot creation.
+      // Preserve original ancestry; assertSourceAccess also checks current rows.
+      dependencies.push(...saved.sources);
+    }
     if (row.sender_type === 'agent' && metadata?.run_id) addDependency('runs', metadata.run_id);
   } else {
     if (row.project_id) addParent('projects', row.project_id);
@@ -284,6 +308,16 @@ export function assertRumboSourceReferences(db, item, table, actor, allowed) {
     }
     for (const [field, target] of [['chat_id', 'chats'], ['run_id', 'runs'], ['source_message_id', 'messages'], ['output_id', 'outputs']]) if (current[field]) visit(read(target, current[field]), target);
     if (currentTable === 'messages') {
+      const canonical = read('messages', current.id), parent = canonical && read('chats', canonical.chat_id);
+      let attachments = [];
+      try { attachments = canonical?.attachments_json ? JSON.parse(canonical.attachments_json) : []; } catch { deny(); }
+      if (!Array.isArray(attachments)) deny();
+      if (parse(canonical?.metadata_json)?.context_snapshot_id || attachments.some(file => record(file) && Object.hasOwn(file, 'rumbo_context_snapshot'))) {
+        if (!parent?.workspace_id) deny();
+        const inspection = { manifest: { resolved: { workspace_id: parent.workspace_id }, included: [{ kind: 'message', id: canonical.id }], excluded: [] } };
+        inspection.sourceAccess = captureSourceAccess(db, inspection);
+        assertSourceAccess(db, inspection, actor, allowed);
+      }
       const metadata = current.metadata || parse(current.metadata_json);
       for (const runId of [metadata?.run_id, metadata?.latest_run_id]) if (runId) visit(read('runs', runId), 'runs');
     }

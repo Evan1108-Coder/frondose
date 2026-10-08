@@ -9,7 +9,6 @@ export const NAV_ITEMS = [
   { id: "inbox", label: "Inbox", key: "I" },
   { id: "updates", label: "Updates", key: "U" },
   { id: "work", label: "Runs", key: "W" },
-  { id: "playbooks", label: "Playbooks", key: "Q" },
   { id: "workbench", label: "Workbench", key: "B" },
   { id: "operations", label: "Coordination", key: "D" },
   { id: "workflows", label: "Workflows", key: "Y" },
@@ -27,12 +26,12 @@ export const NAV_ITEMS = [
   { id: "settings", label: "Settings", key: "S" },
 ];
 export const SIDEBAR_GROUPS = {
-  primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "playbooks", "workbench", "workflows", "operations"],
+  primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
   sections: ["agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
 export const SECTION_LABELS = { agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
-export const HEADER_QUICK_ACCESS = ['focus', 'inbox', 'starred', 'work', 'playbooks', 'projects', 'chats', 'connections', 'settings'];
+export const HEADER_QUICK_ACCESS = ['focus', 'inbox', 'starred', 'work', 'projects', 'chats', 'connections', 'settings'];
 export const FOCUSED_SIDEBAR_ROOT = new Set(['overview', 'rumbo-agent', 'starred', 'inbox', 'projects']);
 export function focusedSidebarHiddenKeys(organization) {
   if (organization.navigationMode !== 'focused') return [];

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
-import { chatHasRumboSourceHistory } from './context-source-access.mjs';
+import { captureSourceAccess, assertSourceAccess, chatHasRumboSourceHistory } from './context-source-access.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
 
 const stamp = () => new Date().toISOString();
@@ -36,7 +36,8 @@ function save(db, current, payload) {
 function contextSnapshot(db, snapshotId, chatId) {
   const row = db.prepare('SELECT * FROM chat_context_snapshots WHERE id=? AND chat_id=?').get(snapshotId, chatId);
   if (!row) throw validationError('This context snapshot does not belong to the conversation.');
-  return { ...row, sources: json(row.sources_json, []), sources_json: undefined };
+  const { sources_json, source_access_json, ...publicRow } = row;
+  return { ...publicRow, sources: json(sources_json, []) };
 }
 export function installChatCollaboration(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS chat_collaboration(
@@ -46,8 +47,9 @@ export function installChatCollaboration(db) {
     CREATE TABLE IF NOT EXISTS chat_context_snapshots(
     id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    content TEXT NOT NULL, sources_json TEXT NOT NULL, created_at TEXT NOT NULL);
+    content TEXT NOT NULL, sources_json TEXT NOT NULL, created_at TEXT NOT NULL, source_access_json TEXT);
     CREATE INDEX IF NOT EXISTS chat_context_scope ON chat_context_snapshots(chat_id,created_at);`);
+  if (!db.prepare('PRAGMA table_info(chat_context_snapshots)').all().some(column => column.name === 'source_access_json')) db.exec('ALTER TABLE chat_context_snapshots ADD COLUMN source_access_json TEXT');
 }
 export function chatCollaborationSnapshot(db) {
   return { chat_collaboration: db.prepare('SELECT * FROM chat_collaboration').all().map(row => ({ chat_id: row.chat_id, workspace_id: row.workspace_id, version: row.version, ...blank(), ...json(row.payload_json) })) };
@@ -77,6 +79,27 @@ export function validateChatContextAttachments(db, chatId, input = {}) {
   return metadata;
 }
 
+/** Immutable chat attachments retain the scopes of the original selection,
+ * rather than being recaptured as ordinary user text at inspection/scheduling. */
+export function chatContextSnapshotAccess(db, { chatId, workspaceId, attachments, actor, allowed }) {
+  const files = attachments ?? [];
+  if (!Array.isArray(files)) throw validationError('Attachments must be a list.');
+  const marked = files.filter(file => isRecord(file) && Object.hasOwn(file, 'rumbo_context_snapshot'));
+  if (!marked.length) return null;
+  chatInWorkspace(db, chatId, workspaceId);
+  validateChatContextAttachments(db, chatId, { attachments: files, context_snapshot_id: marked[0].rumbo_context_snapshot });
+  const row = db.prepare('SELECT * FROM chat_context_snapshots WHERE id=? AND chat_id=? AND workspace_id=?').get(marked[0].rumbo_context_snapshot, chatId, workspaceId);
+  if (!row) throw validationError('This context snapshot does not belong to the conversation and workspace.');
+  const sourceAccess = json(row.source_access_json, null);
+  if (!isRecord(sourceAccess) || sourceAccess.version !== 1 || sourceAccess.workspace_id !== workspaceId || !Array.isArray(sourceAccess.sources)
+    || !sourceAccess.sources.some(ref => ref.table === 'chats' && ref.id === chatId)
+    || !sourceAccess.sources.some(ref => ref.table === 'workspaces' && ref.id === workspaceId)) {
+    throw Object.assign(validationError('This older context snapshot has no verifiable source access. Remove and reselect its sources before sending or scheduling.'), { code: 'context_snapshot_reselect', statusCode: 409 });
+  }
+  assertSourceAccess(db, { manifest: { resolved: { workspace_id: workspaceId, chat_id: chatId } }, sourceAccess }, actor, allowed);
+  return sourceAccess;
+}
+
 function assembleContext(db, chat, selections) {
   if (!Array.isArray(selections) || selections.length > 20) throw validationError('Choose up to 20 context sources.');
   const sources = [], seen = new Set();
@@ -104,7 +127,7 @@ function assembleContext(db, chat, selections) {
   return { sources: sources.map(({ content: _, ...source }) => source), content };
 }
 
-export async function chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot }) {
+export async function chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed }) {
   const match = path.match(/^\/chat-collaboration\/([^/]+)(?:\/snapshots\/([^/]+))?$/);
   if (!match) return false;
   const body = req.method === 'GET' ? {} : await readBody(req);
@@ -113,7 +136,12 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
   const chat = chatInWorkspace(db, decodeURIComponent(match[1]), workspaceId);
   const current = collaboration(db, chat);
   if (req.method === 'GET') {
-    send(res, 200, { result: match[2] ? contextSnapshot(db, match[2], chat.id) : current }); return true;
+    if (match[2]) {
+      const selected = contextSnapshot(db, match[2], chat.id);
+      chatContextSnapshotAccess(db, { chatId: chat.id, workspaceId: chat.workspace_id, actor, allowed, attachments: [{ name: `rumbo-context-${selected.id}.md`, type: 'text/markdown', content: selected.content, rumbo_context_snapshot: selected.id }] });
+      send(res, 200, { result: selected });
+    } else send(res, 200, { result: current });
+    return true;
   }
   if (req.method !== 'POST' || match[2]) return false;
   if (chatHasRumboSourceHistory(db, chat.id) && ['branch', 'document'].includes(body.action)) throw validationError('Source-bound Rumbo Agent chats cannot be branched or converted to documents yet. Keep this conversation linked to its reviewed source.');
@@ -153,8 +181,11 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
       }
       case 'context': {
         const assembled = assembleContext(db, chat, body.sources);
+        const inspection = { manifest: { resolved: { workspace_id: chat.workspace_id, chat_id: chat.id }, included: assembled.sources, excluded: [] } };
+        const sourceAccess = captureSourceAccess(db, inspection);
+        assertSourceAccess(db, { ...inspection, sourceAccess }, actor, allowed);
         const id = uid('context'), createdAt = stamp();
-        db.prepare('INSERT INTO chat_context_snapshots VALUES(?,?,?,?,?,?)').run(id, chat.workspace_id, chat.id, assembled.content, JSON.stringify(assembled.sources), createdAt);
+        db.prepare('INSERT INTO chat_context_snapshots(id,workspace_id,chat_id,content,sources_json,created_at,source_access_json) VALUES(?,?,?,?,?,?,?)').run(id, chat.workspace_id, chat.id, assembled.content, JSON.stringify(assembled.sources), createdAt, JSON.stringify(sourceAccess));
         result = { id, ...assembled, created_at: createdAt }; break;
       }
       case 'draft': {

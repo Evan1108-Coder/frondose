@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import {
   FIELD_DEFAULTS_EVENT, definitionForElement, fieldDefaultShortcutSlot,
-  readFieldDefaults, registerFieldDefinition, resolveFieldValue, validFieldDefaultValue,
+  readFieldDefaults, registerFieldDefinitions, resolveFieldValue, validFieldDefaultValue,
 } from '../lib/field-defaults.js';
 
 // Using the native setter and an input/change event keeps controlled React
@@ -35,15 +35,38 @@ export function replaceFieldValue(element, value, { restore = false } = {}) {
 export function FieldDefaultsProvider({ workspaceId, definitions = [], children }) {
   useEffect(() => {
     if (!workspaceId) return;
-    for (const definition of definitions) registerFieldDefinition(workspaceId, definition);
+    registerFieldDefinitions(workspaceId, definitions);
   }, [workspaceId, definitions]);
   useEffect(() => {
     if (!workspaceId || typeof document === 'undefined') return undefined;
     let settings = readFieldDefaults(workspaceId);
-    const visited = new WeakSet();
+    const visited = new WeakMap();
     const undo = new WeakMap();
     let programmatic = false;
+    const pendingDefinitions = new Map();
+    let registrationPending = false;
+    const register = definition => {
+      pendingDefinitions.set(definition.key, definition);
+      if (registrationPending) return;
+      registrationPending = true;
+      queueMicrotask(() => {
+        registrationPending = false;
+        registerFieldDefinitions(workspaceId, [...pendingDefinitions.values()]);
+        pendingDefinitions.clear();
+      });
+    };
     const visible = element => !element.closest('[hidden], [inert], [aria-hidden="true"]');
+    const inNewDialog = element => {
+      const dialog = element.closest('[role="dialog"]');
+      const title = dialog?.querySelector('h1,h2,[data-dialog-title]')?.textContent?.trim() || '';
+      return /^(?:new|create|add|start|capture|compose)\b/i.test(title);
+    };
+    const formMode = element => {
+      const scope = element.closest('form, [role="dialog"]');
+      if (scope?.querySelector('[data-field-default-mode="edit"]')) return 'edit';
+      if (scope?.querySelector('[data-field-default-mode="create"]')) return 'create';
+      return null;
+    };
     const write = (element, value) => {
       const previous = element.value;
       if (previous === value) return false;
@@ -57,25 +80,29 @@ export function FieldDefaultsProvider({ workspaceId, definitions = [], children 
     const inspect = element => {
       const definition = definitionForElement(element);
       if (!definition) return;
-      registerFieldDefinition(workspaceId, definition);
-      if (visited.has(element) || !visible(element)) return;
-      visited.add(element);
-      // Explicitly opt in only new forms. Existing records, search boxes and
-      // unrelated controls are never changed as a side effect of discovery.
-      if (element.dataset.fieldDefaultMode !== 'create' || element.value) return;
+      register(definition);
+      const mode = element.dataset.fieldDefaultMode || formMode(element);
+      const visitKey = `${definition.key}:${mode || ''}`;
+      if (visited.get(element) === visitKey || !visible(element)) return;
+      visited.set(element, visitKey);
+      // Registration and shortcuts cover existing records too. Automatic
+      // insertion is narrower: never mutate an existing record/settings page
+      // whose onChange may persist immediately. Explicit user shortcuts are
+      // intentional edits and follow the control's normal onChange path.
+      if (mode === 'edit' || element.value || !(mode === 'create' || element.dataset.fieldDefaultAuto === 'true' || inNewDialog(element))) return;
       const primary = resolveFieldValue(settings, definition);
       if (primary) write(element, primary.value);
     };
     const scan = root => {
       if (root?.matches?.('input, textarea, select')) inspect(root);
-      root?.querySelectorAll?.('[data-field-default-key]').forEach(inspect);
+      root?.querySelectorAll?.('input, textarea, select').forEach(inspect);
     };
     const onFocus = event => inspect(event.target);
     const onInput = event => { if (!programmatic) undo.delete(event.target); };
     const onKeyDown = event => {
       const element = event.target;
       const definition = definitionForElement(element);
-      if (!definition || !visible(element) || element.dataset.fieldDefaultMode === 'edit' || event.isComposing) return;
+      if (!definition || !visible(element) || event.isComposing) return;
       const isUndo = (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z';
       const previous = undo.get(element);
       if (isUndo && previous && element.value === previous.applied) {
@@ -90,8 +117,9 @@ export function FieldDefaultsProvider({ workspaceId, definitions = [], children 
       if (!slot) return;
       const selected = resolveFieldValue(settings, definition, slot);
       if (!selected) return; // preserve browser behavior if the slot is empty
-      event.preventDefault();
-      write(element, selected.value);
+      // Invalid native min/max/step/pattern constraints leave both text and
+      // the browser shortcut untouched.
+      if (element.value === selected.value || write(element, selected.value)) event.preventDefault();
     };
     const onSettings = event => { if (!event.detail?.workspaceId || event.detail.workspaceId === workspaceId) settings = readFieldDefaults(workspaceId); };
     const observer = new MutationObserver(records => {
@@ -101,7 +129,7 @@ export function FieldDefaultsProvider({ workspaceId, definitions = [], children 
       }
     });
     scan(document.body);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'inert', 'aria-hidden', 'data-field-default-key', 'data-field-default-mode'] });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'inert', 'aria-hidden', 'disabled', 'readonly', 'data-field-default-key', 'data-field-default-mode', 'data-field-default-source'] });
     document.addEventListener('focusin', onFocus, true);
     document.addEventListener('input', onInput, true);
     document.addEventListener('keydown', onKeyDown, true);

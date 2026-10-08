@@ -4,8 +4,9 @@ import { snapshotAgentProfile, bumpAgentProfileVersion, agentProfileReferenceRea
 import { recordChange } from './workspace-features.mjs';
 import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
 import { createActivityPolicy } from './activity-policy.mjs';
+import { EXECUTION_PROVIDERS, isBrowserAiProvider, aiProviderName } from '../src/lib/ai-providers.js';
 
-const PROVIDERS = ['codex', 'claude'];
+const PROVIDERS = EXECUTION_PROVIDERS;
 const REASONING = ['', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 export const RUMBO_AGENT_ORB_COLORS = Object.freeze(['blue', 'cyan', 'green', 'gold', 'coral', 'purple']);
 const GUIDANCE_START = '[RUMBO_AGENT_USER_GUIDANCE_BEGIN]';
@@ -104,8 +105,8 @@ function preferences(db, workspaceId, actor, allowed) {
 function ensureProfile(db, workspaceId, provider, actor, allowed, integration) {
   const setup = preferences(db, workspaceId, actor, allowed);
   if (!setup.onboarding_complete) fail('Finish Rumbo Agent setup before creating a conversation.', 'onboarding_required');
-  if (!PROVIDERS.includes(provider)) throw validationError('Choose Codex or Claude.');
-  if (integration.status(provider).state !== 'connected') fail(`Connect ${provider === 'codex' ? 'Codex' : 'Claude'} before preparing Rumbo Agent.`, 'not_connected');
+  if (!PROVIDERS.includes(provider)) throw validationError('Choose a supported AI provider.');
+  if (integration.status(provider, workspaceId, actor).state !== 'connected') fail(`Connect ${aiProviderName(provider)} before preparing Rumbo Agent.`, 'not_connected');
   const id = profileId(workspaceId, provider), existing = db.prepare('SELECT * FROM agents WHERE id=?').get(id);
   if (existing) {
     if (!allowed(workspaceId, actor, 'agents.read', { scope_type: 'agent', scope_id: id })) deny();
@@ -133,10 +134,10 @@ export async function rumboAgentRoute({ db, req, res, path, url, body, send, act
     workspace(db, workspaceId, actor, allowed);
     const visible = filter({ agents: db.prepare('SELECT * FROM agents WHERE workspace_id=? AND archived_at IS NULL').all(workspaceId) }).agents;
     const providers = PROVIDERS.map(provider => {
-      const status = integration.status(provider), agent = visible.find(row => row.id === profileId(workspaceId, provider));
+      const status = integration.status(provider, workspaceId, actor), agent = visible.find(row => row.id === profileId(workspaceId, provider));
       const models = [...new Set(visible.filter(row => row.provider === provider && row.model).map(row => row.model))].sort();
-      return { provider, connection_id: `conn_${provider}`, state: status.state, connected: status.state === 'connected', agent_id: agent?.id || null, agent: agent ? present(agent) : null,
-        models: [{ id: '', label: 'Connection default', provenance: 'provider_default', availability: 'provider_controlled' }, ...models.map(id => ({ id, label: id, provenance: 'configured_profile', availability: 'unverified' }))],
+      return { provider, label: aiProviderName(provider), connection_id: `conn_${provider}`, state: status.state, connected: status.state === 'connected', model_required: isBrowserAiProvider(provider), agent_id: agent?.id || null, agent: agent ? present(agent) : null,
+        models: [...(isBrowserAiProvider(provider) ? [] : [{ id: '', label: 'Automatic', provenance: 'provider_default', availability: 'provider_controlled' }]), ...models.map(id => ({ id, label: id, provenance: 'configured_profile', availability: 'unverified' }))],
         model_catalog_complete: false, model_catalog_note: 'The CLI connections do not expose an account-specific model catalog to Rumbo. Configured identifiers are not proof of availability; the provider validates them when a run starts.', reasoning_efforts: provider === 'codex' ? REASONING : [''] };
     });
     send(res, 200, { result: { workspace_id: workspaceId, providers, preferences: preferences(db, workspaceId, actor, allowed) } }); return true;
@@ -158,7 +159,7 @@ export async function rumboAgentRoute({ db, req, res, path, url, body, send, act
     if (current.onboarding_complete && !next.onboarding_complete) throw validationError('Completed setup cannot be reset through preferences.');
     const key = preferenceKey(body.workspace_id);
     const identityChanged = ['display_name', 'purpose', 'guidelines'].some(field => current[field] !== next[field]);
-    const existingProfiles = identityChanged ? db.prepare('SELECT * FROM agents WHERE workspace_id=? AND id IN (?,?) AND archived_at IS NULL').all(body.workspace_id, ...PROVIDERS.map(provider => profileId(body.workspace_id, provider))) : [];
+    const existingProfiles = identityChanged ? db.prepare(`SELECT * FROM agents WHERE workspace_id=? AND id IN (${PROVIDERS.map(() => '?').join(',')}) AND archived_at IS NULL`).all(body.workspace_id, ...PROVIDERS.map(provider => profileId(body.workspace_id, provider))) : [];
     const patches = existingProfiles.map(profile => {
       if (!allowed(body.workspace_id, actor, 'agents.write', { scope_type: 'agent', scope_id: profile.id })) deny('Editing existing Rumbo Agent instructions requires agent-management permission.');
       return { profile, instructions: nextInstructions(profile.instructions, next) };

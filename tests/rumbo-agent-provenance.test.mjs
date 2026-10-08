@@ -189,3 +189,76 @@ test('output children, chat updates and historical metadata retain source guards
   for (const collection of collections) assert.equal(filtered[collection].length, 0, `${collection} must not reveal derived contents`);
   assert.throws(() => assertRumboSourceReferences(f.db, history, 'audit_log', f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
 });
+
+function snapshotMessage(f) {
+  // Use an ordinary chat so no Rumbo binding/index can accidentally supply the
+  // missing dependency under test. The private lineage is server-captured.
+  f.db.prepare('DELETE FROM chat_collaboration WHERE chat_id=?').run('chat');
+  const inspection = { manifest: { resolved: { workspace_id: 'workspace', chat_id: 'chat' }, included: [{ kind: 'document', id: 'document' }], excluded: [] } };
+  const sourceAccess = captureSourceAccess(f.db, inspection), snapshotId = 'immutable-chat-snapshot';
+  f.db.prepare('INSERT INTO chat_context_snapshots(id,workspace_id,chat_id,content,sources_json,created_at,source_access_json) VALUES(?,?,?,?,?,?,?)')
+    .run(snapshotId, 'workspace', 'chat', 'COPIED_SOURCE_CONTENT', JSON.stringify([{ kind: 'document', id: 'document' }]), f.now, JSON.stringify(sourceAccess));
+  f.message('snapshot-message');
+  const file = { name: `rumbo-context-${snapshotId}.md`, type: 'text/markdown', content: 'COPIED_SOURCE_CONTENT', rumbo_context_snapshot: snapshotId };
+  f.db.prepare("UPDATE messages SET sender_type='user',metadata_json=?,attachments_json=? WHERE id=?")
+    .run(JSON.stringify({ context_snapshot_id: snapshotId }), JSON.stringify([file]), 'snapshot-message');
+  return { snapshotId, file, message: f.row('messages', 'snapshot-message') };
+}
+
+test('historical snapshot attachments preserve source ancestry through later run and scheduled inspections', t => {
+  const f = fixture(t), saved = snapshotMessage(f);
+  const attachmentInspection = { manifest: { resolved: { workspace_id: 'workspace', chat_id: 'chat' }, included: [{ kind: 'attachment', id: 'snapshot-message:0' }], excluded: [] } };
+  attachmentInspection.sourceAccess = captureSourceAccess(f.db, attachmentInspection);
+  assert.ok(attachmentInspection.sourceAccess.sources.some(ref => ref.table === 'documents' && ref.id === 'document'));
+  assert.equal(assertSourceAccess(f.db, attachmentInspection, f.actor, () => true), true);
+  f.db.exec('CREATE TABLE run_context_snapshots(run_id TEXT PRIMARY KEY, inspection_json TEXT NOT NULL)');
+  f.db.prepare('INSERT INTO runs(id,workspace_id,chat_id,provider,agent_name,status,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
+    .run('historical-run', 'workspace', 'chat', 'openrouter', 'Fixture', 'completed', 'Derived from attachment', f.now, f.now);
+  f.db.prepare('INSERT INTO run_context_snapshots VALUES(?,?)').run('historical-run', JSON.stringify(attachmentInspection));
+  const scheduleReview = JSON.parse(JSON.stringify({ inspection: attachmentInspection }));
+  f.move();
+  assert.throws(() => assertSourceAccess(f.db, scheduleReview.inspection, f.actor, f.revokeHistoricalArea), { code: 'context_access_revoked' }, 'due-time schedule review cannot drop the captured Area');
+  for (const inspection of [attachmentInspection, f.capture('message', saved.message.id), f.capture('run', 'historical-run')]) assert.throws(() => assertSourceAccess(f.db, inspection, f.actor, f.revokeHistoricalArea), { code: 'context_access_revoked' });
+  const governance = { explain: (workspace, actorId, permission, scope) => ({ allowed: f.revokeHistoricalArea(workspace, { id: actorId }, permission, scope) }) };
+  const access = createAccessBoundary({ db: f.db, governance });
+  const filtered = access.filter({ messages: [f.row('messages', saved.message.id)], runs: [f.row('runs', 'historical-run')] }, f.actor);
+  assert.equal(filtered.messages.length, 0, 'presentation must not expose the copied attachment after revocation');
+  assert.equal(filtered.runs.length, 0, 'derived run metadata remains protected');
+});
+
+test('historical snapshot lineage checks current source permissions as well as the captured Area', t => {
+  const f = fixture(t); snapshotMessage(f);
+  const inspection = f.capture('message', 'snapshot-message');
+  f.move();
+  const revokeCurrentArea = (_workspace, _actor, permission, scope = {}) => !(permission === 'documents.read' && scope.scope_id === 'area-after');
+  assert.throws(() => assertSourceAccess(f.db, inspection, f.actor, revokeCurrentArea), { code: 'context_access_revoked' });
+  assert.throws(() => assertRumboSourceReferences(f.db, f.row('messages', 'snapshot-message'), 'messages', f.actor, revokeCurrentArea), { code: 'context_access_revoked' });
+});
+
+test('historical markers and caller JSON cannot forge snapshot authority; missing legacy lineage fails closed', t => {
+  const f = fixture(t), saved = snapshotMessage(f);
+  const original = f.row('messages', saved.message.id);
+  const updates = [
+    { metadata_json: '{}', attachments_json: original.attachments_json },
+    { metadata_json: original.metadata_json, attachments_json: JSON.stringify([{ ...saved.file, content: 'forged' }]) },
+    { metadata_json: original.metadata_json, attachments_json: JSON.stringify([{ ...saved.file, name: 'forged.md' }]) },
+  ];
+  for (const changed of updates) {
+    f.db.prepare('UPDATE messages SET metadata_json=?,attachments_json=? WHERE id=?').run(changed.metadata_json, changed.attachments_json, original.id);
+    assert.throws(() => f.capture('message', original.id), { code: 'context_access_revoked' });
+  }
+  f.db.prepare('UPDATE messages SET metadata_json=?,attachments_json=? WHERE id=?').run(original.metadata_json, original.attachments_json, original.id);
+  f.db.prepare('UPDATE chat_context_snapshots SET source_access_json=NULL WHERE id=?').run(saved.snapshotId);
+  assert.throws(() => f.capture('message', original.id), { code: 'context_access_revoked' });
+  assert.throws(() => assertRumboSourceReferences(f.db, { ...original, metadata: { sourceAccess: { sources: [] } }, attachments: [] }, 'messages', f.actor, () => true), { code: 'context_access_revoked' }, 'client-transformed JSON cannot override canonical stored lineage');
+});
+
+test('ordinary historical text attachments do not become workspace-source authority', t => {
+  const f = fixture(t);
+  f.db.prepare('DELETE FROM chat_collaboration WHERE chat_id=?').run('chat');
+  f.message('own-note');
+  f.db.prepare('UPDATE messages SET attachments_json=? WHERE id=?').run(JSON.stringify([{ name: 'own.md', type: 'text/markdown', content: '{"sourceAccess":{"sources":[]}} document:document' }]), 'own-note');
+  const inspection = f.capture('message', 'own-note');
+  assert.equal(inspection.sourceAccess.sources.some(ref => ref.table === 'documents'), false);
+  assert.equal(assertSourceAccess(f.db, inspection, f.actor, (_workspace, _actor, permission) => permission !== 'documents.read'), true);
+});

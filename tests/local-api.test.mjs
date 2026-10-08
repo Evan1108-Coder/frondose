@@ -168,7 +168,7 @@ test("a default install starts as a clean disconnected user", async () => {
     assert.deepEqual(snapshot.runs, []);
     assert.deepEqual(snapshot.approvals, []);
     assert.equal(snapshot.meta.demoData, false);
-    assert.equal(snapshot.connections.length, 4);
+    assert.deepEqual(snapshot.connections.map(connection => connection.provider).sort(), ['claude', 'codex', 'github', 'google-drive', 'huggingface', 'openrouter']);
     assert.equal(snapshot.connections.every((connection) => connection.state === "not_connected"), true);
   } finally {
     cleanApi.close();

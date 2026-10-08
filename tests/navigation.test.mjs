@@ -12,6 +12,17 @@ test('solo-first navigation names preserve existing stored route identities', ()
   assert.deepEqual(parsePage('#/conversations/chat_1?message=message_1'), { view: 'chats', id: 'chat_1', projectId: null, messageId: 'message_1' });
 });
 
+test('retired Playbooks links resolve to the scheduled-work settings page', () => {
+  const destination = { view: 'settings', id: 'scheduled-work', projectId: null };
+  for (const hash of ['#/playbooks', '#/playbooks/old_book', '#/playbooks?project=p']) assert.deepEqual(parsePage(hash), destination);
+  assert.equal(pageHash('playbooks'), '#/settings/scheduled-work');
+  assert.equal(pageHash('playbooks', 'old_book'), '#/settings/scheduled-work');
+  assert.deepEqual(parsePage('#/settings/scheduled-work'), destination);
+  for (const hash of ['#/playbooks/%2F', '#/playbooks/a/b', '#/playbooks?project=%ZZ']) assert.deepEqual(parsePage(hash), home);
+  assert.throws(() => pageHash('playbooks', '../invalid'), TypeError);
+  assert.equal(parsePage('#/workflows/workflow_1').view, 'workflows');
+});
+
 test('team section deep links preserve the selected tab', () => {
   for (const section of ['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people']) {
     assert.deepEqual(parsePage(pageHash('teams', 'team_1', { section })), { view: 'teams', id: 'team_1', projectId: null, section });

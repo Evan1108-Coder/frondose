@@ -226,7 +226,7 @@ function TerminalPane({ scope, terminal, fontSize, onEnded }) {
     return () => { cancelled = true; clearTimeout(pollTimer); clearTimeout(flushTimer); clearTimeout(arrivalTimer.current); observer?.disconnect(); disposeInput?.dispose(); instance.current?.dispose(); instance.current = null; };
   }, [terminal.id]);
   useEffect(() => { if (instance.current) instance.current.options.fontSize = fontSize; }, [fontSize]);
-  return <><ErrorMessage error={error} /><div className="wb-terminal-canvas"><div ref={host} className="wb-xterm" aria-label={`Interactive terminal ${terminal.name}`} />{arrivals ? <div className="wb-terminal-arrivals" aria-hidden="true" key={arrivals.cursor}>{arrivals.lines.map((line, index) => <span key={`${index}:${line}`}>{line}</span>)}</div> : null}</div></>;
+  return <><ErrorMessage error={error} /><div className="wb-terminal-canvas" data-field-defaults-exclude="true"><div ref={host} className="wb-xterm" aria-label={`Interactive terminal ${terminal.name}`} />{arrivals ? <div className="wb-terminal-arrivals" aria-hidden="true" key={arrivals.cursor}>{arrivals.lines.map((line, index) => <span key={`${index}:${line}`}>{line}</span>)}</div> : null}</div></>;
 }
 
 function WorkbenchDialog({ dialog, scope, root, settings, branches, onClose, onSaved, onSettings }) {

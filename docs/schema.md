@@ -1,14 +1,26 @@
 # Schema and migration contract
 
-Updated October 5, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
+Updated October 8, 2026. SQLite is the local source of truth. `server/schema.sql` defines base tables; service installers add extension tables and columns. Review both when changing the schema. This document covers the additive solo-first slices and their compatibility boundaries.
 
 ## Structured templates and Playbooks
 
 `workspace_items.payload_json` keeps each Route, Project or Chat template definition, including its validated custom fields. `workspace_template_instances` pins the field definition and submitted answers to the created Route (`tasks`), project or conversation, with the template version and workspace ID. It is not part of broad bootstrap data: `GET /api/template-instances/:type/:id?workspace_id=…` first checks the canonical destination item's current read scope. Hard deletion of a destination item removes its instance through a trigger; workspace deletion cascades. Existing templates without custom fields remain valid and create their legacy content unchanged.
 
-`playbooks`, `playbook_versions`, `playbook_runs` and `playbook_step_receipts` are separate from manual agent Workflows and older preview-and-apply Route rules. Definitions have optimistic versions, bounded action steps, and a manual, Inbox-open or scheduled trigger. Each run pins a version and a unique trigger key; receipts record actual results or failures. The scheduler checks due local minutes while one server process is running. Missed times are not replayed, and runs left uncertain by a restart are marked interrupted rather than retried. Execution rechecks the actor's automation-management capability and each action's write/scope capability. A completed receipt does not imply an agent ran or a human accepted the output.
+`playbooks`, `playbook_versions`, `playbook_runs` and `playbook_step_receipts` are retained historical tables, separate from manual agent Workflows and older preview-and-apply Route rules. The Playbooks builder and its manual, Inbox-open and timer dispatch paths were retired October 8. Stored definitions, optimistic versions, pinned run versions, trigger keys, receipts and change attribution are preserved; they are inert and never resume on Inbox open or server restart. A historical completed receipt records the old local write, not an agent run or human acceptance. This retirement does not drop tables or undo earlier actions.
+
+`chat_context_snapshots.source_access_json` is a nullable private authorization-lineage column added October 8. New selections capture original chat/workspace/source ancestry and assert current source permissions before saving; exact marked attachments reuse that lineage in current or historical message context and scheduling. Source moves never discard original scopes. Older rows remain unchanged with null lineage and require fresh source selection before send/reuse. The private column is omitted from public snapshot responses. It stores provenance, not transferable grants.
 
 Field defaults are browser-personal, workspace-keyed storage in `src/lib/field-defaults.js`; no database table is created. The current workspace JSON export/import excludes Playbooks, their receipts, template-instance answers and browser-personal field defaults. Keep a consistent SQLite backup plus any desired browser-local data separately. Before this additive migration, the live SQLite database was backed up to the private `.rumbo/backups/pre-playbooks-2026-10-05.sqlite`; this path is not a Git artifact.
+
+## Scheduled messages and actions
+
+`scheduled_work` stores a workspace, authenticated creator, request ID/hash, kind, bounded payload, private reviewed context/action snapshot, time zone, recurrence, next due time, state and optimistic version. The unique creator/workspace/request key protects creation retries; an inspected context ID can be reserved by only one schedule and cannot also launch an ordinary immediate run. Queued execution snapshots and runtime nonces never enter public list responses or portable workspace exports.
+
+`scheduled_work_occurrences` reserves one occurrence per schedule/due timestamp before execution. It records running/completed/failed/missed/interrupted state, the canonical message/run or applied-action receipt, a bounded failure and start/finish times. Local actions and their final receipt commit atomically. Provider delivery uses the occurrence ID as its canonical chat turn key. Restart reconciliation may recover an already recorded message/run; it never blindly resends an unknown occurrence. Recurring messages reuse the reviewed context, while action approvals apply once to an exact target snapshot.
+
+The service checks both stored and current context scopes, the creator's current permissions and account, and the source run sponsor/reviewer for action writes. Settings lists expose only accessible records, with `can_edit` limited to the creator. Schedule changes/results record activity on the related item without publishing queued message text. Old Playbooks tables are not dispatchers for this system.
+
+Before installing the October 8 scheduling tables and private attachment lineage, a consistent live backup was taken at `.rumbo/backups/pre-scheduled-work-EN5d7Q/rumbo.sqlite` and passed SQLite integrity check. This private backup is excluded from Git.
 
 ## Workspace pictures and status icons
 

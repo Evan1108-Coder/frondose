@@ -17,7 +17,7 @@ import { searchCatalog, searchExcerpt } from '../lib/search.js';
 import { describePage } from '../lib/workspace-experience.js';
 import { parsePage } from '../lib/navigation.js';
 import { featureItems } from '../lib/settings-catalog.js';
-import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban, MessageSquareText, ScrollText, ListChecks } from './icons.jsx';
+import { Focus, PanelsTopLeft, NotebookPen, LibraryBig, Workflow, Route, FolderKanban, MessageSquareText, ScrollText } from './icons.jsx';
 import { HelpMenu } from './HelpMenu.jsx';
 import { useSidebarArrange } from './SidebarArrange.jsx';
 import { TeamIconButton } from './TeamAppearance.jsx';
@@ -35,10 +35,10 @@ function RumboAgentNavIcon() {
   const appearance = useRumboAgentAppearance(workspace?.id);
   return <RumboAgentOrb color={appearance.orb_color} compact />;
 }
-const NAV_ICONS = { 'rumbo-agent': RumboAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, playbooks: ListChecks, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+const NAV_ICONS = { 'rumbo-agent': RumboAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
 const MORE_DESTINATIONS = [
-  ['Work', 'focus', 'updates', 'tasks', 'work', 'playbooks', 'workbench', 'workflows', 'operations'],
+  ['Work', 'focus', 'updates', 'tasks', 'work', 'workbench', 'workflows', 'operations'],
   ['Organize', 'teams', 'agents', 'chats', 'skills', 'library', 'documents', 'memory', 'views'],
   ['Connect', 'connections', 'settings'],
 ];

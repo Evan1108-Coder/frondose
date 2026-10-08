@@ -6,7 +6,7 @@ const ENUMS = {
   tasks: { status: ['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled'], priority: ['no_priority', 'low', 'medium', 'high', 'urgent'] },
   chats: { kind: ['general', 'direct', 'group', 'project', 'task', 'rumbo-agent'] },
   messages: { sender_type: ['user', 'agent', 'system'], kind: ['message', 'run_event', 'note'] },
-  agents: { provider: ['codex', 'claude', 'custom'], status: ['available', 'paused'] },
+  agents: { provider: ['codex', 'claude', 'openrouter', 'huggingface', 'custom'], status: ['available', 'paused'] },
   milestones: { status: ['planned', 'in_progress', 'completed'] },
 };
 const ARRAY_FIELDS = new Set(['assignee_agent_ids_json', 'labels_json', 'participant_agent_ids_json', 'attachments_json', 'context_source_ids_json']);

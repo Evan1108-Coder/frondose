@@ -1,6 +1,6 @@
 const VIEWS = new Set([
   "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
-  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates", "skills", "workflows", "playbooks",
+  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
@@ -24,7 +24,7 @@ export function parsePage(hash = "") {
     const query = queryIndex < 0 ? "" : route.slice(queryIndex + 1);
     const parts = path.split("/");
     const view = VIEW_ALIASES[parts[0]] || parts[0];
-    if (parts.length > 2 || !VIEWS.has(view)) return home();
+    if (parts.length > 2 || !VIEWS.has(view) && view !== 'playbooks') return home();
     const id = parts.length === 2 ? decodeURIComponent(parts[1]) : null;
     if (id !== null && !validId(id)) return home();
     // URLSearchParams repairs malformed encoding; reject it instead.
@@ -40,6 +40,8 @@ export function parsePage(hash = "") {
     if (reviews.length > 1 || reviews.length && !validId(reviews[0])) return home();
     const sections = params.getAll('section').map(value => value === 'contacts' ? 'people' : value);
     if (sections.length > 1 || (sections.length && !TEAM_SECTIONS.has(sections[0]))) return home();
+    // Retired Playbooks links remain useful without reviving the old builder.
+    if (view === 'playbooks') return { view: 'settings', id: 'scheduled-work', projectId: null };
     return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
     return home();
@@ -49,6 +51,10 @@ export function parsePage(hash = "") {
 /** Build a canonical hash while preserving a project-scoped list or detail. */
 export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null } = {}) {
   view = VIEW_ALIASES[view] || view;
+  if (view === 'playbooks') {
+    if (id !== null && !validId(id)) throw new TypeError('Invalid page identifier');
+    return '#/settings/scheduled-work';
+  }
   if (!VIEWS.has(view)) return "#/overview";
   if (id !== null && !validId(id)) throw new TypeError("Invalid page identifier");
   if (projectId !== null && !validId(projectId))

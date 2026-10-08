@@ -1,4 +1,4 @@
-# Templates, field defaults, and Playbooks
+# Templates, field defaults, and scheduled work
 
 This guide describes the implemented features in Rumbo. It does not imply that Rumbo can run every conceivable action or contact services that are not connected.
 
@@ -12,45 +12,43 @@ Template answers are ordinary workspace content, not a secure secret vault. Do n
 
 ## Field defaults
 
-Open Settings → Field defaults to find the supported named input fields. Search by page or field name. The current inventory covers 107 tagged, non-sensitive creation inputs across new work items, Settings resources, Areas, documents, milestones, and draft Skills, plus active custom template text questions. Defaults are personal to this browser and workspace, not shared with teammates or synced across devices. Each field can have up to nine named values and one primary value. The feature is on by default, but an individual field or value can be switched off. A default is inserted only into a blank, eligible new-item field; editing existing content is not silently replaced.
+Open Settings → Field defaults to search safe input fields by page, dialog, field name, or stable field key. The catalog includes creation and existing-item editors, search/filter inputs, ordinary Settings fields, repeated row editors, and active custom template text questions. Source discovery builds the catalog before those pages have been visited; mounted runtime controls provide a semantic fallback. Defaults are personal to this browser and workspace, not shared or synced across devices. Each field has up to nine named values and one primary value. Global, per-field and per-value switches are independent.
 
 When the cursor is in a configured field, Command/Ctrl+1–9 chooses a numbered value and replaces the field's current text. Browser tab shortcuts may intercept those keys. Alt+Shift+1–9 is the dependable alternative. Command/Ctrl+Z immediately restores the text replaced by a default; after further typing, normal browser undo behavior applies. Do not rely on this as a substitute for saving a draft.
 
-Only fields listed on the settings page are supported. Custom template text and long-text questions appear while their templates are active; choice questions are not defaultable. Sensitive fields, credentials, passwords, API keys, search boxes, and unrelated controls are excluded. Keep secrets out of defaults even when a generic text field accepts them. Browser storage can be cleared, so defaults are convenience text, not a backup.
+Safe text, search, textarea, email, URL, telephone, number, date, time and datetime-local inputs are covered, including authored DateField and SearchField controls. Active template text/long-text questions have template-and-field identities; custom choice questions are not defaultable. Passwords, passcodes, one-time codes, API keys, access/refresh/verification tokens, private keys, credentials, card/payment/account-number fields, and inputs inside sensitive authentication/security/payment forms are excluded. File, hidden, checkbox, radio, range/color-picker, disabled and read-only controls are not text-default destinations. Field Defaults' own editors are excluded to prevent recursive filling. First-use onboarding before a workspace exists has no workspace-specific defaults; normal new-workspace forms inside the app are covered. Never put secrets into an otherwise ordinary text default. Browser storage can be cleared: defaults are convenience text, not a backup.
 
-Date defaults must be real dates in `YYYY-MM-DD` format. Invalid dates and values rejected by the destination control (for example, a number outside that control's range) remain saved for editing but are not inserted. If browser storage is unavailable or full, Settings reports that saving failed.
+Primary values fill only blank new-form/composer fields and safe search inputs. Existing saved text is preserved. Existing-item fields and auto-saving Settings fields can still use explicit numbered shortcuts, but discovery does not call their onChange or silently save a preference. Shortcuts follow the destination's normal edit behavior; undo restores the previous text, not an already submitted record or other side effects.
+
+Dates must be real dates in `YYYY-MM-DD` format; time and datetime-local values use native ISO input formats. Malformed email/URL/numeric values and native min/max/step/pattern/length violations are not inserted. Invalid values remain editable in Settings. Missing/full browser storage reports a failed save, not success.
 
 ### Eligible-field audit
 
-The 107 named static fields are backed by tagged creation controls, not a claim that every input on the site is defaultable. The audited surfaces include new workspace/project/Route/conversation/agent forms; updates, outputs, context, knowledge, Area resources and repeat Routes; Settings resource creation; new Areas, documents and milestones; and draft Skills. Active template text questions are additional dynamic fields. The field-inventory test compares Settings resource definitions with the shared resource catalog and checks that new text/date controls in the audited resource and workspace editors cannot be added without a default tag.
+The shared source analyzer instruments every native text input/textarea and shared DateField/SearchField call site in the source tree, and builds the same searchable catalog for development and production. Displayed names come from product headings, popup titles, nested labels and template row captions; shared controls have explicit product scopes such as Appearance, Workbench commands and Scheduled messages. Display-only metadata changes do not re-key saved values. Stable identities derive from the source file, component, form/section context, label and value expression; inserting a sibling or reordering repeated rows does not renumber fields. Repeated rows share defaults for their semantic column, not a row index. Existing explicit keys remain compatible. Shared-component entries supply a fallback across dynamic variants when no more-specific field entry is configured; a specific field entry, including a disabled/empty one, always wins. Active template IDs keep custom questions separate.
 
-Search/filter inputs, passwords, tokens, payment details, contact details, person identifiers, file controls, choice/checkbox controls, and fields editing an existing item are intentionally outside automatic insertion. Other dynamic or review-specific editors—including repeated plan/workflow steps, Skill examples and test cases, permission/approval decisions, and provider settings—are not covered yet. A field absent from Settings should not be described as supported. Neither template answers nor browser-stored defaults are safe places for secrets.
+The full-source coverage test checks every input site for instrumentation or an explicit exclusion, plus semantic identity stability, sensitive neighboring fields and the resource catalog. Browser regression tests exercise real React controlled and native/uncontrolled inputs, authored search/date controls, explicit edits, immediate undo, range/step/pattern/length constraints, Settings search and pre-discovery. Unsupported/sensitive controls are excluded intentionally; removed Playbooks never add new inventory entries. New runtime-only controls outside normal JSX use the semantic fallback and become searchable when mounted.
 
-## Playbooks
+Each saved preset is bounded to 4,000 characters; the destination's format and length limits still apply. Terminal stream helpers are excluded so presets never intercept raw shell input. Workbench command-editor fields remain searchable and retain their ordinary reviewed launch flow.
 
-Playbooks are reusable sequences of safe Rumbo actions. In the Playbooks tab, create a playbook, choose a trigger, add one or more steps, review their settings, then save. The available action catalog is deliberately finite and shown in the editor. There are currently 13 executable local actions:
+## Reviewed actions and scheduled messages
 
-| Area | Available actions |
-| --- | --- |
-| Routes | Create a backlog draft, change priority, rename |
-| Projects | Create a planned draft, set goal, set target date |
-| Milestones | Create a planned Project milestone with an optional target date |
-| Documents | Create a Project document |
-| Conversations | Create an empty chat, rename, pin, unpin, add a local note |
+Use Rumbo Agent to describe a supported workspace change, then inspect and explicitly approve its proposed action. Proposals do not gain authority from being written by an agent, saved as instructions, or mentioned in a schedule. Current permission, target-scope and stale-state checks still apply. This is the ordinary agent-proposal path, not a new standalone action builder.
 
-These are real local writes, not simulated cards. A local conversation note is **not** a message sent to an AI provider. The current catalog does not call AI providers, edit files, mark external mail read, or change the browser tab. Plugin actions are cataloged separately as Coming soon and cannot be added to or run from a Playbook while service connections are paused. Agent execution is likewise unavailable here because it needs reviewed context and execution-specific permissions. The action editor shows selectors for active Project, Route and conversation targets, choice menus for bounded values, and a date input; dates must be real `YYYY-MM-DD` calendar dates.
+Use a conversation's Schedule entry point to prepare a later local note or agent prompt. A supported pending agent-action proposal also offers Schedule: explicitly review the exact proposed action and target snapshot before choosing its time. Settings → Scheduled messages & actions brings accessible schedules together for inspection and management, and recorded results appear in Activity. Check the exact message or action, intended agent, context, time and execution limits. A message schedule does not grant arbitrary action permissions; proposals from any later agent response still require their normal review. External Plugin actions remain paused.
 
-Triggers are a Run button, opening Inbox, or a time on selected weekdays in an IANA time zone. A scheduled trigger runs only while the local Rumbo server is running; a missed time while it is down is not replayed. An Inbox-open trigger requires a signed-in workspace user who can manage automations. Disable a playbook to stop future triggers without deleting its history. Archive it to remove it from active lists.
+## Retired Playbooks records
 
-Each run has a status and per-step receipts. A completed run means the configured writes completed; it does not mean an AI reviewed their content. If a step fails, earlier completed steps are not rolled back. Repeating the same request key does not replay it. A run interrupted by a server restart is recorded as interrupted and is not automatically retried. Review receipts before manually running again to avoid duplicate drafts.
+The multi-step Playbooks builder and its navigation destination have been removed. Older `#/playbooks` links lead to Settings → Scheduled messages & actions. Browser-personal navigation normalization drops the retired tab from sidebar placements, pins and header shortcuts while retaining unrelated preferences.
 
-Playbooks require the `automations.manage` permission; each step also rechecks its own write permission and target scope. Existing-item changes also recheck read access and reject archived or cross-workspace targets. Successful writes enter Rumbo's change history with Playbook attribution. Saved playbooks do not grant new permissions. The current workspace JSON export/import does not include Playbooks or their run receipts. Preserve database backups before migrations and do not treat a JSON export as a complete operational backup.
+Existing Playbook definitions, immutable versions, runs and step receipts remain in the local database as inert historical records. The former manual, Inbox-open and timer dispatch paths are disabled. Opening Inbox or restarting the server does not resume them. Their earlier completed actions are not undone, and this retirement does not erase change attribution.
+
+Workspace JSON export/import does not contain those historical records. Preserve a consistent database backup; do not treat the JSON export as a complete operational backup.
 
 ## Current boundaries
 
-- Existing Route automation rules in Settings remain manually previewed and applied; they are not Playbooks and have not been deleted.
-- Existing agent Workflows remain a separate orchestration interface. A Playbook does not launch an agent or replace approval review.
-- The action catalog must grow one implemented, permission-checked action at a time. Listing hundreds of hypothetical actions would make the UI misleading.
-- Publicly hosted, multi-instance scheduling requires a durable queue/worker and deployment-specific guarantees. The current scheduler is tied to one running local server process.
+- Existing Route automation rules in Settings remain manually previewed and applied; they are separate and have not been deleted.
+- Existing agent Workflows remain a separate, manually advanced orchestration interface.
+- Listing an action or external service is not evidence that it is executable. Supported agent proposals retain their existing review and permission gates.
+- Local scheduling is not a publicly hosted durable queue; do not assume operation while the local server is down or multi-instance delivery guarantees.
 
-For implementation and tests, see `server/playbooks-service.mjs`, `server/structured-templates.mjs`, `src/lib/field-defaults.js`, and their corresponding `tests/` files.
+For templates and defaults, see `server/structured-templates.mjs`, `src/lib/field-defaults.js`, and their corresponding `tests/` files. The legacy Playbook schema is retained for historical data; its service and UI have been removed. See [scheduled messages and agent actions](scheduled-messages-and-actions.md) for the active replacement.

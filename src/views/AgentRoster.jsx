@@ -7,6 +7,7 @@ import { apiRequest } from "../data/api.js";
 import { AgentMemoryPanel } from "../components/AgentMemoryPanel.jsx";
 import { agentDefaultChoices, duplicateAgentDefinition, exportAgentDefinition, parseAgentDefinition } from "../lib/agent-editor.js";
 import { AGENT_PROVIDERS, agentReadiness, summarizeAgent } from "../lib/agents.js";
+import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { download, relative, val, visible } from "../lib/model.js";
 import { ConnectionDialog } from "./Connections.jsx";
 import "./agents-page.css";
@@ -123,13 +124,13 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
         <section className="agent-detail-section agent-connection-section"><h3><Plug />Connection</h3><Readiness readiness={readiness} /><p>{readiness.description}</p>
           {val(connection, "account_label") && readiness.canStartLive ? <small>{val(connection, "account_label")}</small> : null}
           <div className="agent-launch-actions">
-            {readiness.action === "start" ? <Button icon={Play} onClick={() => startSession({ agent_id: agent.id, mode: "live" })}>Start session</Button>
+            {readiness.action === "start" ? (isBrowserAiProvider(agent.provider) ? null : <Button icon={Play} onClick={() => startSession({ agent_id: agent.id, mode: "live" })}>Start session</Button>)
               : readiness.action === "resume" ? <Button icon={Play} busy={busy} onClick={onPause}>Resume agent</Button>
                   : readiness.action === "configure" ? <Button icon={Pencil} onClick={() => edit("agent", agent)}>Review profile setup</Button>
-                  : <Button icon={Plug} onClick={() => onConnect(agent.provider)}>Connect {provider.name}</Button>}
+                  : <Button icon={Plug} onClick={() => isBrowserAiProvider(agent.provider) ? navigate('connections', agent.provider) : onConnect(agent.provider)}>Connect {provider.name}</Button>}
             {readiness.canSimulate ? <button className="text-button agent-simulate" onClick={() => startSession({ agent_id: agent.id, mode: "mock" })}><FlaskConical />Test with simulation</button> : null}
           </div>
-          {AGENT_PROVIDERS[agent.provider] ? <p className="agent-permission-note"><ShieldCheck />{agent.provider === "claude" ? "Read-only in Rumbo. Project editing is not supported yet." : "Choose read-only or project-edit access before each live session."}</p> : null}
+          {AGENT_PROVIDERS[agent.provider] ? <p className="agent-permission-note"><ShieldCheck />{agent.provider === "claude" ? "Read-only in Rumbo. Project editing is not supported yet." : isBrowserAiProvider(agent.provider) ? "Conversations and reviewed Rumbo actions. Local file tools are unavailable." : "Choose read-only or project-edit access before each live session."}</p> : null}
           <small>The provider account and limits are shared with other profiles. Simulations do not use the account or validate model behavior. Ordinary ChatGPT/Claude history is not imported.</small>
         </section>
         {projects.length || chats.length ? <section className="agent-detail-section agent-linked-work"><h3>Linked work</h3>{projects.slice(0, 3).map((project) => <button key={project.id} onClick={() => navigate("projects", project.id)}><Folder /><span>{project.name}</span><ArrowUpRight /></button>)}{chats.slice(0, 3).map((chat) => <button key={chat.id} onClick={() => navigate("chats", chat.id)}><MessageCircle /><span>{chat.title}</span><ArrowUpRight /></button>)}</section> : null}

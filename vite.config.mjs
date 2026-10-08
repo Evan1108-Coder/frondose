@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { createLocalApi } from "./server/local-api.mjs";
+import { fieldDefaultsSourcePlugin } from './scripts/field-defaults-transform.mjs';
 
 function rumboLocalApi() {
   return {
@@ -32,5 +33,5 @@ export default defineConfig({
       clientFiles: ["./src/main.jsx"],
     },
   },
-  plugins: [rumboLocalApi(), react()],
+  plugins: [rumboLocalApi(), fieldDefaultsSourcePlugin(new URL('.', import.meta.url).pathname), react()],
 });

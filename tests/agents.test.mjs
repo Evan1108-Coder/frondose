@@ -47,6 +47,14 @@ test('sidebar shows the built-in Rumbo profile and connected working agents only
   assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', archived_at: 'now' }, [connected]), false);
 });
 
+test('browser AI readiness follows this actor’s workspace account state', () => {
+  const apiAgent = { ...agent, provider: 'openrouter', provider_connection_id: 'conn_openrouter' };
+  const connection = { id: 'conn_openrouter', provider: 'openrouter', mode: 'browser-api', state: 'not_connected', metadata: { liveAccountChecked: false }, workspace_states: { ws_a: 'connected', ws_b: 'not_connected' } };
+  assert.equal(agentReadiness(apiAgent, connection).canStartLive, true);
+  assert.equal(agentReadiness({ ...apiAgent, workspace_id: 'ws_b' }, connection).canStartLive, false);
+  assert.equal(agentReadiness({ ...apiAgent, workspace_id: 'ws_other' }, connection).canStartLive, false);
+});
+
 test('run attribution survives agent renames and never guesses from a duplicate name', () => {
   const runs = [
     { id: 'own', agent_id: agent.id, workspace_id: 'ws_a', agent_name: 'Old name', updated_at: '2026-09-18' },

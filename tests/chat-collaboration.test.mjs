@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { installChatCollaboration, chatCollaborationRoute, chatCollaborationSnapshot, validateChatMessageContext, validateChatContextAttachments } from '../server/chat-collaboration.mjs';
+import { installChatCollaboration, chatCollaborationRoute, chatCollaborationSnapshot, validateChatMessageContext, validateChatContextAttachments, chatContextSnapshotAccess } from '../server/chat-collaboration.mjs';
 import { installWorkspaceFeatures } from '../server/workspace-features.mjs';
 import { threadMessages, messageLink, quotedMessage, restoreComposer, persistComposer, chatMarkdown } from '../src/lib/chats.js';
 import { EMOJI_REACTIONS, ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
@@ -22,14 +22,21 @@ async function fixture(fn) {
   const message = (id, chat = 'c', content = id, metadata = {}) => db.prepare('INSERT INTO messages(id,chat_id,sender_type,sender_name,content,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(id, chat, 'user', 'Tester', content, JSON.stringify(metadata), now, now);
   message('m1'); message('m2', 'c', 'Reply', { reply_to: 'm1' }); message('m3'); message('foreign', 'other-c');
   const version = chat => chatCollaborationSnapshot(db).chat_collaboration.find(item => item.chat_id === chat)?.version || 0;
+  const actor = { id: 'tester' }, denied = new Set();
+  const allowed = (workspaceId, who, permission, scope) => workspaceId === 'ws' && who?.id === actor.id && !denied.has(`${permission}:${scope.scope_type || ''}:${scope.scope_id || ''}`);
   const call = async (action, body = {}, chat = 'c') => {
     let output;
     const request = { workspace_id: 'ws', version: version(chat), action, ...body };
-    const handled = await chatCollaborationRoute({ db, req: { method: 'POST' }, res: {}, path: `/chat-collaboration/${chat}`, url: new URL('http://localhost/'), readBody: async () => request, send: (_res, status, payload) => { output = { status, ...payload }; }, snapshot: () => ({}) });
+    const handled = await chatCollaborationRoute({ db, req: { method: 'POST' }, res: {}, path: `/chat-collaboration/${chat}`, url: new URL('http://localhost/'), readBody: async () => request, send: (_res, status, payload) => { output = { status, ...payload }; }, snapshot: () => ({}), actor, allowed });
     assert.equal(handled, true); return output;
   };
+  const getSnapshot = async id => {
+    let output;
+    await chatCollaborationRoute({ db, req: { method: 'GET' }, res: {}, path: `/chat-collaboration/c/snapshots/${id}`, url: new URL('http://localhost/?workspace_id=ws'), readBody: async () => ({}), send: (_res, _status, payload) => { output = payload.result; }, snapshot: () => ({}), actor, allowed });
+    return output;
+  };
   const document = (id, workspace = 'ws', content = 'Exact selected content') => db.prepare('INSERT INTO documents(id,workspace_id,project_id,title,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(id, workspace, workspace === 'ws' ? 'p' : 'other-p', id, content, now, now);
-  try { await fn({ db, call, version, document, message, now }); }
+  try { await fn({ db, call, version, document, message, now, actor, allowed, denied, getSnapshot }); }
   finally { db.close(); await rm(dir, { recursive: true, force: true }); }
 }
 
@@ -124,6 +131,76 @@ test('only the exact selected immutable context can carry a snapshot marker', as
   assert.throws(() => validateChatContextAttachments(db, 'c', { ...input, attachments: [{ name: 'another', content: 'file' }, file] }), /before/);
   assert.throws(() => validateChatContextAttachments(db, 'c2', input), /conversation/);
 }));
+
+const markedSnapshot = snapshot => ({ name: `rumbo-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id });
+test('chat context captures source ACL lineage privately and rechecks original and current scopes after moves', async () => fixture(async ({ db, call, document, actor, allowed, denied, getSnapshot }) => {
+  document('scoped');
+  const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'scoped' }] })).result;
+  const options = { chatId: 'c', workspaceId: 'ws', attachments: [markedSnapshot(snapshot)], actor, allowed };
+  const original = chatContextSnapshotAccess(db, options);
+  assert.ok(original.sources.some(ref => ref.table === 'documents' && ref.id === 'scoped' && ref.scope.scope_id === 'p'));
+  assert.ok(original.sources.some(ref => ref.table === 'chats' && ref.id === 'c'));
+  assert.equal(Object.hasOwn(snapshot, 'source_access_json'), false);
+  assert.equal(Object.hasOwn(await getSnapshot(snapshot.id), 'source_access_json'), false);
+  db.prepare("UPDATE documents SET project_id='p2',content='Changed after capture' WHERE id='scoped'").run();
+  assert.deepEqual(chatContextSnapshotAccess(db, options), original, 'Do not recapture current scope as replacement authority');
+  assert.match((await getSnapshot(snapshot.id)).content, /Exact selected content/);
+  denied.add('documents.read:project:p');
+  assert.throws(() => chatContextSnapshotAccess(db, options), { code: 'context_access_revoked' });
+  await assert.rejects(getSnapshot(snapshot.id), { code: 'context_access_revoked' });
+  denied.clear(); denied.add('documents.read:project:p2');
+  assert.throws(() => chatContextSnapshotAccess(db, options), { code: 'context_access_revoked' });
+  denied.clear(); denied.add('chats.read:project:p');
+  assert.throws(() => chatContextSnapshotAccess(db, options), { code: 'context_access_revoked' });
+}));
+
+test('snapshot lineage includes expanded context packs and rejects unreadable selection before persistence', async () => fixture(async ({ db, call, document, now, denied, actor, allowed }) => {
+  document('pack-doc');
+  db.prepare('INSERT INTO workspace_items(id,workspace_id,kind,name,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run('private-pack', 'ws', 'context_pack', 'Pack', JSON.stringify({ document_ids: ['pack-doc'], content: 'Pack text' }), now, now);
+  denied.add('documents.read:project:p');
+  await assert.rejects(call('context', { sources: [{ kind: 'pack', id: 'private-pack' }] }), { code: 'context_access_revoked' });
+  assert.equal(db.prepare('SELECT COUNT(*) count FROM chat_context_snapshots').get().count, 0);
+  denied.clear();
+  const snapshot = (await call('context', { sources: [{ kind: 'pack', id: 'private-pack' }] })).result;
+  const access = chatContextSnapshotAccess(db, { chatId: 'c', workspaceId: 'ws', attachments: [markedSnapshot(snapshot)], actor, allowed });
+  assert.ok(access.sources.some(ref => ref.table === 'workspace_items' && ref.id === 'private-pack'));
+  assert.ok(access.sources.some(ref => ref.table === 'documents' && ref.id === 'pack-doc'));
+  db.prepare("UPDATE documents SET archived_at=? WHERE id='pack-doc'").run(now);
+  assert.throws(() => chatContextSnapshotAccess(db, { chatId: 'c', workspaceId: 'ws', attachments: [markedSnapshot(snapshot)], actor, allowed }), { code: 'context_access_revoked' });
+}));
+
+test('legacy snapshots require reselection and ordinary user attachments remain unaffected', async () => fixture(async ({ db, call, document, actor, allowed, getSnapshot }) => {
+  document('d');
+  const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'd' }] })).result;
+  db.prepare('UPDATE chat_context_snapshots SET source_access_json=NULL WHERE id=?').run(snapshot.id);
+  const options = { chatId: 'c', workspaceId: 'ws', attachments: [markedSnapshot(snapshot)], actor, allowed };
+  assert.throws(() => chatContextSnapshotAccess(db, options), { code: 'context_snapshot_reselect', statusCode: 409 });
+  await assert.rejects(getSnapshot(snapshot.id), { code: 'context_snapshot_reselect' });
+  assert.equal(chatContextSnapshotAccess(db, { ...options, attachments: [{ name: 'own.md', type: 'text/markdown', content: 'Own text' }] }), null);
+  assert.equal(chatContextSnapshotAccess(db, { ...options, attachments: [] }), null);
+}));
+
+test('snapshot access cannot be forged by marker, text, filename, chat or workspace substitutions', async () => fixture(async ({ db, call, document, actor, allowed }) => {
+  document('d');
+  const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'd' }] })).result;
+  const file = markedSnapshot(snapshot), base = { chatId: 'c', workspaceId: 'ws', attachments: [file], actor, allowed };
+  for (const changed of [{ content: 'Forged' }, { name: 'other.md' }, { type: 'text/plain' }, { rumbo_context_snapshot: 'missing' }]) assert.throws(() => chatContextSnapshotAccess(db, { ...base, attachments: [{ ...file, ...changed }] }));
+  assert.throws(() => chatContextSnapshotAccess(db, { ...base, attachments: [file, file] }));
+  assert.throws(() => chatContextSnapshotAccess(db, { ...base, chatId: 'c2' }));
+  assert.throws(() => chatContextSnapshotAccess(db, { ...base, workspaceId: 'other' }));
+  assert.throws(() => chatContextSnapshotAccess(db, { ...base, actor: { id: 'unauthorized' } }), { code: 'context_access_revoked' });
+}));
+
+test('chat snapshot migration adds nullable lineage without rewriting legacy content', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(`CREATE TABLE workspaces(id TEXT PRIMARY KEY); CREATE TABLE chats(id TEXT PRIMARY KEY);
+      CREATE TABLE chat_context_snapshots(id TEXT PRIMARY KEY,workspace_id TEXT,chat_id TEXT,content TEXT,sources_json TEXT,created_at TEXT);
+      INSERT INTO chat_context_snapshots VALUES('old','ws','c','Historical text','[]','2026-09-19');`);
+    installChatCollaboration(db); installChatCollaboration(db);
+    assert.deepEqual({ ...db.prepare('SELECT * FROM chat_context_snapshots').get() }, { id: 'old', workspace_id: 'ws', chat_id: 'c', content: 'Historical text', sources_json: '[]', created_at: '2026-09-19', source_access_json: null });
+  } finally { db.close(); }
+});
 
 test('branches copy only history through the selected message, retain origins and never start agents', async () => fixture(async ({ db, call }) => {
   const before = db.prepare('SELECT * FROM messages WHERE chat_id=?').all('c');

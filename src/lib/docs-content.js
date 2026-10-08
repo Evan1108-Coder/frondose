@@ -4,7 +4,7 @@ import { DOC_WORKFLOWS } from './docs-workflows.js';
 import { DOC_GOVERNANCE } from './docs-governance.js';
 import { DOC_CONNECTIONS } from './docs-connections.js';
 import { DOC_COLLABORATION } from './docs-collaboration.js';
-import { DOC_PLAYBOOKS } from './docs-playbooks.js';
+import { DOC_TEMPLATES_AND_SCHEDULING } from './docs-playbooks.js';
 export const DOC_GROUPS = [
   { id: 'getting-started', title: 'Getting started', description: 'Your first workspace, a clear brief, and a useful result.' },
   { id: 'workspace', title: 'Your workspace', description: 'Find, organize, and return to the work that matters.' },
@@ -15,7 +15,7 @@ export const DOC_GROUPS = [
   { id: 'integrations', title: 'Connections', description: 'Understand provider setup and what each service can actually do.' },
   { id: 'governance', title: 'People & access', description: 'Membership, custom roles, temporary access, and owner decisions.' },
   { id: 'settings', title: 'Settings & data', description: 'Shape the interface and manage workspace information responsibly.' },
-  { id: 'workflows', title: 'Workflow playbooks', description: 'Practical, end-to-end ways to plan, investigate, review, and improve.' },
+  { id: 'workflows', title: 'Practical guides', description: 'End-to-end ways to plan, investigate, review, and improve.' },
   { id: 'developers', title: 'Developers', description: 'Architecture, execution boundaries, and safe contribution practices.' },
 ];
 
@@ -254,6 +254,7 @@ const REFERENCE_ARTICLES = [
 
   article('provider-connections', 'integrations', 'AI connections and execution', 'Inspect account access before authorizing a provider or starting work.', [
     section('separation', 'Profiles and connections are different', ['AI connections opens a compact provider catalog. Select a provider to read its account route, usage limits, and current capabilities before choosing Connect or Manage. Codex and Claude Code are existing local runners: they need a signed-in CLI on the machine running Rumbo and do not create public hosted subscription access. Creating an agent does not install a runner, authenticate an account, or guarantee that the current provider setup is compatible.']),
+    section('browser-execution', 'Use a reviewed browser-account request', ['OpenRouter and configured Hugging Face profiles can execute reviewed conversations and scheduled agent prompts with an explicit model and the current user’s workspace authorization. Load a provider model catalog deliberately; execution itself makes no hidden account or model-list probe. The exact compiled prompt is sent in one bounded, non-streaming completion request. A final reply may propose supported workspace actions, but each action still needs human review and current permissions.', 'These browser providers have no native MCP or project-file tools, automatic retries for uncertain delivery, or integrated API usage ledger. Missing usage is unknown rather than zero. Mocked transport and schedule checks do not verify live-account OAuth, paid inference, or every available model.']),
     section('setup', 'Follow the provider-specific route', [], { steps: ['Open AI connections and select the intended provider.', 'Read its detail page and billing or setup limits.', 'For a ready local runner, use Manage runner. For OpenRouter, deliberately start its browser authorization. Hugging Face sign-in first needs the Rumbo operator’s OAuth app. GitHub Copilot is Coming soon.', 'Recheck the account status and, where available, choose one explicit model test before relying on it.', 'Return to the agent profile and verify the provider choice, context, and permissions before sending.'] }),
     section('failures', 'Keep failures honest', ['Authentication, configuration, or provider network failures remain real failures. Rumbo does not silently switch to simulation. A connected status is not a guarantee that every later request succeeds; account access and provider behavior can change. Do not paste tokens into chats or documents, and do not use a retry to work around an unresolved permission problem.']),
   ], { related: ['agent-profiles', 'session-progress', 'chat-access'], appLink: { view: 'connections', label: 'Open connections' } }),
@@ -268,7 +269,7 @@ const REFERENCE_ARTICLES = [
   article('integration-roadmap', 'integrations', 'AI connections versus Plugins', 'Read current connection states accurately.', [
     section('detail-page', 'Read an AI connection detail page', ['Open AI connections and choose a provider from the table. The detail page explains its route, usage, available actions, and limits before authorization. OpenRouter can begin browser authorization; Hugging Face is gated on operator OAuth setup; GitHub Copilot is Coming soon. Codex and Claude Code are local runners and use their existing machine account manager. Opening any detail page never starts a run or spends credits.', 'Settings → Plugins contains paused non-AI integrations. Its detail pages describe planned capabilities, not a working authorization flow. Existing connection records are preserved while the API blocks new external operations. Do not treat a preview, logo, or older Connected label as proof of a usable Plugin.']),
     section('states', 'Read the connection state', ['Codex and Claude are the current local AI runners. Twelve external-service entries remain visible as Coming soon previews; their authorization, synchronization, and actions are paused, even if an older record says connected. Existing records are preserved. A local runner connection is not public hosted AI access, and listed model IDs are not a guarantee that a provider account can run them.']),
-    section('use', 'Do not assume planned actions run', ['Plugin authorization, synchronization, and actions are paused. Playbooks can execute only their currently listed local Rumbo actions; their Plugin action catalog is informational until each provider is released and verified. AI-account checks and explicit model tests are separate from agent execution. A successful model test does not wire that provider into Playbooks or conversations.']),
+    section('use', 'Do not assume planned actions run', ['Plugin authorization, synchronization, and actions are paused. Ask Rumbo Agent for supported workspace actions and review its proposals before applying them; listing a Plugin does not make its actions executable. OpenRouter and configured Hugging Face can power reviewed conversations and scheduled agent prompts through the current user’s workspace authorization and an explicit model. Their final replies may propose supported local workspace actions, but API providers have no native or project-file tools. Account checks and short model tests are separate operations, not action approval or real-account certification. API usage is not yet part of the CLI metering ledger.']),
     section('request', 'Describe the workflow you need', ['Useful feedback explains the source, desired action, data involved, and who should approve it. “Bring this selected document into a reviewed context snapshot” is more actionable than “Integrate everything.” Rumbo’s Feedback form is currently a preview: submitting it does not transmit a request to a support service.']),
   ], { related: ['provider-connections', 'github-drive', 'service-boundaries'], appLink: { view: 'settings', id: 'integrations', label: 'Open integration catalog' } }),
 
@@ -512,4 +513,4 @@ const REFERENCE_ARTICLES = [
   ], { related: ['developer-testing', 'developer-architecture', 'preferences'] }),
 ];
 
-export const DOC_ARTICLES = [...REFERENCE_ARTICLES, ...DOC_WORKFLOWS, ...DOC_GOVERNANCE, ...DOC_CONNECTIONS, ...DOC_COLLABORATION, ...DOC_PLAYBOOKS];
+export const DOC_ARTICLES = [...REFERENCE_ARTICLES, ...DOC_WORKFLOWS, ...DOC_GOVERNANCE, ...DOC_CONNECTIONS, ...DOC_COLLABORATION, ...DOC_TEMPLATES_AND_SCHEDULING];

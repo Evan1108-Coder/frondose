@@ -142,5 +142,5 @@ export const DOC_ARTICLE_ICONS = Object.freeze({
   'workflow-export-checklist': { iconName: 'ListChecks', iconNode: ListChecks },
   'structured-templates': { iconName: 'FormInput', iconNode: FormInput },
   'field-defaults': { iconName: 'TextCursorInput', iconNode: TextCursorInput },
-  'playbooks': { iconName: 'CalendarClock', iconNode: CalendarClock },
+  'scheduled-work': { iconName: 'CalendarClock', iconNode: CalendarClock },
 });

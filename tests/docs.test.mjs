@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { DOC_GROUPS, DOC_ARTICLES } from '../src/lib/docs-content.js';
 import { articleMarkdown, articleText, searchDocs } from '../src/lib/docs-utils.js';
 import { pageHash, parsePage } from '../src/lib/navigation.js';
+import { SETTINGS_GROUPS } from '../src/lib/settings-catalog.js';
 
 test('documentation has unique, navigable articles and valid related links', () => {
   assert.ok(DOC_ARTICLES.length >= 100);
@@ -33,4 +34,23 @@ test('copy page produces readable complete Markdown', () => {
   const md = articleMarkdown(article);
   assert.ok(md.startsWith('# Projects\n\n'));
   for (const section of article.sections) assert.ok(md.includes(`## ${section.title}`));
+});
+test('Docs promotes reviewed schedules instead of the retired Playbooks builder', () => {
+  assert.ok(!DOC_ARTICLES.some(article => article.id === 'playbooks' || article.appLink?.view === 'playbooks'));
+  const article = DOC_ARTICLES.find(article => article.id === 'scheduled-work');
+  assert.ok(article);
+  assert.deepEqual(article.appLink, { view: 'settings', id: 'scheduled-work', label: 'Open Scheduled messages & actions' });
+  assert.match(articleText(article), /inert history/);
+  assert.match(articleText(article), /explicit human review/);
+  assert.ok(SETTINGS_GROUPS.flatMap(([, pages]) => pages).some(([id, title]) => id === 'scheduled-work' && title === article.title));
+});
+test('browser-account execution guidance keeps model, authority and verification limits explicit', () => {
+  const article = DOC_ARTICLES.find(article => article.id === 'provider-connections');
+  const text = articleText(article);
+  assert.match(text, /OpenRouter and configured Hugging Face/);
+  assert.match(text, /explicit model/);
+  assert.match(text, /current user’s workspace authorization/);
+  assert.match(text, /no native MCP or project-file tools/);
+  assert.match(text, /Mocked transport and schedule checks do not verify live-account/);
+  assert.match(text, /human review and current permissions/);
 });

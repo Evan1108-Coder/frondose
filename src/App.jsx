@@ -71,7 +71,6 @@ const LibraryView = lazy(() => import('./views/Library.jsx').then(module => ({ d
 const UpdatesView = lazy(() => import('./views/Updates.jsx').then(module => ({ default: module.UpdatesView })));
 const SkillsView = lazy(() => import('./views/Skills.jsx').then(module => ({ default: module.SkillsView })));
 const WorkflowsView = lazy(() => import('./views/Workflows.jsx').then(module => ({ default: module.WorkflowsView })));
-const PlaybooksView = lazy(() => import('./views/Playbooks.jsx').then(module => ({ default: module.PlaybooksView })));
 
 function readPage() {
   return parsePage(location.hash);
@@ -203,15 +202,6 @@ export function App() {
   const workspace =
     visible(rawData?.workspaces).find((item) => item.id === workspaceId) ??
     visible(rawData?.workspaces)[0];
-  const previousInboxVisit = useRef({ workspaceId: null, view: null });
-  useEffect(() => {
-    const prior = previousInboxVisit.current;
-    previousInboxVisit.current = { workspaceId: workspace?.id ?? null, view: page.view };
-    if (!workspace?.id || page.view !== 'inbox' || prior.workspaceId === workspace.id && prior.view === 'inbox') return;
-    apiRequest('/api/playbooks/dispatch-event', { method: 'POST', body: { workspace_id: workspace.id, event: 'inbox.opened', idempotency_key: crypto.randomUUID() } })
-      .then(({ result }) => { if (result?.length) rumboActions.refresh().catch(() => {}); })
-      .catch(problem => notify(`Inbox Playbook trigger failed: ${problem.message}`, 'error'));
-  }, [workspace?.id, page.view, notify]);
   const organization = useMemo(() => organizationState && organizationState.workspaceId === workspace?.id ? organizationState.value : readOrganization(localStorage, workspace?.id), [workspace?.id, organizationState]);
   const experience = useMemo(() => experienceState && experienceState.workspaceId === workspace?.id ? experienceState.value : readExperience(localStorage, workspace?.id), [workspace?.id, experienceState]);
   const updateExperience = useCallback(value => {
@@ -460,7 +450,6 @@ export function App() {
     chats: <Suspense fallback={<div className="app-loading" role="status">Opening chats…</div>}><ChatsView /></Suspense>,
     'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Rumbo Agent…</div>}><RumboAgent /></Suspense>,
     work: <WorkView />,
-    playbooks: <Suspense fallback={<p role="status">Opening Playbooks…</p>}><PlaybooksView /></Suspense>,
     workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={page.id ?? page.projectId} /></Suspense>,
     library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={page.id} /></Suspense>,
     operations: <OperationsView />,

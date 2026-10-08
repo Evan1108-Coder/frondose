@@ -1,4 +1,5 @@
 import { byUpdated, val, visible } from "./model.js";
+import { isBrowserAiProvider } from './ai-providers.js';
 
 export const AGENT_PROVIDERS = {
   codex: {
@@ -9,12 +10,14 @@ export const AGENT_PROVIDERS = {
     description: "Code, investigate, and make changes inside a project folder.",
   },
   claude: {
-    name: "Claude",
+    name: "Claude Code",
     company: "Anthropic",
     capabilities: ["Read and search"],
     permissions: "Read-only analysis",
     description: "Read code, explore a project, and explain findings. Editing is not supported in Rumbo yet.",
   },
+  openrouter: { name: 'OpenRouter', company: 'OpenRouter', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: 'Use an explicitly selected model through your connected OpenRouter account.' },
+  huggingface: { name: 'Hugging Face Inference', company: 'Hugging Face', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: 'Use a chat model through your configured Hugging Face account.' },
 };
 
 const ACTIVE_RUN_STATUSES = new Set(["queued", "starting", "running", "needs_input", "paused"]);
@@ -22,19 +25,20 @@ const ACTIVE_RUN_STATUSES = new Set(["queued", "starting", "running", "needs_inp
 /** Connection state is saved account state, not a new authentication check. */
 export function agentReadiness(agent, connection) {
   const provider = AGENT_PROVIDERS[agent?.provider];
-  const result = (state, label, description, action, canStartLive = false, canSimulate = true) =>
+  const result = (state, label, description, action, canStartLive = false, canSimulate = !isBrowserAiProvider(agent?.provider)) =>
     ({ state, label, description, action, canStartLive, canSimulate });
   if (!agent || val(agent, "archived_at")) return result("archived", "Archived", "Restore this agent before starting a session.", "restore", false, false);
   if (!provider) return result("unsupported", "Not supported", "This provider cannot run sessions in Rumbo yet. Choose Codex or Claude.", "configure", false, false);
   if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
   if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
   if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
-  const state = connection?.provider === agent.provider ? connection.state : "not_connected";
+  const state = connection?.provider === agent.provider ? isBrowserAiProvider(agent.provider) ? connection.workspace_states?.[val(agent, 'workspace_id')] || connection.state : connection.state : "not_connected";
   if (state === 'connected' && connection.mode === 'demo' && connection.metadata?.simulated === true)
     return result('sample', 'Connected · sample', 'A simulated connection in a view-only sample workspace. No provider account is connected and no session can start.', 'inspect', false, false);
   if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
-  if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${provider.name === "Claude" ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
-  if (state === "connected" && connection.mode !== "demo" && connection.metadata?.liveAccountChecked !== false) {
+  if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${agent.provider === 'claude' ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
+  if (state === "connected" && connection.mode !== "demo" && (isBrowserAiProvider(agent.provider) || connection.metadata?.liveAccountChecked !== false)) {
+    if (isBrowserAiProvider(agent.provider)) return result('ready', 'Ready', 'Your workspace account is connected. Choose a chat model; Rumbo changes are proposed for review.', 'start', true);
     return result("ready", "Ready", "Account connected. General chat needs no folder; project-file work requires one. Access is checked again during launch.", "start", true);
   }
   const description = state === "available_not_authenticated"

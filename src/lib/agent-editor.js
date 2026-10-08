@@ -1,4 +1,5 @@
 import { val } from "./model.js";
+import { EXECUTION_PROVIDERS, isBrowserAiProvider } from './ai-providers.js';
 
 export const AGENT_REASONING_OPTIONS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 const DEFINITION_FIELDS = ["name", "role", "provider", "description", "instructions", "model", "reasoning_effort", "memory_policy", "output_behavior"];
@@ -59,7 +60,8 @@ export function hasAgentText(form) {
 
 export function validateAgentForm(form) {
   if (!form.name.trim()) return { field: "name", message: "Give this agent a name before saving." };
-  if (!["codex", "claude"].includes(form.provider)) return { field: "provider", message: "Choose Codex or Claude. Other providers are not supported in this release." };
+  if (!EXECUTION_PROVIDERS.includes(form.provider)) return { field: "provider", message: "Choose a supported AI provider." };
+  if (isBrowserAiProvider(form.provider) && !form.model.trim()) return { field: 'model', message: 'Choose an explicit chat model from your provider’s catalog.' };
   for (const [field, limit] of Object.entries(DEFINITION_LIMITS)) {
     if (typeof form[field] !== "string" || form[field].length > limit || /\0/.test(form[field])) return { field, message: `${field.replaceAll("_", " ")} must be text, at most ${limit.toLocaleString()} characters, without null characters.` };
   }

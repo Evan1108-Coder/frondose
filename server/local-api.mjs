@@ -32,19 +32,21 @@ import { installWorkbenchCheckpoints, createWorkbenchCheckpointService } from '.
 import { createChangeReviewService } from './change-review-service.mjs';
 import { installWorkflow, workflowSnapshot, workflowRoute } from './workflow-service.mjs';
 import { installAcceptanceEvidence, acceptanceEvidenceRoute } from './acceptance-evidence-service.mjs';
-import { installChatCollaboration, chatCollaborationSnapshot, chatCollaborationRoute, validateChatMessageContext, validateChatContextAttachments } from './chat-collaboration.mjs';
+import { installChatCollaboration, chatCollaborationSnapshot, chatCollaborationRoute, validateChatMessageContext, validateChatContextAttachments, chatContextSnapshotAccess } from './chat-collaboration.mjs';
 import { installCoordination, coordinationSnapshot, coordinationRoute } from './coordination-service.mjs';
 import * as manualWorkflows from './manual-workflow-service.mjs';
 import { installRouteTools, routeToolsSnapshot, routeToolsRoute } from './route-tools.mjs';
 import { installTeamResources, teamResourcesRoute } from './team-resources.mjs';
-import { installAgentAwareness, agentAwarenessRoute, workspaceAwareness, awarenessEnabled, actionProtocol, recordActionProtocol, connectionActionProtocol, captureAgentActions, agentMemories } from './agent-awareness.mjs';
+import { installAgentAwareness, agentAwarenessRoute, workspaceAwareness, awarenessEnabled, actionProtocol, recordActionProtocol, connectionActionProtocol, captureAgentActions, agentMemories, validateAgentProposal } from './agent-awareness.mjs';
+import { authorizeLocalAction, executeLocalAction, assertActionFresh, localActionReadable } from './agent-action-catalog.mjs';
+import { installScheduledWork, createScheduledWorkService, scheduledWorkRoute } from './scheduled-work-service.mjs';
+import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider } from '../src/lib/ai-providers.js';
 import { installActivity, activitySnapshot, activityRoute } from './activity-service.mjs';
 import { createIdentityService } from './identity-service.mjs';
 import { createGovernanceService, governanceRoute } from './governance-service.mjs';
 import { createAccessBoundary } from './access-boundary.mjs';
 import { createConnectionPlatform } from './connection-platform.mjs';
 import { installAiConnections, createAiConnectionsService } from './ai-connections-service.mjs';
-import { createPlaybooksService, playbooksRoute } from './playbooks-service.mjs';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
 import { subRoutesRoute } from './sub-routes-service.mjs';
 import { guardRouteMutation, guardRouteDeletion, hierarchyTransaction, routeGraph, inspectRouteGraph, authorizeRouteNodes } from './route-hierarchy.mjs';
@@ -143,6 +145,8 @@ const PROVIDERS = {
     capabilities: ['chat', 'analysis', 'structured_events'],
     constraints: ['Claude Code owns authentication.', 'Rumbo launches only explicitly requested CLI sessions.', 'Probe checks the executable only.'],
   },
+  openrouter: { category: 'agent', displayName: 'OpenRouter', description: 'Conversations and reviewed Rumbo actions through your OpenRouter account.', authMethod: 'oauth_pkce', capabilities: ['chat', 'reviewed_actions'], constraints: ['Uses the signed-in user’s workspace connection and credits.', 'An explicit model is required. No project-file or native tools.'] },
+  huggingface: { category: 'agent', displayName: 'Hugging Face Inference', description: 'Conversations and reviewed Rumbo actions through your Hugging Face account.', authMethod: 'oauth_pkce', capabilities: ['chat', 'reviewed_actions'], constraints: ['Requires a configured Hugging Face OAuth app and connected user account.', 'An explicit chat model is required. No project-file or native tools.'] },
 };
 
 function now() { return new Date().toISOString(); }
@@ -454,6 +458,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installAgentProfiles(db);
   installAgentProfileHistory(db);
   installRunContextStore(db);
+  installScheduledWork(db);
   installSkillReliability(db);
   installAcceptanceEvidence(db);
   manualWorkflows.installManualWorkflows(db);
@@ -510,17 +515,16 @@ function snapshot(db) {
   };
 }
 
-export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, playbookOptions = {} } = {}) {
+export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {} } = {}) {
   const externalConnectionsPaused = integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
-  let identity, governance, access, connectionPlatform, aiConnections, playbooks;
+  let identity, governance, access, connectionPlatform, aiConnections;
   function installAccess() {
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
     governance = createGovernanceService({ db: store.db });
     for (const workspace of store.db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
     access = createAccessBoundary({ db: store.db, governance });
-    playbooks = createPlaybooksService({ db: store.db, allowed: access.allowed, now: playbookOptions.now });
     governance.registerCapabilities([
       { id: 'connections.view', label: 'Inspect connection setup and health', category: 'Connections' },
       { id: 'connections.sync', label: 'Synchronize selected resources', category: 'Connections' },
@@ -550,27 +554,24 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     });
   }
   installAccess();
-  // The local server, not page views, advances due schedules. The unique
-  // (playbook, local minute) receipt makes repeated ticks idempotent.
-  const playbookScheduleTimer = setInterval(() => {
-    if (!closed) playbooks.dispatchDue();
-  }, playbookOptions.scheduleIntervalMs ?? 15_000);
-  playbookScheduleTimer.unref?.();
+  function providerState(provider, workspaceId, actor) {
+    return isBrowserAiProvider(provider) ? aiConnections.readyState(provider, workspaceId, actor) : integration.status(provider);
+  }
+  function startProviderRun(options, callbacks) {
+    return isBrowserAiProvider(options.provider) ? aiConnections.startAgentRun({ ...options, workspaceId: options.workspaceId, actor: options.actor }, callbacks) : integration.startRun(options, callbacks);
+  }
   function authorizeAgentProposal(run, proposal, reviewer) {
     const sponsorId = store.db.prepare('SELECT actor_id FROM agent_run_sponsors WHERE run_id=?').get(run.id)?.actor_id;
     if (!sponsorId) throw Object.assign(new Error('This older run has no authenticated sponsor. Start a fresh run.'), { statusCode: 403 });
     for (const userId of new Set([sponsorId, reviewer?.id].filter(Boolean))) {
       const who = { id: userId };
-      if (proposal.type?.startsWith('record.')) {
-        access.check({ actor: who, path: `/${proposal.resource}/${proposal.id}`, method: proposal.type === 'record.archive' ? 'DELETE' : 'PATCH', url: new URL('http://localhost'), body: {} });
-        if (proposal.resource === 'tasks') { const task = store.db.prepare('SELECT * FROM tasks WHERE id=?').get(proposal.id); if (task) guardRouteMutation(store.db, task, { ...task, ...(proposal.type === 'record.archive' ? { archived_at: now() } : proposal.patch) }, { actor: who, allowed: access.allowed }); }
-      } else if (proposal.type === 'settings.update') {
-        if (userId !== 'local-owner') throw Object.assign(new Error('Shared installation settings require the installation owner.'), { statusCode: 403 });
-      } else if (proposal.type === 'connection.action') {
+      const captured = readRunContext(store.db, run.id);
+      if (captured) assertSourceAccess(store.db, captured.inspection, who, access.allowed);
+      if (proposal.type === 'connection.action') {
         const connection = store.db.prepare('SELECT * FROM platform_connections WHERE id=?').get(proposal.connection_id);
         if (!connection || connection.workspace_id !== run.workspace_id) throw validationError('Connection unavailable in this workspace.');
         governance.authorize(run.workspace_id, userId, `connections.${connection.provider}.${proposal.action}`, { scope_type: connection.scope_type, scope_id: connection.scope_id });
-      } else governance.authorize(run.workspace_id, userId, 'agents.write', run.project_id ? { scope_type: 'project', scope_id: run.project_id } : {});
+      } else authorizeLocalAction(store.db, { proposal, workspaceId: run.workspace_id, run, actors: [who], allowed: access.allowed });
     }
     return { id: sponsorId };
   }
@@ -613,7 +614,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     },
   });
   if (seedMode !== 'demo') {
-    for (const provider of Object.keys(PROVIDERS)) {
+    for (const provider of Object.keys(PROVIDERS).filter(provider => !isBrowserAiProvider(provider))) {
       const status = integration.status(provider);
       getDb().prepare('UPDATE connections SET state=?,mode=?,metadata_json=?,last_probed_at=? WHERE provider=?')
         .run(status.state, 'local', JSON.stringify(status), status.checkedAt || null, provider);
@@ -751,6 +752,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       filter: (data) => access.filter(data, actor), maxContextCharacters: 62000, maxTotalCharacters: 90000, inheritProfileScope: false,
     });
     const sourceAccess = captureSourceAccess(db, inspection);
+    const attachmentAccess = chatId ? chatContextSnapshotAccess(db, { chatId, workspaceId, attachments: currentAttachments, actor, allowed: access.allowed }) : null;
+    if (attachmentAccess) sourceAccess.sources = [...sourceAccess.sources, ...attachmentAccess.sources];
     const knowledgeConflicts = getKnowledgeConflictWarnings(db, inspection, actor, access.allowed);
     // Both source IDs are already included and protected by captured lineage.
     // This notice changes no approval or access and is part of the exact prompt.
@@ -923,6 +926,362 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     return false;
   }
 
+  async function launchRun({ actor, body, taskRunMatch = null, chatTurnMatch = null, res, scheduledInspection = null }) {
+    const db = getDb();
+    if (body.workflow_step && (body.mode !== 'live' || chatTurnMatch || taskRunMatch)) throw validationError('Launch a prepared Workflow step through a reviewed live session. Simulations cannot complete Workflow steps.');
+    if (body.skill_evaluation !== undefined && (body.mode !== 'live' || chatTurnMatch || taskRunMatch || body.workflow_step || !body.context_inspection_id)) throw validationError('Launch a prepared Skill evaluation through a separately reviewed live session. Simulations cannot supply evaluation evidence.');
+    let turn = null;
+    if (chatTurnMatch) {
+      const chatId = chatTurnMatch[1];
+      const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(chatId);
+      if (!chat) return fail(res, 404, 'not_found', 'Chat not found.');
+      if (typeof body.client_turn_id !== 'string' || !/^[A-Za-z0-9_-]{8,120}$/.test(body.client_turn_id)) throw validationError('Provide a stable client turn ID between 8 and 120 characters.');
+      if (typeof body.agent_id !== 'string' || !body.agent_id) throw validationError('Choose an agent to receive this message.');
+      const existing = db.prepare('SELECT * FROM chat_turns WHERE chat_id=? AND client_turn_id=?').get(chatId, body.client_turn_id);
+      if (existing) {
+        const message = present(db.prepare('SELECT * FROM messages WHERE id=?').get(existing.source_message_id));
+        for (const field of ['reply_to', 'context_snapshot_id']) if (body[field] !== undefined && (body[field] || null) !== (message.metadata?.[field] || null)) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different reply or context references.');
+        if (existing.agent_id !== body.agent_id || (body.source_message_id && body.source_message_id !== existing.source_message_id) || (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== message.content)) || (body.attachments !== undefined && JSON.stringify(body.attachments) !== JSON.stringify(message.attachments))) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different message.');
+        const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(existing.run_id));
+        if (body.work_mode !== undefined && body.work_mode !== run.work_mode) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different work mode.');
+        const selection = readRunContext(db, run.id)?.inspection?.request;
+        for (const field of ['model', 'reasoning_effort']) if (body[field] !== undefined && body[field] !== (selection?.[field] ?? message.metadata?.[field] ?? '')) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different model settings.');
+        return send(res, 200, { message, run, replayed: true });
+      }
+      if (isRumboAgentChat(db, chat) && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact Rumbo Agent context before sending.');
+      let source = null;
+      if (body.source_message_id !== undefined) {
+        if (typeof body.source_message_id !== 'string') throw validationError('Choose a valid message to retry.');
+        source = present(db.prepare("SELECT * FROM messages WHERE id=? AND chat_id=? AND sender_type='user'").get(body.source_message_id, chatId));
+        if (!source) throw validationError('The original user message is no longer in this chat.');
+        if (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== source.content)) throw validationError('Send edited content as a new message instead of retrying an existing message.');
+        const previous = db.prepare('SELECT status FROM runs WHERE source_message_id=? AND agent_id=? ORDER BY created_at DESC LIMIT 1').get(source.id, body.agent_id);
+        if (previous && !['failed', 'stopped', 'interrupted'].includes(previous.status)) return fail(res, 409, 'turn_not_retryable', 'This agent is already working on, or has answered, this message.');
+      }
+      const content = source?.content ?? body.content;
+      const attachments = source?.attachments ?? body.attachments ?? [];
+      if (typeof content !== 'string' || !content.trim() || content.length > 100_000) throw validationError('Write a message between 1 and 100,000 characters.');
+      if (!Array.isArray(attachments) || attachments.length > 20 || attachments.some((file) => !isRecord(file) || typeof file.name !== 'string' || typeof file.content !== 'string' || file.content.length > 100_000 || String(file.type || '').startsWith('image/') || /^data:/i.test(file.content))) throw validationError('Agent messages support up to 20 text attachments, each under 100,000 characters. Save images and other files as a note instead.');
+      if (db.prepare("SELECT 1 FROM runs WHERE chat_id=? AND agent_id=? AND status IN ('queued','starting','running','needs_input','paused')").get(chatId, body.agent_id)) return fail(res, 409, 'chat_agent_busy', 'This agent is already replying in this chat. Wait for the reply or stop its session first.');
+      const workMode = body.work_mode ?? source?.metadata?.work_mode ?? (source ? 'project' : 'conversation');
+      if (!['conversation', 'project'].includes(workMode)) throw validationError('Choose general chat or project work.');
+      if (source && workMode !== (source.metadata?.work_mode ?? 'project')) throw validationError('Retry in the original work mode, or send a new message.');
+      if (workMode === 'conversation' && (body.permission_mode ?? 'read-only') !== 'read-only') throw validationError('General chat cannot request project editing. Choose project work and link a folder.');
+      if (source) for (const field of ['reply_to', 'context_snapshot_id']) if (body[field] !== undefined && (body[field] || null) !== (source.metadata?.[field] || null)) throw validationError('Retry with the original reply and context references, or send a new message.');
+      turn = { clientId: body.client_turn_id, source, content: content.trim(), attachments, workMode, metadata: validateChatContextAttachments(db, chatId, { ...(source?.metadata || body), attachments }) };
+      body = { ...body, mode: 'live', chat_id: chatId, prompt: turn.content, permissionMode: body.permission_mode || 'read-only', title: content.trim().slice(0, 100) };
+    }
+    const task = taskRunMatch ? db.prepare('SELECT * FROM tasks WHERE id=?').get(taskRunMatch[1]) : null;
+    if (taskRunMatch && !task) return fail(res, 404, 'not_found', 'Task not found.');
+    if (body.mode && !['mock', 'demo', 'live'].includes(body.mode)) return fail(res, 400, 'validation_error', 'Choose a live or demo session.');
+    if (body.provider && !EXECUTION_PROVIDERS.includes(body.provider)) return fail(res, 400, 'validation_error', 'Select a supported AI provider.');
+    let resolved;
+    try { resolved = resolveRunContext(db, body, task?.id); }
+    catch (error) { if (body.context_inspection_id) return fail(res, 409, 'stale_context', 'The selected scope changed. Inspect context again.'); throw error; }
+    const { links, project, linkedTask, linkedChat, workspaceId } = resolved;
+    governance.authorize(workspaceId, actor.id, 'agents.run', project ? { scope_type: 'project', scope_id: project.id } : {});
+    if (body.prompt !== undefined && (typeof body.prompt !== 'string' || body.prompt.length > 100_000)) return fail(res, 400, 'validation_error', 'Session prompt must be text up to 100,000 characters.');
+    for (const field of ['include_memory', 'includeMemory', 'include_chat', 'includeChat']) if (body[field] !== undefined && typeof body[field] !== 'boolean') throw validationError('Context selection must be true or false.');
+    if (body.title !== undefined && (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 2000)) return fail(res, 400, 'validation_error', 'Session title is required and must be under 2,000 characters.');
+    if ((body.agent_name ?? body.agentName) !== undefined && typeof (body.agent_name ?? body.agentName) !== 'string') throw validationError('Agent name must be text.');
+    const agentId = body.agent_id || body.agentId;
+    const agent = agentId ? db.prepare('SELECT * FROM agents WHERE id=?').get(agentId) : null;
+    if (agentId && (!agent || agent.archived_at || agent.status === 'paused' || (agent.workspace_id && agent.workspace_id !== workspaceId))) throw validationError('Choose an available agent in this workspace.');
+    if (body.skill_evaluation) {
+      const replay = replaySkillEvaluationRun({ db, skillEvaluation: body.skill_evaluation, actor, allowed: access.allowed, request: contextInput(body, resolved, agent), inspectionId: body.context_inspection_id });
+      if (replay) return send(res, 200, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(replay.run_id)), replayed: true, demo: false });
+    }
+    const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(workspaceId);
+    const linkedTeams = [...new Set([project?.team_id, linkedTask?.team_id].filter(Boolean))]
+      .map((teamId) => db.prepare('SELECT archived_at FROM teams WHERE id=?').get(teamId));
+    if ([workspace, project, linkedTask, linkedChat, ...linkedTeams].some((item) => item?.archived_at)) throw validationError('Restore archived workspace items before starting a session.');
+    const runId = id('run');
+    const stamp = now();
+    const provider = body.provider || agent?.provider || 'codex';
+    if (!EXECUTION_PROVIDERS.includes(provider)) throw validationError('Choose a supported AI provider.');
+    if (agent && agent.provider !== provider) throw validationError('The selected agent uses a different provider.');
+    const profileSnapshot = agent ? snapshotAgentProfile(db, agent.id, stamp) : null;
+    const providerConnection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(agent?.provider_connection_id || `conn_${provider}`);
+    if (agent?.provider_connection_id && (!providerConnection || providerConnection.provider !== provider)) throw validationError('The agent’s provider connection is unavailable. Edit its profile before running.');
+    if (body.mode === 'live') {
+      if (agent && !agent.provider_connection_id) return fail(res, 409, 'profile_unbound', 'Choose the shared provider connection in this agent’s profile before starting live work.');
+      const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
+      if (liveRuns.size >= (defaults.concurrentRuns || 2)) return fail(res, 409, 'concurrency_limit', 'The simultaneous session limit has been reached. Wait for a session to finish or increase the limit in Settings.');
+      if (providerState(provider, workspaceId, actor).state !== 'connected') return fail(res, 409, 'not_connected', `Connect ${PROVIDERS[provider].displayName} before starting a live session.`);
+      if (typeof body.prompt !== 'string' || !body.prompt.trim()) throw validationError('Write an instruction for the agent.');
+      const input = contextInput(body, resolved, agent, turn);
+      if (isBrowserAiProvider(provider) && (!input.model || input.work_mode !== 'conversation' || input.native_tools)) return fail(res, 400, 'api_provider_options', 'Choose an explicit chat model and General chat. Browser AI connections support reviewed Rumbo actions, without project-file or native tools.');
+      if (input.native_tools && (!agent?.provider_connection_id || !awarenessEnabled(db, workspaceId))) return fail(res, 409, 'native_tools_unavailable', 'Native tools require a bound agent profile and enabled workspace awareness.');
+      if (input.native_tools && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact context and native tools before launching.');
+      const { work_mode: workMode, permission_mode: permissionMode, cwd } = input;
+      let preview = null;
+      if (body.context_inspection_id) {
+        preview = getInspection(db, body.context_inspection_id, { actorId: actor.id, workspaceId });
+        const stableInput = value => JSON.stringify(value, (_key, item) => isRecord(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+        if (stableInput(input) !== stableInput(preview.input)) return fail(res, 409, 'stale_context', 'The selected context or execution settings changed. Inspect context again.');
+      }
+      if (scheduledInspection) assertSourceAccess(db, scheduledInspection, actor, access.allowed);
+      const currentInspection = scheduledInspection || await compileContext(input, actor, preview?.inspection.actionNonce);
+      const stableContext = value => JSON.stringify(value, (_key, item) => isRecord(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+      if (preview && (currentInspection.manifest.fingerprint !== preview.inspection.manifest.fingerprint || stableContext(currentInspection.sourceAccess) !== stableContext(preview.inspection.sourceAccess))) return fail(res, 409, 'stale_context', 'Context changed after inspection. Review the updated context before starting.');
+      const inspection = preview?.inspection || currentInspection;
+      if (workMode === 'project' && (typeof cwd !== 'string' || !cwd)) throw validationError('Coding and project-file work require a linked folder. Link a project folder or set the agent’s working folder. General chat does not need one.');
+      if (turn) {
+        if (workMode === 'project') {
+        if (!isAbsolute(cwd)) throw validationError('Link an absolute project folder before sending to an agent.');
+        let actual;
+        try { actual = realpathSync(cwd); if (!statSync(actual).isDirectory()) throw new Error(); }
+        catch { throw validationError('The linked project folder does not exist.'); }
+        if ([parsePath(actual).root, homedir(), '/Users', '/System', '/Library', '/Applications', '/usr', '/etc', '/private', '/var'].includes(actual)) throw validationError('Choose a specific project folder, not your home folder or a system directory.');
+        }
+        if (!['read-only', 'workspace-write'].includes(permissionMode) || (provider === 'claude' && permissionMode !== 'read-only')) throw validationError('Choose read-only access for Claude, or read-only / project editing for Codex.');
+      }
+      db.exec('BEGIN');
+      let sourceMessage = turn?.source;
+      try {
+        if (turn && !sourceMessage) {
+          const messageId = id('message');
+          const profile = db.prepare("SELECT name FROM local_profile WHERE id='local'").get();
+          db.prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+            .run(messageId, links.chat_id, 'user', actor.mode === 'account' ? actor.id : 'local', actor.mode === 'account' ? actor.name : profile?.name || 'You', turn.content, 'message', JSON.stringify(turn.attachments), JSON.stringify({ ...turn.metadata, client_turn_id: turn.clientId, target_agent_id: agent.id, work_mode: workMode, model: input.model, reasoning_effort: input.reasoning_effort, include_workspace: input.include_workspace }), stamp, stamp);
+          sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId));
+        }
+      db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(runId, workspaceId, links.project_id, links.task_id, links.chat_id, provider, agent?.id || null, agent?.name || body.agent_name || body.agentName || PROVIDERS[provider].displayName, 'running', body.title || linkedTask?.title || 'Agent session', body.prompt, 'live', 0, stamp, stamp, stamp);
+        db.prepare('INSERT INTO agent_run_sponsors(run_id,actor_id) VALUES(?,?)').run(runId, actor.id);
+        if (turn) {
+          db.prepare('UPDATE runs SET source_message_id=?, work_mode=? WHERE id=?').run(sourceMessage.id, workMode, runId);
+          db.prepare('INSERT INTO chat_turns (id,chat_id,client_turn_id,source_message_id,agent_id,run_id,created_at) VALUES (?,?,?,?,?,?,?)').run(id('turn'), links.chat_id, turn.clientId, sourceMessage.id, agent.id, runId, stamp);
+          db.prepare('UPDATE messages SET metadata_json=?,updated_at=? WHERE id=?').run(JSON.stringify({ ...sourceMessage.metadata, latest_run_id: runId, target_agent_id: agent.id }), stamp, sourceMessage.id);
+          db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
+          if (!turn.source && linkedChat?.kind === 'rumbo-agent' && linkedChat.title === 'New chat' && db.prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_id=? AND sender_type='user'").get(links.chat_id).count === 1) {
+            const generatedTitle = turn.content.replace(/\s+/g, ' ').trim().slice(0, 72);
+            db.prepare('UPDATE chats SET title=? WHERE id=? AND title=?').run(generatedTitle, links.chat_id, 'New chat');
+          }
+        }
+        db.prepare('UPDATE runs SET work_mode=?,timeout_ms=? WHERE id=?').run(workMode, input.timeout_ms, runId);
+        if (profileSnapshot) db.prepare('UPDATE runs SET agent_profile_version=? WHERE id=?').run(profileSnapshot.version, runId);
+        if (preview) consumeInspection(db, preview.id, runId);
+        captureRunContext(db, runId, inspection);
+        if (body.workflow_step) {
+          if (!preview) throw validationError('Inspect this Workflow step before launching it.');
+          manualWorkflows.bindManualWorkflowRun({ db, runId, workflowStep: body.workflow_step, actor, allowed: access.allowed, filter: data => access.filter(data, actor) });
+        }
+        if (body.skill_evaluation) {
+          if (!preview) throw validationError('Inspect this Skill evaluation before launching it.');
+          bindSkillEvaluationRun({ db, runId, skillEvaluation: body.skill_evaluation, actor, allowed: access.allowed });
+        }
+        beginRunUsage(db, runId);
+        db.exec('COMMIT');
+        if (turn) sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(sourceMessage.id));
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+      if (profileSnapshot) {
+        addRunEvent(runId, 'profile.captured', `Agent profile version ${profileSnapshot.version}`, { demo: false, agent_id: agent.id, profile_version: profileSnapshot.version, profile_hash: profileSnapshot.snapshot_hash, model: input.model || null, reasoning_effort: input.reasoning_effort || null, model_selection: 'captured_execution_settings', permission_mode: permissionMode, provider_connection_id: agent.provider_connection_id });
+      }
+      const prompt = inspection.finalPrompt;
+      const actionNonce = inspection.actionNonce;
+      const awareness = Boolean(actionNonce);
+      const included = inspection.manifest.included;
+      addRunEvent(runId, 'context.prepared', `${included.length} context sources captured`, { demo: false, fingerprint: inspection.manifest.fingerprint, inspected: Boolean(preview), memoryNotes: included.filter(item => ['memory_notes', 'agent_memories', 'knowledge_entries'].includes(item.kind)).length, messages: included.filter(item => item.kind === 'message').length, attachmentCount: included.filter(item => item.kind === 'attachment').length, contextTruncated: inspection.truncated, attachmentCharacterLimit: 32_000 });
+      const startingController = new AbortController();
+      liveRuns.set(runId, { stop: () => startingController.abort() });
+      try {
+        if (workMode !== 'conversation' && project?.id) await changeReviews.beginRun(runId, actor, cwd).catch(() => addRunEvent(runId, 'review.unavailable', 'Automatic change capture unavailable for this folder or access level.', { demo: false }));
+        let nativeBridge;
+        if (input.native_tools) {
+          nativeBridge = await createNativeAgentToolBridge({
+            listTools: () => { assertNativePolicy(runId); return nativeTools().listForRun(runId).tools; },
+            callTool: (name, args) => { assertNativePolicy(runId); return nativeTools().invoke(runId, name, args); },
+            expiresAt: Date.now() + input.timeout_ms + 30_000, signal: startingController.signal,
+          });
+          nativeBridges.set(runId, nativeBridge);
+          addRunEvent(runId, 'tools.connected', 'Reviewed native tools connected for this run; mutations require human review.', { demo: false, tool_count: nativeBridge.descriptor.enabledTools.length });
+        }
+        const controller = await startProviderRun({ provider, workspaceId, actor, prompt, cwd, permissionMode, workMode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, signal: startingController.signal, ...(nativeBridge ? { nativeToolBridge: nativeBridge.descriptor } : {}) }, {
+          onEvent(event) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) addRunEvent(runId, event.type, event.summary, { ...event.payload, demo: false }); },
+          onUsageReport(report) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) recordRunUsage(getDb(), runId, report); },
+          onComplete(result) {
+            revokeNativeBridge(runId);
+            liveRuns.delete(runId);
+            if (closed) return;
+            const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
+            if (!current) return;
+            const emptyReply = Boolean(turn && result.status === 'completed' && !result.text?.trim());
+            const finalStatus = current.status === 'stopped' ? 'stopped' : emptyReply ? 'failed' : result.status;
+            updateRun(runId, finalStatus, true);
+            const usageReason = result.usage_capture_incomplete ? 'usage_persistence_failed' : emptyReply ? 'empty_reply' : typeof result.error_code === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(result.error_code) ? result.error_code : null;
+            finalizeRunUsage(getDb(), runId, { status: finalStatus, reason: usageReason });
+            if (isBrowserAiProvider(provider) && result.usage) addRunEvent(runId, 'usage.reported', 'Provider-reported completion tokens', { demo: false, source: 'chat_completion', usage: result.usage, note: 'Provider-reported tokens; not billing or an account balance.' });
+            changeReviews.finishRun(runId, actor).then(reviewId => { if (!closed && reviewId) addRunEvent(runId, 'review.captured', 'Observed changes saved for review', { review_id: reviewId, demo: false }); }).catch(() => { if (!closed) addRunEvent(runId, 'review.unavailable', 'Change capture could not finish. No complete run diff is available.', { demo: false }); });
+            if (finalStatus === 'completed' && awareness && result.text) {
+              try { result.text = captureAgentActions(getDb(), runId, result.text, actionNonce, { authorizeCapture: ({ run, proposal }) => authorizeAgentProposal(run, proposal) }); }
+              catch { result.text = result.text.replace(/```rumbo-actions\s*\n[\s\S]*?```/g, '').trim() + '\n\nRumbo could not validate the proposed actions. No changes were made.'; }
+            }
+            const failure = emptyReply ? 'The agent finished without a text reply. Retry the message or inspect the session output.' : result.error;
+            addRunEvent(runId, `run.${finalStatus}`, finalStatus === 'completed' ? 'Agent session completed' : failure || `Agent session ${finalStatus}`, { demo: false, summary: result.text, error: failure || null, error_code: result.error_code || null, source_message_id: sourceMessage?.id || null });
+            if (links.chat_id && result.text?.trim() && getDb().prepare('SELECT 1 FROM chats WHERE id=?').get(links.chat_id)) {
+              const stamp = now();
+              getDb().prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+                .run(id('message'), links.chat_id, 'agent', agent?.id || provider, agent?.name || PROVIDERS[provider].displayName, result.text, 'message', '[]', JSON.stringify({ run_id: runId, mode: 'live', source_message_id: sourceMessage?.id || null, reply_to: sourceMessage?.id || null, status: finalStatus }), stamp, stamp);
+              getDb().prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
+            }
+          },
+        });
+        if (!startingController.signal.aborted && !closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) liveRuns.set(runId, controller);
+        else controller.stop();
+      } catch (error) {
+        revokeNativeBridge(runId);
+        changeReviews.discardRun(runId);
+        liveRuns.delete(runId);
+        if (!closed) {
+          const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
+          if (current && current.status !== 'stopped') {
+            updateRun(runId, 'failed', true);
+            const rawCode = error.errorCode || error.code;
+            const errorCode = typeof rawCode === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(rawCode) ? rawCode : 'agent_start_failed';
+            finalizeRunUsage(getDb(), runId, { status: 'failed', reason: errorCode });
+            addRunEvent(runId, 'run.failed', error.message || 'Agent could not start', { demo: false, error_code: errorCode });
+          }
+        }
+        if (turn && !closed) return send(res, 201, { message: sourceMessage, run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), replayed: false, error: { code: error.errorCode || error.code || 'agent_start_failed', message: error.message || 'Agent could not start.' } });
+        throw error;
+      }
+      return send(res, 201, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), demo: false, ...(turn ? { message: sourceMessage, replayed: false } : {}) });
+    }
+    const needsApproval = Boolean(body.requires_approval || body.requiresApproval || body.scenario === 'approval');
+    db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(runId, workspaceId, links.project_id, links.task_id, links.chat_id, provider, agent?.id || null, agent?.name || body.agent_name || body.agentName || PROVIDERS[provider].displayName, needsApproval ? 'needs_input' : 'running', body.title || linkedTask?.title || 'Untitled agent run', body.prompt || '', 'mock', bool(needsApproval), stamp, stamp, stamp);
+    if (profileSnapshot) {
+      db.prepare('UPDATE runs SET agent_profile_version=? WHERE id=?').run(profileSnapshot.version, runId);
+      addRunEvent(runId, 'profile.captured', `Simulation uses profile version ${profileSnapshot.version}`, { demo: true, agent_id: agent.id, profile_version: profileSnapshot.version, profile_hash: profileSnapshot.snapshot_hash, model: agent.model || null, reasoning_effort: agent.reasoning_effort || null, provider_connection_id: agent.provider_connection_id, liveAccountContacted: false });
+    }
+    addRunEvent(runId, 'run.started', 'Mock run started', { demo: true, provider, liveAccountContacted: false });
+    if (needsApproval) {
+      const event = addRunEvent(runId, 'approval.requested', 'Approval required to continue the mock run', { demo: true, action: body.approval_action || 'Run a simulated check' });
+      const approvalId = id('approval');
+      db.prepare('INSERT INTO approvals (id,run_id,event_id,title,detail,status,created_at) VALUES (?,?,?,?,?,?,?)')
+        .run(approvalId, runId, event.id, 'Continue mock run?', 'This is a simulated approval; no command or provider request will run.', 'pending', now());
+    } else if (body.scenario !== 'manual') scheduleMockRun(runId, body.scenario);
+    const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId));
+    return send(res, 201, { run, demo: true });
+  }
+
+  function scheduleActor(actorId) {
+    const user = getDb().prepare('SELECT id,name FROM identity_users WHERE id=?').get(actorId);
+    if (user) return { ...user, mode: 'account' };
+    return actorId === 'local-owner' && !identity.configured() ? { id: actorId, name: getDb().prepare("SELECT name FROM local_profile WHERE id='local'").get()?.name || 'You', mode: 'local' } : null;
+  }
+  function scheduleChat(chatId, workspaceId, actor, write = false) {
+    const db = getDb(), chat = db.prepare('SELECT * FROM chats WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(chatId, workspaceId);
+    if (!chat) throw Object.assign(validationError('This conversation is unavailable.'), { statusCode: 404 });
+    access.check({ actor, path: `/chats/${chatId}`, method: write ? 'PATCH' : 'GET', url: new URL('http://localhost'), body: {} });
+    assertRumboChatSource(db, chat, actor, access.allowed);
+    for (const [key, table] of [['project_id', 'projects'], ['task_id', 'tasks']]) if (chat[key] && !db.prepare(`SELECT 1 FROM ${table} WHERE id=? AND archived_at IS NULL`).get(chat[key])) throw validationError('Restore the conversation’s linked work before scheduling.');
+    return chat;
+  }
+  function scheduleActivity(job, actor, state) {
+    const db = getDb(), proposal = job.review.proposal;
+    let resource = 'chats', targetId = job.payload.chat_id;
+    if (job.kind === 'action') {
+      resource = proposal.resource; targetId = proposal.id;
+      if (!targetId) { resource = 'projects'; targetId = proposal.fields?.project_id || job.review.run?.project_id; }
+      if (!targetId) { resource = 'chats'; targetId = proposal.chat_id || job.review.run?.chat_id; }
+    }
+    let target = targetId && ['projects', 'tasks', 'documents', 'milestones', 'chats'].includes(resource) ? db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(targetId) : null;
+    if (!target) { resource = 'workspaces'; target = db.prepare('SELECT * FROM workspaces WHERE id=?').get(job.workspace_id); }
+    changeContext.run({ actor, source: 'Scheduled work' }, () => recordChange(db, resource, target, target, `${state} scheduled ${job.kind === 'message' ? 'message' : 'action'}`));
+  }
+  function makeScheduledWork() {
+    const db = getDb();
+    return createScheduledWorkService({ db, allowed: access.allowed, actorFor: scheduleActor, now: scheduledWorkOptions.now, graceMs: scheduledWorkOptions.graceMs,
+      activity: scheduleActivity,
+      authorizePayload(job, actor) {
+        if (job.kind === 'message') {
+          scheduleChat(job.payload.chat_id, job.workspace_id, actor);
+          if (job.review.inspection) assertSourceAccess(db, job.review.inspection, actor, access.allowed);
+          else if (!access.filter({ chats: [job.review.chat] }, actor).chats?.length) throw Object.assign(validationError('The original conversation scope is unavailable.'), { statusCode: 403 });
+        } else {
+          const run = db.prepare('SELECT * FROM runs WHERE id=?').get(job.review.run.id);
+          if (!run || !access.filter({ runs: [present(run)] }, actor).runs?.length || !localActionReadable(db, { proposal: job.review.proposal, before: job.review.before, workspaceId: job.workspace_id, run, actor, allowed: access.allowed })) throw Object.assign(validationError('The action or its original scope is unavailable.'), { statusCode: 403 });
+          const captured = readRunContext(db, run.id); if (captured) assertSourceAccess(db, captured.inspection, actor, access.allowed);
+        }
+      },
+      async prepareMessage(body, actor) {
+        const payload = body.payload;
+        if (!isRecord(payload) || Object.keys(payload).some(key => !['chat_id', 'agent_id', 'content', 'attachments', 'reply_to', 'context_snapshot_id'].includes(key))) throw validationError('Choose a conversation, recipient and message.');
+        const chat = scheduleChat(payload.chat_id, body.workspace_id, actor, true);
+        if (typeof payload.content !== 'string' || !payload.content.trim() || payload.content.length > 100000) throw validationError('Write a message between 1 and 100,000 characters.');
+        const attachments = payload.attachments || [];
+        if (!Array.isArray(attachments) || attachments.length > 20 || attachments.some(file => !isRecord(file) || typeof file.name !== 'string' || typeof file.content !== 'string' || file.content.length > 100000 || String(file.type || '').startsWith('image/') || /^data:/i.test(file.content))) throw validationError('Scheduled messages support up to 20 text attachments.');
+        validateChatContextAttachments(db, chat.id, { ...payload, attachments });
+        if (!payload.agent_id || payload.agent_id === 'note') {
+          const attachmentAccess = chatContextSnapshotAccess(db, { chatId: chat.id, workspaceId: body.workspace_id, attachments, actor, allowed: access.allowed });
+          return { title: `Note · ${payload.content.trim().slice(0, 100)}`, payload: { ...payload, agent_id: null, content: payload.content.trim(), attachments }, review: { chat, ...(attachmentAccess ? { inspection: { manifest: { resolved: { workspace_id: body.workspace_id } }, sourceAccess: attachmentAccess } } : {}) } };
+        }
+        if (!body.context_inspection_id) throw validationError('Review the exact message context before scheduling it.');
+        const preview = getInspection(db, body.context_inspection_id, { actorId: actor.id, workspaceId: body.workspace_id });
+        const input = preview.input;
+        if (preview.consumed_run_id || input.chat_id !== chat.id || input.agent_id !== payload.agent_id || input.prompt !== payload.content.trim() || JSON.stringify(input.attachments) !== JSON.stringify(attachments)) throw validationError('The message changed after context review. Inspect it again.');
+        if (input.work_mode !== 'conversation' || input.permission_mode !== 'read-only' || input.native_tools || input.workflow_step || input.skill_evaluation || input.source_message_id) throw validationError('Schedule a new General chat message without project-file tools.');
+        const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(payload.agent_id);
+        if (!agent || agent.status === 'paused') throw validationError('Choose an available agent.');
+        governance.authorize(body.workspace_id, actor.id, 'agents.run', chat.project_id ? { scope_type: 'project', scope_id: chat.project_id } : {});
+        if (providerState(agent.provider, body.workspace_id, actor).state !== 'connected') throw validationError('Connect this agent before scheduling its message.');
+        const fresh = await compileContext(input, actor, preview.inspection.actionNonce);
+        if (fresh.manifest.fingerprint !== preview.inspection.manifest.fingerprint) throw Object.assign(validationError('The context changed. Inspect it again before scheduling.'), { statusCode: 409 });
+        return { title: `${agent.name} · ${payload.content.trim().slice(0, 100)}`, payload: { ...payload, content: payload.content.trim(), attachments }, review: { input, inspection: preview.inspection },
+          recheck() { const current = getInspection(db, preview.id, { actorId: actor.id, workspaceId: body.workspace_id }); if (current.consumed_run_id) throw validationError('This context was already used. Inspect again.'); assertSourceAccess(db, preview.inspection, actor, access.allowed); } };
+      },
+      prepareAction(body, actor) {
+        if (!isRecord(body.payload) || Object.keys(body.payload).some(key => key !== 'action_request_id')) throw validationError('Choose a pending agent action.');
+        const action = db.prepare("SELECT * FROM agent_action_requests WHERE id=? AND workspace_id=? AND status='pending'").get(body.payload.action_request_id, body.workspace_id);
+        if (!action) throw validationError('This action was already handled or is unavailable.');
+        const run = db.prepare('SELECT * FROM runs WHERE id=?').get(action.run_id), proposal = JSON.parse(action.proposal_json), before = JSON.parse(action.before_json);
+        if (!run || !access.filter({ runs: [present(run)] }, actor).runs?.length) throw Object.assign(validationError('The source run is unavailable.'), { statusCode: 403 });
+        if (proposal.type === 'connection.action') throw validationError('Plugin actions cannot be scheduled while Plugins are unavailable.');
+        authorizeAgentProposal(run, proposal, actor);
+        const fresh = validateAgentProposal(db, proposal, body.workspace_id, { agentId: run.agent_id, run }); assertActionFresh(before, fresh.before);
+        return { title: `${run.agent_name || 'Agent'} · ${proposal.type.replaceAll('.', ' ')}`, payload: { action_request_id: action.id }, review: { run, proposal, before },
+          recheck() { if (db.prepare('SELECT status FROM agent_action_requests WHERE id=?').get(action.id)?.status !== 'pending') throw validationError('This action was already handled.'); authorizeAgentProposal(run, proposal, actor); } };
+      },
+      dispatchAction(job, occurrence, actor) {
+        const action = db.prepare("SELECT * FROM agent_action_requests WHERE id=? AND status='scheduled'").get(job.payload.action_request_id);
+        if (!action) throw validationError('The scheduled action is no longer pending.');
+        const run = db.prepare('SELECT * FROM runs WHERE id=?').get(job.review.run.id), sponsor = authorizeAgentProposal(run, job.review.proposal, actor);
+        return executeLocalAction(db, { proposal: job.review.proposal, before: job.review.before, workspaceId: job.workspace_id, run, actor, actors: [sponsor, actor], allowed: access.allowed, activeRunsFor, idempotencyKey: occurrence.id });
+      },
+      async dispatchMessage(job, occurrence, actor) {
+        const chat = scheduleChat(job.payload.chat_id, job.workspace_id, actor, true);
+        if (!job.payload.agent_id) {
+          const messageId = `message_${occurrence.id}`, stamp = now();
+          db.exec('SAVEPOINT scheduled_note');
+          try {
+            const metadata = validateChatContextAttachments(db, chat.id, { ...job.payload, attachments: job.payload.attachments });
+            db.prepare('INSERT INTO messages(id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(messageId, chat.id, 'user', actor.id, actor.name || 'You', job.payload.content, 'note', JSON.stringify(job.payload.attachments), JSON.stringify({ ...metadata, delivery: 'note', scheduled_work_id: job.id, scheduled_occurrence_id: occurrence.id }), stamp, stamp);
+            db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, chat.id);
+            db.exec('RELEASE scheduled_note');
+          } catch (cause) { db.exec('ROLLBACK TO scheduled_note; RELEASE scheduled_note'); throw cause; }
+          return { message_id: messageId, chat_id: chat.id, delivery: 'note' };
+        }
+        assertSourceAccess(db, job.review.inspection, actor, access.allowed);
+        const preview = saveInspection(db, { actorId: actor.id, workspaceId: job.workspace_id, input: job.review.input, inspection: job.review.inspection });
+        const response = { statusCode: 200, writableEnded: false, setHeader() {}, end(value) { this.payload = JSON.parse(value || '{}'); this.writableEnded = true; } };
+        const launchBody = { ...job.review.input, ...job.payload, client_turn_id: occurrence.id, context_inspection_id: preview.id, mode: 'live' };
+        delete launchBody.source_message_id;
+        await launchRun({ actor, body: launchBody, chatTurnMatch: [null, chat.id], res: response, scheduledInspection: job.review.inspection });
+        if (response.payload?.error) throw Object.assign(new Error(response.payload.error.message), { code: response.payload.error.code, statusCode: response.statusCode });
+        const result = response.payload;
+        if (!result?.run?.id) throw validationError('The scheduled agent message could not be confirmed.');
+        if (result.message?.id) db.prepare('UPDATE messages SET metadata_json=? WHERE id=?').run(JSON.stringify({ ...result.message.metadata, scheduled_work_id: job.id, scheduled_occurrence_id: occurrence.id }), result.message.id);
+        scheduleActivity(job, actor, 'sent');
+        return { run_id: result.run.id, message_id: result.message?.id, chat_id: chat.id };
+      },
+    });
+  }
+  let scheduledWork = makeScheduledWork();
+  const scheduledWorkTimer = setInterval(() => { if (!closed) scheduledWork.dispatchDue().catch(() => {}); }, scheduledWorkOptions.scheduleIntervalMs ?? 15000);
+  scheduledWorkTimer.unref?.();
+
   function middleware(req, res, next = () => {}) {
     return changeContext.run({}, () => handleRequest(req, res, next));
   }
@@ -988,7 +1347,11 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
       res.filterRumboData = data => {
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
-        return access.filter(data, actor);
+        const filtered = access.filter(data, actor);
+        const enrichConnections = snapshot => { if (Array.isArray(snapshot?.connections)) snapshot.connections = snapshot.connections.map(connection => isBrowserAiProvider(connection.provider) ? { ...connection, mode: 'browser-api', workspace_states: Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'workspace.read') ? [[workspace.id, aiConnections.readyState(connection.provider, workspace.id, actor).state]] : [])) } : connection); };
+        enrichConnections(filtered);
+        enrichConnections(filtered.bootstrap);
+        return filtered;
       };
       const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : 1_000_000) : {};
       const templateInstanceMatch = path.match(/^\/template-instances\/(tasks|projects|chats)\/([^/]+)$/);
@@ -1004,9 +1367,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const result = templateInstanceFor(db, { workspaceId, entityType, entityId, canRead: () => true });
         return send(res, 200, { result });
       }
-      // Playbooks authorize their workspace, actor, every action and each
-      // scoped target themselves. Generic access routing has no Playbook IDs.
-      if (await playbooksRoute({ service: playbooks, req, res, path, url, body, send, actor })) return;
+      if (path === '/playbooks' || path.startsWith('/playbooks/')) return fail(res, 410, 'feature_retired', 'Playbooks has been removed. Use agent actions and scheduled messages instead.');
+      if (await scheduledWorkRoute({ service: scheduledWork, req, res, path, url, body, actor, send })) return;
       if (path === '/ai-connections' && req.method === 'GET') return send(res, 200, { result: await aiConnections.list(url.searchParams.get('workspace_id'), actor) });
       if (path === '/ai-connections/openrouter/start' && req.method === 'POST') return send(res, 200, { result: await aiConnections.start(body, actor, req.headers.host) });
       if (path === '/ai-connections/openrouter/check' && req.method === 'POST') return send(res, 200, { result: await aiConnections.check(body.workspace_id, actor) });
@@ -1066,7 +1428,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await acceptanceEvidenceRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed })) return;
       if (await skillReliabilityRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor) })) return;
       if (await skillsRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed })) return;
-      if (await rumboAgentRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor), integration, present })) return;
+      if (await rumboAgentRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor), integration: { status: providerState }, present })) return;
       if (path === '/context/inspect' && req.method === 'POST') {
         access.check({ actor, path: '/runs', method: 'GET', url, body });
         const resolved = resolveRunContext(db, body);
@@ -1133,7 +1495,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       })) return;
       if (await subRoutesRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await workflowRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
-      if (await chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot })) return;
+      if (await chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await teamResourcesRoute({ db, req, res, path, url, readBody, send })) return;
       if (manualWorkflows.manualWorkflowRoute && await manualWorkflows.manualWorkflowRoute({ db, req, res, path, url, body, actor, allowed: access.allowed, filter: data => access.filter(data, actor), send: (response, status, payload) => {
         for (const runId of payload?.result?.canonical_run_ids || []) stopRun(runId, 'Workflow cancelled by user');
@@ -1255,242 +1617,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       }
       const taskRunMatch = path.match(/^\/tasks\/([^/]+)\/runs$/);
       const chatTurnMatch = path.match(/^\/chats\/([^/]+)\/turns$/);
-      if (req.method === 'POST' && (path === '/runs' || path === '/runs/start' || taskRunMatch || chatTurnMatch)) {
-        let body = await readBody(req);
-        if (body.workflow_step && (body.mode !== 'live' || chatTurnMatch || taskRunMatch)) throw validationError('Launch a prepared Workflow step through a reviewed live session. Simulations cannot complete Workflow steps.');
-        if (body.skill_evaluation !== undefined && (body.mode !== 'live' || chatTurnMatch || taskRunMatch || body.workflow_step || !body.context_inspection_id)) throw validationError('Launch a prepared Skill evaluation through a separately reviewed live session. Simulations cannot supply evaluation evidence.');
-        let turn = null;
-        if (chatTurnMatch) {
-          const chatId = chatTurnMatch[1];
-          const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(chatId);
-          if (!chat) return fail(res, 404, 'not_found', 'Chat not found.');
-          if (typeof body.client_turn_id !== 'string' || !/^[A-Za-z0-9_-]{8,120}$/.test(body.client_turn_id)) throw validationError('Provide a stable client turn ID between 8 and 120 characters.');
-          if (typeof body.agent_id !== 'string' || !body.agent_id) throw validationError('Choose an agent to receive this message.');
-          const existing = db.prepare('SELECT * FROM chat_turns WHERE chat_id=? AND client_turn_id=?').get(chatId, body.client_turn_id);
-          if (existing) {
-            const message = present(db.prepare('SELECT * FROM messages WHERE id=?').get(existing.source_message_id));
-            for (const field of ['reply_to', 'context_snapshot_id']) if (body[field] !== undefined && (body[field] || null) !== (message.metadata?.[field] || null)) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different reply or context references.');
-            if (existing.agent_id !== body.agent_id || (body.source_message_id && body.source_message_id !== existing.source_message_id) || (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== message.content)) || (body.attachments !== undefined && JSON.stringify(body.attachments) !== JSON.stringify(message.attachments))) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different message.');
-            const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(existing.run_id));
-            if (body.work_mode !== undefined && body.work_mode !== run.work_mode) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to a different work mode.');
-            const selection = readRunContext(db, run.id)?.inspection?.request;
-            for (const field of ['model', 'reasoning_effort']) if (body[field] !== undefined && body[field] !== (selection?.[field] ?? message.metadata?.[field] ?? '')) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different model settings.');
-            return send(res, 200, { message, run, replayed: true });
-          }
-          if (isRumboAgentChat(db, chat) && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact Rumbo Agent context before sending.');
-          let source = null;
-          if (body.source_message_id !== undefined) {
-            if (typeof body.source_message_id !== 'string') throw validationError('Choose a valid message to retry.');
-            source = present(db.prepare("SELECT * FROM messages WHERE id=? AND chat_id=? AND sender_type='user'").get(body.source_message_id, chatId));
-            if (!source) throw validationError('The original user message is no longer in this chat.');
-            if (body.content !== undefined && (typeof body.content !== 'string' || body.content.trim() !== source.content)) throw validationError('Send edited content as a new message instead of retrying an existing message.');
-            const previous = db.prepare('SELECT status FROM runs WHERE source_message_id=? AND agent_id=? ORDER BY created_at DESC LIMIT 1').get(source.id, body.agent_id);
-            if (previous && !['failed', 'stopped', 'interrupted'].includes(previous.status)) return fail(res, 409, 'turn_not_retryable', 'This agent is already working on, or has answered, this message.');
-          }
-          const content = source?.content ?? body.content;
-          const attachments = source?.attachments ?? body.attachments ?? [];
-          if (typeof content !== 'string' || !content.trim() || content.length > 100_000) throw validationError('Write a message between 1 and 100,000 characters.');
-          if (!Array.isArray(attachments) || attachments.length > 20 || attachments.some((file) => !isRecord(file) || typeof file.name !== 'string' || typeof file.content !== 'string' || file.content.length > 100_000 || String(file.type || '').startsWith('image/') || /^data:/i.test(file.content))) throw validationError('Agent messages support up to 20 text attachments, each under 100,000 characters. Save images and other files as a note instead.');
-          if (db.prepare("SELECT 1 FROM runs WHERE chat_id=? AND agent_id=? AND status IN ('queued','starting','running','needs_input','paused')").get(chatId, body.agent_id)) return fail(res, 409, 'chat_agent_busy', 'This agent is already replying in this chat. Wait for the reply or stop its session first.');
-          const workMode = body.work_mode ?? source?.metadata?.work_mode ?? (source ? 'project' : 'conversation');
-          if (!['conversation', 'project'].includes(workMode)) throw validationError('Choose general chat or project work.');
-          if (source && workMode !== (source.metadata?.work_mode ?? 'project')) throw validationError('Retry in the original work mode, or send a new message.');
-          if (workMode === 'conversation' && (body.permission_mode ?? 'read-only') !== 'read-only') throw validationError('General chat cannot request project editing. Choose project work and link a folder.');
-          if (source) for (const field of ['reply_to', 'context_snapshot_id']) if (body[field] !== undefined && (body[field] || null) !== (source.metadata?.[field] || null)) throw validationError('Retry with the original reply and context references, or send a new message.');
-          turn = { clientId: body.client_turn_id, source, content: content.trim(), attachments, workMode, metadata: validateChatContextAttachments(db, chatId, { ...(source?.metadata || body), attachments }) };
-          body = { ...body, mode: 'live', chat_id: chatId, prompt: turn.content, permissionMode: body.permission_mode || 'read-only', title: content.trim().slice(0, 100) };
-        }
-        const task = taskRunMatch ? db.prepare('SELECT * FROM tasks WHERE id=?').get(taskRunMatch[1]) : null;
-        if (taskRunMatch && !task) return fail(res, 404, 'not_found', 'Task not found.');
-        if (body.mode && !['mock', 'demo', 'live'].includes(body.mode)) return fail(res, 400, 'validation_error', 'Choose a live or demo session.');
-        if (body.provider && !['codex', 'claude'].includes(body.provider)) return fail(res, 400, 'validation_error', 'Select a supported coding agent.');
-        let resolved;
-        try { resolved = resolveRunContext(db, body, task?.id); }
-        catch (error) { if (body.context_inspection_id) return fail(res, 409, 'stale_context', 'The selected scope changed. Inspect context again.'); throw error; }
-        const { links, project, linkedTask, linkedChat, workspaceId } = resolved;
-        governance.authorize(workspaceId, actor.id, 'agents.run', project ? { scope_type: 'project', scope_id: project.id } : {});
-        if (body.prompt !== undefined && (typeof body.prompt !== 'string' || body.prompt.length > 100_000)) return fail(res, 400, 'validation_error', 'Session prompt must be text up to 100,000 characters.');
-        for (const field of ['include_memory', 'includeMemory', 'include_chat', 'includeChat']) if (body[field] !== undefined && typeof body[field] !== 'boolean') throw validationError('Context selection must be true or false.');
-        if (body.title !== undefined && (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 2000)) return fail(res, 400, 'validation_error', 'Session title is required and must be under 2,000 characters.');
-        if ((body.agent_name ?? body.agentName) !== undefined && typeof (body.agent_name ?? body.agentName) !== 'string') throw validationError('Agent name must be text.');
-        const agentId = body.agent_id || body.agentId;
-        const agent = agentId ? db.prepare('SELECT * FROM agents WHERE id=?').get(agentId) : null;
-        if (agentId && (!agent || agent.archived_at || agent.status === 'paused' || (agent.workspace_id && agent.workspace_id !== workspaceId))) throw validationError('Choose an available agent in this workspace.');
-        if (body.skill_evaluation) {
-          const replay = replaySkillEvaluationRun({ db, skillEvaluation: body.skill_evaluation, actor, allowed: access.allowed, request: contextInput(body, resolved, agent), inspectionId: body.context_inspection_id });
-          if (replay) return send(res, 200, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(replay.run_id)), replayed: true, demo: false });
-        }
-        const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(workspaceId);
-        const linkedTeams = [...new Set([project?.team_id, linkedTask?.team_id].filter(Boolean))]
-          .map((teamId) => db.prepare('SELECT archived_at FROM teams WHERE id=?').get(teamId));
-        if ([workspace, project, linkedTask, linkedChat, ...linkedTeams].some((item) => item?.archived_at)) throw validationError('Restore archived workspace items before starting a session.');
-        const runId = id('run');
-        const stamp = now();
-        const provider = body.provider || agent?.provider || 'codex';
-        if (!['codex', 'claude'].includes(provider)) throw validationError('Choose Codex or Claude for agent execution.');
-        if (agent && agent.provider !== provider) throw validationError('The selected agent uses a different provider.');
-        const profileSnapshot = agent ? snapshotAgentProfile(db, agent.id, stamp) : null;
-        const providerConnection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(agent?.provider_connection_id || `conn_${provider}`);
-        if (agent?.provider_connection_id && (!providerConnection || providerConnection.provider !== provider)) throw validationError('The agent’s provider connection is unavailable. Edit its profile before running.');
-        if (body.mode === 'live') {
-          if (agent && !agent.provider_connection_id) return fail(res, 409, 'profile_unbound', 'Choose the shared provider connection in this agent’s profile before starting live work.');
-          const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
-          if (liveRuns.size >= (defaults.concurrentRuns || 2)) return fail(res, 409, 'concurrency_limit', 'The simultaneous session limit has been reached. Wait for a session to finish or increase the limit in Settings.');
-          if (integration.status(provider).state !== 'connected') return fail(res, 409, 'not_connected', `Connect ${PROVIDERS[provider].displayName} before starting a live session.`);
-          if (typeof body.prompt !== 'string' || !body.prompt.trim()) throw validationError('Write an instruction for the agent.');
-          const input = contextInput(body, resolved, agent, turn);
-          if (input.native_tools && (!agent?.provider_connection_id || !awarenessEnabled(db, workspaceId))) return fail(res, 409, 'native_tools_unavailable', 'Native tools require a bound agent profile and enabled workspace awareness.');
-          if (input.native_tools && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact context and native tools before launching.');
-          const { work_mode: workMode, permission_mode: permissionMode, cwd } = input;
-          let preview = null;
-          if (body.context_inspection_id) {
-            preview = getInspection(db, body.context_inspection_id, { actorId: actor.id, workspaceId });
-            const stableInput = value => JSON.stringify(value, (_key, item) => isRecord(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
-            if (stableInput(input) !== stableInput(preview.input)) return fail(res, 409, 'stale_context', 'The selected context or execution settings changed. Inspect context again.');
-          }
-          const currentInspection = await compileContext(input, actor, preview?.inspection.actionNonce);
-          const stableContext = value => JSON.stringify(value, (_key, item) => isRecord(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
-          if (preview && (currentInspection.manifest.fingerprint !== preview.inspection.manifest.fingerprint || stableContext(currentInspection.sourceAccess) !== stableContext(preview.inspection.sourceAccess))) return fail(res, 409, 'stale_context', 'Context changed after inspection. Review the updated context before starting.');
-          const inspection = preview?.inspection || currentInspection;
-          if (workMode === 'project' && (typeof cwd !== 'string' || !cwd)) throw validationError('Coding and project-file work require a linked folder. Link a project folder or set the agent’s working folder. General chat does not need one.');
-          if (turn) {
-            if (workMode === 'project') {
-            if (!isAbsolute(cwd)) throw validationError('Link an absolute project folder before sending to an agent.');
-            let actual;
-            try { actual = realpathSync(cwd); if (!statSync(actual).isDirectory()) throw new Error(); }
-            catch { throw validationError('The linked project folder does not exist.'); }
-            if ([parsePath(actual).root, homedir(), '/Users', '/System', '/Library', '/Applications', '/usr', '/etc', '/private', '/var'].includes(actual)) throw validationError('Choose a specific project folder, not your home folder or a system directory.');
-            }
-            if (!['read-only', 'workspace-write'].includes(permissionMode) || (provider === 'claude' && permissionMode !== 'read-only')) throw validationError('Choose read-only access for Claude, or read-only / project editing for Codex.');
-          }
-          db.exec('BEGIN');
-          let sourceMessage = turn?.source;
-          try {
-            if (turn && !sourceMessage) {
-              const messageId = id('message');
-              const profile = db.prepare("SELECT name FROM local_profile WHERE id='local'").get();
-              db.prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-                .run(messageId, links.chat_id, 'user', actor.mode === 'account' ? actor.id : 'local', actor.mode === 'account' ? actor.name : profile?.name || 'You', turn.content, 'message', JSON.stringify(turn.attachments), JSON.stringify({ ...turn.metadata, client_turn_id: turn.clientId, target_agent_id: agent.id, work_mode: workMode, model: input.model, reasoning_effort: input.reasoning_effort, include_workspace: input.include_workspace }), stamp, stamp);
-              sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(messageId));
-            }
-          db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-            .run(runId, workspaceId, links.project_id, links.task_id, links.chat_id, provider, agent?.id || null, agent?.name || body.agent_name || body.agentName || PROVIDERS[provider].displayName, 'running', body.title || linkedTask?.title || 'Agent session', body.prompt, 'live', 0, stamp, stamp, stamp);
-            db.prepare('INSERT INTO agent_run_sponsors(run_id,actor_id) VALUES(?,?)').run(runId, actor.id);
-            if (turn) {
-              db.prepare('UPDATE runs SET source_message_id=?, work_mode=? WHERE id=?').run(sourceMessage.id, workMode, runId);
-              db.prepare('INSERT INTO chat_turns (id,chat_id,client_turn_id,source_message_id,agent_id,run_id,created_at) VALUES (?,?,?,?,?,?,?)').run(id('turn'), links.chat_id, turn.clientId, sourceMessage.id, agent.id, runId, stamp);
-              db.prepare('UPDATE messages SET metadata_json=?,updated_at=? WHERE id=?').run(JSON.stringify({ ...sourceMessage.metadata, latest_run_id: runId, target_agent_id: agent.id }), stamp, sourceMessage.id);
-              db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
-              if (!turn.source && linkedChat?.kind === 'rumbo-agent' && linkedChat.title === 'New chat' && db.prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_id=? AND sender_type='user'").get(links.chat_id).count === 1) {
-                const generatedTitle = turn.content.replace(/\s+/g, ' ').trim().slice(0, 72);
-                db.prepare('UPDATE chats SET title=? WHERE id=? AND title=?').run(generatedTitle, links.chat_id, 'New chat');
-              }
-            }
-            db.prepare('UPDATE runs SET work_mode=?,timeout_ms=? WHERE id=?').run(workMode, input.timeout_ms, runId);
-            if (profileSnapshot) db.prepare('UPDATE runs SET agent_profile_version=? WHERE id=?').run(profileSnapshot.version, runId);
-            if (preview) consumeInspection(db, preview.id, runId);
-            captureRunContext(db, runId, inspection);
-            if (body.workflow_step) {
-              if (!preview) throw validationError('Inspect this Workflow step before launching it.');
-              manualWorkflows.bindManualWorkflowRun({ db, runId, workflowStep: body.workflow_step, actor, allowed: access.allowed, filter: data => access.filter(data, actor) });
-            }
-            if (body.skill_evaluation) {
-              if (!preview) throw validationError('Inspect this Skill evaluation before launching it.');
-              bindSkillEvaluationRun({ db, runId, skillEvaluation: body.skill_evaluation, actor, allowed: access.allowed });
-            }
-            beginRunUsage(db, runId);
-            db.exec('COMMIT');
-            if (turn) sourceMessage = present(db.prepare('SELECT * FROM messages WHERE id=?').get(sourceMessage.id));
-          } catch (error) { db.exec('ROLLBACK'); throw error; }
-          if (profileSnapshot) {
-            addRunEvent(runId, 'profile.captured', `Agent profile version ${profileSnapshot.version}`, { demo: false, agent_id: agent.id, profile_version: profileSnapshot.version, profile_hash: profileSnapshot.snapshot_hash, model: input.model || null, reasoning_effort: input.reasoning_effort || null, model_selection: 'captured_execution_settings', permission_mode: permissionMode, provider_connection_id: agent.provider_connection_id });
-          }
-          const prompt = inspection.finalPrompt;
-          const actionNonce = inspection.actionNonce;
-          const awareness = Boolean(actionNonce);
-          const included = inspection.manifest.included;
-          addRunEvent(runId, 'context.prepared', `${included.length} context sources captured`, { demo: false, fingerprint: inspection.manifest.fingerprint, inspected: Boolean(preview), memoryNotes: included.filter(item => ['memory_notes', 'agent_memories', 'knowledge_entries'].includes(item.kind)).length, messages: included.filter(item => item.kind === 'message').length, attachmentCount: included.filter(item => item.kind === 'attachment').length, contextTruncated: inspection.truncated, attachmentCharacterLimit: 32_000 });
-          const startingController = new AbortController();
-          liveRuns.set(runId, { stop: () => startingController.abort() });
-          try {
-            if (workMode !== 'conversation' && project?.id) await changeReviews.beginRun(runId, actor, cwd).catch(() => addRunEvent(runId, 'review.unavailable', 'Automatic change capture unavailable for this folder or access level.', { demo: false }));
-            let nativeBridge;
-            if (input.native_tools) {
-              nativeBridge = await createNativeAgentToolBridge({
-                listTools: () => { assertNativePolicy(runId); return nativeTools().listForRun(runId).tools; },
-                callTool: (name, args) => { assertNativePolicy(runId); return nativeTools().invoke(runId, name, args); },
-                expiresAt: Date.now() + input.timeout_ms + 30_000, signal: startingController.signal,
-              });
-              nativeBridges.set(runId, nativeBridge);
-              addRunEvent(runId, 'tools.connected', 'Reviewed native tools connected for this run; mutations require human review.', { demo: false, tool_count: nativeBridge.descriptor.enabledTools.length });
-            }
-            const controller = await integration.startRun({ provider, prompt, cwd, permissionMode, workMode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, signal: startingController.signal, ...(nativeBridge ? { nativeToolBridge: nativeBridge.descriptor } : {}) }, {
-              onEvent(event) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) addRunEvent(runId, event.type, event.summary, { ...event.payload, demo: false }); },
-              onUsageReport(report) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) recordRunUsage(getDb(), runId, report); },
-              onComplete(result) {
-                revokeNativeBridge(runId);
-                liveRuns.delete(runId);
-                if (closed) return;
-                const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
-                if (!current) return;
-                const emptyReply = Boolean(turn && result.status === 'completed' && !result.text?.trim());
-                const finalStatus = current.status === 'stopped' ? 'stopped' : emptyReply ? 'failed' : result.status;
-                updateRun(runId, finalStatus, true);
-                const usageReason = result.usage_capture_incomplete ? 'usage_persistence_failed' : emptyReply ? 'empty_reply' : typeof result.error_code === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(result.error_code) ? result.error_code : null;
-                finalizeRunUsage(getDb(), runId, { status: finalStatus, reason: usageReason });
-                changeReviews.finishRun(runId, actor).then(reviewId => { if (!closed && reviewId) addRunEvent(runId, 'review.captured', 'Observed changes saved for review', { review_id: reviewId, demo: false }); }).catch(() => { if (!closed) addRunEvent(runId, 'review.unavailable', 'Change capture could not finish. No complete run diff is available.', { demo: false }); });
-                if (finalStatus === 'completed' && awareness && result.text) {
-                  try { result.text = captureAgentActions(getDb(), runId, result.text, actionNonce, { authorizeCapture: ({ run, proposal }) => authorizeAgentProposal(run, proposal) }); }
-                  catch { result.text = result.text.replace(/```rumbo-actions\s*\n[\s\S]*?```/g, '').trim() + '\n\nRumbo could not validate the proposed actions. No changes were made.'; }
-                }
-                const failure = emptyReply ? 'The agent finished without a text reply. Retry the message or inspect the session output.' : result.error;
-                addRunEvent(runId, `run.${finalStatus}`, finalStatus === 'completed' ? 'Agent session completed' : failure || `Agent session ${finalStatus}`, { demo: false, summary: result.text, error: failure || null, error_code: result.error_code || null, source_message_id: sourceMessage?.id || null });
-                if (links.chat_id && result.text?.trim() && getDb().prepare('SELECT 1 FROM chats WHERE id=?').get(links.chat_id)) {
-                  const stamp = now();
-                  getDb().prepare('INSERT INTO messages (id,chat_id,sender_type,sender_id,sender_name,content,kind,attachments_json,metadata_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-                    .run(id('message'), links.chat_id, 'agent', agent?.id || provider, agent?.name || PROVIDERS[provider].displayName, result.text, 'message', '[]', JSON.stringify({ run_id: runId, mode: 'live', source_message_id: sourceMessage?.id || null, reply_to: sourceMessage?.id || null, status: finalStatus }), stamp, stamp);
-                  getDb().prepare('UPDATE chats SET updated_at=? WHERE id=?').run(stamp, links.chat_id);
-                }
-              },
-            });
-            if (!startingController.signal.aborted && !closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) liveRuns.set(runId, controller);
-            else controller.stop();
-          } catch (error) {
-            revokeNativeBridge(runId);
-            changeReviews.discardRun(runId);
-            liveRuns.delete(runId);
-            if (!closed) {
-              const current = getDb().prepare('SELECT status FROM runs WHERE id=?').get(runId);
-              if (current && current.status !== 'stopped') {
-                updateRun(runId, 'failed', true);
-                const rawCode = error.errorCode || error.code;
-                const errorCode = typeof rawCode === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(rawCode) ? rawCode : 'agent_start_failed';
-                finalizeRunUsage(getDb(), runId, { status: 'failed', reason: errorCode });
-                addRunEvent(runId, 'run.failed', error.message || 'Agent could not start', { demo: false, error_code: errorCode });
-              }
-            }
-            if (turn && !closed) return send(res, 201, { message: sourceMessage, run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), replayed: false, error: { code: error.errorCode || error.code || 'agent_start_failed', message: error.message || 'Agent could not start.' } });
-            throw error;
-          }
-          return send(res, 201, { run: present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId)), demo: false, ...(turn ? { message: sourceMessage, replayed: false } : {}) });
-        }
-        const needsApproval = Boolean(body.requires_approval || body.requiresApproval || body.scenario === 'approval');
-        db.prepare('INSERT INTO runs (id,workspace_id,project_id,task_id,chat_id,provider,agent_id,agent_name,status,title,prompt,mode,requires_approval,started_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-          .run(runId, workspaceId, links.project_id, links.task_id, links.chat_id, provider, agent?.id || null, agent?.name || body.agent_name || body.agentName || PROVIDERS[provider].displayName, needsApproval ? 'needs_input' : 'running', body.title || linkedTask?.title || 'Untitled agent run', body.prompt || '', 'mock', bool(needsApproval), stamp, stamp, stamp);
-        if (profileSnapshot) {
-          db.prepare('UPDATE runs SET agent_profile_version=? WHERE id=?').run(profileSnapshot.version, runId);
-          addRunEvent(runId, 'profile.captured', `Simulation uses profile version ${profileSnapshot.version}`, { demo: true, agent_id: agent.id, profile_version: profileSnapshot.version, profile_hash: profileSnapshot.snapshot_hash, model: agent.model || null, reasoning_effort: agent.reasoning_effort || null, provider_connection_id: agent.provider_connection_id, liveAccountContacted: false });
-        }
-        addRunEvent(runId, 'run.started', 'Mock run started', { demo: true, provider, liveAccountContacted: false });
-        if (needsApproval) {
-          const event = addRunEvent(runId, 'approval.requested', 'Approval required to continue the mock run', { demo: true, action: body.approval_action || 'Run a simulated check' });
-          const approvalId = id('approval');
-          db.prepare('INSERT INTO approvals (id,run_id,event_id,title,detail,status,created_at) VALUES (?,?,?,?,?,?,?)')
-            .run(approvalId, runId, event.id, 'Continue mock run?', 'This is a simulated approval; no command or provider request will run.', 'pending', now());
-        } else if (body.scenario !== 'manual') scheduleMockRun(runId, body.scenario);
-        const run = present(db.prepare('SELECT * FROM runs WHERE id=?').get(runId));
-        return send(res, 201, { run, demo: true });
-      }
+      if (req.method === 'POST' && (path === '/runs' || path === '/runs/start' || taskRunMatch || chatTurnMatch)) return await launchRun({ actor, body: await readBody(req), taskRunMatch, chatTurnMatch, res });
       const stopMatch = path.match(/^\/runs\/([^/]+)\/stop$/);
       if (req.method === 'POST' && stopMatch) {
         const runId = stopMatch[1];
@@ -1599,9 +1726,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
 
   function close() {
     if (closed) return;
-    clearInterval(playbookScheduleTimer);
     finalizeInterruptedRunUsage(store.db, 'server_interrupted');
     closed = true;
+    clearInterval(scheduledWorkTimer);
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
     integration.close();
     connectionPlatform.close();
@@ -1639,11 +1766,12 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
     workbenchCheckpoints = createWorkbenchCheckpointService({ db: store.db, workbench, allowed: access.allowed, activeSessionsFor: activeRunsFor });
     changeReviews = makeReviews();
+    scheduledWork = makeScheduledWork();
     closed = false;
     return snapshot(store.db);
   }
 
-  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dbPath: store.dbPath };
+  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dbPath: store.dbPath };
 }
 
 export default createLocalApi;

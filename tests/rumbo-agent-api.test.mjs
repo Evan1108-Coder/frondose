@@ -52,7 +52,8 @@ test('opening Rumbo Agent is read-only; disconnected creation stores nothing and
   const { api, call, request, fake, workspace, connect, create } = await fixture(t);
   const before = api.snapshot();
   const result = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result;
-  assert.equal(result.providers.length, 2);
+  assert.deepEqual(result.providers.map(provider => provider.provider), ['codex', 'claude', 'openrouter', 'huggingface']);
+  assert.ok(result.providers.filter(provider => ['openrouter', 'huggingface'].includes(provider.provider)).every(provider => provider.model_required && !provider.models.some(model => !model.id)));
   assert.ok(result.providers.every(provider => !provider.connected && !provider.agent_id && provider.model_catalog_complete === false));
   assert.deepEqual(api.snapshot().agents, before.agents);
   assert.equal(fake.commands.length, 0); assert.equal(fake.launches.length, 0);

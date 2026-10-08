@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { serviceBrand, safeWebsiteUrl } from '../src/lib/service-brands.js';
 
 test('every catalog service resolves to bundled brand artwork', () => {
-  for (const name of ['Codex', 'Claude', 'GitHub', 'Google Drive', 'Slack', 'Google account', 'Microsoft Teams', 'Discord', 'Notion', 'GitLab', 'MCP']) {
+  for (const name of ['Codex', 'Claude', 'OpenRouter', 'Hugging Face Inference', 'GitHub', 'Google Drive', 'Slack', 'Google account', 'Microsoft Teams', 'Discord', 'Notion', 'GitLab', 'MCP']) {
     assert.match(serviceBrand(name).src, /^data:image\/svg\+xml,/);
   }
   assert.equal(serviceBrand('google_drive').id, 'google-drive');

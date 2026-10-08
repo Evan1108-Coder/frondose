@@ -41,10 +41,10 @@ test('empty newly added values remain editable but do not auto-fill', () => {
   assert.equal(resolveFieldValue(settings, { key: 'route.problem', label: 'Problem' }), null);
 });
 
-test('sensitive, search and unsupported fields are excluded even if configured', () => {
+test('sensitive and unsupported fields are excluded; search fields are supported', () => {
   const settings = normalizeFieldDefaults({ fields: { 'auth.token': { primaryId: 'x', values: [{ id: 'x', slot: 1, value: 'SECRET' }] } } });
   assert.equal(normalizeFieldDefinition({ key: 'auth.token', label: 'API token' }).eligible, false);
-  assert.equal(normalizeFieldDefinition({ key: 'search.work', label: 'Search work' }).eligible, false);
+  assert.equal(normalizeFieldDefinition({ key: 'search.work', label: 'Search work', type: 'search' }).eligible, true);
   assert.equal(normalizeFieldDefinition({ key: 'file.upload', type: 'file' }).eligible, false);
   assert.equal(resolveFieldValue(settings, { key: 'auth.token', label: 'API token' }), null);
   assert.equal(updateFieldEntry('one', 'auth.token', { values: [{ id: 'x', slot: 1, value: 'SECRET' }] }, memoryStorage()), false);
@@ -83,6 +83,58 @@ test('numeric defaults are finite numbers, not arbitrary text', () => {
   assert.equal(validFieldDefaultValue(definition, 'Infinity'), false);
 });
 
+test('native date/time/email/url types reject malformed values before insertion', () => {
+  const check = (type, value) => validFieldDefaultValue({ key: 'safe.field', type }, value);
+  assert.equal(check('time', '23:59'), true);
+  assert.equal(check('time', '24:00'), false);
+  assert.equal(check('time', '08:30:15.123'), true);
+  assert.equal(check('datetime-local', '2028-02-29T08:30'), true);
+  assert.equal(check('datetime-local', '2027-02-29T08:30'), false);
+  assert.equal(check('datetime-local', '2028-02-29T25:30'), false);
+  assert.equal(check('email', 'person@example.com'), true);
+  assert.equal(check('email', 'not an email'), false);
+  assert.equal(check('url', 'https://example.com/path'), true);
+  assert.equal(check('url', 'example.com'), false);
+});
+
+test('authored HH:mm text controls keep semantic time validation', () => {
+  const control = {
+    matches: () => true, closest: () => null, getAttribute: () => null,
+    tagName: 'INPUT', type: 'text', placeholder: 'HH:mm', dataset: { fieldDefaultKey: 'schedule.time' },
+  };
+  const definition = definitionForElement(control);
+  assert.equal(definition?.type, 'time');
+  assert.equal(validFieldDefaultValue(definition, '09:30'), true);
+  assert.equal(validFieldDefaultValue(definition, '29:30'), false);
+});
+
+test('missing storage fails rather than reporting successful persistence', () => {
+  assert.equal(saveFieldDefaults('one', {}, {}), false);
+});
+
+test('untagged safe controls get semantic identity independent of generated IDs', () => {
+  const control = id => ({
+    matches: () => true, closest: () => null, getAttribute: name => name === 'aria-label' ? 'Search documents' : null,
+    tagName: 'INPUT', type: 'search', autocomplete: 'off', id, name: 'documents', dataset: {},
+  });
+  const first = definitionForElement(control('_r_1_'));
+  const second = definitionForElement(control('_r_98_'));
+  assert.ok(first?.eligible);
+  assert.equal(first.key, second.key);
+});
+
+test('sensitive runtime-only forms also exclude innocently labeled neighboring inputs', () => {
+  const credential = { type: 'text', name: 'api_key', getAttribute: () => null };
+  const form = { getAttribute: () => null, querySelector: () => null, querySelectorAll: () => [credential] };
+  const control = { matches: () => true, closest: selector => selector.includes('dialog') ? form : null, getAttribute: () => null, tagName: 'INPUT', type: 'text', dataset: { fieldDefaultKey: 'generic.name' } };
+  assert.equal(definitionForElement(control), null);
+});
+
+test('custom native choice questions are not accidentally registered as free-text bars', () => {
+  const control = { matches: () => true, closest: () => null, getAttribute: () => null, tagName: 'SELECT', type: 'select-one', dataset: {} };
+  assert.equal(definitionForElement(control), null);
+});
+
 test('inventory is grouped metadata and configurable entries remain separate', () => {
   const storage = memoryStorage();
   registerFieldDefinition('one', { key: 'route.problem', page: 'New Route', label: 'Problem', type: 'textarea' }, storage);
@@ -107,6 +159,15 @@ test('global, per-field and per-value switches gate selection independently', ()
   assert.equal(resolveFieldValue(settings, definition, 2)?.value, 'Two');
   assert.equal(resolveFieldValue(normalizeFieldDefaults({ ...config, enabled: false }), definition, 2), null);
   assert.equal(resolveFieldValue(normalizeFieldDefaults({ fields: { 'route.problem': { ...config.fields['route.problem'], enabled: false } } }), definition, 2), null);
+});
+
+test('shared source defaults are operational fallbacks, not inert catalog entries', () => {
+  const definition = { key: 'resource.contact.name', sourceKey: 'source.generic.name', label: 'Name' };
+  const settings = normalizeFieldDefaults({ fields: { 'source.generic.name': { primaryId: 'one', values: [{ id: 'one', slot: 1, value: 'Shared name' }] } } });
+  assert.equal(resolveFieldValue(settings, definition)?.value, 'Shared name');
+  assert.equal(resolveFieldValue(normalizeFieldDefaults({ ...settings, fields: { ...settings.fields, [definition.key]: { enabled: false, values: [] } } }), definition), null);
+  const specific = normalizeFieldDefaults({ ...settings, fields: { ...settings.fields, [definition.key]: { primaryId: 'own', values: [{ id: 'own', slot: 1, value: 'Specific name' }] } } });
+  assert.equal(resolveFieldValue(specific, definition)?.value, 'Specific name');
 });
 
 test('shortcut 1 selects the sole available value even if assigned elsewhere', () => {

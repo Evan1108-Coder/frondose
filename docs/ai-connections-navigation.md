@@ -8,8 +8,8 @@ Open **AI connections** and choose a provider from the table. Each row opens a d
 
 | Provider | Current route | Current boundary |
 | --- | --- | --- |
-| OpenRouter | Browser authorization for a per-user, per-workspace key | Account check, model discovery, and one explicit possibly billed test. Not a Rumbo agent execution route yet. |
-| Hugging Face Inference | Browser OAuth after the Rumbo operator registers an app | Account check, model discovery, and explicit test only after configuration. Not an agent execution route. |
+| OpenRouter | Browser authorization for a per-user, per-workspace key | Reviewed conversations and scheduled agent prompts with an explicit model; supported final-reply action proposals require review. No native/file tools or streaming; real-account compatibility unverified. |
+| Hugging Face Inference | Browser OAuth after the Rumbo operator registers an app | Same reviewed completion/action-proposal path after configuration; no native/file tools or streaming. Real-account compatibility unverified. |
 | GitHub Copilot | Planned browser OAuth and hosted SDK | Coming soon; no working Rumbo authorization or execution. |
 | Codex | Already-installed, signed-in local CLI | Existing local runner for reviewed requests. This is not public-site access to a visitor's ChatGPT subscription. |
 | Claude Code | Already-installed, signed-in local CLI | Existing local runner with current capability restrictions. Not public-site subscription OAuth. |
@@ -20,7 +20,7 @@ Direct OpenAI, Anthropic, Gemini, and other model APIs require provider credenti
 
 **Plugins** is the new name for non-AI service integrations and lives in Settings. The entries are **Coming soon**. Their detail pages preview intended capabilities, but the local API blocks new authorization, resource reads, sync, imports, and provider writes. Existing records are preserved. A past “Connected” record is not evidence that a Plugin works today.
 
-Playbooks lists planned Plugin actions separately from its executable local actions. A future provider action needs a specific release decision, operator app registration, resource and permission checks, and live verification before it can become runnable.
+The Playbooks builder is retired, with its stored records retained as inert history. Ask Rumbo Agent for supported local workspace-action proposals and review them before applying or scheduling one. A future external Plugin action still needs a specific release decision, operator app registration, resource and permission checks, and live verification before it can become runnable.
 
 ## Header shortcuts and pinned dock
 

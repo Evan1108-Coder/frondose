@@ -87,6 +87,7 @@
 
 /* The keyed route wrapper remounts only for navigation, not for live data. */
 .view-entrance { min-height: 100%; min-width: 0; }
+.view-entrance:has(> .settings-center, > .chat-single-page, > .rumbo-agent-conversation) { height: 100%; min-height: 0; }
 .view-entrance > :is(.page, .settings-center, .home-view, .focus-view, .inbox-view) {
   opacity: 1;
   transform: translateY(0);

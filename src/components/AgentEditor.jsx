@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, FileText, Hammer, Info, Search } from "./icons.jsx";
 import { rumboActions } from "../data/useRumbo.js";
+import { apiRequest } from '../data/api.js';
+import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { Button, Dialog, ErrorMessage, Field, Select, useApp, useAsync } from "../ui.jsx";
 import { AGENT_PRESETS, AGENT_REASONING_OPTIONS, agentDefaultChoices, agentFormPayload, applyAgentPreset, hasAgentText, initialAgentForm, validateAgentForm } from "../lib/agent-editor.js";
 import { val } from "../lib/model.js";
@@ -9,7 +11,7 @@ import { Form } from "./Form.jsx";
 import "./agent-editor.css";
 
 const PRESET_ICONS = { build: Hammer, review: FileText, research: Search };
-const PROVIDERS = [{ id: "codex", label: "Codex" }, { id: "claude", label: "Claude" }];
+const PROVIDERS = [{ id: "codex", label: "Codex" }, { id: "claude", label: "Claude Code" }, { id: 'openrouter', label: 'OpenRouter' }, { id: 'huggingface', label: 'Hugging Face Inference' }];
 
 export function AgentEditor({ item = null, defaults = {}, onClose }) {
   const { data, workspace, notify, navigate } = useApp();
@@ -18,6 +20,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
   const [pendingPreset, setPendingPreset] = useState(null);
   const [discarding, setDiscarding] = useState(false);
   const [validation, setValidation] = useState(null);
+  const [apiModels, setApiModels] = useState({}), [modelsLoading, setModelsLoading] = useState(false);
   const { busy, error, execute, setError } = useAsync();
   const providerGroup = useId();
   const formRef = useRef(null);
@@ -145,13 +148,13 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
                   </label>
                 ))}
               </div>
-              <p className="agent-provider-help">{form.provider === "claude" ? "Claude can read and search in this release. Project editing is not supported yet." : form.provider === "codex" ? "Codex supports read-only or project-edit access. Choose permissions before each session." : "Choose a supported provider to use this agent in Rumbo."}</p>
+              <p className="agent-provider-help">{form.provider === "claude" ? "Claude Code can read and search in this release. Project editing is not supported yet." : form.provider === "codex" ? "Codex supports read-only or project-edit access. Choose permissions before each session." : "Browser AI connections support conversations and reviewed Rumbo actions. Select an explicit chat model; your connected account’s credits apply."}</p>
             </fieldset>
 
             <Select label="Shared provider connection" name="provider_connection_id" value={form.provider_connection_id} disabled={busy} onChange={value => change("provider_connection_id", value)}>
               <option value="">Not bound — choose a connection for live work</option>
               {form.provider_connection_id && !connections.some(connection => connection.id === form.provider_connection_id) ? <option value={form.provider_connection_id}>Unavailable connection — replace before running</option> : null}
-              {connections.map(connection => <option key={connection.id} value={connection.id}>{val(connection, "account_label") || (form.provider === "claude" ? "Claude" : "Codex")} · {connection.state?.replaceAll("_", " ") || "state unknown"}</option>)}
+              {connections.map(connection => <option key={connection.id} value={connection.id}>{val(connection, "account_label") || PROVIDERS.find(provider => provider.id === form.provider)?.label} · {(connection.workspace_states?.[scopedWorkspace] || connection.state)?.replaceAll("_", " ") || "state unknown"}</option>)}
             </Select>
             <p className="agent-editor-future-note">Profiles share their connected account’s credentials and usage limits. Rumbo does not import ordinary ChatGPT or Claude chat history.</p>
 
@@ -169,7 +172,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
               <input {...defaultField('folder', 'Default working folder')} name="working_directory" value={form.working_directory} maxLength={2000} spellCheck={false} onChange={(event) => change("working_directory", event.target.value)} placeholder="/Users/you/Projects/example" disabled={busy} aria-invalid={validation?.field === "working_directory" || undefined} />
             </Field>
             <section className="agent-editor-section" aria-label="Execution defaults"><h3>Execution defaults</h3>
-              <Field label="Model identifier" hint="Optional provider identifier. Rumbo does not verify model availability here; the connected provider can reject an unsupported model."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>
+              {isBrowserAiProvider(form.provider) ? <div className="agent-api-model"><Field label="Chat model"><Select aria-label="Chat model" value={form.model} disabled={busy || modelsLoading} onChange={value => change('model', value)}><option value="">Choose a model</option>{(apiModels[form.provider] || []).map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}{form.model && !(apiModels[form.provider] || []).some(model => model.id === form.model) ? <option value={form.model}>{form.model} · configured</option> : null}</Select></Field><Button variant="ghost" busy={modelsLoading} disabled={busy || modelsLoading} onClick={async () => { setModelsLoading(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${form.provider}/models?workspace_id=${encodeURIComponent(scopedWorkspace)}`); setApiModels(current => ({ ...current, [form.provider]: response.result.filter(model => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model.id) && (!model.output_modalities?.length || model.output_modalities.includes('text'))) })); } catch (cause) { setError(cause); } finally { setModelsLoading(false); } }}>Load models from account</Button></div> : <Field label="Model identifier" hint="Optional provider identifier. Rumbo does not verify model availability here; the connected provider can reject an unsupported model."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>}
               {form.provider === "codex" ? <Select label="Reasoning effort" name="reasoning_effort" value={form.reasoning_effort} disabled={busy} onChange={value => change("reasoning_effort", value)}><option value="">Provider default</option>{AGENT_REASONING_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : <p>Reasoning-effort selection is not supported for Claude in Rumbo.</p>}
               <p>Model and reasoning support depend on your installed provider client and selected model. Saving does not test your account.</p>
               <Select label="Permission policy" name="permission_policy" value={form.permission_policy} disabled={busy} onChange={value => change("permission_policy", value)}><option value="review">Review required — no automatic write approval</option><option value="read-only">Read-only — do not request project edits</option></Select>

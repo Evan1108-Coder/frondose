@@ -21,7 +21,7 @@ A local-first workspace for projects, conversations, and AI workers. A **Route**
 
 ## Setup
 
-Requires Node.js 22.5 or newer. Use a current Node release for the built-in SQLite runtime.
+Requires Node.js 22.16+ or 24+. The reviewed-action executor uses SQLite's transaction-state API; this pass was verified with Node 25.8.2.
 
 ```sh
 npm install
@@ -53,8 +53,8 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 - Agent instructions and default folders. Preview the selected project, route, chat, and working folder before starting work; choose whether to include chat and memory. See [agent behavior and verification](docs/agents-refresh.md).
 - Live Codex sessions for analysis or project edits. Live Claude sessions for restricted read/search analysis. Stream events and responses into the local session history and linked chat; stop active work.
 - Runs can be renamed and starred or recoverably archived after stopping. Starred collects personal shortcuts across the workspace and is linked from Profile; sidebar tabs can be hidden and restored in Customize sidebar. Update and run-event icons have distinct Rumbo-authored glyphs in the shared Icons catalog, with personal per-workspace choices in Settings → Milestones & updates.
-- Structured Route, Project and Chat templates can ask up to 24 custom questions and save their pinned answers with each created item. Settings → Field defaults offers browser-personal values for 107 explicitly wired, non-sensitive creation fields plus active template questions, with primary values, per-field switches, numbered shortcuts and immediate undo. This is not a blanket autofill for every control.
-- Playbooks provide versioned, permission-checked sequences of 13 actual local actions for draft creation, milestones, scoped Route/Project updates, and conversation organization. Manual, Inbox-open and local-server scheduled triggers have run receipts and idempotency; they do not launch agents or access external services. Paused Plugin actions are cataloged as Coming soon, not executable. Missed schedules are not replayed, and workspace JSON exports do not yet include Playbooks. See [templates, field defaults and Playbooks](docs/templates-defaults-playbooks.md) and the in-app Docs articles.
+- Structured Route, Project and Chat templates can ask up to 24 custom questions and save their pinned answers with each created item. Settings → Field defaults pre-discovers safe text/search/typed input sites across creation, existing-item, Settings and repeated-row editors, plus active template text questions. Browser-personal primary values, global/per-field/per-value switches, numbered shortcuts and immediate undo preserve existing text; existing records and auto-saving Settings require an explicit shortcut. Credentials, sensitive forms and non-text controls remain excluded.
+- Use Rumbo Agent for supported workspace-action proposals and review them explicitly; use Schedule on a conversation message or supported pending action proposal for later work. Settings → Scheduled messages & actions collects accessible schedules, with recorded results in Activity. Scheduling a reviewed action pins its exact target snapshot, not arbitrary future authority. The Playbooks multi-step builder and dispatchers are retired, with stored definitions and receipts preserved as inert history. Existing manual Workflows and preview-and-apply Route rules remain separate and unchanged. See [templates, field defaults and scheduled work](docs/templates-defaults-playbooks.md) and the in-app Docs articles.
 - Reviewed live runs may explicitly opt into a private per-run MCP bridge. Read tools return only context captured in that run's approved manifest. Write tools create idempotent pending-review requests; permission requests never grant access, handoffs never start agents, memory remains draft, and submitted output remains review-needed. The bridge is revoked when the run stops or completes and has no browser invocation endpoint.
 - Clearly labeled local simulations for testing session events, approval, denial, and stopping without contacting accounts.
 - Inbox for outstanding decisions and session updates. Read state and notification preferences persist.
@@ -67,7 +67,7 @@ See [product expansion status](docs/product-expansion-status.md) for the detaile
 
 ## Connections
 
-The sidebar's **AI connections** page separates browser sign-in from existing local runners and direct model APIs. OpenRouter has server-side PKCE authorization, an encrypted user-owned key, account checks, account-filtered model listing and an explicitly requested short test prompt. Hugging Face has a scoped OAuth PKCE flow, encrypted user token, account/model checks and an explicit short inference test, but its Connect action requires an operator OAuth app first. Neither is yet wired into Rumbo Agent or Workflows or validated against a real account. GitHub Copilot is a documented next candidate, not an active Rumbo integration. Provider credits or subscriptions remain the user's responsibility. See [AI connection status and setup](docs/ai-connections.md).
+The sidebar's **AI connections** page separates browser sign-in from existing local runners and direct model APIs. OpenRouter and configured Hugging Face use encrypted per-user/workspace credentials for reviewed conversations and scheduled agent prompts with an explicit model; final-reply workspace actions remain reviewable proposals. Their API execution has no native MCP or project-file tools, streaming, or integrated usage ledger. Authorization, account checks, explicit model discovery and short tests remain separate actions; Hugging Face first requires an operator OAuth app. Real-account OAuth/inference compatibility remains unverified. GitHub Copilot is a documented next candidate, not an active Rumbo integration. Provider charges remain the user's responsibility. See [AI connection status and setup](docs/ai-connections.md).
 
 The non-AI service marketplace below is preserved under **Settings → Plugins** but is paused. Existing records remain; new authorization, synchronization, imports and provider actions are disabled until explicitly re-enabled and verified.
 
@@ -81,8 +81,8 @@ The active local runner and browser-account routes are separate:
 | --- | --- | --- |
 | Codex | Existing local CLI sign-in | Reviewed analysis or project work on this machine; not public subscription OAuth |
 | Claude Code | Existing local CLI sign-in | Restricted read/search analysis on this machine |
-| OpenRouter | Browser authorization | Account check, model discovery, explicit model test; not agent execution |
-| Hugging Face Inference | Browser OAuth after operator setup | Account check, model discovery, explicit test; not agent execution |
+| OpenRouter | Browser authorization | Reviewed conversations/scheduled prompts and pending workspace-action proposals; explicit model, no native/file tools |
+| Hugging Face Inference | Browser OAuth after operator setup | Same bounded conversation/action-proposal path; explicit model, no native/file tools |
 
 [AI connections and navigation](docs/ai-connections-navigation.md) explains current routes, Plugin boundaries, header shortcuts and the floating dock. [Connection setup and provider limitations](docs/connection-setup.md) documents prerequisites and future Plugin boundaries. Live provider compatibility still needs account-owner verification; automated tests do not contact real accounts or consume model usage.
 

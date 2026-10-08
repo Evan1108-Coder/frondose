@@ -7,7 +7,7 @@ import { visible } from '../lib/model.js';
 
 export function SidebarEditor({ onClose }) {
   const { organization, updateOrganization, workspace, data } = useApp();
-  const [draft, setDraft] = useState(organization), [error, setError] = useState(null), [name, setName] = useState('');
+  const [draft, setDraft] = useState(() => normalizeOrganization(organization)), [error, setError] = useState(null), [name, setName] = useState('');
   const drag = useRef(null);
   const label = key => {
     const ref = parseEntityKey(key);

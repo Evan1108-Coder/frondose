@@ -10,6 +10,7 @@ import { refreshRumbo, rumboActions } from '../data/useRumbo.js';
 import { ACTIVE_CHAT_RUNS, indexChatActivity, persistComposer, restoreComposer } from '../lib/chats.js';
 import { consumeRumboAgentEntry, peekRumboAgentEntry, rumboAgentSourceLabel } from '../lib/rumbo-agent-entry.js';
 import { announceRumboAgentAppearance } from '../lib/rumbo-agent-appearance.js';
+import { EXECUTION_PROVIDERS, isBrowserAiProvider } from '../lib/ai-providers.js';
 import { download, relative, val, visible } from '../lib/model.js';
 import { Button, Dialog, ErrorMessage, Field, IconButton, ProviderIcon, SearchField, Select, Toggle, useApp } from '../ui.jsx';
 import './rumbo-agent.css';
@@ -20,7 +21,7 @@ function savedCreation(workspaceId) {
   try {
     const value = JSON.parse(draftStorage()?.getItem(creationKey(workspaceId)) || 'null');
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-    const provider = ['codex', 'claude'].includes(value.provider) ? value.provider : '';
+    const provider = EXECUTION_PROVIDERS.includes(value.provider) ? value.provider : '';
     const instruction = typeof value.instruction === 'string' && value.instruction.length <= 10000 ? value.instruction : '';
     const model = typeof value.model === 'string' && value.model.length <= 512 ? value.model : '';
     const source = value.source && ['document', 'update', 'task', 'project'].includes(value.source.type) && typeof value.source.id === 'string' ? { type: value.source.type, id: value.source.id } : null;
@@ -81,10 +82,13 @@ function AgentOnboarding({ workspaceId, initial, onComplete, onExit }) {
 function configuredModels(provider) { return asList(provider?.models).filter(item => modelId(item)); }
 
 function ModelChoice({ provider, value, disabled, onChange, label }) {
-  const models = configuredModels(provider);
+  const { workspace } = useApp();
+  const [loaded, setLoaded] = useState({}), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const id = providerId(provider), browserApi = isBrowserAiProvider(id);
+  const models = loaded[`${workspace.id}:${id}`] || configuredModels(provider);
   const custom = Boolean(value && !models.some(item => modelId(item) === value));
-  if (!models.length && !custom) return null;
-  return <Select aria-label={label} value={value} disabled={disabled} onChange={onChange}><option value="">Automatic</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)}</option>)}{custom ? <option value={value}>{value} · unverified</option> : null}</Select>;
+  if (!models.length && !custom && !browserApi) return null;
+  return <span className="rumbo-model-choice"><Select aria-label={label} value={value} disabled={disabled || busy} onChange={onChange}><option value="">{browserApi ? 'Choose a model' : 'Automatic'}</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)}</option>)}{custom ? <option value={value}>{value} · configured</option> : null}</Select>{browserApi ? <Button variant="ghost" disabled={disabled || busy} busy={busy} onClick={async () => { setBusy(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${id}/models?workspace_id=${encodeURIComponent(workspace.id)}`); const available = asList(response.result).filter(item => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(modelId(item)) && (!item.output_modalities?.length || item.output_modalities.includes('text'))); setLoaded(current => ({ ...current, [`${workspace.id}:${id}`]: available })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Load models</Button> : null}<ErrorMessage error={error} /></span>;
 }
 
 function AssistantControls({ context, composer, change, agent, blocked, onProvider }) {
@@ -131,7 +135,7 @@ export function RumboAgent() {
   workspaceRef.current = workspace.id;
   const [, refreshComposer] = useState(0);
   const index = useMemo(() => indexChatActivity(data.messages, data.runs), [data.messages, data.runs]);
-  const connectionRevision = useMemo(() => JSON.stringify(asList(data.connections).map(item => [item.provider, item.state, item.status, item.connected, item.updated_at])), [data.connections]);
+  const connectionRevision = useMemo(() => JSON.stringify(asList(data.connections).map(item => [item.provider, item.state, item.status, item.connected, item.updated_at, item.workspace_states])), [data.connections]);
   const savedChats = visible(data.chats).filter(chat => chat.kind === 'rumbo-agent' && chat.workspace_id === workspace.id).toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || String(b.updated_at).localeCompare(String(a.updated_at)));
   const chats = createdChat && !savedChats.some(chat => chat.id === createdChat.id) ? [createdChat, ...savedChats] : savedChats;
   const currentChat = chats.find(chat => chat.id === page.id) || (createdChat?.id === page.id ? createdChat : null);
@@ -164,6 +168,7 @@ export function RumboAgent() {
   async function createChat(event) {
     event?.preventDefault();
     if (!draft.trim() || !provider || busy) return;
+    if (isBrowserAiProvider(provider) && !draftModel) { setError(new Error('Load the provider’s models and choose one before creating this conversation.')); return; }
     const requestWorkspace = workspace.id; setBusy(true); setError(null);
     try {
       const entry = peekRumboAgentEntry(workspace.id), prior = savedCreation(workspace.id), source = entry ? entry.source : prior?.source || null;
@@ -191,7 +196,7 @@ export function RumboAgent() {
       if (workspaceRef.current !== requestWorkspace) { await refreshRumbo(); return; }
       setAgentState(current => ({ ...current, profiles: [...current.profiles.filter(item => item.id !== profile.id && item.provider !== nextProvider), profile], providers: current.providers.map(item => providerId(item) === nextProvider ? { ...item, agent: profile, agent_id: profile.id } : item), preferences: { ...current.preferences, provider: nextProvider, model: '', reasoning_effort: '' } }));
       await refreshRumbo();
-      change({ recipient: profile.id, model: '', reasoning: '' });
+      change({ recipient: profile.id, model: '', reasoning: '', nativeTools: false, permission: 'conversation' });
     } catch (cause) { setError(cause); }
     finally { setBusy(false); }
   }
@@ -218,7 +223,7 @@ export function RumboAgent() {
 
   const selectedProvider = agentState?.providers.find(item => providerId(item) === provider), connected = providerReady(selectedProvider);
   return <main className="rumbo-agent-page">{header}<section className="rumbo-agent-start">
-    {loading ? <p className="rumbo-agent-loading" role="status">Checking available AI models…</p> : !agentState?.providers.length || !agentState.providers.some(providerReady) ? <div className="rumbo-agent-disconnected"><EmptyIllustration kind="connections" /><h1>Connect an AI model</h1><p>Your Rumbo Agent conversations remain readable. Connect Codex or Claude Code before creating a new provider-backed conversation.</p><Button variant="primary" onClick={() => navigate('connections')}>Open Connections</Button></div> : <><h1 className="rumbo-agent-hero-title"><TechText text="What would you like to work on?" fontSize={52} fontWeight={650} color={document.documentElement.dataset.theme === "light" ? "#202129" : "#f3f4f7"} accentColor="#8585ff" reach={125} specks={8} labels={false} draggable={false} /></h1><Form className="rumbo-agent-compose" onSubmit={createChat}><Field label="Request"><textarea data-field-default-key="rumbo-agent.new.request" data-field-default-page="Rumbo Agent new conversation" data-field-default-label="Request" data-field-default-mode="create" autoFocus maxLength={10000} placeholder="Ask Rumbo…" value={draft} onChange={event => setDraft(event.target.value)} /></Field><div className="rumbo-agent-compose-tools"><RumboAgentOrb compact color={agentState.preferences.orb_color} /><span><ProviderIcon provider={provider || 'codex'} /><Select aria-label="AI model provider" value={provider} onChange={value => { setProvider(value); setDraftModel(value === agentState?.preferences.provider ? agentState.preferences.model || '' : ''); }}><option value="">Choose provider</option>{agentState?.providers.filter(providerReady).map(item => <option key={providerId(item)} value={providerId(item)}>{providerName(item)}</option>)}</Select></span><ModelChoice provider={selectedProvider} value={draftModel} disabled={!provider} onChange={setDraftModel} label="AI model" />{restoredSource ? <span className="rumbo-agent-source">Selected {rumboAgentSourceLabel(restoredSource.type)} · access checked at context review</span> : null}<IconButton label="Create conversation for context review" type="submit" disabled={busy || !connected || !draft.trim()}><ArrowUp /></IconButton></div></Form></>}{error ? <ErrorMessage error={error} /> : null}
+    {loading ? <p className="rumbo-agent-loading" role="status">Checking available AI models…</p> : !agentState?.providers.length || !agentState.providers.some(providerReady) ? <div className="rumbo-agent-disconnected"><EmptyIllustration kind="connections" /><h1>Connect an AI model</h1><p>Your Rumbo Agent conversations remain readable. Connect a supported account in AI Connections before creating a conversation.</p><Button variant="primary" onClick={() => navigate('connections')}>Open Connections</Button></div> : <><h1 className="rumbo-agent-hero-title"><TechText text="What would you like to work on?" fontSize={52} fontWeight={650} color={document.documentElement.dataset.theme === "light" ? "#202129" : "#f3f4f7"} accentColor="#8585ff" reach={125} specks={8} labels={false} draggable={false} /></h1><Form className="rumbo-agent-compose" onSubmit={createChat}><Field label="Request"><textarea data-field-default-key="rumbo-agent.new.request" data-field-default-page="Rumbo Agent new conversation" data-field-default-label="Request" data-field-default-mode="create" autoFocus maxLength={10000} placeholder="Ask Rumbo…" value={draft} onChange={event => setDraft(event.target.value)} /></Field><div className="rumbo-agent-compose-tools"><RumboAgentOrb compact color={agentState.preferences.orb_color} /><span><ProviderIcon provider={provider || 'codex'} /><Select aria-label="AI model provider" value={provider} onChange={value => { setProvider(value); setDraftModel(value === agentState?.preferences.provider ? agentState.preferences.model || '' : ''); }}><option value="">Choose provider</option>{agentState?.providers.filter(providerReady).map(item => <option key={providerId(item)} value={providerId(item)}>{providerName(item)}</option>)}</Select></span><ModelChoice provider={selectedProvider} value={draftModel} disabled={!provider} onChange={setDraftModel} label="AI model" />{restoredSource ? <span className="rumbo-agent-source">Selected {rumboAgentSourceLabel(restoredSource.type)} · access checked at context review</span> : null}<IconButton label="Create conversation for context review" type="submit" disabled={busy || !connected || !draft.trim()}><ArrowUp /></IconButton></div></Form></>}{error ? <ErrorMessage error={error} /> : null}
     {chats.length ? <section className="rumbo-agent-recents"><div><h2>Recent conversations</h2><Button icon={Search} variant="ghost" onClick={() => setHistoryOpen(true)}>Search history</Button></div>{chats.slice(0, 6).map(chat => <article key={chat.id}><button className="rumbo-agent-chat-link" onClick={() => navigate('rumbo-agent', chat.id)}><MessageCircle /><strong>{chat.title}</strong></button><time>{relative(val(chat, 'updated_at'))}</time><IconButton label={`Options for ${chat.title}`} onClick={() => setActions(chat)}><Ellipsis /></IconButton></article>)}</section> : !loading ? <p className="rumbo-agent-no-history">No Rumbo Agent conversations yet.</p> : null}
   </section>{historyOpen ? <HistoryDialog chats={chats} onClose={() => setHistoryOpen(false)} onOpen={id => { setHistoryOpen(false); navigate('rumbo-agent', id); }} onOptions={chat => { setHistoryOpen(false); setActions(chat); }} /> : null}{actionChat ? <ChatActions chat={actionChat} active={activeFor(actionChat)} onClose={() => setActions(null)} onRename={() => { setRename(actionChat); setActions(null); }} onPin={() => mutateChat(() => rumboActions.updateChat(actionChat.id, { pinned: !actionChat.pinned }), actionChat.pinned ? 'Conversation unpinned' : 'Conversation pinned')} onExport={() => exportChat(actionChat)} onArchive={() => { setActions(null); archive('chat', actionChat); }} onDelete={() => { setConfirmDelete(actionChat); setActions(null); }} /> : null}{renameChat ? <RenameDialog chat={renameChat} busy={busy} error={error} onClose={() => setRename(null)} onSave={title => mutateChat(() => rumboActions.updateChat(renameChat.id, { title }), 'Conversation renamed')} /> : null}{deleteChat ? <Dialog title="Delete this conversation?" subtitle={deleteChat.title} onClose={() => !busy && setConfirmDelete(null)}><p className="rumbo-agent-destructive-copy">This permanently removes the conversation and its saved history. Source-bound conversations may need to be archived instead so their provenance remains intact.</p><ErrorMessage error={error} /><footer className="dialog-footer"><Button disabled={busy} onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" busy={busy} onClick={() => mutateChat(() => rumboApi.deleteChat(deleteChat.id), 'Conversation deleted')}>Delete conversation</Button></footer></Dialog> : null}</main>;
 }
