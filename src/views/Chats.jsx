@@ -22,6 +22,7 @@ import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnB
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
 import { prepareRumboAgentEntry } from '../lib/rumbo-agent-entry.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
+import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.js';
 import './chats-page.css';
 const ReactionPicker = lazy(() => import('../components/ReactionPicker.jsx'));
 const ActivityFeed = lazy(() => import('../components/ActivityFeed.jsx').then(module => ({ default: module.ActivityFeed })));
@@ -97,11 +98,13 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const [threadId, setThreadId] = useState(null), [bookmarksOnly, setBookmarksOnly] = useState(false), [messageOptions, setMessageOptions] = useState(null);
   const [selectionMode, setSelectionMode] = useState(false), [selectedIds, setSelectedIds] = useState(() => new Set());
   const [emojiPicker, setEmojiPicker] = useState(false);
+  const [draggingFiles, setDraggingFiles] = useState(false);
   const [reactionMessage, setReactionMessage] = useState(null), [reactionPending, setReactionPending] = useState(null), [reactionError, setReactionError] = useState(null);
   const reacting = useRef(false);
   const [composeDialog, setComposeDialog] = useState(null), [actionTitle, setActionTitle] = useState(''), [destination, setDestination] = useState('');
   const [contextSources, setContextSources] = useState([]), [contextQuery, setContextQuery] = useState(''), [collaborationError, setCollaborationError] = useState(null), [actionBusy, setActionBusy] = useState(false);
   const listRef = useRef(null), inputRef = useRef(null), fileRef = useRef(null), mounted = useRef(true), sending = useRef(false);
+  const dragDepth = useRef(0);
   const messages = index.messagesByChat.get(chat.id) || [], runs = index.runsByChat.get(chat.id) || [];
   const active = runs.find(run => ACTIVE_CHAT_RUNS.has(run.status));
   const orphan = runs.filter(run => !val(run, 'source_message_id')).at(-1);
@@ -233,26 +236,33 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       notify('Draft loaded. Review it, then send explicitly.'); inputRef.current?.focus();
     } catch (cause) { setError(cause); }
   }
-  async function attach(event) {
-    const files = [...event.target.files];
-    event.target.value = '';
+  async function attachFiles(files) {
+    if (!files?.length) return;
     try {
-      const next = await Promise.all(files.map(async file => {
-        if (file.size > 350_000) throw new Error(`${file.name} is too large. Choose a file under 350 KB.`);
-        let content;
-        if (/^image\/(png|jpeg|gif|webp)$/.test(file.type)) content = await new Promise((resolve, reject) => {
-          const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('The file could not be read.')); reader.readAsDataURL(file);
-        });
-        else if (file.type.startsWith('text/') || /\.(txt|md|json|js|jsx|ts|tsx|css|html|csv|py|rs|go|yaml|yml|xml|sql|sh)$/i.test(file.name)) content = await file.text();
-        else throw new Error('Choose a text file, code file, or PNG, JPEG, WebP, or GIF image.');
-        return { name: file.name, type: file.type || 'text/plain', size: file.size, content };
-      }));
-      const combined = [...composer.files, ...next];
-      if (new TextEncoder().encode(JSON.stringify(combined)).length > 650_000) throw new Error('These attachments are too large together. Send them separately.');
+      const combined = await readComposerFiles(files, composer.files);
       Object.assign(composer, { files: combined, turn: null, version: composer.version + 1 });
       persistComposer(chat.id, composer, draftStorage());
       if (mounted.current) { render(version => version + 1); setError(null); }
     } catch (cause) { if (mounted.current) setError(cause); else notify(cause.message, 'error'); }
+  }
+  function attach(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    void attachFiles(files);
+  }
+  function fileDragEnter(event) {
+    if (!containsDraggedFiles(event)) return;
+    event.preventDefault(); dragDepth.current += 1; setDraggingFiles(true);
+  }
+  function fileDragLeave(event) {
+    if (!dragDepth.current) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (!dragDepth.current) setDraggingFiles(false);
+  }
+  function fileDrop(event) {
+    if (!containsDraggedFiles(event) && !event.dataTransfer?.files?.length) return;
+    event.preventDefault(); dragDepth.current = 0; setDraggingFiles(false);
+    void attachFiles(event.dataTransfer.files);
   }
   async function send(event) {
     event.preventDefault();
@@ -451,12 +461,13 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
     </div>
     {!atBottom && messages.length > 2 ? <div className="chat-jump"><Button icon={ArrowDown} onClick={scrollToEnd}>Latest messages</Button></div> : null}
     <div className="chat-compose-area">
-      <Form className="chat-compose" onSubmit={send}>
+      <Form className={`chat-compose${draggingFiles ? ' chat-compose--dragging' : ''}`} onSubmit={send} onDragEnter={fileDragEnter} onDragOver={event => { if (containsDraggedFiles(event)) event.preventDefault(); }} onDragLeave={fileDragLeave} onDrop={fileDrop}>
+        {draggingFiles ? <div className="chat-compose-drop-hint" aria-hidden="true">Drop files to attach</div> : null}
         <ErrorMessage error={error} />
         {!composeDialog && !contextOpen ? <ErrorMessage error={collaborationError} /> : null}
         {replyMessage ? <div className="chat-composer-reply"><MessageCircle /><span>Replying to {val(replyMessage, 'sender_name')}<small>{replyMessage.content.slice(0, 150)}</small></span><IconButton label="Cancel reply" onClick={() => change({ replyTo: null })}><X /></IconButton></div> : null}
         {composer.context ? <div className="chat-context-tray"><FileText /><button type="button" onClick={() => setPreview({ name: 'Selected context snapshot', content: composer.context.content, type: 'text/markdown' })}>{composer.context.sources?.length || 0} sources · inspect exact snapshot</button><IconButton label="Remove selected context" onClick={() => change({ context: null })}><X /></IconButton></div> : null}
-        {composer.files.length ? <div className="chat-compose-files">{composer.files.map((file, index) => <span key={`${file.name}-${index}`}><Paperclip /><button type="button" onClick={() => setPreview(file)}>{file.name}</button><IconButton label={`Remove ${file.name}`} onClick={() => change({ files: composer.files.filter((_, i) => i !== index) })}><X /></IconButton></span>)}</div> : null}
+        {composer.files.length ? <div className="chat-compose-files" aria-label="Attached files">{composer.files.map((file, index) => <span key={`${file.name}-${index}`}><Paperclip /><button type="button" onClick={() => setPreview(file)}>{file.name}</button><IconButton label={`Remove ${file.name}`} onClick={() => change({ files: composer.files.filter((_, i) => i !== index) })}><X /></IconButton></span>)}</div> : null}
         <SlashCommandMenu text={composer.text} context="chat" activeIndex={slashIndex} onActiveIndexChange={setSlashIndex} onSelect={selectSlash} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} />
         <textarea ref={inputRef} aria-label="Message" data-field-default-key="conversation.compose.message" data-field-default-page="Conversation composer" data-field-default-label="Message" data-field-default-mode="create" value={composer.text} maxLength={100000} placeholder={agent ? `Ask ${agent.name}…` : 'Write a note or type / for commands…'} onChange={event => { setSlashIndex(0); change({ text: event.target.value }); }} onKeyDown={event => {
           if (slashVisible && slashResults.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); setSlashIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + slashResults.length) % slashResults.length); return; }
@@ -466,8 +477,12 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
         }} />
         {agent ? <details><summary>{assistant ? 'Review context' : 'Context review'} · {contextReady ? 'ready' : recoveringTurn ? 'delivery recovery' : 'required'}</summary><div className="chat-context-content" style={{ maxHeight: 'min(45vh, 420px)', overflowY: 'auto' }}>{!isBrowserAiProvider(agent.provider) ? <NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />{recoveringTurn ? <p>An earlier delivery is unconfirmed. Resending keeps the same turn ID to recover it without duplicating work. If the server never received it, context is regenerated. Inspect again to require a newly reviewed context.</p> : null}</div></details> : null}
         <div className="chat-compose-controls"><div className="chat-compose-target">
+          {agent && !isBrowserAiProvider(agent.provider) ? <div className="chat-compose-modes" role="group" aria-label="Work mode">
+            <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'conversation'} onClick={() => change({ permission: 'conversation' })}>Discuss</button>
+            <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'read-only' || (composer.permission !== 'conversation' && readOnlyProfile)} onClick={() => change({ permission: 'read-only' })}>Inspect</button>
+            {agent.provider === 'codex' && !readOnlyProfile ? <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'workspace-write'} onClick={() => change({ permission: 'workspace-write' })}>Build</button> : null}
+          </div> : null}
           {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation', nativeTools: false })}><option value="note">Note · only saved here</option>{agent && !readiness?.canStartLive ? <option value={agent.id} disabled>Connection needed</option> : null}{readyRecipients.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
-          {agent && !isBrowserAiProvider(agent.provider) ? <Select aria-label="Agent access" value={composer.permission === 'conversation' ? 'conversation' : effectivePermission} onChange={value => change({ permission: value })}><option value="conversation">Discuss · no folder needed</option><option value="read-only">Inspect project · read only</option>{agent.provider === 'codex' && !readOnlyProfile ? <option value="workspace-write">Execute · project coding</option> : null}</Select> : null}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
           {!assistant ? <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton> : null}
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>

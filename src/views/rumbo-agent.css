@@ -18,6 +18,13 @@
 .rumbo-agent-hero-word::after { content: ''; position: absolute; right: -8px; top: 16%; height: 70%; width: 2px; border-radius: 2px; background: var(--accent); opacity: 0; transform: scaleY(.5); transition: opacity 160ms ease, transform 220ms ease; }
 .rumbo-agent-start:focus-within .rumbo-agent-hero-word::after, .rumbo-agent-hero-title:hover .rumbo-agent-hero-word::after { opacity: 1; transform: scaleY(1); }
 .rumbo-agent-compose { margin-top: 34px; border: 1px solid var(--border-strong); border-radius: 17px; padding: 17px; background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 18px 55px rgba(0,0,0,.18), inset 0 1px rgba(255,255,255,.025); animation: rumbo-compose-arrive 650ms 90ms cubic-bezier(.16, 1, .3, 1) both; }
+.rumbo-agent-compose--dragging { position: relative; border-color: var(--accent); }
+.rumbo-agent-compose-drop-hint { position: absolute; inset: 5px; z-index: 3; display: grid; place-items: center; pointer-events: none; border: 1px dashed var(--accent); border-radius: 13px; background: color-mix(in srgb, var(--surface) 93%, var(--accent)); color: var(--text); font-weight: 600; }
+.rumbo-agent-compose-files { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.rumbo-agent-compose-files > span { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 2px 2px 2px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.rumbo-agent-compose-files > span > svg { width: 14px; height: 14px; flex: none; }
+.rumbo-agent-compose-files > span > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.rumbo-agent-compose-files .icon-button { width: 26px; height: 26px; }
 .rumbo-agent-compose > .field { gap: 0; }
 .rumbo-agent-compose > .field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .rumbo-agent-compose textarea { width: 100%; min-height: 86px; resize: vertical; border: 0; padding: 3px 7px 16px; background: transparent; color: var(--text); font: inherit; font-size: 16px; line-height: 1.55; outline: 0; }
@@ -26,6 +33,7 @@
 .rumbo-agent-compose-tools > span { display: flex; align-items: center; gap: 8px; }
 .rumbo-agent-compose-tools > .rumbo-select { min-width: 158px; }
 .rumbo-agent-compose-tools .icon-button { margin-left: auto; width: 42px; height: 42px; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); color: var(--accent-text); background: var(--accent); }
+.rumbo-agent-compose-tools .icon-button[aria-label="Attach files"] { margin-left: 0; width: 36px; height: 36px; border-color: var(--border); color: var(--text); background: transparent; }
 .rumbo-agent-model-note, .rumbo-agent-source { color: var(--secondary); font-size: 12px; }
 .rumbo-agent-source { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rumbo-agent-recents { margin-top: 64px; animation: rumbo-recents-arrive 600ms 190ms cubic-bezier(.16, 1, .3, 1) both; }
