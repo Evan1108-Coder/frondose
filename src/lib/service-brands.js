@@ -2,6 +2,7 @@ import openai from '@iconify-icons/logos/openai-icon';
 import claude from '@iconify-icons/logos/claude-icon';
 import huggingFace from '@iconify-icons/logos/hugging-face-icon';
 import github from '@iconify-icons/logos/github-icon';
+import copilot from '@iconify-icons/logos/github-copilot';
 import drive from '@iconify-icons/logos/google-drive-2020';
 import google from '@iconify-icons/logos/google-icon';
 import slack from '@iconify-icons/logos/slack-icon';
@@ -36,6 +37,7 @@ const entries = [
   ['claude', claude, ['anthropic'], ['claude.ai', 'anthropic.com']],
   ['hugging-face', huggingFace, ['hugging face', 'hugging face inference', 'huggingface'], ['huggingface.co']],
   ['github', github, ['github-packages', 'github packages'], ['github.com']],
+  ['copilot', copilot, ['github copilot'], []],
   ['github-actions', githubActions, ['github actions'], []],
   ['linear', linear, [], ['linear.app']],
   ['jira', jira, [], ['atlassian.net', 'atlassian.com']],

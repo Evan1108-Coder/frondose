@@ -1,5 +1,11 @@
 # Rumbo product expansion — implementation and limits
 
+## October 18: local AI session bridges
+
+The current native catalog now includes Copilot's local ACP route, not hosted GitHub App OAuth. Each actor/workspace has a private provider-owned account home. Device-code sign-in, ACP catalog checks and explicit inference verification are separate actions. Reviewed General chat, streamed run events, pending Rumbo action proposals, cancellation and scheduled prompts use the canonical execution ledger. No native/file/shell/MCP tools are granted. Codex also offers an explicit stdio app-server transport while retaining its existing CLI fallback. Fresh ephemeral threads preserve exact-context review; provider-native history import/resume is not implemented. Claude retains the existing restricted local CLI path; no new hosted claude.ai login is offered.
+
+The older Copilot “Coming soon” notes below describe the hosted SDK/OAuth path, which remains unimplemented. Other Paseo runtimes (OpenCode, Pi, OMP, Antigravity, Muse, Cursor/Kimi ACP) remain unreleased, not working connections. Contract/HTTP/action/scheduling tests use injected processes. Isolated unsigned-in binary protocol checks are not live-account or paid-model certification. Copilot needs an installed CLI and user device authorization; Hugging Face browser OAuth still needs operator app registration. See [AI connection setup and evidence](ai-connections.md).
+
 Updated October 8, 2026. This is a coverage ledger, not a statement that every roadmap item is finished. Rumbo is moving toward a solo-first personal AI work environment through the [ordered vertical slices](solo-ai-direction.md). The app remains a **localhost development product**, with optional local accounts and enforced workspace access. Automated and isolated QA must not connect real AI accounts, invoke paid agents or populate the user's real workspace.
 
 ## October 8: simpler actions and scheduled work

@@ -94,12 +94,13 @@
   .ai-provider-row-action { grid-column: 2; grid-row: 1 / 3; min-width: 94px; }
   .ai-plugin-note { align-items: flex-start; flex-wrap: wrap; }
   .ai-plugin-note button { margin-left: 28px; }
-  .ai-provider-hero { gap: 14px; }
+  .ai-provider-hero { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 14px; }
   .ai-provider-mark.large { width: 58px; height: 58px; }
   .ai-provider-mark.large .service-logo { width: 48px; height: 48px; }
-  .ai-provider-main-action { margin-left: 72px; }
+  .ai-provider-main-action { grid-column: 1 / -1; margin-left: 0; }
   .ai-provider-overview { padding: 20px; }
   .ai-provider-examples { grid-template-columns: 1fr; }
   .ai-provider-examples article { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .ai-provider-row { transition: none; } }
+.ai-auth-output { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; padding: 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; }

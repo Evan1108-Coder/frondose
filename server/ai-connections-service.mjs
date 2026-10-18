@@ -161,7 +161,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function list(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
-    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Rumbo GitHub OAuth App and isolated server-side Copilot SDK runtime; user Copilot subscription required.' } };
+    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Local ACP requires Copilot CLI and each user’s eligible Copilot subscription/access. Hosted GitHub App OAuth/SDK is a separate unreleased route.' } };
   }
   async function check(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);

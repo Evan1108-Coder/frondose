@@ -21,7 +21,7 @@ const CATALOG = Object.freeze({
     authKind: "provider_managed",
     purpose: "Run coding and analysis sessions through Codex CLI.",
     requiredEnvironment: [],
-    scopes: [], methods: ['existing', 'browser'],
+    scopes: [], methods: ['existing', 'browser', 'app_server'],
     resourcePolicy: "Codex owns sign-in and credentials. Runs start only when requested. Analysis uses a read-only sandbox; coding can write in the linked project.",
     docsUrl: 'https://developers.openai.com/codex/cli/reference/', installCommand: 'npm install -g @openai/codex',
   },

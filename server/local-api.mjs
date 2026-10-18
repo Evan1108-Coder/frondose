@@ -40,7 +40,8 @@ import { installTeamResources, teamResourcesRoute } from './team-resources.mjs';
 import { installAgentAwareness, agentAwarenessRoute, workspaceAwareness, awarenessEnabled, actionProtocol, recordActionProtocol, connectionActionProtocol, captureAgentActions, agentMemories, validateAgentProposal } from './agent-awareness.mjs';
 import { authorizeLocalAction, executeLocalAction, assertActionFresh, localActionReadable } from './agent-action-catalog.mjs';
 import { installScheduledWork, createScheduledWorkService, scheduledWorkRoute } from './scheduled-work-service.mjs';
-import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider } from '../src/lib/ai-providers.js';
+import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider, isScopedAiProvider } from '../src/lib/ai-providers.js';
+import { createCopilotBridge } from './copilot-bridge.mjs';
 import { API_PROVIDERS, apiProviderDefinition } from '../src/lib/ai-provider-catalog.js';
 import { installActivity, activitySnapshot, activityRoute } from './activity-service.mjs';
 import { createIdentityService } from './identity-service.mjs';
@@ -108,6 +109,7 @@ const TABLE_CONFIG = {
 };
 
 const PROVIDERS = {
+  copilot: { category: 'agent', displayName: 'GitHub Copilot', description: 'Reviewed conversations through a private local Copilot ACP runtime.', authMethod: 'local_acp', capabilities: ['chat', 'reviewed_actions', 'structured_events'], constraints: ['Requires Copilot CLI and your eligible account.', 'General chat only; no native or project-file tools.'] },
   github: {
     executable: 'gh',
     args: ['--version'],
@@ -520,7 +522,7 @@ function snapshot(db) {
 export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {} } = {}) {
   const externalConnectionsPaused = integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
-  let identity, governance, access, connectionPlatform, aiConnections;
+  let identity, governance, access, connectionPlatform, aiConnections, copilotBridge;
   function installAccess() {
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
@@ -554,12 +556,18 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     aiConnections = createAiConnectionsService({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch,
       authorize: (workspaceId, actor) => governance.authorize(workspaceId, actor.id, 'connections.view'),
     });
+    copilotBridge = createCopilotBridge({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, ...(integrationOptions.spawnProcess ? { spawnProcess: integrationOptions.spawnProcess } : {}), authorize: (workspaceId, actor) => governance.authorize(workspaceId, actor.id, 'connections.view') });
   }
   installAccess();
   function providerState(provider, workspaceId, actor) {
+    if (provider === 'copilot') {
+      try { return copilotBridge.status(workspaceId, actor); }
+      catch (reason) { return { provider, state: 'not_connected', error_code: reason.code || 'access_denied' }; }
+    }
     return isBrowserAiProvider(provider) ? aiConnections.readyState(provider, workspaceId, actor) : integration.status(provider);
   }
   function startProviderRun(options, callbacks) {
+    if (options.provider === 'copilot') return copilotBridge.startRun(options, callbacks);
     return isBrowserAiProvider(options.provider) ? aiConnections.startAgentRun({ ...options, workspaceId: options.workspaceId, actor: options.actor }, callbacks) : integration.startRun(options, callbacks);
   }
   function authorizeAgentProposal(run, proposal, reviewer) {
@@ -616,7 +624,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     },
   });
   if (seedMode !== 'demo') {
-    for (const provider of Object.keys(PROVIDERS).filter(provider => !isBrowserAiProvider(provider))) {
+    for (const provider of Object.keys(PROVIDERS).filter(provider => !isScopedAiProvider(provider))) {
       const status = integration.status(provider);
       getDb().prepare('UPDATE connections SET state=?,mode=?,metadata_json=?,last_probed_at=? WHERE provider=?')
         .run(status.state, 'local', JSON.stringify(status), status.checkedAt || null, provider);
@@ -1013,6 +1021,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (typeof body.prompt !== 'string' || !body.prompt.trim()) throw validationError('Write an instruction for the agent.');
       const input = contextInput(body, resolved, agent, turn);
       if (isBrowserAiProvider(provider) && (!input.model || input.work_mode !== 'conversation' || input.native_tools)) return fail(res, 400, 'api_provider_options', 'Choose an explicit chat model and General chat. Browser AI connections support reviewed Rumbo actions, without project-file or native tools.');
+      if (provider === 'copilot' && (input.work_mode !== 'conversation' || input.permission_mode !== 'read-only' || input.native_tools)) return fail(res, 400, 'copilot_options', 'Copilot supports General chat and reviewed Rumbo actions, without native tools or project folders.');
       if (input.native_tools && (!agent?.provider_connection_id || !awarenessEnabled(db, workspaceId))) return fail(res, 409, 'native_tools_unavailable', 'Native tools require a bound agent profile and enabled workspace awareness.');
       if (input.native_tools && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact context and native tools before launching.');
       const { work_mode: workMode, permission_mode: permissionMode, cwd } = input;
@@ -1350,7 +1359,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       res.filterRumboData = data => {
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
         const filtered = access.filter(data, actor);
-        const enrichConnections = snapshot => { if (Array.isArray(snapshot?.connections)) snapshot.connections = snapshot.connections.map(connection => isBrowserAiProvider(connection.provider) ? { ...connection, mode: 'browser-api', workspace_states: Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'workspace.read') ? [[workspace.id, aiConnections.readyState(connection.provider, workspace.id, actor).state]] : [])) } : connection); };
+        const enrichConnections = snapshot => { if (Array.isArray(snapshot?.connections)) snapshot.connections = snapshot.connections.map(connection => isScopedAiProvider(connection.provider) ? { ...connection, mode: connection.provider === 'copilot' ? 'local-acp' : 'browser-api', workspace_states: Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'connections.view') ? [[workspace.id, providerState(connection.provider, workspace.id, actor).state]] : [])) } : connection); };
         enrichConnections(filtered);
         enrichConnections(filtered.bootstrap);
         return filtered;
@@ -1371,7 +1380,23 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       }
       if (path === '/playbooks' || path.startsWith('/playbooks/')) return fail(res, 410, 'feature_retired', 'Playbooks has been removed. Use agent actions and scheduled messages instead.');
       if (await scheduledWorkRoute({ service: scheduledWork, req, res, path, url, body, actor, send })) return;
-      if (path === '/ai-connections' && req.method === 'GET') return send(res, 200, { result: await aiConnections.list(url.searchParams.get('workspace_id'), actor) });
+      if (path === '/ai-connections' && req.method === 'GET') {
+        const workspaceId = url.searchParams.get('workspace_id');
+        return send(res, 200, { result: { ...await aiConnections.list(workspaceId, actor), copilot: copilotBridge.status(workspaceId, actor) } });
+      }
+      const copilotOperation = path.match(/^\/ai-connections\/copilot\/(start|models|check|test|disconnect|status)$/);
+      if (copilotOperation) {
+        const operation = copilotOperation[1], workspaceId = req.method === 'GET' ? url.searchParams.get('workspace_id') : body.workspace_id;
+        // Personal account binding, not administration of a shared provider.
+        governance.authorize(workspaceId, actor.id, req.method === 'GET' ? 'connections.view' : 'connections.use');
+        if (req.method === 'GET' && operation === 'status') return send(res, 200, { result: copilotBridge.status(workspaceId, actor) });
+        if (req.method === 'GET' && operation === 'models') return send(res, 200, { result: await copilotBridge.models(workspaceId, actor) });
+        if (req.method === 'POST') {
+          const result = operation === 'start' ? copilotBridge.login(workspaceId, actor) : operation === 'check' ? await copilotBridge.check(workspaceId, actor) : operation === 'test' ? await copilotBridge.test(workspaceId, actor, body.model || '') : operation === 'disconnect' ? copilotBridge.disconnect(workspaceId, actor) : null;
+          if (result) return send(res, 200, { result });
+        }
+        return fail(res, 405, 'method_not_allowed', 'Unsupported Copilot request method.');
+      }
       const aiOperation = path.match(/^\/ai-connections\/([a-z]+)\/(api-key|models|check|test|disconnect)$/);
       if (aiOperation && apiProviderDefinition(aiOperation[1])) {
         const [, provider, operation] = aiOperation;
@@ -1745,6 +1770,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     clearInterval(scheduledWorkTimer);
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
     integration.close();
+    copilotBridge.close();
     connectionPlatform.close();
     workbench.close();
     liveRuns.clear();
@@ -1755,6 +1781,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   }
   function reset() {
     const directory = store.directory;
+    copilotBridge.close();
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
     connectionPlatform.close();
     workbench.close();

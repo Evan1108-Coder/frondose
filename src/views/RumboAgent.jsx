@@ -86,11 +86,11 @@ function configuredModels(provider) { return asList(provider?.models).filter(ite
 function ModelChoice({ provider, value, disabled, onChange, label }) {
   const { workspace } = useApp();
   const [loaded, setLoaded] = useState({}), [busy, setBusy] = useState(false), [error, setError] = useState(null);
-  const id = providerId(provider), browserApi = isBrowserAiProvider(id);
+  const id = providerId(provider), browserApi = isBrowserAiProvider(id), hasCatalog = browserApi || id === 'copilot';
   const models = loaded[`${workspace.id}:${id}`] || configuredModels(provider);
   const custom = Boolean(value && !models.some(item => modelId(item) === value));
-  if (!models.length && !custom && !browserApi) return null;
-  return <span className="rumbo-model-choice"><Select aria-label={label} value={value} disabled={disabled || busy} onChange={onChange}><option value="">{browserApi ? 'Choose a model' : 'Automatic'}</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)}</option>)}{custom ? <option value={value}>{value} · configured</option> : null}</Select>{browserApi ? <Button variant="ghost" disabled={disabled || busy} busy={busy} onClick={async () => { setBusy(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${id}/models?workspace_id=${encodeURIComponent(workspace.id)}`); const available = asList(response.result).filter(item => validApiModel(modelId(item)) && (!item.output_modalities?.length || item.output_modalities.includes('text'))); setLoaded(current => ({ ...current, [`${workspace.id}:${id}`]: available })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Load models</Button> : null}<ErrorMessage error={error} /></span>;
+  if (!models.length && !custom && !hasCatalog) return null;
+  return <span className="rumbo-model-choice"><Select aria-label={label} value={value} disabled={disabled || busy} onChange={onChange}><option value="">{browserApi ? 'Choose a model' : 'Automatic'}</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)}</option>)}{custom ? <option value={value}>{value} · configured</option> : null}</Select>{hasCatalog ? <Button variant="ghost" disabled={disabled || busy} busy={busy} onClick={async () => { setBusy(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${id}/models?workspace_id=${encodeURIComponent(workspace.id)}`); const available = asList(response.result).filter(item => validApiModel(modelId(item)) && (!item.output_modalities?.length || item.output_modalities.includes('text'))); setLoaded(current => ({ ...current, [`${workspace.id}:${id}`]: available })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Load models</Button> : null}<ErrorMessage error={error} /></span>;
 }
 
 function AssistantControls({ context, composer, change, agent, blocked, onProvider }) {

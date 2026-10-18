@@ -1,8 +1,9 @@
 import { byUpdated, val, visible } from "./model.js";
-import { isBrowserAiProvider } from './ai-providers.js';
+import { isBrowserAiProvider, isScopedAiProvider } from './ai-providers.js';
 import { API_PROVIDERS } from './ai-provider-catalog.js';
 
 export const AGENT_PROVIDERS = {
+  copilot: { name: 'GitHub Copilot', company: 'GitHub', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'General chat; tools disabled', description: 'Use your private Copilot local ACP connection for reviewed conversations.' },
   codex: {
     name: "Codex",
     company: "OpenAI",
@@ -34,13 +35,13 @@ export function agentReadiness(agent, connection) {
   if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
   if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
   if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
-  const state = connection?.provider === agent.provider ? isBrowserAiProvider(agent.provider) ? connection.workspace_states?.[val(agent, 'workspace_id')] || connection.state : connection.state : "not_connected";
+  const state = connection?.provider === agent.provider ? isScopedAiProvider(agent.provider) ? connection.workspace_states?.[val(agent, 'workspace_id')] || connection.state : connection.state : "not_connected";
   if (state === 'connected' && connection.mode === 'demo' && connection.metadata?.simulated === true)
     return result('sample', 'Connected · sample', 'A simulated connection in a view-only sample workspace. No provider account is connected and no session can start.', 'inspect', false, false);
   if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
   if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${agent.provider === 'claude' ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
-  if (state === "connected" && connection.mode !== "demo" && (isBrowserAiProvider(agent.provider) || connection.metadata?.liveAccountChecked !== false)) {
-    if (isBrowserAiProvider(agent.provider)) return result('ready', 'Ready', 'Your workspace account is connected. Choose a chat model; Rumbo changes are proposed for review.', 'start', true);
+  if (state === "connected" && connection.mode !== "demo" && (isScopedAiProvider(agent.provider) || connection.metadata?.liveAccountChecked !== false)) {
+    if (isScopedAiProvider(agent.provider)) return result('ready', 'Ready', 'Your workspace account is connected. Rumbo changes are proposed for review; project-file tools are unavailable.', 'start', true);
     return result("ready", "Ready", "Account connected. General chat needs no folder; project-file work requires one. Access is checked again during launch.", "start", true);
   }
   const description = state === "available_not_authenticated"

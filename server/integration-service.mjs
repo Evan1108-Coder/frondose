@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { StringDecoder } from 'node:string_decoder';
 import { providerSetup, listProviderSetups, providerCatalog } from './provider-adapters.mjs';
 import { NATIVE_AGENT_TOOL_STDIO_PATH, isNativeAgentToolBridgeDescriptor } from './native-agent-tool-bridge.mjs';
+import { startCodexAppServer } from './codex-app-server.mjs';
 
 const execFileAsync = promisify(execFile);
 const now = () => new Date().toISOString();
@@ -84,7 +85,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
   function status(provider) {
     known(provider);
     const value = saved[provider] || {}, auth = authProcesses.get(provider);
-    return { provider, availability: pauseExternalConnections && !['codex', 'claude'].includes(provider) ? 'coming_soon' : 'available', state: value.state || 'not_connected', method: value.method || null, accountLabel: value.accountLabel || null, checkedAt: value.checkedAt || null, liveAccountChecked: Boolean(value.checkedAt), ...(auth ? { auth: { status: auth.status, output: scrubString(redact(auth.output), 12_000), startedAt: auth.startedAt } } : {}) };
+    return { provider, availability: pauseExternalConnections && !['codex', 'claude'].includes(provider) ? 'coming_soon' : 'available', state: value.state || 'not_connected', method: value.method || null, transport: value.transport || 'cli-exec', accountLabel: value.accountLabel || null, checkedAt: value.checkedAt || null, liveAccountChecked: Boolean(value.checkedAt), ...(auth ? { auth: { status: auth.status, output: scrubString(redact(auth.output), 12_000), startedAt: auth.startedAt } } : {}) };
   }
   function update(provider, values) {
     rememberSecrets(values);
@@ -147,7 +148,11 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       return { connection: update(provider, { state: 'connected', method, token: token.trim(), accountLabel: account.login, checkedAt: now() }) };
     }
     if (provider === 'google-drive') return beginGoogleAuth(origin);
-    if (method === 'existing') return { connection: await authStatus(provider, { method }) };
+    if (method === 'existing' || method === 'app_server') {
+      const connection = await authStatus(provider, { method: 'existing' });
+      if (method === 'app_server' && connection.state !== 'connected') throw error('not_connected', 'Sign in to Codex first, then enable its session bridge.', 409);
+      return { connection: update(provider, { transport: method === 'app_server' ? 'app-server' : 'cli-exec' }) };
+    }
     if (authProcesses.get(provider)?.status === 'running') return { connection: status(provider) };
     const args = provider === 'codex' ? ['login'] : provider === 'claude' ? ['auth', 'login'] : ['auth', 'login', '--hostname', 'github.com', '--git-protocol', 'https', '--web', '--skip-ssh-key'];
     const child = spawnProcess(provider === 'github' ? 'gh' : provider, args, { env: commandEnv(provider), stdio: ['pipe', 'pipe', 'pipe'], shell: false });
@@ -308,6 +313,18 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (closed || status(provider).state !== 'connected') throw error('not_connected', 'This connection was closed while the session was starting. Reconnect and try again.', 409);
     const bridgeSecret = nativeToolBridge?.env.RUMBO_NATIVE_TOOL_CAPABILITY;
     if (bridgeSecret) knownSecrets.add(bridgeSecret);
+    if (provider === 'codex' && saved.codex?.transport === 'app-server') {
+      let child;
+      try { child = spawnProcess('codex', ['app-server', '--listen', 'stdio://', ...codexOverrides], { cwd, env: commandEnv(provider, nativeToolBridge), stdio: ['pipe', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' }); }
+      catch (failure) { if (bridgeSecret) knownSecrets.delete(bridgeSecret); throw failure; }
+      liveProcesses.add(child);
+      const controller = startCodexAppServer({ child, prompt, cwd, model, reasoningEffort, permissionMode, timeoutMs, signal, scrub: scrubString }, {
+        onEvent: event => onEvent({ ...event, payload: scrubPayload(event.payload) }), onUsageReport,
+        onComplete: result => { liveProcesses.delete(child); liveControllers.delete(child); if (bridgeSecret) knownSecrets.delete(bridgeSecret); onComplete(result); },
+      });
+      liveControllers.set(child, controller.stop);
+      return controller;
+    }
     let child;
     try { child = spawnProcess(provider, args, { cwd, env: commandEnv(provider, nativeToolBridge), stdio: ['pipe', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' }); }
     catch (failure) { if (bridgeSecret) knownSecrets.delete(bridgeSecret); throw failure; }
