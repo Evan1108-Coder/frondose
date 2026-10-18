@@ -4782,3 +4782,12 @@ dd {
 .identity-card form, .identity-setup form { display: grid; gap: 18px; }
 .identity-setup { padding: 24px; }
 .identity-setup p { color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+.settings-panel.account-settings-panel { width: min(100%, 720px); padding: 28px 32px 32px; }
+.settings-panel.account-settings-panel h2 { margin: 0 0 10px; font-size: 18px; line-height: 1.35; }
+.settings-panel.account-settings-panel p { max-width: 65ch; margin: 0 0 26px; }
+.settings-panel.account-settings-panel form { max-width: 520px; gap: 20px; }
+.settings-panel.account-settings-panel form .button { justify-self: start; min-width: 150px; }
+@media (max-width: 650px) {
+  .settings-panel.account-settings-panel { padding: 24px 20px; }
+  .settings-panel.account-settings-panel form .button { width: 100%; }
+}

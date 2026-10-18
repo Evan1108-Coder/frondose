@@ -58,14 +58,18 @@ test("sidebar preferences are workspace-local, and storage failures are not sile
 test('focused navigation is the new default but preserves existing layouts and custom groups', () => {
   const fresh = normalizeOrganization(null);
   assert.equal(fresh.navigationMode, 'focused');
-  assert.ok(focusedSidebarHiddenKeys(fresh).includes('connections'));
-  assert.ok(!focusedSidebarHiddenKeys(fresh).includes('projects'));
+  const core = ['overview', 'rumbo-agent', 'starred', 'inbox', 'work', 'agents', 'teams', 'projects', 'tasks', 'chats', 'connections'];
+  for (const key of core) assert.ok(!focusedSidebarHiddenKeys(fresh).includes(key), `${key} should be in the focused sidebar`);
+  assert.ok(focusedSidebarHiddenKeys(fresh).includes('workflows'));
+  assert.ok(focusedSidebarHiddenKeys(fresh).includes('memory'));
   const legacy = normalizeOrganization({ version: 1 });
   assert.equal(legacy.navigationMode, 'full');
   assert.deepEqual(focusedSidebarHiddenKeys(legacy), []);
   const custom = normalizeOrganization({ version: 1, navigationMode: 'focused', layout: { root: ['overview', 'rumbo-agent', 'custom:extra', 'focus'], groups: [{ id: 'custom:extra', name: 'Mine', items: ['skills'] }] } });
   assert.ok(!focusedSidebarHiddenKeys(custom).includes('custom:extra'));
   assert.ok(custom.layout.groups[0].items.includes('skills'));
+  const hidden = normalizeOrganization({ version: 1, navigationMode: 'focused', visibility: { agents: 'hidden' } });
+  assert.equal(showSidebarItem('agents', hidden, {}), false);
 });
 test("reordering is bounded and does not mutate previous state", () => {
   const input = ["a","b","c"];

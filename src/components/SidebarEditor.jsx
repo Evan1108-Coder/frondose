@@ -36,7 +36,7 @@ export function SidebarEditor({ onClose }) {
   return <Dialog title="Customize sidebar" subtitle={'Your layout for ' + workspace.name} onClose={onClose} className="sidebar-editor">
     <div className="sidebar-editor-body">
       <div className="sidebar-editor-preferences">
-        <label><span>Navigation <small>Focused keeps Today, Rumbo Agent, Inbox, and Projects in the sidebar. Other pages remain in More and search.</small></span><Select aria-label="Sidebar navigation mode" value={draft.navigationMode} onChange={navigationMode => patch({ navigationMode })}><option value="focused">Focused</option><option value="full">All tools</option></Select></label>
+        <label><span>Navigation <small>Focused shows the core work pages, including Runs, Agents, Areas, Projects, Routes, Conversations, and AI connections. Other pages remain in More and search.</small></span><Select aria-label="Sidebar navigation mode" value={draft.navigationMode} onChange={navigationMode => patch({ navigationMode })}><option value="focused">Focused</option><option value="full">All tools</option></Select></label>
         <label><span>Badge style</span><Select aria-label="Sidebar badge style" value={draft.badges} onChange={badges => patch({ badges })}><option value="count">Count</option><option value="dot">Dot</option><option value="none">None</option></Select></label>
         <label><span>Row spacing</span><Select aria-label="Sidebar spacing" value={draft.density} onChange={density => patch({ density })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></Select></label>
       </div>
