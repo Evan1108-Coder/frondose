@@ -46,6 +46,17 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     chmodSync(path, 0o600);
   }
   if (key.length !== 32) throw new Error('RUMBO_CONNECTION_ENCRYPTION_KEY must encode exactly 32 bytes.');
+  let closed = false;
+  const shutdown = new AbortController(), authorizationClaims = new Map(), activeRuns = new Map();
+  const scopeKey = (provider, workspaceId, actor) => JSON.stringify([provider, workspaceId, actor.id]);
+  const assertOpen = () => { if (closed) throw failure('service_closed', 'The AI connection service is closed.', 409); };
+  function cancelRuns(provider, workspaceId, actor) {
+    for (const stop of [...(activeRuns.get(scopeKey(provider, workspaceId, actor)) || [])]) stop();
+  }
+  function cancelAuthorization(provider, workspaceId, actor) {
+    authorizationClaims.delete(scopeKey(provider, workspaceId, actor));
+    db.prepare('DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider=?').run(workspaceId, actor.id, provider);
+  }
 
   const seal = (id, value) => {
     const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -63,11 +74,27 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   };
   const requireActor = actor => { if (!actor?.id) throw failure('sign_in_required', 'Sign in to connect an AI account.', 401); return actor.id; };
   const requireWorkspace = async (workspaceId, actor) => {
+    assertOpen();
     requireActor(actor);
     if (typeof workspaceId !== 'string' || !db.prepare('SELECT id FROM workspaces WHERE id=?').get(workspaceId)) throw failure('workspace_missing', 'Workspace unavailable.', 404);
     await authorize(workspaceId, actor);
+    assertOpen();
   };
   const read = (workspaceId, actorId, provider = 'openrouter') => db.prepare('SELECT * FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider=?').get(workspaceId, actorId, provider);
+  async function assertCredentialCurrent(provider, workspaceId, actor, captured) {
+    await requireWorkspace(workspaceId, actor);
+    const current = read(workspaceId, actor.id, provider);
+    if (!captured || !current || current.id !== captured.id || current.encrypted_credential !== captured.encrypted_credential) throw failure('connection_changed', 'This AI account was disconnected or replaced. Review the current connection before trying again.', 409);
+  }
+  async function withAuthorizationClaim(attempt, stateHash, action) {
+    const key = scopeKey(attempt.provider, attempt.workspace_id, { id: attempt.actor_id }), nonce = randomUUID();
+    if (!db.prepare('DELETE FROM ai_authorization_attempts WHERE state_hash=? AND actor_id=?').run(stateHash, attempt.actor_id).changes) throw failure('oauth_replayed', 'This authorization callback was already used.', 409);
+    authorizationClaims.set(key, nonce);
+    try { return await action(async actor => {
+      await requireWorkspace(attempt.workspace_id, actor);
+      if (authorizationClaims.get(key) !== nonce || attempt.expires_at <= now()) throw failure('oauth_cancelled', 'This sign-in was cancelled, superseded or expired. Start again.', 409);
+    }); } finally { if (authorizationClaims.get(key) === nonce) authorizationClaims.delete(key); }
+  }
   const savedApiConfig = row => {
     if (!row) return null;
     const secret = unseal(row.id, row.encrypted_credential);
@@ -91,10 +118,12 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     return url.origin;
   };
   async function requestJson(url, options = {}) {
+    assertOpen();
     let response;
     const provider = new URL(url).hostname === 'openrouter.ai' ? 'OpenRouter' : new URL(url).hostname.endsWith('huggingface.co') ? 'Hugging Face' : ['github.com', 'api.github.com'].includes(new URL(url).hostname) ? 'GitHub' : 'The AI provider';
-    try { response = await fetchImpl(url, { ...options, redirect: 'error', signal: options.signal || AbortSignal.timeout(20_000) }); }
+    try { response = await fetchImpl(url, { ...options, redirect: 'error', signal: AbortSignal.any([shutdown.signal, options.signal || AbortSignal.timeout(20_000)]) }); }
     catch { throw failure('provider_unreachable', `${provider} could not be reached. Try again later.`, 502); }
+    assertOpen();
     if (!response.ok) throw failure(response.status === 401 ? 'reconnect_required' : response.status === 429 ? 'rate_limited' : 'provider_error', response.status === 401 ? `${provider} rejected this authorization. Reconnect.` : response.status === 429 ? `${provider} rate limit reached. Try later.` : `${provider} returned HTTP ${response.status}.`, response.status === 401 ? 409 : response.status === 429 ? 429 : 502);
     if (Number(response.headers?.get('content-length')) > MAX_RESPONSE_BYTES) throw failure('provider_response_too_large', `${provider} response was too large.`, 502);
     let content;
@@ -114,6 +143,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       content = await response.text();
       if (Buffer.byteLength(content, 'utf8') > MAX_RESPONSE_BYTES) throw failure('provider_response_too_large', `${provider} response was too large.`, 502);
     }
+    assertOpen();
     try { return JSON.parse(content); } catch { throw failure('provider_response', `${provider} returned an unreadable response.`, 502); }
   }
   const providerJson = (path, options) => requestJson(`${BASE}${path}`, options);
@@ -128,14 +158,16 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   function connected(workspaceId, actorId) {
     const row = read(workspaceId, actorId);
     if (!row) throw failure('not_connected', 'Connect your OpenRouter account first.', 409);
-    return { row, keyValue: unseal(row.id, row.encrypted_credential) };
+    const keyValue = unseal(row.id, row.encrypted_credential);
+    if (!keyValue.startsWith('sk-or-') || keyValue.length > 4096) throw failure('connection_changed', 'Use the current OpenRouter connection method and start this operation again.', 409);
+    return { row, keyValue };
   }
   async function start({ workspace_id }, actor, host) {
     await requireWorkspace(workspace_id, actor);
     const origin = callbackOrigin(host), state = randomBytes(24).toString('base64url'), verifier = randomBytes(48).toString('base64url');
     const stateHash = digest(state), createdAt = now();
     db.prepare('DELETE FROM ai_authorization_attempts WHERE expires_at<?').run(createdAt);
-    db.prepare("DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider='openrouter'").run(workspace_id, actor.id);
+    cancelAuthorization('openrouter', workspace_id, actor);
     db.prepare('INSERT INTO ai_authorization_attempts VALUES (?,?,?,?,?,?,?,?)').run(stateHash, workspace_id, actor.id, 'openrouter', seal(stateHash, verifier), origin, new Date(Date.now() + 10 * 60_000).toISOString(), createdAt);
     const url = new URL('/auth', BASE);
     url.searchParams.set('callback_url', `${origin}${CALLBACK}${state}`);
@@ -145,21 +177,26 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     return { authorization_url: url.toString(), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() };
   }
   async function complete(state, code, actor, host) {
+    assertOpen();
     requireActor(actor);
     if (!/^[A-Za-z0-9_-]{32}$/.test(state) || typeof code !== 'string' || !code || code.length > 2048) throw failure('oauth_invalid', 'Invalid OpenRouter authorization response.', 400);
     const stateHash = digest(state), attempt = db.prepare('SELECT * FROM ai_authorization_attempts WHERE state_hash=?').get(stateHash);
     if (!attempt || attempt.actor_id !== actor.id || attempt.provider !== 'openrouter' || attempt.expires_at <= now() || callbackOrigin(host) !== attempt.callback_origin) throw failure('oauth_expired', 'This OpenRouter sign-in is expired or belongs to another session. Start again.', 409);
     await requireWorkspace(attempt.workspace_id, actor);
+    return withAuthorizationClaim(attempt, stateHash, async assertPending => {
     const exchanged = await providerJson('/api/v1/auth/keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, code_verifier: unseal(stateHash, attempt.encrypted_verifier), code_challenge_method: 'S256' }) });
+    await assertPending(actor);
     if (typeof exchanged?.key !== 'string' || !exchanged.key.startsWith('sk-or-')) throw failure('oauth_invalid', 'OpenRouter did not return a usable key.', 502);
-    const metadata = await checkKey(exchanged.key), id = read(attempt.workspace_id, actor.id)?.id || randomUUID(), timestamp = now();
-    if (!db.prepare('SELECT state_hash FROM ai_authorization_attempts WHERE state_hash=? AND actor_id=? AND expires_at>?').get(stateHash, actor.id, timestamp)) throw failure('oauth_cancelled', 'This sign-in was cancelled or superseded. Start again.', 409);
-    db.prepare('DELETE FROM ai_authorization_attempts WHERE state_hash=?').run(stateHash);
+    const metadata = await checkKey(exchanged.key);
+    await assertPending(actor);
+    const id = read(attempt.workspace_id, actor.id)?.id || randomUUID(), timestamp = now();
+    cancelRuns('openrouter', attempt.workspace_id, actor);
     db.prepare(`INSERT INTO ai_account_connections (id,workspace_id,actor_id,provider,state,encrypted_credential,account_label,checked_at,model_tested_at,created_at,updated_at)
       VALUES (?,?,?,'openrouter','connected',?,?,?,?,?,?)
       ON CONFLICT(workspace_id,actor_id,provider) DO UPDATE SET state='connected',encrypted_credential=excluded.encrypted_credential,account_label=excluded.account_label,checked_at=excluded.checked_at,model_tested_at=NULL,updated_at=excluded.updated_at`)
       .run(id, attempt.workspace_id, actor.id, seal(id, exchanged.key), typeof metadata.label === 'string' ? metadata.label.slice(0, 120) : 'OpenRouter account', timestamp, null, timestamp, timestamp);
     return publicRow(read(attempt.workspace_id, actor.id));
+    });
   }
   async function list(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
@@ -169,23 +206,28 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     await requireWorkspace(workspaceId, actor);
     const { row, keyValue } = connected(workspaceId, actor.id);
     const metadata = await checkKey(keyValue), timestamp = now();
+    await assertCredentialCurrent('openrouter', workspaceId, actor, row);
     db.prepare('UPDATE ai_account_connections SET state=?,account_label=?,checked_at=?,updated_at=? WHERE id=?').run('connected', typeof metadata.label === 'string' ? metadata.label.slice(0, 120) : row.account_label, timestamp, timestamp, row.id);
     return { connection: publicRow(read(workspaceId, actor.id)), key: { is_free_tier: Boolean(metadata.is_free_tier), limit_remaining: Number.isFinite(metadata.limit_remaining) ? metadata.limit_remaining : null } };
   }
   async function models(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
-    const { keyValue } = connected(workspaceId, actor.id);
+    const { row, keyValue } = connected(workspaceId, actor.id);
     const result = await providerJson('/api/v1/models/user', { headers: { Authorization: `Bearer ${keyValue}` } });
+    await assertCredentialCurrent('openrouter', workspaceId, actor, row);
     if (!Array.isArray(result?.data)) throw failure('provider_response', 'OpenRouter did not return a model list.', 502);
     return result.data.slice(0, 500).filter(item => typeof item.id === 'string' && item.id.length <= 200).map(item => ({ id: item.id, name: typeof item.name === 'string' ? item.name.slice(0, 160) : item.id, input_modalities: item.architecture?.input_modalities || [], output_modalities: item.architecture?.output_modalities || [] }));
   }
   async function testModel(workspaceId, model, actor) {
     await requireWorkspace(workspaceId, actor);
     if (typeof model !== 'string' || !/^[\w./:~-]{2,200}$/.test(model)) throw failure('invalid_model', 'Choose a model from the available list.');
+    const captured = connected(workspaceId, actor.id).row;
     const available = await models(workspaceId, actor);
+    await assertCredentialCurrent('openrouter', workspaceId, actor, captured);
     if (!available.some(item => item.id === model)) throw failure('model_unavailable', 'This model is not available to this account.', 409);
     const { row, keyValue } = connected(workspaceId, actor.id);
     const result = await providerJson('/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${keyValue}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 16, stream: false }) });
+    await assertCredentialCurrent('openrouter', workspaceId, actor, row);
     const content = result?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw failure('model_response', 'The model request completed without a text response.', 502);
     const timestamp = now();
@@ -194,6 +236,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function disconnect(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
+    cancelRuns('openrouter', workspaceId, actor); cancelAuthorization('openrouter', workspaceId, actor);
     db.prepare("DELETE FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider='openrouter'").run(workspaceId, actor.id);
     db.prepare("DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider='openrouter'").run(workspaceId, actor.id);
     return { disconnected: true, remote_key_revoked: false };
@@ -216,28 +259,37 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     await requireWorkspace(workspace_id, actor);
     const clientId = hfClientId(), origin = callbackOrigin(host), state = randomBytes(24).toString('base64url'), verifier = randomBytes(48).toString('base64url'), stateHash = digest(state), createdAt = now();
     db.prepare('DELETE FROM ai_authorization_attempts WHERE expires_at<?').run(createdAt);
-    db.prepare("DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider='huggingface'").run(workspace_id, actor.id);
-    db.prepare('INSERT INTO ai_authorization_attempts VALUES (?,?,?,?,?,?,?,?)').run(stateHash, workspace_id, actor.id, 'huggingface', seal(stateHash, verifier), origin, new Date(Date.now() + 10 * 60_000).toISOString(), createdAt);
+    cancelAuthorization('huggingface', workspace_id, actor);
+    db.prepare('INSERT INTO ai_authorization_attempts VALUES (?,?,?,?,?,?,?,?)').run(stateHash, workspace_id, actor.id, 'huggingface', seal(stateHash, JSON.stringify({ verifier, client_id: clientId })), origin, new Date(Date.now() + 10 * 60_000).toISOString(), createdAt);
     const url = new URL('/oauth/authorize', HF_BASE);
     for (const [name, value] of Object.entries({ client_id: clientId, redirect_uri: hfRedirect(host), response_type: 'code', scope: 'openid profile inference-api', state, code_challenge: digest(verifier), code_challenge_method: 'S256' })) url.searchParams.set(name, value);
     return { authorization_url: url.toString(), callback_url: hfRedirect(host) };
   }
   async function hfComplete(state, code, actor, host) {
+    assertOpen();
     requireActor(actor);
     if (typeof state !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(state) || typeof code !== 'string' || !code || code.length > 2048) throw failure('oauth_invalid', 'Invalid Hugging Face authorization response.');
     const stateHash = digest(state), attempt = db.prepare('SELECT * FROM ai_authorization_attempts WHERE state_hash=?').get(stateHash);
     if (!attempt || attempt.actor_id !== actor.id || attempt.provider !== 'huggingface' || attempt.expires_at <= now() || attempt.callback_origin !== callbackOrigin(host)) throw failure('oauth_expired', 'This Hugging Face sign-in is expired or belongs to another session.', 409);
     await requireWorkspace(attempt.workspace_id, actor);
-    const credential = await hfToken({ grant_type: 'authorization_code', code, redirect_uri: hfRedirect(host), code_verifier: unseal(stateHash, attempt.encrypted_verifier) });
+    let pending;
+    try { pending = JSON.parse(unseal(stateHash, attempt.encrypted_verifier)); } catch { throw failure('oauth_expired', 'Start Hugging Face sign-in again with the current app registration.', 409); }
+    if (pending.client_id !== hfClientId() || typeof pending.verifier !== 'string') throw failure('oauth_expired', 'The Hugging Face app registration changed. Start sign-in again.', 409);
+    return withAuthorizationClaim(attempt, stateHash, async assertPending => {
+    const credential = await hfToken({ grant_type: 'authorization_code', code, redirect_uri: hfRedirect(host), code_verifier: pending.verifier });
+    await assertPending(actor);
+    credential.client_id = pending.client_id;
     const identity = await hfJson('/api/whoami-v2', { headers: { Authorization: `Bearer ${credential.access_token}` } });
+    await assertPending(actor);
     const timestamp = now(), id = read(attempt.workspace_id, actor.id, 'huggingface')?.id || randomUUID();
-    if (!db.prepare('SELECT state_hash FROM ai_authorization_attempts WHERE state_hash=? AND actor_id=? AND expires_at>?').get(stateHash, actor.id, timestamp)) throw failure('oauth_cancelled', 'This sign-in was cancelled or superseded.', 409);
-    db.prepare('DELETE FROM ai_authorization_attempts WHERE state_hash=?').run(stateHash);
+    if (pending.client_id !== hfClientId()) throw failure('oauth_expired', 'The Hugging Face app registration changed. Start sign-in again.', 409);
+    cancelRuns('huggingface', attempt.workspace_id, actor);
     db.prepare(`INSERT INTO ai_account_connections (id,workspace_id,actor_id,provider,state,encrypted_credential,account_label,checked_at,model_tested_at,created_at,updated_at)
       VALUES (?,?,?,'huggingface','connected',?,?,?,?,?,?)
       ON CONFLICT(workspace_id,actor_id,provider) DO UPDATE SET state='connected',encrypted_credential=excluded.encrypted_credential,account_label=excluded.account_label,checked_at=excluded.checked_at,model_tested_at=NULL,updated_at=excluded.updated_at`)
       .run(id, attempt.workspace_id, actor.id, seal(id, JSON.stringify(credential)), typeof identity.name === 'string' ? identity.name.slice(0, 120) : 'Hugging Face account', timestamp, null, timestamp, timestamp);
     return publicRow(read(attempt.workspace_id, actor.id, 'huggingface'));
+    });
   }
   async function hfCredential(workspaceId, actor, signal) {
     const row = read(workspaceId, actor.id, 'huggingface');
@@ -245,9 +297,11 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     let credential;
     try { credential = JSON.parse(unseal(row.id, row.encrypted_credential)); }
     catch { throw failure('credential_unreadable', 'Reconnect your Hugging Face account.', 409); }
+    if (credential.client_id && credential.client_id !== hfClientId()) throw failure('reconnect_required', 'Reconnect Hugging Face using the current Rumbo app registration.', 409);
     if (credential.expires_at && credential.expires_at < Date.now() + 60_000) {
       if (!credential.refresh_token) throw failure('reconnect_required', 'Your Hugging Face session expired. Reconnect.', 409);
       const refreshed = await hfToken({ grant_type: 'refresh_token', refresh_token: credential.refresh_token }, signal);
+      await assertCredentialCurrent('huggingface', workspaceId, actor, row);
       credential = { ...credential, ...refreshed, refresh_token: refreshed.refresh_token || credential.refresh_token };
       const updated = db.prepare('UPDATE ai_account_connections SET encrypted_credential=?,updated_at=? WHERE id=? AND encrypted_credential=?').run(seal(row.id, JSON.stringify(credential)), now(), row.id, row.encrypted_credential);
       if (!updated.changes) throw failure('connection_changed', 'Hugging Face authorization changed during refresh. Retry.', 409);
@@ -259,23 +313,28 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     await requireWorkspace(workspaceId, actor);
     const { row, token } = await hfCredential(workspaceId, actor);
     const identity = await hfJson('/api/whoami-v2', { headers: { Authorization: `Bearer ${token}` } }), timestamp = now();
+    await assertCredentialCurrent('huggingface', workspaceId, actor, row);
     db.prepare('UPDATE ai_account_connections SET account_label=?,checked_at=?,updated_at=? WHERE id=?').run(typeof identity.name === 'string' ? identity.name.slice(0, 120) : row.account_label, timestamp, timestamp, row.id);
     return publicRow(read(workspaceId, actor.id, 'huggingface'));
   }
   async function hfModels(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
-    const { token } = await hfCredential(workspaceId, actor);
+    const { row, token } = await hfCredential(workspaceId, actor);
     const result = await hfRouterJson('/v1/models', { headers: { Authorization: `Bearer ${token}` } });
+    await assertCredentialCurrent('huggingface', workspaceId, actor, row);
     if (!Array.isArray(result?.data)) throw failure('provider_response', 'Hugging Face did not return a model list.', 502);
     return result.data.slice(0, 500).filter(item => typeof item.id === 'string' && item.id.length <= 200).map(item => ({ id: item.id, name: item.id, input_modalities: item.architecture?.input_modalities || [], output_modalities: item.architecture?.output_modalities || [] }));
   }
   async function hfTestModel(workspaceId, model, actor) {
     await requireWorkspace(workspaceId, actor);
     if (typeof model !== 'string' || !/^[\w./:~-]{2,200}$/.test(model)) throw failure('invalid_model', 'Choose a model from the catalog.');
+    const captured = (await hfCredential(workspaceId, actor)).row;
     const available = await hfModels(workspaceId, actor);
+    await assertCredentialCurrent('huggingface', workspaceId, actor, captured);
     if (!available.some(item => item.id === model)) throw failure('model_unavailable', 'This model is not in the current Hugging Face catalog.', 409);
     const { row, token } = await hfCredential(workspaceId, actor);
     const result = await hfRouterJson('/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with the single word OK.' }], max_tokens: 16, stream: false }) });
+    await assertCredentialCurrent('huggingface', workspaceId, actor, row);
     const content = result?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw failure('model_response', 'The model request completed without a text response.', 502);
     const timestamp = now();
@@ -284,6 +343,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function hfDisconnect(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
+    cancelRuns('huggingface', workspaceId, actor); cancelAuthorization('huggingface', workspaceId, actor);
     db.prepare("DELETE FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider='huggingface'").run(workspaceId, actor.id);
     db.prepare("DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider='huggingface'").run(workspaceId, actor.id);
     return { disconnected: true, remote_access_revoked: false };
@@ -291,6 +351,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   async function saveApiKey(provider, input, actor) {
     await requireWorkspace(input.workspace_id, actor);
     const config = apiKeyConfiguration(provider, input), timestamp = now();
+    cancelRuns(provider, input.workspace_id, actor); cancelAuthorization(provider, input.workspace_id, actor);
     const existing = read(input.workspace_id, actor.id, provider), id = existing?.id || randomUUID();
     db.prepare(`INSERT INTO ai_account_connections (id,workspace_id,actor_id,provider,state,encrypted_credential,account_label,checked_at,model_tested_at,created_at,updated_at)
       VALUES (?,?,?,?,'configured',?,?,NULL,NULL,?,?)
@@ -302,7 +363,11 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   async function connectionModels(provider, workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
     const row = read(workspaceId, actor.id, provider), config = savedApiConfig(row);
-    if (config) return discoverApiModels(provider, config, requestJson);
+    if (config) {
+      const catalog = await discoverApiModels(provider, config, requestJson);
+      await assertCredentialCurrent(provider, workspaceId, actor, row);
+      return catalog;
+    }
     if (provider === 'openrouter') return models(workspaceId, actor);
     if (provider === 'huggingface') return hfModels(workspaceId, actor);
     throw failure('not_connected', 'Save an API key for this provider first.', 409);
@@ -317,7 +382,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     }
     if (!apiProviderDefinition(provider).discovery) return { connection: publicRow(row), requires_model_test: true };
     const catalog = await discoverApiModels(provider, config, requestJson);
-    await requireWorkspace(workspaceId, actor);
+    await assertCredentialCurrent(provider, workspaceId, actor, row);
     db.prepare('UPDATE ai_account_connections SET checked_at=?,updated_at=? WHERE id=? AND encrypted_credential=?').run(now(), now(), row.id, row.encrypted_credential);
     return { connection: publicRow(read(workspaceId, actor.id, provider)), model_count: catalog.length, requires_model_test: !row.model_tested_at };
   }
@@ -330,10 +395,11 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       throw failure('not_connected', 'Save an API key for this provider first.', 409);
     }
     const catalog = await discoverApiModels(provider, config, requestJson);
+    await assertCredentialCurrent(provider, workspaceId, actor, row);
     if (!validApiModel(model) || !catalog.some(item => item.id === model)) throw failure('model_unavailable', 'Choose a model from this connection’s catalog or configured model IDs.', 409);
     const request = apiCompletionRequest(provider, config, model, 'Reply with the single word OK.', { test: true });
     const parsed = parseApiCompletion(provider, await requestJson(request.url, { ...request.options, signal: AbortSignal.timeout(60_000) }), config.api_key);
-    await requireWorkspace(workspaceId, actor);
+    await assertCredentialCurrent(provider, workspaceId, actor, row);
     const timestamp = now();
     const updated = db.prepare("UPDATE ai_account_connections SET state='connected',checked_at=?,model_tested_at=?,updated_at=? WHERE id=? AND encrypted_credential=?").run(timestamp, timestamp, timestamp, row.id, row.encrypted_credential);
     if (!updated.changes) throw failure('connection_changed', 'The connection changed during this test. Test the current connection again.', 409);
@@ -341,6 +407,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function connectionDisconnect(provider, workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
+    cancelRuns(provider, workspaceId, actor); cancelAuthorization(provider, workspaceId, actor);
     db.prepare('DELETE FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider=?').run(workspaceId, actor.id, provider);
     db.prepare('DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider=?').run(workspaceId, actor.id, provider);
     return { disconnected: true, remote_access_revoked: false };
@@ -348,6 +415,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   function readyState(provider, workspaceId, actor) {
     const capabilities = { provider, model_required: true, execution_mode: 'browser-api', native_tools: false, file_tools: false };
     try {
+      assertOpen();
       requireActor(actor);
       if (!apiProviderDefinition(provider)) throw failure('unsupported_provider', 'Choose a supported API provider.', 400);
       if (!db.prepare('SELECT id FROM workspaces WHERE id=?').get(workspaceId)) throw failure('workspace_missing', 'Workspace unavailable.', 404);
@@ -368,6 +436,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       if (provider === 'huggingface') {
         let credential;
         try { credential = JSON.parse(secret); } catch { throw failure('credential_unreadable', 'Reconnect this AI account.', 409); }
+        if (credential.client_id && credential.client_id !== hfClientId()) throw failure('reconnect_required', 'Reconnect Hugging Face using the current Rumbo app registration.', 409);
         if (typeof credential.access_token !== 'string' || !credential.access_token) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
         if (credential.expires_at && credential.expires_at < Date.now() + 60_000 && !credential.refresh_token) throw failure('reconnect_required', 'Your Hugging Face session expired. Reconnect.', 409);
       }
@@ -395,13 +464,14 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       const credential = unseal(initial.id, initial.encrypted_credential);
       if (!credential.startsWith('sk-or-') || credential.length > 4096) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
     }
-    const abort = new AbortController();
+    const abort = new AbortController(), runKey = scopeKey(provider, workspaceId, actor);
     let settled = false, timedOut = false, stopped = false, timeout;
     const finish = result => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
       signal?.removeEventListener('abort', stop);
+      const jobs = activeRuns.get(runKey); jobs?.delete(stop); if (!jobs?.size) activeRuns.delete(runKey);
       onComplete(result);
     };
     const stop = () => {
@@ -410,6 +480,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       abort.abort();
       finish({ status: 'stopped', text: '', error_code: 'session_cancelled' });
     };
+    const jobs = activeRuns.get(runKey) || new Set(); jobs.add(stop); activeRuns.set(runKey, jobs);
     signal?.addEventListener('abort', stop, { once: true });
     timeout = setTimeout(() => {
       if (settled) return;
@@ -432,6 +503,8 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
           method: 'POST', headers: { Authorization: `Bearer ${credential.token}`, 'Content-Type': 'application/json' }, signal: abort.signal,
           body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 8192, stream: false }),
         });
+        if (settled) return;
+        await assertCredentialCurrent(provider, workspaceId, actor, credential.row);
         if (settled) return;
         if (initialConfig) {
           const parsed = parseApiCompletion(provider, result, credential.token);
@@ -458,5 +531,11 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     })();
     return { stop };
   }
-  return { copilotOAuth, close: () => copilotOAuth.close(), start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun, saveApiKey, connectionModels, connectionCheck, connectionTest, connectionDisconnect };
+  const close = () => {
+    if (closed) return;
+    closed = true; shutdown.abort(); authorizationClaims.clear();
+    for (const jobs of activeRuns.values()) for (const stop of [...jobs]) stop();
+    activeRuns.clear(); copilotOAuth.close();
+  };
+  return { copilotOAuth, close, start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun, saveApiKey, connectionModels, connectionCheck, connectionTest, connectionDisconnect };
 }
