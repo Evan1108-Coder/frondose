@@ -1,6 +1,8 @@
 import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { API_PROVIDERS, apiProviderDefinition, validApiModel } from '../src/lib/ai-provider-catalog.js';
+import { apiKeyConfiguration, discoverApiModels, apiCompletionRequest, parseApiCompletion } from './model-api-adapters.mjs';
 
 const now = () => new Date().toISOString();
 const digest = value => createHash('sha256').update(value).digest('base64url');
@@ -65,7 +67,20 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     await authorize(workspaceId, actor);
   };
   const read = (workspaceId, actorId, provider = 'openrouter') => db.prepare('SELECT * FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider=?').get(workspaceId, actorId, provider);
-  const publicRow = row => row ? { provider: row.provider, state: row.state, account_label: row.account_label, checked_at: row.checked_at, model_tested_at: row.model_tested_at } : null;
+  const savedApiConfig = row => {
+    if (!row) return null;
+    const secret = unseal(row.id, row.encrypted_credential);
+    if (!secret.startsWith('{')) return null;
+    let config;
+    try { config = JSON.parse(secret); } catch { return null; }
+    return config.type === 'api_key' ? apiKeyConfiguration(row.provider, config) : null;
+  };
+  const publicRow = row => {
+    if (!row) return null;
+    const config = savedApiConfig(row);
+    return { provider: row.provider, state: row.state, account_label: row.account_label, checked_at: row.checked_at, model_tested_at: row.model_tested_at,
+      method: config ? 'api_key' : 'oauth', ...(config ? { model_ids: config.model_ids, region: config.region, provider_workspace: config.provider_workspace } : {}) };
+  };
   const callbackOrigin = host => {
     const configured = env.RUMBO_PUBLIC_BASE_URL;
     let url;
@@ -76,7 +91,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   };
   async function requestJson(url, options = {}) {
     let response;
-    const provider = new URL(url).hostname === 'openrouter.ai' ? 'OpenRouter' : 'Hugging Face';
+    const provider = new URL(url).hostname === 'openrouter.ai' ? 'OpenRouter' : new URL(url).hostname.endsWith('huggingface.co') ? 'Hugging Face' : 'The AI provider';
     try { response = await fetchImpl(url, { ...options, redirect: 'error', signal: options.signal || AbortSignal.timeout(20_000) }); }
     catch { throw failure('provider_unreachable', `${provider} could not be reached. Try again later.`, 502); }
     if (!response.ok) throw failure(response.status === 401 ? 'reconnect_required' : response.status === 429 ? 'rate_limited' : 'provider_error', response.status === 401 ? `${provider} rejected this authorization. Reconnect.` : response.status === 429 ? `${provider} rate limit reached. Try later.` : `${provider} returned HTTP ${response.status}.`, response.status === 401 ? 409 : response.status === 429 ? 429 : 502);
@@ -146,7 +161,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function list(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
-    return { openrouter: publicRow(read(workspaceId, actor.id)), huggingface: publicRow(read(workspaceId, actor.id, 'huggingface')), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'No operator API key; HTTPS public origin required for deployment.', huggingface: 'Rumbo OAuth application with inference-api scope and exact callback.', copilot: 'Rumbo GitHub OAuth App and isolated server-side Copilot SDK runtime; user Copilot subscription required.' } };
+    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Rumbo GitHub OAuth App and isolated server-side Copilot SDK runtime; user Copilot subscription required.' } };
   }
   async function check(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
@@ -271,19 +286,80 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     db.prepare("DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider='huggingface'").run(workspaceId, actor.id);
     return { disconnected: true, remote_access_revoked: false };
   }
+  async function saveApiKey(provider, input, actor) {
+    await requireWorkspace(input.workspace_id, actor);
+    const config = apiKeyConfiguration(provider, input), timestamp = now();
+    const existing = read(input.workspace_id, actor.id, provider), id = existing?.id || randomUUID();
+    db.prepare(`INSERT INTO ai_account_connections (id,workspace_id,actor_id,provider,state,encrypted_credential,account_label,checked_at,model_tested_at,created_at,updated_at)
+      VALUES (?,?,?,?,'configured',?,?,NULL,NULL,?,?)
+      ON CONFLICT(workspace_id,actor_id,provider) DO UPDATE SET state='configured',encrypted_credential=excluded.encrypted_credential,account_label=excluded.account_label,checked_at=NULL,model_tested_at=NULL,updated_at=excluded.updated_at`)
+      .run(id, input.workspace_id, actor.id, provider, seal(id, JSON.stringify(config)), `${apiProviderDefinition(provider).name} API key`, timestamp, timestamp);
+    db.prepare('DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider=?').run(input.workspace_id, actor.id, provider);
+    return publicRow(read(input.workspace_id, actor.id, provider));
+  }
+  async function connectionModels(provider, workspaceId, actor) {
+    await requireWorkspace(workspaceId, actor);
+    const row = read(workspaceId, actor.id, provider), config = savedApiConfig(row);
+    if (config) return discoverApiModels(provider, config, requestJson);
+    if (provider === 'openrouter') return models(workspaceId, actor);
+    if (provider === 'huggingface') return hfModels(workspaceId, actor);
+    throw failure('not_connected', 'Save an API key for this provider first.', 409);
+  }
+  async function connectionCheck(provider, workspaceId, actor) {
+    await requireWorkspace(workspaceId, actor);
+    const row = read(workspaceId, actor.id, provider), config = savedApiConfig(row);
+    if (!config) {
+      if (provider === 'openrouter') return check(workspaceId, actor);
+      if (provider === 'huggingface') return hfCheck(workspaceId, actor);
+      throw failure('not_connected', 'Save an API key for this provider first.', 409);
+    }
+    if (!apiProviderDefinition(provider).discovery) return { connection: publicRow(row), requires_model_test: true };
+    const catalog = await discoverApiModels(provider, config, requestJson);
+    await requireWorkspace(workspaceId, actor);
+    db.prepare('UPDATE ai_account_connections SET checked_at=?,updated_at=? WHERE id=? AND encrypted_credential=?').run(now(), now(), row.id, row.encrypted_credential);
+    return { connection: publicRow(read(workspaceId, actor.id, provider)), model_count: catalog.length, requires_model_test: !row.model_tested_at };
+  }
+  async function connectionTest(provider, workspaceId, model, actor) {
+    await requireWorkspace(workspaceId, actor);
+    const row = read(workspaceId, actor.id, provider), config = savedApiConfig(row);
+    if (!config) {
+      if (provider === 'openrouter') return testModel(workspaceId, model, actor);
+      if (provider === 'huggingface') return hfTestModel(workspaceId, model, actor);
+      throw failure('not_connected', 'Save an API key for this provider first.', 409);
+    }
+    const catalog = await discoverApiModels(provider, config, requestJson);
+    if (!validApiModel(model) || !catalog.some(item => item.id === model)) throw failure('model_unavailable', 'Choose a model from this connection’s catalog or configured model IDs.', 409);
+    const request = apiCompletionRequest(provider, config, model, 'Reply with the single word OK.', { test: true });
+    const parsed = parseApiCompletion(provider, await requestJson(request.url, { ...request.options, signal: AbortSignal.timeout(60_000) }), config.api_key);
+    await requireWorkspace(workspaceId, actor);
+    const timestamp = now();
+    const updated = db.prepare("UPDATE ai_account_connections SET state='connected',checked_at=?,model_tested_at=?,updated_at=? WHERE id=? AND encrypted_credential=?").run(timestamp, timestamp, timestamp, row.id, row.encrypted_credential);
+    if (!updated.changes) throw failure('connection_changed', 'The connection changed during this test. Test the current connection again.', 409);
+    return { model, reply: parsed.text.slice(0, 500), tested_at: timestamp, usage: parsed.usage || null };
+  }
+  async function connectionDisconnect(provider, workspaceId, actor) {
+    await requireWorkspace(workspaceId, actor);
+    db.prepare('DELETE FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider=?').run(workspaceId, actor.id, provider);
+    db.prepare('DELETE FROM ai_authorization_attempts WHERE workspace_id=? AND actor_id=? AND provider=?').run(workspaceId, actor.id, provider);
+    return { disconnected: true, remote_access_revoked: false };
+  }
   function readyState(provider, workspaceId, actor) {
     const capabilities = { provider, model_required: true, execution_mode: 'browser-api', native_tools: false, file_tools: false };
     try {
       requireActor(actor);
-      if (!['openrouter', 'huggingface'].includes(provider)) throw failure('unsupported_provider', 'Choose OpenRouter or Hugging Face.', 400);
+      if (!apiProviderDefinition(provider)) throw failure('unsupported_provider', 'Choose a supported API provider.', 400);
       if (!db.prepare('SELECT id FROM workspaces WHERE id=?').get(workspaceId)) throw failure('workspace_missing', 'Workspace unavailable.', 404);
       const authorization = authorize(workspaceId, actor);
       if (authorization?.then) {
         authorization.catch(() => {});
         throw failure('authorization_pending', 'Synchronous workspace authorization is required for readiness.', 409);
       }
-      if (provider === 'huggingface') hfClientId();
       const row = read(workspaceId, actor.id, provider);
+      const config = savedApiConfig(row);
+      if (config && row.state !== 'connected') throw failure('model_test_required', 'Test a model to finish connecting this API key.', 409);
+      if (config) return { ...capabilities, state: 'connected' };
+      if (!['openrouter', 'huggingface'].includes(provider)) throw failure('not_connected', 'Save and test an API key for this provider.', 409);
+      if (provider === 'huggingface') hfClientId();
       if (!row || row.state !== 'connected') throw failure('not_connected', 'Connect this AI account first.', 409);
       const secret = unseal(row.id, row.encrypted_credential);
       if (provider === 'openrouter' && (!secret.startsWith('sk-or-') || secret.length > 4096)) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
@@ -300,18 +376,20 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
 
   async function startAgentRun({ provider, workspaceId, actor, prompt, model, timeoutMs = 120_000, signal }, { onEvent = () => {}, onComplete = () => {} } = {}) {
-    if (!['openrouter', 'huggingface'].includes(provider)) throw failure('unsupported_provider', 'Choose OpenRouter or Hugging Face.');
+    if (!apiProviderDefinition(provider)) throw failure('unsupported_provider', 'Choose a supported API provider.');
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100_000) throw failure('invalid_prompt', 'Write an instruction between 1 and 100,000 characters.');
-    if (typeof model !== 'string' || !/^[\w./:~-]{2,200}$/.test(model)) throw failure('invalid_model', 'Choose an explicit provider model before starting this run.');
+    if (!validApiModel(model)) throw failure('invalid_model', 'Choose an explicit provider model before starting this run.');
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1800000) throw failure('invalid_timeout', 'Choose an execution limit between one second and thirty minutes.');
     if (signal?.aborted) throw failure('session_cancelled', 'This run was cancelled before it started.', 409);
     await requireWorkspace(workspaceId, actor);
-    if (provider === 'huggingface') hfClientId();
     const initial = read(workspaceId, actor.id, provider);
+    const initialConfig = savedApiConfig(initial);
+    if (!initialConfig && !['openrouter', 'huggingface'].includes(provider)) throw failure('not_connected', 'Save and test an API key for this provider.', 409);
+    if (provider === 'huggingface' && !initialConfig) hfClientId();
     if (!initial || initial.state !== 'connected') throw failure('not_connected', 'Connect this AI account first.', 409);
     // Read/decrypt only the current actor's connection. No key check, model probe,
     // tool bridge, project folder or automatic fallback request is performed.
-    if (provider === 'openrouter') {
+    if (provider === 'openrouter' && !initialConfig) {
       const credential = unseal(initial.id, initial.encrypted_credential);
       if (!credential.startsWith('sk-or-') || credential.length > 4096) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
     }
@@ -341,17 +419,24 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     void (async () => {
       try {
         if (settled) return;
-        const credential = provider === 'huggingface' ? await hfCredential(workspaceId, actor, abort.signal) : { row: initial, token: unseal(initial.id, initial.encrypted_credential) };
+        const credential = initialConfig ? { row: initial, token: initialConfig.api_key } : provider === 'huggingface' ? await hfCredential(workspaceId, actor, abort.signal) : { row: initial, token: unseal(initial.id, initial.encrypted_credential) };
         if (settled) return;
         await requireWorkspace(workspaceId, actor);
         const current = read(workspaceId, actor.id, provider);
         if (!current || current.state !== 'connected' || current.id !== initial.id || current.encrypted_credential !== credential.row?.encrypted_credential) throw failure('connection_changed', 'This AI authorization changed before execution. Start a freshly reviewed run.', 409);
         if (settled) return;
-        const result = await requestJson(provider === 'openrouter' ? `${BASE}/api/v1/chat/completions` : `${HF_ROUTER}/v1/chat/completions`, {
+        const apiRequest = initialConfig ? apiCompletionRequest(provider, initialConfig, model, prompt, { signal: abort.signal }) : null;
+        const result = await requestJson(apiRequest?.url || (provider === 'openrouter' ? `${BASE}/api/v1/chat/completions` : `${HF_ROUTER}/v1/chat/completions`), apiRequest?.options || {
           method: 'POST', headers: { Authorization: `Bearer ${credential.token}`, 'Content-Type': 'application/json' }, signal: abort.signal,
           body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 8192, stream: false }),
         });
         if (settled) return;
+        if (initialConfig) {
+          const parsed = parseApiCompletion(provider, result, credential.token);
+          onEvent({ type: 'agent.message', summary: parsed.text.slice(0, 12_000), payload: { text: parsed.text } });
+          finish({ status: 'completed', ...parsed, provider, model });
+          return;
+        }
         if (result?.error) throw failure('provider_error', 'The provider returned an execution error. This request was not retried.', 502);
         const choice = result?.choices?.[0], content = choice?.message?.content;
         const responseText = typeof content === 'string' ? content : Array.isArray(content) ? content.filter(part => part?.type === 'text' && typeof part.text === 'string').map(part => part.text).join('') : '';
@@ -371,5 +456,5 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     })();
     return { stop };
   }
-  return { start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun };
+  return { start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun, saveApiKey, connectionModels, connectionCheck, connectionTest, connectionDisconnect };
 }

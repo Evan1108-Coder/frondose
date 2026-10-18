@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createLocalApi } from '../server/local-api.mjs';
 import { captureSourceAccess, assertSourceAccess } from '../server/context-source-access.mjs';
+import { EXECUTION_PROVIDERS } from '../src/lib/ai-providers.js';
 
 async function fixture(t, { onboard = true } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-assistant-api-'));
@@ -52,7 +53,7 @@ test('opening Rumbo Agent is read-only; disconnected creation stores nothing and
   const { api, call, request, fake, workspace, connect, create } = await fixture(t);
   const before = api.snapshot();
   const result = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result;
-  assert.deepEqual(result.providers.map(provider => provider.provider), ['codex', 'claude', 'openrouter', 'huggingface']);
+  assert.deepEqual(result.providers.map(provider => provider.provider), EXECUTION_PROVIDERS);
   assert.ok(result.providers.filter(provider => ['openrouter', 'huggingface'].includes(provider.provider)).every(provider => provider.model_required && !provider.models.some(model => !model.id)));
   assert.ok(result.providers.every(provider => !provider.connected && !provider.agent_id && provider.model_catalog_complete === false));
   assert.deepEqual(api.snapshot().agents, before.agents);

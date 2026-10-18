@@ -1,5 +1,6 @@
 import { byUpdated, val, visible } from "./model.js";
 import { isBrowserAiProvider } from './ai-providers.js';
+import { API_PROVIDERS } from './ai-provider-catalog.js';
 
 export const AGENT_PROVIDERS = {
   codex: {
@@ -18,6 +19,7 @@ export const AGENT_PROVIDERS = {
   },
   openrouter: { name: 'OpenRouter', company: 'OpenRouter', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: 'Use an explicitly selected model through your connected OpenRouter account.' },
   huggingface: { name: 'Hugging Face Inference', company: 'Hugging Face', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: 'Use a chat model through your configured Hugging Face account.' },
+  ...Object.fromEntries(API_PROVIDERS.filter(item => !item.auth).map(item => [item.id, { name: item.name, company: item.brand, capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: `Use a selected model through your ${item.name} API key.` }])),
 };
 
 const ACTIVE_RUN_STATUSES = new Set(["queued", "starting", "running", "needs_input", "paused"]);

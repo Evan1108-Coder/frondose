@@ -11,6 +11,7 @@ import { ACTIVE_CHAT_RUNS, indexChatActivity, persistComposer, restoreComposer }
 import { consumeRumboAgentEntry, peekRumboAgentEntry, rumboAgentSourceLabel } from '../lib/rumbo-agent-entry.js';
 import { announceRumboAgentAppearance } from '../lib/rumbo-agent-appearance.js';
 import { EXECUTION_PROVIDERS, isBrowserAiProvider } from '../lib/ai-providers.js';
+import { validApiModel } from '../lib/ai-provider-catalog.js';
 import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.js';
 import { download, relative, val, visible } from '../lib/model.js';
 import { Button, Dialog, ErrorMessage, Field, IconButton, ProviderIcon, SearchField, Select, Toggle, useApp } from '../ui.jsx';
@@ -89,7 +90,7 @@ function ModelChoice({ provider, value, disabled, onChange, label }) {
   const models = loaded[`${workspace.id}:${id}`] || configuredModels(provider);
   const custom = Boolean(value && !models.some(item => modelId(item) === value));
   if (!models.length && !custom && !browserApi) return null;
-  return <span className="rumbo-model-choice"><Select aria-label={label} value={value} disabled={disabled || busy} onChange={onChange}><option value="">{browserApi ? 'Choose a model' : 'Automatic'}</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)}</option>)}{custom ? <option value={value}>{value} · configured</option> : null}</Select>{browserApi ? <Button variant="ghost" disabled={disabled || busy} busy={busy} onClick={async () => { setBusy(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${id}/models?workspace_id=${encodeURIComponent(workspace.id)}`); const available = asList(response.result).filter(item => /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(modelId(item)) && (!item.output_modalities?.length || item.output_modalities.includes('text'))); setLoaded(current => ({ ...current, [`${workspace.id}:${id}`]: available })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Load models</Button> : null}<ErrorMessage error={error} /></span>;
+  return <span className="rumbo-model-choice"><Select aria-label={label} value={value} disabled={disabled || busy} onChange={onChange}><option value="">{browserApi ? 'Choose a model' : 'Automatic'}</option>{models.map(item => <option key={modelId(item)} value={modelId(item)} title={modelId(item)}>{modelLabel(item)}</option>)}{custom ? <option value={value}>{value} · configured</option> : null}</Select>{browserApi ? <Button variant="ghost" disabled={disabled || busy} busy={busy} onClick={async () => { setBusy(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${id}/models?workspace_id=${encodeURIComponent(workspace.id)}`); const available = asList(response.result).filter(item => validApiModel(modelId(item)) && (!item.output_modalities?.length || item.output_modalities.includes('text'))); setLoaded(current => ({ ...current, [`${workspace.id}:${id}`]: available })); } catch (cause) { setError(cause); } finally { setBusy(false); } }}>Load models</Button> : null}<ErrorMessage error={error} /></span>;
 }
 
 function AssistantControls({ context, composer, change, agent, blocked, onProvider }) {

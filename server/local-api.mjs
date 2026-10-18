@@ -41,6 +41,7 @@ import { installAgentAwareness, agentAwarenessRoute, workspaceAwareness, awarene
 import { authorizeLocalAction, executeLocalAction, assertActionFresh, localActionReadable } from './agent-action-catalog.mjs';
 import { installScheduledWork, createScheduledWorkService, scheduledWorkRoute } from './scheduled-work-service.mjs';
 import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider } from '../src/lib/ai-providers.js';
+import { API_PROVIDERS, apiProviderDefinition } from '../src/lib/ai-provider-catalog.js';
 import { installActivity, activitySnapshot, activityRoute } from './activity-service.mjs';
 import { createIdentityService } from './identity-service.mjs';
 import { createGovernanceService, governanceRoute } from './governance-service.mjs';
@@ -147,6 +148,7 @@ const PROVIDERS = {
   },
   openrouter: { category: 'agent', displayName: 'OpenRouter', description: 'Conversations and reviewed Rumbo actions through your OpenRouter account.', authMethod: 'oauth_pkce', capabilities: ['chat', 'reviewed_actions'], constraints: ['Uses the signed-in user’s workspace connection and credits.', 'An explicit model is required. No project-file or native tools.'] },
   huggingface: { category: 'agent', displayName: 'Hugging Face Inference', description: 'Conversations and reviewed Rumbo actions through your Hugging Face account.', authMethod: 'oauth_pkce', capabilities: ['chat', 'reviewed_actions'], constraints: ['Requires a configured Hugging Face OAuth app and connected user account.', 'An explicit chat model is required. No project-file or native tools.'] },
+  ...Object.fromEntries(API_PROVIDERS.filter(item => !item.auth).map(item => [item.id, { category: 'agent', displayName: item.name, description: `Conversations and reviewed Rumbo actions through ${item.name}.`, authMethod: 'api_key', capabilities: ['chat', 'reviewed_actions'], constraints: ['Uses your personal workspace API key and provider billing.', 'Test a model before live work. No project-file or native tools.'] }])),
 };
 
 function now() { return new Date().toISOString(); }
@@ -1111,7 +1113,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
             updateRun(runId, finalStatus, true);
             const usageReason = result.usage_capture_incomplete ? 'usage_persistence_failed' : emptyReply ? 'empty_reply' : typeof result.error_code === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(result.error_code) ? result.error_code : null;
             finalizeRunUsage(getDb(), runId, { status: finalStatus, reason: usageReason });
-            if (isBrowserAiProvider(provider) && result.usage) addRunEvent(runId, 'usage.reported', 'Provider-reported completion tokens', { demo: false, source: 'chat_completion', usage: result.usage, note: 'Provider-reported tokens; not billing or an account balance.' });
+            if (isBrowserAiProvider(provider) && result.usage) addRunEvent(runId, 'usage.reported', 'Provider-reported token usage', { demo: false, source: result.usage.source, usage: result.usage, note: 'Provider-reported tokens; not billing or an account balance.' });
             changeReviews.finishRun(runId, actor).then(reviewId => { if (!closed && reviewId) addRunEvent(runId, 'review.captured', 'Observed changes saved for review', { review_id: reviewId, demo: false }); }).catch(() => { if (!closed) addRunEvent(runId, 'review.unavailable', 'Change capture could not finish. No complete run diff is available.', { demo: false }); });
             if (finalStatus === 'completed' && awareness && result.text) {
               try { result.text = captureAgentActions(getDb(), runId, result.text, actionNonce, { authorizeCapture: ({ run, proposal }) => authorizeAgentProposal(run, proposal) }); }
@@ -1370,6 +1372,18 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (path === '/playbooks' || path.startsWith('/playbooks/')) return fail(res, 410, 'feature_retired', 'Playbooks has been removed. Use agent actions and scheduled messages instead.');
       if (await scheduledWorkRoute({ service: scheduledWork, req, res, path, url, body, actor, send })) return;
       if (path === '/ai-connections' && req.method === 'GET') return send(res, 200, { result: await aiConnections.list(url.searchParams.get('workspace_id'), actor) });
+      const aiOperation = path.match(/^\/ai-connections\/([a-z]+)\/(api-key|models|check|test|disconnect)$/);
+      if (aiOperation && apiProviderDefinition(aiOperation[1])) {
+        const [, provider, operation] = aiOperation;
+        if (operation === 'models' && req.method === 'GET') return send(res, 200, { result: await aiConnections.connectionModels(provider, url.searchParams.get('workspace_id'), actor) });
+        if (req.method === 'POST') {
+          const result = operation === 'api-key' ? await aiConnections.saveApiKey(provider, body, actor)
+            : operation === 'check' ? await aiConnections.connectionCheck(provider, body.workspace_id, actor)
+            : operation === 'test' ? await aiConnections.connectionTest(provider, body.workspace_id, body.model, actor)
+            : operation === 'disconnect' ? await aiConnections.connectionDisconnect(provider, body.workspace_id, actor) : null;
+          if (result) return send(res, 200, { result });
+        }
+      }
       if (path === '/ai-connections/openrouter/start' && req.method === 'POST') return send(res, 200, { result: await aiConnections.start(body, actor, req.headers.host) });
       if (path === '/ai-connections/openrouter/check' && req.method === 'POST') return send(res, 200, { result: await aiConnections.check(body.workspace_id, actor) });
       if (path === '/ai-connections/openrouter/models' && req.method === 'GET') return send(res, 200, { result: await aiConnections.models(url.searchParams.get('workspace_id'), actor) });

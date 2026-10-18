@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { createLocalApi } from "../server/local-api.mjs";
+import { EXECUTION_PROVIDERS } from '../src/lib/ai-providers.js';
 
 let api;
 let server;
@@ -168,7 +169,7 @@ test("a default install starts as a clean disconnected user", async () => {
     assert.deepEqual(snapshot.runs, []);
     assert.deepEqual(snapshot.approvals, []);
     assert.equal(snapshot.meta.demoData, false);
-    assert.deepEqual(snapshot.connections.map(connection => connection.provider).sort(), ['claude', 'codex', 'github', 'google-drive', 'huggingface', 'openrouter']);
+    assert.deepEqual(snapshot.connections.map(connection => connection.provider).sort(), [...EXECUTION_PROVIDERS, 'github', 'google-drive'].sort());
     assert.equal(snapshot.connections.every((connection) => connection.state === "not_connected"), true);
   } finally {
     cleanApi.close();

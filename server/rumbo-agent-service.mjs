@@ -5,6 +5,7 @@ import { recordChange } from './workspace-features.mjs';
 import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
 import { createActivityPolicy } from './activity-policy.mjs';
 import { EXECUTION_PROVIDERS, isBrowserAiProvider, aiProviderName } from '../src/lib/ai-providers.js';
+import { validApiModel } from '../src/lib/ai-provider-catalog.js';
 
 const PROVIDERS = EXECUTION_PROVIDERS;
 const REASONING = ['', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
@@ -26,7 +27,7 @@ const sourceScope = row => row.project_id ? { scope_type: 'project', scope_id: r
 export function runModelSelection(body, agent, provider = agent?.provider) {
   const model = body.model ?? agent?.model ?? '';
   const reasoning_effort = body.reasoning_effort ?? agent?.reasoning_effort ?? '';
-  if (typeof model !== 'string' || model && !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model)) throw validationError('Use a provider model identifier or the connection default.');
+  if (typeof model !== 'string' || model && !validApiModel(model)) throw validationError('Use a provider model identifier or the connection default.');
   if (!REASONING.includes(reasoning_effort) || provider !== 'codex' && reasoning_effort) throw validationError('Choose a supported Codex reasoning setting, or the provider default.');
   return { model, reasoning_effort };
 }

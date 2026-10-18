@@ -1,5 +1,6 @@
 import { val } from "./model.js";
 import { EXECUTION_PROVIDERS, isBrowserAiProvider } from './ai-providers.js';
+import { validApiModel } from './ai-provider-catalog.js';
 
 export const AGENT_REASONING_OPTIONS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 const DEFINITION_FIELDS = ["name", "role", "provider", "description", "instructions", "model", "reasoning_effort", "memory_policy", "output_behavior"];
@@ -65,7 +66,7 @@ export function validateAgentForm(form) {
   for (const [field, limit] of Object.entries(DEFINITION_LIMITS)) {
     if (typeof form[field] !== "string" || form[field].length > limit || /\0/.test(form[field])) return { field, message: `${field.replaceAll("_", " ")} must be text, at most ${limit.toLocaleString()} characters, without null characters.` };
   }
-  if (form.model && !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(form.model.trim())) return { field: "model", message: "Use a provider model identifier, or leave this blank for the provider default." };
+  if (form.model && !validApiModel(form.model.trim())) return { field: "model", message: "Use a provider model identifier, or leave this blank for the provider default." };
   if (form.reasoning_effort && (form.provider !== "codex" || !AGENT_REASONING_OPTIONS.includes(form.reasoning_effort))) return { field: "reasoning_effort", message: "Choose a supported Codex reasoning setting, or use the provider default." };
   if (!["reviewed", "none"].includes(form.memory_policy)) return { field: "memory_policy", message: "Choose reviewed memory or no saved memory." };
   if (!["review", "read-only"].includes(form.permission_policy)) return { field: "permission_policy", message: "Choose review required or read-only." };

@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { validationError } from './validation.mjs';
+import { EXECUTION_PROVIDERS } from '../src/lib/ai-providers.js';
+import { validApiModel } from '../src/lib/ai-provider-catalog.js';
 
 export const AGENT_PROFILE_FIELDS = [
   'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions',
@@ -91,7 +93,7 @@ export function validateAgentProfile(db, record, { actor, allowed, importing = f
     const controls = field === 'output_behavior' ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/ : /[\u0000-\u001f]/;
     if (typeof value !== 'string' || value.length > limit || controls.test(value)) throw validationError(`Choose a valid ${field.replaceAll('_', ' ')}.`);
   }
-  if (record.model && !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(record.model)) throw validationError('Use a valid provider model identifier, or leave model blank to use the connection default.');
+  if (record.model && !validApiModel(record.model)) throw validationError('Use a valid provider model identifier, or leave model blank to use the connection default.');
   if (!REASONING.has(record.reasoning_effort || '')) throw validationError('Choose a supported reasoning effort, or use the provider default.');
   if (record.provider !== 'codex' && record.reasoning_effort) throw validationError('Reasoning effort is currently configurable only for Codex profiles.');
   if (!MEMORY.has(record.memory_policy || 'reviewed')) throw validationError('Choose reviewed memory or no saved memory.');
@@ -102,7 +104,7 @@ export function validateAgentProfile(db, record, { actor, allowed, importing = f
     const connection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(record.provider_connection_id);
     if (!connection) throw validationError('The selected provider connection no longer exists.');
     if (connection.provider !== record.provider) throw validationError('The provider connection must match the agent provider.');
-  } else if (!importing && record.provider_connection_id === undefined && ['codex', 'claude', 'openrouter', 'huggingface'].includes(record.provider)) {
+  } else if (!importing && record.provider_connection_id === undefined && EXECUTION_PROVIDERS.includes(record.provider)) {
     const connection = db.prepare('SELECT id FROM connections WHERE provider=?').get(record.provider);
     if (!connection) throw validationError('Create the provider connection before saving this agent.');
     record.provider_connection_id = connection.id;
