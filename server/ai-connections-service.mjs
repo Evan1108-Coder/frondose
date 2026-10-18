@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { API_PROVIDERS, apiProviderDefinition, validApiModel } from '../src/lib/ai-provider-catalog.js';
 import { apiKeyConfiguration, discoverApiModels, apiCompletionRequest, parseApiCompletion } from './model-api-adapters.mjs';
+import { createCopilotOAuthService } from './copilot-oauth-service.mjs';
 
 const now = () => new Date().toISOString();
 const digest = value => createHash('sha256').update(value).digest('base64url');
@@ -28,7 +29,7 @@ export function installAiConnections(db) {
   CREATE INDEX IF NOT EXISTS ai_authorization_attempts_expiry ON ai_authorization_attempts(expires_at);`);
 }
 
-export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env = process.env, authorize }) {
+export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env = process.env, authorize, onCopilotReplace }) {
   installAiConnections(db);
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   let key;
@@ -91,7 +92,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   };
   async function requestJson(url, options = {}) {
     let response;
-    const provider = new URL(url).hostname === 'openrouter.ai' ? 'OpenRouter' : new URL(url).hostname.endsWith('huggingface.co') ? 'Hugging Face' : 'The AI provider';
+    const provider = new URL(url).hostname === 'openrouter.ai' ? 'OpenRouter' : new URL(url).hostname.endsWith('huggingface.co') ? 'Hugging Face' : ['github.com', 'api.github.com'].includes(new URL(url).hostname) ? 'GitHub' : 'The AI provider';
     try { response = await fetchImpl(url, { ...options, redirect: 'error', signal: options.signal || AbortSignal.timeout(20_000) }); }
     catch { throw failure('provider_unreachable', `${provider} could not be reached. Try again later.`, 502); }
     if (!response.ok) throw failure(response.status === 401 ? 'reconnect_required' : response.status === 429 ? 'rate_limited' : 'provider_error', response.status === 401 ? `${provider} rejected this authorization. Reconnect.` : response.status === 429 ? `${provider} rate limit reached. Try later.` : `${provider} returned HTTP ${response.status}.`, response.status === 401 ? 409 : response.status === 429 ? 429 : 502);
@@ -118,6 +119,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   const providerJson = (path, options) => requestJson(`${BASE}${path}`, options);
   const hfJson = (path, options) => requestJson(`${HF_BASE}${path}`, options);
   const hfRouterJson = (path, options) => requestJson(`${HF_ROUTER}${path}`, options);
+  const copilotOAuth = createCopilotOAuthService({ db, env, seal, unseal, requireWorkspace, callbackOrigin, requestJson, onReplace: onCopilotReplace });
   async function checkKey(keyValue) {
     const response = await providerJson('/api/v1/key', { headers: { Authorization: `Bearer ${keyValue}` } });
     if (!response?.data || typeof response.data !== 'object') throw failure('provider_response', 'OpenRouter did not confirm this key.', 502);
@@ -161,7 +163,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function list(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
-    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Local ACP requires Copilot CLI and each user’s eligible Copilot subscription/access. Hosted GitHub App OAuth/SDK is a separate unreleased route.' } };
+    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Local ACP requires Copilot CLI and each user’s eligible Copilot subscription/access. Hosted GitHub authorization requires operator app registration; each user needs eligible Copilot access. Only explicit successful inference verifies it.' } };
   }
   async function check(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
@@ -456,5 +458,5 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     })();
     return { stop };
   }
-  return { start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun, saveApiKey, connectionModels, connectionCheck, connectionTest, connectionDisconnect };
+  return { copilotOAuth, close: () => copilotOAuth.close(), start, complete, list, check, models, testModel, disconnect, hfStart, hfComplete, hfCheck, hfModels, hfTestModel, hfDisconnect, readyState, startAgentRun, saveApiKey, connectionModels, connectionCheck, connectionTest, connectionDisconnect };
 }

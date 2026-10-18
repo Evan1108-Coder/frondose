@@ -1,16 +1,75 @@
 # AI connections: implemented paths and setup
 
-Rumbo distinguishes a provider account from an agent profile. One account can serve multiple profiles, but an agent's instructions, context, tools and run approvals are separate. Browser-account credentials belong to the current user and workspace; a shared profile never grants another user that account. The local development server is loopback-only and must not be exposed publicly.
+Rumbo distinguishes a provider account from an agent profile. One account can serve multiple profiles, but an agent's instructions, context, tools and run approvals are separate. Browser-account credentials belong to the current user and workspace; a shared profile never grants another user that account. The local development server remains loopback-only. The explicit public server mode below is a separate, invite-only deployment path, not permission to expose Vite or reuse operator CLI accounts.
 
 | Provider | End-user route | Rumbo state | Who pays for model usage |
 | --- | --- | --- | --- |
 | OpenRouter | Browser PKCE or API key | Encrypted credentials, catalog/test, reviewed conversations and scheduled messages, final-reply action proposals | User's OpenRouter credits |
 | Hugging Face Inference | OAuth with `inference-api` after operator registration, or personal API token with Inference Providers permission | Encrypted credentials, catalog/test, reviewed conversations and scheduled messages, final-reply action proposals; API token works without OAuth app setup | User's Hugging Face allowance/credits |
-| GitHub Copilot | Local Copilot CLI device authorization + ACP | Implemented: private actor/workspace account directory, explicit model test, streamed reviewed conversations, scheduled messages and pending Rumbo actions. Hosted GitHub App/SDK OAuth remains unimplemented | User's Copilot subscription/limits |
+| GitHub Copilot | GitHub OAuth + official server SDK; local ACP alternative | Implemented: encrypted per-user OAuth, refresh, isolated SDK runtime, explicit model test, reviewed streaming chat, scheduled messages and pending actions. App registration and live verification remain | User's eligible Copilot access/limits |
 | Codex and Claude Code | Existing locally signed-in runner | Implemented for local machine only, not a hosted visitor OAuth account | User's existing provider account, subject to its terms/limits |
 | OpenAI, Anthropic, Gemini, xAI, Mistral, DeepSeek, Groq, Together, Fireworks, Cohere, Perplexity, Moonshot/Kimi, Alibaba/Qwen, Z.ai/GLM | Personal API key | Implemented with model discovery/configuration, explicit inference test, reviewed conversations, scheduled messages and final-reply action proposals | API key owner |
 
-## API-key setup (October 18)
+## Public browser connections: operator setup (October 18)
+
+The public connection implementations do not require the developer to own every provider subscription. Each signed-in Rumbo user supplies their own authorization and model allowance. **Implemented does not mean live-certified**: provider contracts, isolated HTTP/chat/action/scheduling flows and browser controls are tested without real accounts. Actual app approval, real OAuth callbacks and paid inference still need account-owner verification on the chosen domain.
+
+| Route | What the Rumbo operator must do | What each user needs |
+| --- | --- | --- |
+| OpenRouter browser authorization | No Rumbo OAuth app registration; configure the exact public origin and route `/api/ai-connections/openrouter/callback/<attempt>` to the backend | OpenRouter account and any required credits |
+| Hugging Face OAuth | Create an app at [Applications](https://huggingface.co/settings/applications), register `https://YOUR_DOMAIN/api/ai-connections/huggingface/callback`, enable `openid profile inference-api`, set `RUMBO_HF_CLIENT_ID` and optional confidential-client `RUMBO_HF_CLIENT_SECRET` | Hugging Face account with inference access/allowance |
+| GitHub Copilot OAuth | Register a GitHub App or OAuth App, homepage `https://YOUR_DOMAIN`, callback `https://YOUR_DOMAIN/api/ai-connections/copilot/callback`; set `RUMBO_GITHUB_CLIENT_ID` and `RUMBO_GITHUB_CLIENT_SECRET` | GitHub account **with active eligible Copilot access**; GitHub membership alone does not provide inference |
+| All 16 API-key routes | No Rumbo OAuth registration; run the encrypted backend and configure billing/retention notices | Personal provider key, permitted model IDs, credits and any required region/workspace settings |
+| Hosted ChatGPT-plan login | Apply through [OpenAI’s Sign in with ChatGPT interest form](https://openai.com/form/sign-in-with-chatgpt-interest/); remote/paid hosting requires OpenAI’s approval path | Eligible ChatGPT plan after approval/integration; meanwhile use the separate OpenAI API route |
+| Hosted Claude subscription login | Not offered without Anthropic approval; the [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) restricts third-party claude.ai login offerings | Use a personal Anthropic API key instead; a Claude subscription is not API credit |
+
+For GitHub, follow the [official Copilot SaaS OAuth guide](https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/github-oauth). OAuth Apps are the simpler registration; GitHub Apps are recommended by GitHub for finer permissions. Use user authorization, not an installation token or the operator’s token. Rumbo requests `read:user offline_access` for OAuth Apps and no repository scope. For GitHub Apps, configure the provider-required user permissions and expiring user tokens in the registration; OAuth scopes do not override App permissions. Organization restrictions can still block a user. Rumbo’s GitHub Plugin remains paused and unrelated. Revoke grants through GitHub’s account settings when needed; Disconnect deletes Rumbo’s stored credential and cancels owned work, but does not revoke the provider grant remotely.
+
+GitHub sign-in uses actor/workspace-bound ten-minute one-use state and S256 PKCE. The server exchanges the code, confirms the GitHub account, and encrypts access/refresh tokens. Refresh uses a compare-and-swap against the current credential; disconnected/replaced accounts cannot be resurrected. Authorization stores `configured`; only an explicitly requested, complete model reply enables `connected`. No subscription check is faked. A user without Copilot can use the other API connections instead.
+
+The pinned official `@github/copilot-sdk` runtime is a backend dependency, not a CLI each visitor must install. Every operation has a fresh private temporary home, explicit user token and `useLoggedInUser: false`, empty mode and no native/file/shell/MCP tools, skills or project discovery. No operator shell credential is inherited. Model catalogs are explicit; reviewed sends and scheduled prompts use the same canonical context/run/action ledger. Each turn starts a fresh session rather than retaining hidden provider history. SDK clients are stopped on completion/cancellation; uncertain prompts are never replayed. Limits are two concurrent operations per user/workspace and eight per backend process. This is logical application isolation, **not an OS sandbox or a completed multi-tenant security audit**. Account billing/usage metering remains incomplete.
+
+### Running the backend on a public origin
+
+This adds a production asset/API entry point (`npm start`) and a guarded **invite-only beta mode**, not an actual hosted deployment. The existing Sites artifact is still a static preview and does not run this backend. Vite must never be exposed publicly. Use one persistent Node backend on a supported runtime (`^22.16` or `>=24`), behind an HTTPS reverse proxy, with private writable database storage. Multiple replicas/shared SQLite and zero-trust tenant workers are not implemented.
+
+1. On the intended server, build with `npm ci` and `npm run build`. Use a **new, private** data directory, not a public asset directory or an export of the developer’s workspace/accounts.
+2. With that data directory and stable encryption key configured, start in `RUMBO_DEPLOYMENT_MODE=local` on loopback. Access it through a trusted local connection/SSH tunnel, create the intended workspace and complete **Set up your account**. Stop the backend. Public mode refuses to start without this password identity; no anonymous development-owner fallback is allowed. Invitations use existing membership controls and manually shared invitation links, not email delivery. There is no self-signup or password recovery service yet.
+3. Keep server-only settings in a protected environment file outside the repo; never use a `VITE_` prefix for secrets:
+
+   ```dotenv
+   RUMBO_DEPLOYMENT_MODE=public
+   RUMBO_PUBLIC_BASE_URL=https://YOUR_DOMAIN
+   RUMBO_TRUST_LOOPBACK_PROXY=1
+   RUMBO_DATA_DIR=/srv/rumbo/private-data
+   RUMBO_CONNECTION_ENCRYPTION_KEY=<stable base64 encoding of exactly 32 random bytes>
+   RUMBO_GITHUB_CLIENT_ID=<registered app client ID>
+   RUMBO_GITHUB_CLIENT_SECRET=<registered app secret>
+   RUMBO_HF_CLIENT_ID=<registered HF app client ID>
+   # RUMBO_HF_CLIENT_SECRET=<only for confidential clients>
+   PORT=4174
+   ```
+
+   Generate the encryption key in your own secret manager. Back it up separately from encrypted data and reuse it across restarts; losing/changing it makes saved credentials unreadable. Never send it in chat or commit it. To migrate existing local encrypted data, securely retain its existing `connections.key` as the same base64 secret; do not generate a replacement and assume old credentials will decrypt.
+4. Start with the environment loaded, for example `node --env-file=/srv/rumbo/server.env server/start.mjs`. `npm start` uses the process environment; it does not load Vite’s `.env.local`. The backend listens only on `127.0.0.1:4174`. Configure a same-machine TLS reverse proxy to forward **all** paths to it. Preserve the configured public `Host`, overwrite `X-Forwarded-Proto` with `https` and overwrite `X-Forwarded-For` with a single verified client IP; never trust a visitor-supplied forwarded header. Set TLS/HSTS, request/concurrency limits and access-log query redaction at the proxy. Do not expose its loopback port directly. An external proxy needs a separate explicitly reviewed trust configuration, not a wildcard bypass.
+5. Public API requests require the exact HTTPS host and same-origin mutations. Login/accept attempts are rate-limited and cookies are HttpOnly, SameSite=Lax and Secure. Workbench host files/PTYs, change reviews and shared CLI account-management endpoints are disabled. Browser/API model execution cannot fall back to machine Codex/Claude accounts. Non-AI Plugins stay paused.
+6. Register exact callback URLs, restart with provider configuration, and verify with a willing non-production account: sign in, authorize, load a catalog, explicitly test one model, inspect/send one chat, check a proposal stays pending, disconnect and confirm a second user cannot use the first user’s connection. Test denial, expired login, provider revocation and proxy headers. Opening a page must not spend credits.
+
+Before an unrestricted public launch, finish provider live verification, independent security review, hardened tenant workers if native tools are added, recovery/abuse controls, monitoring, backups/restore drills, retention/privacy notices and load tests. These are release gates, not tasks app registration silently completes. Public mode is not enabled on Evan’s current localhost.
+
+### What Paseo does—and what is still not built here
+
+[Paseo’s supported-provider list](https://github.com/getpaseo/paseo/blob/main/public-docs/supported-providers.md) lists coding-agent transports such as Codex, Claude, OpenCode, Pi, Antigravity and Muse plus ACP agents. That is not a catalog of universally available browser OAuth model APIs. Rumbo borrows the browser → server → isolated runtime pattern, while keeping its own reviewed context, scheduling and pending-action permissions.
+
+OpenCode/Pi/OMP/Muse, Cursor/Kimi and other generic ACP adapters, personal remote-runner pairing, persistent native history import/resume and approved hosted ChatGPT/Claude subscription login remain unimplemented. They must not be advertised as working public connections. Antigravity’s documented full-access-only mode is unsuitable for a shared public host. API access to their underlying model families already uses the separate provider catalog; it does not make those agent runtimes interchangeable.
+
+### Hosted verification evidence
+
+`tests/copilot-hosted.test.mjs` covers PKCE/identity/origin/replay/denial, encrypted persistence, refresh concurrency, disconnect races, exact-prompt SDK execution, zero native tools, secret redaction, delayed startup, late timeout replies and current-credential checks. `tests/public-ai-deployment.test.mjs` covers fail-closed configuration, HTTPS/proxy/Origin guards, Secure sessions, public callback/model-test/chat/action/scheduling integration and static-file containment. Provider traffic and SDK inference are fixtures, not real paid-account verification. Browser smoke testing covers catalog → details → missing registration/authorized state → explicit model test and disconnect, including mobile layout.
+
+The actual pinned SDK runtime also completed `start` and `ping` in a temporary empty home with a deliberately invalid fixture token and blocked outbound proxy. No model prompt, real credential or provider allowance was used. This verifies installed binary compatibility, not GitHub sign-in or inference entitlement.
+
+## API-key usage
 
 There are 16 API providers in the shared catalog, plus Codex/Claude local runners and Copilot's local ACP route. Choose **AI connections → provider → Add API key**. The password field is excluded from Field Defaults. A key is kept only in encrypted server storage, bound to actor and Rumbo workspace. Keys never enter profiles or workspace exports. One connection method is active per provider, actor and workspace; replacing it resets the prior test and cancels pending OAuth. Existing OAuth credentials remain compatible.
 
@@ -44,7 +103,7 @@ Endpoints are built from an allowlisted provider/region registry, never an arbit
 | Claude local runner | Existing restricted CLI analysis; session-aware Agent SDK adapter remains to implement, subject to provider authentication/branding requirements |
 | OpenRouter browser authorization | Existing PKCE flow; live-account verification remains |
 | Hugging Face browser authorization | Existing OAuth flow; operator app registration and live-account verification remain |
-| GitHub Copilot browser authorization | Planned OAuth/GitHub App plus per-user SDK runtime; not implemented |
+| GitHub Copilot browser authorization | Implemented GitHub App/OAuth App code flow and per-user official SDK runtime; operator registration and live verification required |
 | GitHub Copilot local ACP | Implemented device sign-in, ACP handshake/model discovery, explicit verification, reviewed streaming chat/scheduling, scoped account homes and cancellation; real-account inference still needs user verification |
 | OpenCode | Planned runtime adapter; not implemented |
 | Pi | Planned RPC adapter; not implemented |
@@ -60,7 +119,7 @@ Non-AI connections remain called **Plugins** and remain paused: GitHub, GitHub A
 
 OpenRouter's user authorization requires no operator API key. The user chooses **Connect OpenRouter**, signs in at OpenRouter, and is returned to Rumbo. Rumbo binds the ten-minute attempt to the current signed-in actor, workspace and callback origin. It stores the returned key encrypted and checks `/api/v1/key`. **Check authorization** makes a read-only provider request. **Choose model to test** loads the user-filtered catalog; **Send test request** makes a separate small inference call that can cost credits. Reviewed conversation sends and scheduled agent prompts also make potentially billed inference calls. Removing the connection deletes Rumbo's copy; users who want remote invalidation must revoke that key at OpenRouter.
 
-For public deployment, Rumbo needs a production identity/session service, HTTPS origin and callback routing, secret-key management and isolated provider token storage, production monitoring, and an end-to-end test with an owner-approved non-production account. Set `RUMBO_PUBLIC_BASE_URL` to the exact HTTPS origin after the public server's current loopback-only host policy is replaced by a separately reviewed deployment policy. Do not change the loopback policy merely to make this prototype reachable. Hugging Face additionally needs an OAuth app with the exact `https://<origin>/api/ai-connections/huggingface/callback` redirect and `inference-api` scope; set its client ID as `RUMBO_HF_CLIENT_ID` and, if using a confidential client, its secret as `RUMBO_HF_CLIENT_SECRET` in server-only configuration. The browser never receives this secret. Hosted Copilot OAuth still needs a GitHub OAuth/GitHub App and server-side Copilot SDK runtime. The implemented local ACP route instead uses Copilot CLI's own device authorization, without registering a Rumbo GitHub App.
+The operator prerequisites and public beta deployment procedure are documented above. Local ACP and shared Codex/Claude machine accounts remain local-only; their existence does not satisfy public-provider authorization or live verification.
 
 ## Copilot local account: browser-first setup
 

@@ -7,6 +7,7 @@
   "scripts": {
     "postinstall": "node scripts/prepare-pty.mjs",
     "dev": "vite",
+    "start": "node server/start.mjs",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
@@ -14,6 +15,7 @@
     "test:sites": "node --test tests/sites-worker.test.mjs"
   },
   "dependencies": {
+    "@github/copilot-sdk": "1.0.22",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/anonymous-pro": "^5.3.0",
     "@fontsource/azeret-mono": "^5.3.0",

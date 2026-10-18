@@ -42,6 +42,8 @@ import { authorizeLocalAction, executeLocalAction, assertActionFresh, localActio
 import { installScheduledWork, createScheduledWorkService, scheduledWorkRoute } from './scheduled-work-service.mjs';
 import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider, isScopedAiProvider } from '../src/lib/ai-providers.js';
 import { createCopilotBridge } from './copilot-bridge.mjs';
+import { createCopilotHostedRuntime } from './copilot-hosted-runtime.mjs';
+import { createDeploymentPolicy } from './deployment-policy.mjs';
 import { API_PROVIDERS, apiProviderDefinition } from '../src/lib/ai-provider-catalog.js';
 import { installActivity, activitySnapshot, activityRoute } from './activity-service.mjs';
 import { createIdentityService } from './identity-service.mjs';
@@ -109,7 +111,7 @@ const TABLE_CONFIG = {
 };
 
 const PROVIDERS = {
-  copilot: { category: 'agent', displayName: 'GitHub Copilot', description: 'Reviewed conversations through a private local Copilot ACP runtime.', authMethod: 'local_acp', capabilities: ['chat', 'reviewed_actions', 'structured_events'], constraints: ['Requires Copilot CLI and your eligible account.', 'General chat only; no native or project-file tools.'] },
+  copilot: { category: 'agent', displayName: 'GitHub Copilot', description: 'Reviewed conversations through personal GitHub authorization or a local ACP runtime.', authMethod: 'github_oauth_or_local_acp', capabilities: ['chat', 'reviewed_actions', 'structured_events'], constraints: ['Requires registered GitHub OAuth or a local CLI, and eligible personal Copilot access.', 'General chat only; no native or project-file tools.'] },
   github: {
     executable: 'gh',
     args: ['--version'],
@@ -519,10 +521,11 @@ function snapshot(db) {
   };
 }
 
-export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {} } = {}) {
-  const externalConnectionsPaused = integrationOptions.externalConnectionsPaused !== false;
+export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {}, copilotOptions = {} } = {}) {
+  const deployment = createDeploymentPolicy(integrationOptions.env || process.env);
+  const externalConnectionsPaused = deployment.hosted || integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
-  let identity, governance, access, connectionPlatform, aiConnections, copilotBridge;
+  let identity, governance, access, connectionPlatform, aiConnections, copilotBridge, hostedCopilot;
   function installAccess() {
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
@@ -555,19 +558,27 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     });
     aiConnections = createAiConnectionsService({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch,
       authorize: (workspaceId, actor) => governance.authorize(workspaceId, actor.id, 'connections.view'),
+      onCopilotReplace: (workspaceId, actor) => { copilotBridge?.disconnect(workspaceId, actor); hostedCopilot?.cancelScope(workspaceId, actor); },
     });
     copilotBridge = createCopilotBridge({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, ...(integrationOptions.spawnProcess ? { spawnProcess: integrationOptions.spawnProcess } : {}), authorize: (workspaceId, actor) => governance.authorize(workspaceId, actor.id, 'connections.view') });
+    hostedCopilot = createCopilotHostedRuntime({ accounts: aiConnections.copilotOAuth, env: integrationOptions.env || process.env, ...copilotOptions });
   }
   installAccess();
+  try { deployment.assertConfigured(identity, seedMode); } catch (reason) { store.db.close(); throw reason; }
   function providerState(provider, workspaceId, actor) {
     if (provider === 'copilot') {
-      try { return copilotBridge.status(workspaceId, actor); }
+      try {
+        governance.authorize(workspaceId, actor.id, 'connections.view');
+        return aiConnections.copilotOAuth.status(workspaceId, actor) || (deployment.hosted ? { provider, state: 'not_connected' } : copilotBridge.status(workspaceId, actor));
+      }
       catch (reason) { return { provider, state: 'not_connected', error_code: reason.code || 'access_denied' }; }
     }
+    if (deployment.hosted && !isBrowserAiProvider(provider)) return { provider, state: 'not_connected', error_code: 'personal_runner_required' };
     return isBrowserAiProvider(provider) ? aiConnections.readyState(provider, workspaceId, actor) : integration.status(provider);
   }
   function startProviderRun(options, callbacks) {
-    if (options.provider === 'copilot') return copilotBridge.startRun(options, callbacks);
+    if (options.provider === 'copilot') return aiConnections.copilotOAuth.status(options.workspaceId, options.actor) ? hostedCopilot.startRun(options, callbacks) : deployment.hosted ? Promise.reject(validationError('Authorize your own GitHub account for hosted Copilot.')) : copilotBridge.startRun(options, callbacks);
+    if (deployment.hosted && !isBrowserAiProvider(options.provider)) throw validationError('A shared host CLI account cannot serve public users. Use a personal API/OAuth connection.');
     return isBrowserAiProvider(options.provider) ? aiConnections.startAgentRun({ ...options, workspaceId: options.workspaceId, actor: options.actor }, callbacks) : integration.startRun(options, callbacks);
   }
   function authorizeAgentProposal(run, proposal, reviewer) {
@@ -1302,15 +1313,19 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     catch { return fail(res, 400, 'bad_url', 'Invalid request URL.'); }
     if (url.pathname !== API_PREFIX && !url.pathname.startsWith(`${API_PREFIX}/`)) return next();
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    if (!allowedLoopbackHost(req.headers.host)) return fail(res, 403, 'invalid_host', 'Rumbo only accepts loopback hosts.');
-    if (!allowedOrigin(req.headers.origin, req.headers.host)) return fail(res, 403, 'invalid_origin', 'Cross-origin API requests are not allowed.');
-    if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && (['/api/auth/google-drive/callback', '/api/connection-platform/oauth/callback', '/api/ai-connections/huggingface/callback'].includes(url.pathname) || url.pathname.startsWith('/api/ai-connections/openrouter/callback/')))) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    try { deployment.checkRequest(req); } catch (reason) { return fail(res, reason.statusCode || 403, reason.code, reason.message); }
+    if (!deployment.hosted && !allowedLoopbackHost(req.headers.host)) return fail(res, 403, 'invalid_host', 'Rumbo only accepts loopback hosts.');
+    if (!deployment.hosted && !allowedOrigin(req.headers.origin, req.headers.host)) return fail(res, 403, 'invalid_origin', 'Cross-origin API requests are not allowed.');
+    if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && (['/api/auth/google-drive/callback', '/api/connection-platform/oauth/callback', '/api/ai-connections/huggingface/callback', '/api/ai-connections/copilot/callback'].includes(url.pathname) || url.pathname.startsWith('/api/ai-connections/openrouter/callback/')))) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return fail(res, 415, 'unsupported_media_type', 'Use application/json for API changes.');
     try {
       const db = getDb();
       const requestedPath = url.pathname.slice(API_PREFIX.length) || '/';
       // Public Area CRUD shares legacy storage and exactly the same access checks.
       const path = /^\/areas(?:\/[^/]+)?$/.test(requestedPath) ? requestedPath.replace(/^\/areas/, '/teams') : requestedPath;
+      deployment.throttleIdentity(req, path);
+      if (deployment.hosted && (path === '/identity/setup' || /^\/(workbench|change-reviews)(?:\/|$)/.test(path) || path.startsWith('/connections/'))) return fail(res, 403, 'host_capability_disabled', 'Host filesystem, terminal and shared CLI account management are disabled in public mode.');
       const actor = identity.resolve(req);
       Object.assign(changeContext.getStore(), { actor, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Rumbo' });
       const aiCallback = path.match(/^\/ai-connections\/openrouter\/callback\/([A-Za-z0-9_-]+)$/);
@@ -1321,6 +1336,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (path === '/ai-connections/huggingface/callback' && req.method === 'GET') {
         await aiConnections.hfComplete(url.searchParams.get('state'), url.searchParams.get('code'), actor, req.headers.host);
         res.statusCode = 303; res.setHeader('Location', '/#/connections'); res.setHeader('Cache-Control', 'no-store'); res.end(); return;
+      }
+      if (path === '/ai-connections/copilot/callback' && req.method === 'GET') {
+        await aiConnections.copilotOAuth.complete(url.searchParams.get('state'), url.searchParams.get('code'), actor, req.headers.host, url.searchParams.get('error'));
+        res.statusCode = 303; res.setHeader('Location', '/#/connections/copilot'); res.setHeader('Cache-Control', 'no-store'); res.setHeader('Referrer-Policy', 'no-referrer'); res.end(); return;
       }
       if (path.startsWith('/connection-platform/webhooks/') && req.method === 'POST') {
         await readBody(req);
@@ -1336,11 +1355,11 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const body = req.method === 'GET' ? {} : await readBody(req);
         if (['/identity/setup', '/identity/login', '/identity/accept'].includes(path) && req.method === 'POST') {
           const result = path.endsWith('/setup') ? await identity.setup(body, actor) : path.endsWith('/login') ? await identity.login(body) : await identity.accept(body);
-          return send(res, 200, { result: { user: result.user } }, { 'Set-Cookie': identity.cookie(result.token) });
+          return send(res, 200, { result: { user: result.user } }, { 'Set-Cookie': identity.cookie(result.token, deployment.hosted) });
         }
         if (!actor) return fail(res, 401, 'sign_in_required', 'Sign in to continue.');
         if (path === '/identity/sessions' && req.method === 'GET') return send(res, 200, { result: identity.sessions(actor) });
-        if (path === '/identity/logout' && req.method === 'POST') { identity.revoke(actor, actor.session_id || ''); return send(res, 200, { result: { signed_out: true } }, { 'Set-Cookie': identity.cookie('') }); }
+        if (path === '/identity/logout' && req.method === 'POST') { identity.revoke(actor, actor.session_id || ''); return send(res, 200, { result: { signed_out: true } }, { 'Set-Cookie': identity.cookie('', deployment.hosted) }); }
         if (path === '/identity/revoke' && req.method === 'POST') { identity.revoke(actor, body.session_id); return send(res, 200, { result: { revoked: true } }); }
         if (path === '/identity/invite' && req.method === 'POST') {
           governance.authorize(body.workspace_id, actor.id, 'members.manage');
@@ -1359,7 +1378,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       res.filterRumboData = data => {
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
         const filtered = access.filter(data, actor);
-        const enrichConnections = snapshot => { if (Array.isArray(snapshot?.connections)) snapshot.connections = snapshot.connections.map(connection => isScopedAiProvider(connection.provider) ? { ...connection, mode: connection.provider === 'copilot' ? 'local-acp' : 'browser-api', workspace_states: Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'connections.view') ? [[workspace.id, providerState(connection.provider, workspace.id, actor).state]] : [])) } : connection); };
+        const enrichConnections = snapshot => { if (Array.isArray(snapshot?.connections)) snapshot.connections = snapshot.connections.map(connection => isScopedAiProvider(connection.provider) ? { ...connection, metadata: {}, mode: connection.provider === 'copilot' ? 'personal-runtime' : 'browser-api', workspace_states: Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'connections.view') ? [[workspace.id, providerState(connection.provider, workspace.id, actor).state]] : [])) } : deployment.hosted && ['codex', 'claude'].includes(connection.provider) ? { ...connection, state: 'not_connected', account_label: null, metadata: {}, mode: 'personal_runner_required' } : connection); };
         enrichConnections(filtered);
         enrichConnections(filtered.bootstrap);
         return filtered;
@@ -1382,17 +1401,28 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await scheduledWorkRoute({ service: scheduledWork, req, res, path, url, body, actor, send })) return;
       if (path === '/ai-connections' && req.method === 'GET') {
         const workspaceId = url.searchParams.get('workspace_id');
-        return send(res, 200, { result: { ...await aiConnections.list(workspaceId, actor), copilot: copilotBridge.status(workspaceId, actor) } });
+        return send(res, 200, { result: { ...await aiConnections.list(workspaceId, actor), copilot: providerState('copilot', workspaceId, actor), copilot_oauth_setup: aiConnections.copilotOAuth.setup(), deployment: { mode: deployment.hosted ? 'public' : 'local', origin: deployment.origin, local_runners_available: !deployment.hosted } } });
+      }
+      if (path === '/ai-connections/copilot/oauth/start' && req.method === 'POST') {
+        governance.authorize(body.workspace_id, actor.id, 'connections.use');
+        return send(res, 200, { result: await aiConnections.copilotOAuth.start(body, actor, req.headers.host) });
       }
       const copilotOperation = path.match(/^\/ai-connections\/copilot\/(start|models|check|test|disconnect|status)$/);
       if (copilotOperation) {
         const operation = copilotOperation[1], workspaceId = req.method === 'GET' ? url.searchParams.get('workspace_id') : body.workspace_id;
         // Personal account binding, not administration of a shared provider.
         governance.authorize(workspaceId, actor.id, req.method === 'GET' ? 'connections.view' : 'connections.use');
-        if (req.method === 'GET' && operation === 'status') return send(res, 200, { result: copilotBridge.status(workspaceId, actor) });
-        if (req.method === 'GET' && operation === 'models') return send(res, 200, { result: await copilotBridge.models(workspaceId, actor) });
+        const browserAccount = aiConnections.copilotOAuth.status(workspaceId, actor);
+        if (req.method === 'GET' && operation === 'status') return send(res, 200, { result: providerState('copilot', workspaceId, actor) });
+        if (req.method === 'GET' && operation === 'models') return send(res, 200, { result: browserAccount ? await hostedCopilot.models(workspaceId, actor) : deployment.hosted ? [] : await copilotBridge.models(workspaceId, actor) });
         if (req.method === 'POST') {
-          const result = operation === 'start' ? copilotBridge.login(workspaceId, actor) : operation === 'check' ? await copilotBridge.check(workspaceId, actor) : operation === 'test' ? await copilotBridge.test(workspaceId, actor, body.model || '') : operation === 'disconnect' ? copilotBridge.disconnect(workspaceId, actor) : null;
+          if (deployment.hosted && !browserAccount && operation !== 'disconnect') return fail(res, 409, 'browser_authorization_required', 'Use Rumbo’s registered GitHub browser authorization. Shared host CLI sign-in is disabled.');
+          if (browserAccount && operation === 'start') return fail(res, 409, 'connection_method_conflict', 'Disconnect browser authorization before selecting the local CLI method.');
+          const result = operation === 'start' ? copilotBridge.login(workspaceId, actor)
+            : operation === 'check' ? browserAccount ? await aiConnections.copilotOAuth.check(workspaceId, actor) : await copilotBridge.check(workspaceId, actor)
+            : operation === 'test' ? browserAccount ? { ...await hostedCopilot.execute({ workspaceId, actor, model: body.model || '', prompt: 'Reply with exactly OK.', verification: true, timeoutMs: 60000 }), reply: undefined } : await copilotBridge.test(workspaceId, actor, body.model || '')
+            : operation === 'disconnect' ? await aiConnections.copilotOAuth.disconnect(workspaceId, actor) : null;
+          if (browserAccount && operation === 'test') result.reply = result.text;
           if (result) return send(res, 200, { result });
         }
         return fail(res, 405, 'method_not_allowed', 'Unsupported Copilot request method.');
@@ -1546,7 +1576,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await featureRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (req.method === 'POST' && path === '/import') return send(res, 201, { result: importWorkspace(db, await readBody(req, 25_000_000), TABLE_CONFIG, normalizeInput, dbValue, validateCustomFields), bootstrap: snapshot(db) });
       if (req.method === 'GET' && (path === '/bootstrap' || path === '/snapshot')) return send(res, 200, snapshot(db));
-      if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true, localOnly: true, database: 'ready' });
+      if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true, localOnly: !deployment.hosted, database: 'ready' });
       if (req.method === 'GET' && path === '/export') {
         const data = snapshot(db);
         const workspaceId = url.searchParams.get('workspace_id');
@@ -1771,6 +1801,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
     integration.close();
     copilotBridge.close();
+    hostedCopilot.close(); aiConnections.close();
     connectionPlatform.close();
     workbench.close();
     liveRuns.clear();
@@ -1782,6 +1813,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   function reset() {
     const directory = store.directory;
     copilotBridge.close();
+    hostedCopilot.close(); aiConnections.close();
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
     connectionPlatform.close();
     workbench.close();
