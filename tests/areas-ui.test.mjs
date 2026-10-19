@@ -37,7 +37,7 @@ test('Area editable fields never turn arbitrary text into permission grants', ()
   assert.deepEqual(AREA_READ_TOOLS, ['search_workspace', 'get_area_context', 'get_project_context', 'get_route', 'search_knowledge', 'read_document']);
   const source = readFileSync(new URL('../src/components/AreaSettings.jsx', import.meta.url), 'utf8');
   assert.match(source, /body: areaSettingsPatch\(settings, form\)/);
-  assert.match(source, /await rumboActions.refresh\(\)/);
+  assert.match(source, /await talvoriActions.refresh\(\)/);
   assert.match(source, /item.workspace_id === area.workspace_id/);
   assert.match(source, /useUnsavedUpdate\(dirty, busy\)/);
   assert.doesNotMatch(source, /startSession\(|startRun\(/);

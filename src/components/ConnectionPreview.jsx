@@ -6,7 +6,7 @@ export function ConnectionPreview({ provider, preview }) {
   const { kind, title, lines, note } = preview;
   return <div className="cp-preview" data-preview-kind={kind}>
     <div className="cp-preview-window" role="img" aria-label={`Example: ${title}. ${lines.join('. ')}. ${note}`}>
-      <div className="cp-preview-chrome" aria-hidden="true"><ServiceLogo name={provider.id} /><span>{provider.name}</span><small>Rumbo</small></div>
+      <div className="cp-preview-chrome" aria-hidden="true"><ServiceLogo name={provider.id} /><span>{provider.name}</span><small>Talvori</small></div>
       <div className="cp-preview-content" aria-hidden="true">
         <div className="cp-preview-title">{title}</div>
         {kind === 'code' ? <div className="cp-preview-code-lines">{lines.map((line, index) => <div key={index}><span>{index + 1}</span><code>{line}</code></div>)}</div>

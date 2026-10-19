@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { rumboApi } from "./api.js";
-import { createRumboStore } from "./rumboStore.js";
+import { talvoriApi } from "./api.js";
+import { createTalvoriStore } from "./talvoriStore.js";
 
-const store = createRumboStore(rumboApi);
+const store = createTalvoriStore(talvoriApi);
 
-export const rumboActions = store.actions;
-export const refreshRumbo = rumboActions.refresh;
-export const refreshEvents = rumboActions.refreshEvents;
+export const talvoriActions = store.actions;
+export const refreshTalvori = talvoriActions.refresh;
+export const refreshEvents = talvoriActions.refreshEvents;
 
 const identitySelector = (state) => state;
 const dataSelector = (state) => state.data;
@@ -22,7 +22,7 @@ function shallowEqual(left, right) {
 }
 
 /** Subscribe to the complete store or a stable selected slice. */
-export function useRumbo(selector = identitySelector, isEqual = Object.is) {
+export function useTalvori(selector = identitySelector, isEqual = Object.is) {
   const selectorRef = useRef(selector);
   const equalityRef = useRef(isEqual);
   const cacheRef = useRef({ hasValue: false, storeSnapshot: null, selector: null, selected: null });
@@ -46,10 +46,10 @@ export function useRumbo(selector = identitySelector, isEqual = Object.is) {
 
   const selected = useSyncExternalStore(store.subscribe, getSelectedSnapshot, getSelectedSnapshot);
   useEffect(() => {
-    if (!store.getSnapshot().data) void refreshRumbo().catch(() => {});
+    if (!store.getSnapshot().data) void refreshTalvori().catch(() => {});
   }, []);
   return selected;
 }
 
-export function useRumboData() { return useRumbo(dataSelector); }
-export function useRumboStatus() { return useRumbo(statusSelector, shallowEqual); }
+export function useTalvoriData() { return useTalvori(dataSelector); }
+export function useTalvoriStatus() { return useTalvori(statusSelector, shallowEqual); }

@@ -4,8 +4,8 @@ import { Copy, GitFork, RotateCw, Pause, Play, Pencil } from './icons.jsx';
 import { DateField } from './DateField.jsx';
 import { Form } from './Form.jsx';
 import { apiRequest } from '../data/api.js';
-import { refreshRumbo } from '../data/useRumbo.js';
-async function request(path,body,method='POST') { const result=await apiRequest(`/api/route-tools/${path}`,{method,body});await refreshRumbo().catch(()=>{});return result.result; }
+import { refreshTalvori } from '../data/useTalvori.js';
+async function request(path,body,method='POST') { const result=await apiRequest(`/api/route-tools/${path}`,{method,body});await refreshTalvori().catch(()=>{});return result.result; }
 export function RouteTools({task}) {
   const [mode,setMode]=useState(null);
   return <section className="workflow-section"><h3>Reuse this work</h3><div className="route-tools"><Button icon={Copy} onClick={()=>setMode('duplicate')}>Duplicate route</Button><Button icon={GitFork} onClick={()=>setMode('split')}>Split into routes</Button><Button icon={RotateCw} onClick={()=>setMode('schedule')}>Repeat route</Button></div><p className="workflow-note">New routes start ready with unchecked acceptance criteria. No agents are started, and the source stays unchanged.</p>{mode ? <RouteToolDialog task={task} mode={mode} onClose={()=>setMode(null)} /> : null}</section>;

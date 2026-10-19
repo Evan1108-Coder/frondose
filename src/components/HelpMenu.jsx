@@ -4,6 +4,7 @@ import { BookOpen, Keyboard, PanelLeft, Settings } from './icons.jsx';
 import { Dialog, useApp } from '../ui.jsx';
 import { currentMotionPreference } from '../lib/motion.js';
 import './help-menu.css';
+import { recentProductUpdates } from '../lib/product-updates.js';
 
 export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
   const { navigate, customizeSidebar, showShortcuts } = useApp();
@@ -63,7 +64,6 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
     ['What the tools mean', BookOpen, () => setTermsOpen(true)],
     ['Sidebar customization', PanelLeft, customizeSidebar],
     ['Keyboard shortcuts', Keyboard, showShortcuts],
-    ['Settings', Settings, () => go('settings')],
   ];
   return <>
     <button type="button" ref={trigger} className="rumbo-help-trigger" aria-label="Help and resources" aria-haspopup="menu" aria-controls={open ? id : undefined} aria-expanded={open} onClick={() => { initialItem.current = 'first'; if (open) close(); else { window.clearTimeout(closeTimer.current); setClosing(false); setOpen(true); } }} onKeyDown={event => {
@@ -86,11 +86,15 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
         if (match) { event.preventDefault(); match.focus(); }
       }
     }}>
-      <div className="rumbo-help-menu-label">Rumbo resources</div>
+      <div className="rumbo-help-menu-label">Talvori Resources</div>
       {items.map(([label, Icon, action]) => <button type="button" role="menuitem" key={label} onClick={() => run(action)}><Icon /><span>{label}</span></button>)}
+      <div className="rumbo-help-menu-label">Updates</div>
+      {recentProductUpdates().map(update => <button type="button" role="menuitem" key={update.id} onClick={() => run(() => go('docs', update.articleId))}><BookOpen /><span>{update.title}</span></button>)}
+      <div role="separator" className="menu-divider" />
+      <button type="button" role="menuitem" onClick={() => run(() => go('settings'))}><Settings /><span>Settings</span></button>
     </div>, document.body) : null}
-    {termsOpen ? <Dialog title="What the tools mean" subtitle="A short map of Rumbo’s work surfaces." onClose={() => setTermsOpen(false)}><dl className="rumbo-terms">
-      <div><dt>Rumbo Agent</dt><dd>Your general assistant conversation. It uses a connected AI provider only after you review and send a request.</dd></div>
+    {termsOpen ? <Dialog title="What the tools mean" subtitle="A short map of Talvori’s work surfaces." onClose={() => setTermsOpen(false)}><dl className="rumbo-terms">
+      <div><dt>Talvori</dt><dd>Your general assistant conversation. It uses a connected AI provider only after you review and send a request.</dd></div>
       <div><dt>Agent profiles</dt><dd>Reusable specialist roles with their own instructions and defaults. Several can share one provider connection.</dd></div>
       <div><dt>Workflows</dt><dd>Bounded sequences of agent, skill, tool, and human-decision steps. A prepared workflow is not a running one.</dd></div>
       <div><dt>Coordination</dt><dd>Plans, handoffs, requests, and queues for deciding who or what should act next.</dd></div>

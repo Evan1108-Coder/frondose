@@ -2,7 +2,7 @@ import { createActivityPolicy } from './activity-policy.mjs';
 import { areaReferenceReadable } from './area-service.mjs';
 import { skillVisible } from './skills-service.mjs';
 import { agentProfileReferenceReadable } from './agent-profiles.mjs';
-import { captureSourceAccess, assertSourceAccess, assertRumboSourceReferences } from './context-source-access.mjs';
+import { captureSourceAccess, assertSourceAccess, assertTalvoriSourceReferences } from './context-source-access.mjs';
 import * as manualWorkflows from './manual-workflow-service.mjs';
 import { routeGraph, routeScope, inspectRouteGraph, relatedRouteNodes } from './route-hierarchy.mjs';
 const failure = message => { throw Object.assign(new Error(message), { statusCode: 403, code: 'access_denied' }); };
@@ -115,13 +115,13 @@ export function createAccessBoundary({ db, governance }) {
       if (target) { item = target; table = targetTable; }
       collection = { project: 'projects', route: 'tasks', request: 'workspace-items', document: 'documents', output: 'documents', milestone: 'projects', chat: 'chats' }[targetType] || 'activity';
     }
-    assertRumboSourceReferences(db, item, table, actor, allowed);
+    assertTalvoriSourceReferences(db, item, table, actor, allowed);
     const workspaceIds = new Set([workspaceFor(item, table), body.workspace_id, url.searchParams.get('workspace_id')].filter(Boolean));
     const scopes = [];
     for (const [key, refTable] of [['project_id', 'projects'], ['team_id', 'teams'], ['task_id', 'tasks'], ['chat_id', 'chats'], ['agent_id', 'agents'], ['run_id', 'runs']]) {
       const refId = body[key] || url.searchParams.get(key);
       const ref = row(refTable, refId);
-      if (ref) assertRumboSourceReferences(db, ref, refTable, actor, allowed);
+      if (ref) assertTalvoriSourceReferences(db, ref, refTable, actor, allowed);
       if (ref?.workspace_id) workspaceIds.add(ref.workspace_id);
       if (ref) scopes.push(scope(ref, refTable));
     }
@@ -182,7 +182,7 @@ export function createAccessBoundary({ db, governance }) {
   }
   function filter(data, actor, options = {}) {
     if (!data || !actor) return data;
-    if (data.format === 'rumbo.workspace') options = { ...options, exporting: true };
+    if (['talvori.workspace', 'rumbo.workspace'].includes(data.format)) options = { ...options, exporting: true };
     if (Array.isArray(data)) return filter({ result: data }, actor, options).result;
     if (typeof data !== 'object') return data;
     const result = { ...data };
@@ -235,7 +235,7 @@ export function createAccessBoundary({ db, governance }) {
       result[key] = value.filter(item => {
         if (!item || typeof item !== 'object') return true;
         const actualTable = collectionTable(key, item);
-        try { assertRumboSourceReferences(db, item, actualTable, actor, allowed); } catch { return false; }
+        try { assertTalvoriSourceReferences(db, item, actualTable, actor, allowed); } catch { return false; }
         const ws = key === 'workspaces' ? item.id : workspaceFor(item, actualTable);
         if (ws && !accessible.has(ws)) return false;
         if (actualTable === 'context_snapshots' || item.entity_type === 'context_snapshots') {

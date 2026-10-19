@@ -8,7 +8,7 @@ export function IdentitySettings() {
   const load = async () => { const response = await apiRequest('/api/identity'); setIdentity(response.result); if (response.result.configured) setSessions((await apiRequest('/api/identity/sessions')).result); };
   useEffect(() => { load().catch(setError); }, []);
   const run = async fn => { setBusy(true); setError(null); try { await fn(); await load(); } catch (failure) { setError(failure); } finally { setBusy(false); } };
-  return <><header className="settings-heading"><div><h1>Account & sessions</h1><p>Manage sign-in for this Rumbo installation and end sessions you no longer use.</p></div></header><ErrorMessage error={error} />
+  return <><header className="settings-heading"><div><h1>Account & sessions</h1><p>Manage sign-in for this Talvori installation and end sessions you no longer use.</p></div></header><ErrorMessage error={error} />
     {identity && !identity.configured ? <section className="settings-panel identity-setup account-settings-panel"><h2>Set up your account</h2><p>This installation currently uses its development owner. Setting a password turns on sign-in for all browsers. Keep your password available; email recovery is not configured.</p><form onSubmit={e => { e.preventDefault(); setConfirm(true); }}>
       <Field label="Your name"><input required maxLength={160} value={name} onChange={e => setName(e.target.value)} autoComplete="name" /></Field>
       <Field label="Email"><input required type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></Field>

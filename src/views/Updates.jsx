@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityComposer, ActivityEntry, ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ArrowLeft, Plus, RotateCw, MessageSquareText } from '../components/icons.jsx';
 import { Button, Dialog, Empty, ErrorMessage, PageHeader, SearchField, Select, useApp } from '../ui.jsx';
-import { rumboApi } from '../data/api.js';
+import { talvoriApi } from '../data/api.js';
 import { filteredActivityThreads, UPDATE_TYPES } from '../lib/activity.js';
 import { insertSavedUpdates, mergeUpdatePages, UPDATE_HEALTH, UPDATE_TARGETS, updateTargetLink, updateTargets } from '../lib/updates.js';
 import './updates.css';
@@ -46,7 +46,7 @@ function UpdateResults({ workspaceId, filters, savedEntries }) {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError(null);
-    rumboApi.listActivityFeed({ workspaceId, ...filters, cursor, limit: 30 }, { signal: controller.signal }).then(response => {
+    talvoriApi.listActivityFeed({ workspaceId, ...filters, cursor, limit: 30 }, { signal: controller.signal }).then(response => {
       if (controller.signal.aborted) return;
       setEntries(current => mergeUpdatePages(current, response.result.items));
       setNext(response.result.next_cursor ?? null);
@@ -69,7 +69,7 @@ function FeedConversation({ entry, workspaceId }) {
     controller.current?.abort(); const request = new AbortController(); controller.current = request;
     setLoading(true); setError(null);
     try {
-      const response = await rumboApi.listActivity({ workspaceId, targetType: entry.target_type, targetId: entry.target_id, includeArchived: true }, { signal: request.signal });
+      const response = await talvoriApi.listActivity({ workspaceId, targetType: entry.target_type, targetId: entry.target_id, includeArchived: true }, { signal: request.signal });
       if (!request.signal.aborted) { setRecords(response.result); setLoaded(true); }
     } catch (cause) { if (!request.signal.aborted) setError(cause); }
     finally { if (!request.signal.aborted) setLoading(false); }
@@ -88,7 +88,7 @@ function UpdateDetail({ workspaceId, id }) {
   const [entry, setEntry] = useState(null), [error, setError] = useState(null), [loading, setLoading] = useState(true), [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
-    rumboApi.getActivity(id, { workspaceId }, { signal: controller.signal }).then(response => { if (!controller.signal.aborted) setEntry(response.result); }).catch(cause => { if (!controller.signal.aborted) setError(cause); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    talvoriApi.getActivity(id, { workspaceId }, { signal: controller.signal }).then(response => { if (!controller.signal.aborted) setEntry(response.result); }).catch(cause => { if (!controller.signal.aborted) setError(cause); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [workspaceId, id, retry]);
   const link = entry ? updateTargetLink(entry, data) : null;

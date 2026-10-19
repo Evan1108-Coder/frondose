@@ -3,7 +3,7 @@ import { Button, IconButton, ProviderIcon, Status, useApp } from '../ui.jsx';
 import { DocumentContent } from './DocumentContent.jsx';
 import { download, initials, relative, val } from '../lib/model.js';
 import { ACTIVE_CHAT_RUNS } from '../lib/chats.js';
-import { rumboActions } from '../data/useRumbo.js';
+import { talvoriActions } from '../data/useTalvori.js';
 import { useEffect, useRef, useState } from 'react';
 import { Check } from './icons.jsx';
 import { ReactionGlyph } from './ReactionGlyph.jsx';
@@ -25,7 +25,7 @@ export function ChatRunStatus({ run, onRetry, retrying }) {
   const configFailure = /invalid transport|config\.toml|tool configuration/i.test(summary);
   const failed = ['failed', 'interrupted'].includes(run.status);
   const failure = configFailure ? 'The provider could not load its tool configuration. Your message is saved.' : /403|forbidden/i.test(summary) ? 'The provider refused the connection (403). Your message is saved; check provider access before retrying.' : 'The agent could not finish this reply. Your message is saved.';
-  const activity = events.filter(item => ['agent.message', 'agent.progress', 'command.output', 'files.changed', 'context.prepared', 'provider.ready'].includes(item.type)).slice(-40).map(item => ({ ...item, summary: item.summary?.replace(/```rumbo-actions\s*\n[\s\S]*?```/g, 'Rumbo actions prepared for your review.') }));
+  const activity = events.filter(item => ['agent.message', 'agent.progress', 'command.output', 'files.changed', 'context.prepared', 'provider.ready'].includes(item.type)).slice(-40).map(item => ({ ...item, summary: item.summary?.replace(/```(?:talvori|rumbo)-actions\s*\n[\s\S]*?```/g, 'Talvori actions prepared for your review.') }));
   const started = Date.parse(val(run, 'started_at') || val(run, 'created_at'));
   const elapsed = Number.isFinite(started) ? Math.max(0, Math.round(((Date.parse(val(run, 'finished_at')) || clock) - started) / 1000)) : 0;
   return <div className={`chat-run-status ${active ? 'is-active' : ''}`}>
@@ -37,7 +37,7 @@ export function ChatRunStatus({ run, onRetry, retrying }) {
     {!active ? <ReviewPanel targetType="run" targetId={run.id} projectId={val(run, 'project_id')} /> : null}
     <div className="chat-run-actions">
       <Button variant="ghost" icon={ExternalLink} onClick={() => navigate('work', run.id)}>View session</Button>
-      {active ? <Button variant="ghost" icon={Square} onClick={() => perform(() => rumboActions.stopRun(run.id), 'Session stopped')}>Stop</Button> : null}
+      {active ? <Button variant="ghost" icon={Square} onClick={() => perform(() => talvoriActions.stopRun(run.id), 'Session stopped')}>Stop</Button> : null}
       {['failed', 'stopped', 'cancelled', 'interrupted'].includes(run.status) && onRetry ? <Button variant="ghost" busy={retrying} icon={RotateCw} onClick={onRetry}>Retry reply</Button> : null}
     </div>
   </div>;

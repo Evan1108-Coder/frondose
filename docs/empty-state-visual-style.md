@@ -1,4 +1,4 @@
-# Rumbo empty-state visual style
+# Talvori empty-state visual style
 
 ## Purpose
 
@@ -19,4 +19,4 @@ The four user-supplied September 26 references showed monochrome isolated object
 
 ## Maintenance
 
-When adding an empty-state kind, generate a new image in this same visual family, add its canonical key and asset test, then inspect dark/light and compact layouts. After artwork changes, refresh screenshots from the real frontend, including the Rumbo Landing embedded product demo where affected. Do not hand-paint artwork into screenshots.
+When adding an empty-state kind, generate a new image in this same visual family, add its canonical key and asset test, then inspect dark/light and compact layouts. After artwork changes, refresh screenshots from the real frontend, including the Talvori Landing embedded product demo where affected. Do not hand-paint artwork into screenshots.

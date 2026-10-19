@@ -1,3 +1,4 @@
+import { talvoriEnvironment } from './brand-config.mjs';
 import { execFile, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, renameSync, chmodSync, statSync, realpathSync } from 'node:fs';
 import { join, isAbsolute, parse as parsePath, relative } from 'node:path';
@@ -27,6 +28,7 @@ async function execute(command, args, options = {}) {
 }
 
 export function createIntegrationService({ dataDir, env = process.env, execute: runCommand = execute, spawnProcess = spawn, fetchImpl = fetch, onConnectionChange = () => {}, pauseExternalConnections = false } = {}) {
+  env = talvoriEnvironment(env);
   if (!dataDir) throw new Error('Integration storage directory is required.');
   const secretPath = join(dataDir, 'integrations.private.json');
   let saved = {};
@@ -55,13 +57,16 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
   }
   const commandEnv = (provider, nativeToolBridge = null) => {
     const result = { ...env, NO_COLOR: '1', FORCE_COLOR: '0', GH_PROMPT_DISABLED: '1' };
+    // Operator secrets and stale capabilities never belong to a child runtime,
+    // including values supplied under the pre-rebrand environment aliases.
+    for (const name of Object.keys(result)) if (/^(?:TALVORI|RUMBO)_/.test(name)) delete result[name];
     if (provider !== 'github') { delete result.GH_TOKEN; delete result.GITHUB_TOKEN; }
     if (provider !== 'codex') { delete result.OPENAI_API_KEY; delete result.CODEX_API_KEY; }
     if (provider !== 'claude') { delete result.ANTHROPIC_API_KEY; delete result.CLAUDE_CODE_OAUTH_TOKEN; }
-    delete result.RUMBO_GOOGLE_CLIENT_ID; delete result.RUMBO_GOOGLE_CLIENT_SECRET;
+    delete result.TALVORI_GOOGLE_CLIENT_ID; delete result.TALVORI_GOOGLE_CLIENT_SECRET;
     // Never inherit a stale bridge capability from the parent shell. A validated
     // per-run descriptor is the only source for these two variables.
-    delete result.RUMBO_NATIVE_TOOL_SOCKET; delete result.RUMBO_NATIVE_TOOL_CAPABILITY;
+    delete result.TALVORI_NATIVE_TOOL_SOCKET; delete result.TALVORI_NATIVE_TOOL_CAPABILITY;
     if (nativeToolBridge) Object.assign(result, nativeToolBridge.env);
     return result;
   };
@@ -73,7 +78,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (JSON.stringify(keys) !== JSON.stringify(['args', 'command', 'enabledTools', 'env', 'name', 'required', 'transport'])) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
     const envKeys = value.env && typeof value.env === 'object' && !Array.isArray(value.env) ? Object.keys(value.env).sort() : [];
     const tools = value.enabledTools;
-    if (value.name !== 'rumbo' || value.transport !== 'stdio' || value.command !== process.execPath || value.required !== true || !Array.isArray(value.args) || value.args.length !== 1 || value.args[0] !== NATIVE_AGENT_TOOL_STDIO_PATH || JSON.stringify(envKeys) !== JSON.stringify(['RUMBO_NATIVE_TOOL_CAPABILITY', 'RUMBO_NATIVE_TOOL_SOCKET']) || typeof value.env.RUMBO_NATIVE_TOOL_SOCKET !== 'string' || !isAbsolute(value.env.RUMBO_NATIVE_TOOL_SOCKET) || value.env.RUMBO_NATIVE_TOOL_SOCKET.length > 500 || !/^[A-Za-z0-9_-]{43}$/.test(value.env.RUMBO_NATIVE_TOOL_CAPABILITY || '') || !Array.isArray(tools) || tools.length > 64 || new Set(tools).size !== tools.length || tools.some((name) => typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/.test(name))) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
+    if (value.name !== 'talvori' || value.transport !== 'stdio' || value.command !== process.execPath || value.required !== true || !Array.isArray(value.args) || value.args.length !== 1 || value.args[0] !== NATIVE_AGENT_TOOL_STDIO_PATH || JSON.stringify(envKeys) !== JSON.stringify(['TALVORI_NATIVE_TOOL_CAPABILITY', 'TALVORI_NATIVE_TOOL_SOCKET']) || typeof value.env.TALVORI_NATIVE_TOOL_SOCKET !== 'string' || !isAbsolute(value.env.TALVORI_NATIVE_TOOL_SOCKET) || value.env.TALVORI_NATIVE_TOOL_SOCKET.length > 500 || !/^[A-Za-z0-9_-]{43}$/.test(value.env.TALVORI_NATIVE_TOOL_CAPABILITY || '') || !Array.isArray(tools) || tools.length > 64 || new Set(tools).size !== tools.length || tools.some((name) => typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/.test(name))) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
     return value;
   }
   function persist() {
@@ -169,7 +174,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       if (code === 0) { try { await authStatus(provider); } catch (failure) { auth.output = failure.message; auth.status = 'failed'; update(provider, { state: 'not_connected' }); } }
       else update(provider, { state: 'not_connected' });
     });
-    return { connection: update(provider, { state: 'connecting', method: 'existing', token: undefined }), message: 'Complete sign-in in the provider window. Rumbo updates when sign-in finishes.' };
+    return { connection: update(provider, { state: 'connecting', method: 'existing', token: undefined }), message: 'Complete sign-in in the provider window. Talvori updates when sign-in finishes.' };
   }
   function beginGoogleAuth(origin) {
     const descriptor = providerSetup('google-drive', { env, origin });
@@ -180,7 +185,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     for (const [key, item] of oauthStates) if (item.expires < Date.now()) oauthStates.delete(key);
     oauthStates.set(state, { verifier, callbackUrl: descriptor.callbackUrl, expires: Date.now() + 10 * 60_000 });
     const authorization = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    authorization.search = new URLSearchParams({ client_id: env.RUMBO_GOOGLE_CLIENT_ID, redirect_uri: descriptor.callbackUrl, response_type: 'code', scope: descriptor.scopes.join(' '), state, access_type: 'offline', prompt: 'consent', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
+    authorization.search = new URLSearchParams({ client_id: env.TALVORI_GOOGLE_CLIENT_ID, redirect_uri: descriptor.callbackUrl, response_type: 'code', scope: descriptor.scopes.join(' '), state, access_type: 'offline', prompt: 'consent', code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
     return { authorizationUrl: authorization.href, connection: update('google-drive', { state: 'connecting', method: 'browser' }) };
   }
   async function completeGoogleAuth({ code, state, origin }) {
@@ -188,7 +193,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     const pending = oauthStates.get(state); oauthStates.delete(state);
     if (!pending || pending.expires < Date.now() || pending.callbackUrl !== new URL('/api/auth/google-drive/callback', origin).href) throw error('invalid_oauth_state', 'This sign-in link expired or is invalid. Start again from Connections.');
     if (typeof code !== 'string' || !code) { update('google-drive', { state: 'not_connected' }); throw error('oauth_denied', 'Google sign-in was not completed. Try again from Connections.'); }
-    const tokens = await requestJson('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.RUMBO_GOOGLE_CLIENT_ID, client_secret: env.RUMBO_GOOGLE_CLIENT_SECRET, code, grant_type: 'authorization_code', redirect_uri: pending.callbackUrl, code_verifier: pending.verifier }).toString() });
+    const tokens = await requestJson('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.TALVORI_GOOGLE_CLIENT_ID, client_secret: env.TALVORI_GOOGLE_CLIENT_SECRET, code, grant_type: 'authorization_code', redirect_uri: pending.callbackUrl, code_verifier: pending.verifier }).toString() });
     if (!tokens.access_token) throw error('invalid_provider_response', 'Google did not return an access token.', 502);
     return update('google-drive', { state: 'connected', method: 'browser', accessToken: tokens.access_token, refreshToken: tokens.refresh_token || saved['google-drive']?.refreshToken, expiresAt: Date.now() + (Number(tokens.expires_in) || 3600) * 1000, accountLabel: 'Google Drive account', checkedAt: now() });
   }
@@ -197,7 +202,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (!credentials?.accessToken) throw error('not_connected', 'Connect Google Drive first.', 409);
     if (credentials.expiresAt > Date.now() + 60_000) return credentials.accessToken;
     if (!credentials.refreshToken) throw error('session_expired', 'Google sign-in expired. Reconnect Google Drive.', 409);
-    const tokens = await requestJson('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.RUMBO_GOOGLE_CLIENT_ID, client_secret: env.RUMBO_GOOGLE_CLIENT_SECRET, refresh_token: credentials.refreshToken, grant_type: 'refresh_token' }).toString() });
+    const tokens = await requestJson('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: env.TALVORI_GOOGLE_CLIENT_ID, client_secret: env.TALVORI_GOOGLE_CLIENT_SECRET, refresh_token: credentials.refreshToken, grant_type: 'refresh_token' }).toString() });
     if (!tokens.access_token) throw error('session_expired', 'Google sign-in expired. Reconnect Google Drive.', 409);
     update('google-drive', { accessToken: tokens.access_token, expiresAt: Date.now() + (Number(tokens.expires_in) || 3600) * 1000 }); return tokens.access_token;
   }
@@ -235,7 +240,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (workMode !== 'conversation') return startRunInDirectory(request, callbacks);
     if ((request.permissionMode ?? 'read-only') !== 'read-only' || request.cwd || request.allowedRoot) throw error('invalid_permissions', 'General chat does not use a project folder or editing permissions.');
     // CLIs still need an OS working directory. Never substitute the user's home,
-    // Rumbo's code checkout, or .rumbo (which contains credentials and records).
+    // Talvori's code checkout, or .rumbo (which contains credentials and records).
     const scratch = mkdtempSync(join(tmpdir(), 'rumbo-conversation-'));
     let cleaned = false;
     const cleanup = () => { if (!cleaned) { cleaned = true; rmSync(scratch, { recursive: true, force: true }); } };
@@ -281,10 +286,10 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       // Disable each inherited MCP server explicitly because empty tables can merge with lower layers.
       const check = await runCommand('codex', [...codexOverrides, 'mcp', 'list', '--json'], { cwd, env: commandEnv(provider) });
       const servers = parse(check.stdout, null);
-      if (check.code !== 0 || !Array.isArray(servers)) throw error('provider_configuration', 'Rumbo could not verify the Codex tool configuration. Update Codex CLI and try again.', 409);
+      if (check.code !== 0 || !Array.isArray(servers)) throw error('provider_configuration', 'Talvori could not verify the Codex tool configuration. Update Codex CLI and try again.', 409);
       for (const server of servers) {
-        if (typeof server.name !== 'string' || server.name.length > 200 || /[\u0000-\u001f]/.test(server.name)) throw error('provider_configuration', 'A Codex tool server has an unsupported name. Rename it before running through Rumbo.', 409);
-        if (nativeToolBridge && server.name === nativeToolBridge.name) throw error('provider_configuration', 'The reserved Rumbo tool server name is already configured. Rename that server before starting this run.', 409);
+        if (typeof server.name !== 'string' || server.name.length > 200 || /[\u0000-\u001f]/.test(server.name)) throw error('provider_configuration', 'A Codex tool server has an unsupported name. Rename it before running through Talvori.', 409);
+        if (nativeToolBridge && server.name === nativeToolBridge.name) throw error('provider_configuration', 'The reserved Talvori tool server name is already configured. Rename that server before starting this run.', 409);
         // General chat ignores user config. An enabled-only override would
         // recreate an invalid transportless entry. Supply a valid, disabled
         // stdio definition instead, so even names discovered in system config
@@ -294,24 +299,24 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
           : `mcp_servers.${JSON.stringify(server.name)}.enabled=false`);
       }
       if (nativeToolBridge) codexOverrides.push(...[
-        `mcp_servers.rumbo.command=${JSON.stringify(nativeToolBridge.command)}`,
-        `mcp_servers.rumbo.args=${JSON.stringify(nativeToolBridge.args)}`,
-        'mcp_servers.rumbo.env_vars=["RUMBO_NATIVE_TOOL_SOCKET","RUMBO_NATIVE_TOOL_CAPABILITY"]',
-        'mcp_servers.rumbo.enabled=true',
-        `mcp_servers.rumbo.enabled_tools=${JSON.stringify(nativeToolBridge.enabledTools)}`,
-        'mcp_servers.rumbo.required=true',
+        `mcp_servers.talvori.command=${JSON.stringify(nativeToolBridge.command)}`,
+        `mcp_servers.talvori.args=${JSON.stringify(nativeToolBridge.args)}`,
+        'mcp_servers.talvori.env_vars=["TALVORI_NATIVE_TOOL_SOCKET","TALVORI_NATIVE_TOOL_CAPABILITY"]',
+        'mcp_servers.talvori.enabled=true',
+        `mcp_servers.talvori.enabled_tools=${JSON.stringify(nativeToolBridge.enabledTools)}`,
+        'mcp_servers.talvori.required=true',
       ].flatMap((value) => ['-c', value]));
     }
-    const claudeConfig = nativeToolBridge ? JSON.stringify({ mcpServers: { rumbo: { type: 'stdio', command: nativeToolBridge.command, args: nativeToolBridge.args } } }) : '{"mcpServers":{}}';
+    const claudeConfig = nativeToolBridge ? JSON.stringify({ mcpServers: { talvori: { type: 'stdio', command: nativeToolBridge.command, args: nativeToolBridge.args } } }) : '{"mcpServers":{}}';
     const claudeMcpArgs = nativeToolBridge
-      ? nativeToolBridge.enabledTools.length ? ['--allowedTools', ...nativeToolBridge.enabledTools.map((name) => `mcp__rumbo__${name}`)] : []
+      ? nativeToolBridge.enabledTools.length ? ['--allowedTools', ...nativeToolBridge.enabledTools.map((name) => `mcp__talvori__${name}`)] : []
       : ['--disallowedTools', workMode === 'conversation' ? '*' : 'mcp__*'];
     const args = provider === 'codex'
       ? ['exec', '--json', '--color', 'never', '--sandbox', permissionMode, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(workMode === 'conversation' ? ['--ignore-user-config', '--ignore-rules', '--ephemeral'] : []), ...codexOverrides, '-']
       : ['-p', '--bare', '--restricted', '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : []), '--permission-mode', 'dontAsk', '--tools', workMode === 'conversation' ? '' : 'Read,Glob,Grep', ...claudeMcpArgs, '--strict-mcp-config', '--mcp-config', claudeConfig, '--max-turns', '12'];
     if (signal?.aborted) throw error('session_cancelled', 'The session was cancelled before it started.', 409);
     if (closed || status(provider).state !== 'connected') throw error('not_connected', 'This connection was closed while the session was starting. Reconnect and try again.', 409);
-    const bridgeSecret = nativeToolBridge?.env.RUMBO_NATIVE_TOOL_CAPABILITY;
+    const bridgeSecret = nativeToolBridge?.env.TALVORI_NATIVE_TOOL_CAPABILITY;
     if (bridgeSecret) knownSecrets.add(bridgeSecret);
     if (provider === 'codex' && saved.codex?.transport === 'app-server') {
       let child;
@@ -414,7 +419,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       else if (req.method === 'GET' && action === 'status') respond(200, { connection: status(provider) });
       else if (req.method === 'GET' && action === 'resources') respond(200, await resources(provider, { pageToken: url.searchParams.get('pageToken') || '' }));
       else if (req.method === 'POST' && action === 'check') respond(200, { connection: await authStatus(provider) });
-      else if (req.method === 'POST' && action === 'disconnect') respond(200, { connection: disconnect(provider), message: 'Disconnected from Rumbo. CLI sign-in remains available in your other applications.' });
+      else if (req.method === 'POST' && action === 'disconnect') respond(200, { connection: disconnect(provider), message: 'Disconnected from Talvori. CLI sign-in remains available in your other applications.' });
       else if (req.method === 'POST' && action === 'connect') {
         let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16_000) throw error('body_too_large', 'Connection request is too large.', 413); }
         let body; try { body = JSON.parse(raw || '{}'); } catch { throw error('invalid_json', 'Request must contain valid JSON.'); }

@@ -1,3 +1,4 @@
+import { talvoriEnvironment } from './brand-config.mjs';
 const CATALOG = Object.freeze({
   github: {
     displayName: "GitHub",
@@ -11,9 +12,9 @@ const CATALOG = Object.freeze({
     displayName: "Google Drive",
     authKind: "browser_oauth",
     purpose: "Browse Drive file names and links as project references.",
-    requiredEnvironment: ["RUMBO_GOOGLE_CLIENT_ID", "RUMBO_GOOGLE_CLIENT_SECRET"],
+    requiredEnvironment: ["TALVORI_GOOGLE_CLIENT_ID", "TALVORI_GOOGLE_CLIENT_SECRET"],
     scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"], methods: ['browser'],
-    resourcePolicy: "Read-only file metadata. Rumbo does not read file contents, create, edit, or delete Drive files.",
+    resourcePolicy: "Read-only file metadata. Talvori does not read file contents, create, edit, or delete Drive files.",
     docsUrl: 'https://developers.google.com/identity/protocols/oauth2/web-server',
   },
   codex: {
@@ -30,7 +31,7 @@ const CATALOG = Object.freeze({
     authKind: "provider_managed",
     purpose: "Run analysis sessions through Claude Code.",
     requiredEnvironment: [], scopes: [], methods: ['existing', 'browser'],
-    resourcePolicy: "Claude Code owns sign-in and credentials. Rumbo limits tools to reading and searching. Programmatic usage can have separate billing limits under your provider plan.",
+    resourcePolicy: "Claude Code owns sign-in and credentials. Talvori limits tools to reading and searching. Programmatic usage can have separate billing limits under your provider plan.",
     docsUrl: 'https://code.claude.com/docs/en/headless', installCommand: 'brew install --cask claude-code',
   },
 });
@@ -40,6 +41,7 @@ export function listProviderSetups({ env = process.env, origin = "http://127.0.0
 }
 
 export function providerSetup(provider, { env = process.env, origin = "http://127.0.0.1:4173" } = {}) {
+  env = talvoriEnvironment(env);
   const definition = CATALOG[provider];
   if (!definition) return null;
   const missing = definition.requiredEnvironment.filter((name) => !env[name]);

@@ -122,9 +122,9 @@ export async function createNativeAgentToolBridge({ listTools, callTool, expires
   } catch (failure) { await close(); throw failure; }
   expiryTimer = setTimeout(() => void close(), Math.max(1, expiresAt - Date.now())); expiryTimer.unref?.();
   const descriptor = Object.freeze({
-      name: 'rumbo', transport: 'stdio', command: process.execPath,
+      name: 'talvori', transport: 'stdio', command: process.execPath,
       args: Object.freeze([NATIVE_AGENT_TOOL_STDIO_PATH]),
-      env: Object.freeze({ RUMBO_NATIVE_TOOL_SOCKET: socketPath, RUMBO_NATIVE_TOOL_CAPABILITY: capability }),
+      env: Object.freeze({ TALVORI_NATIVE_TOOL_SOCKET: socketPath, TALVORI_NATIVE_TOOL_CAPABILITY: capability }),
       enabledTools: Object.freeze(tools.map((tool) => tool.name)), required: true,
   });
   generatedDescriptors.add(descriptor);

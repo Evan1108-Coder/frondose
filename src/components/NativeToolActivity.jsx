@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { rumboActions } from '../data/useRumbo.js';
+import { talvoriActions } from '../data/useTalvori.js';
 import { Button, Dialog, ErrorMessage } from '../ui.jsx';
 import { ShieldCheck, RotateCw } from './icons.jsx';
 import { useUnsavedUpdate } from './UnsavedUpdates.jsx';
@@ -42,7 +42,7 @@ export function nativeHistoryNotice(error) {
     : null;
 }
 
-export function NativeToolsChoice({ checked, onChange, disabled, label: title = 'Enable native Rumbo tools for this launch' }) {
+export function NativeToolsChoice({ checked, onChange, disabled, label: title = 'Enable native Talvori tools for this launch' }) {
   return <label className="native-tools-choice"><input type="checkbox" checked={checked === true} disabled={disabled} onChange={event => onChange(event.target.checked)} /><span><strong>{title}</strong><small>Reads stay within the exact reviewed context. Every workspace write creates a pending proposal for your decision. Permission requests and handoffs never grant access or launch agents.</small></span></label>;
 }
 
@@ -71,7 +71,7 @@ export function NativeToolActivity({ runId }) {
     inFlight.current = true; setBusy(true); setError(null);
     try {
       await apiRequest(`/api/native-tool-requests/${encodeURIComponent(decision.request.id)}/decision`, { method: 'POST', body: { decision: decision.value, version: decision.request.version } });
-      await rumboActions.refresh().catch(() => {}); setDecision(null); setRevision(value => value + 1);
+      await talvoriActions.refresh().catch(() => {}); setDecision(null); setRevision(value => value + 1);
     } catch (problem) { setError(problem); }
     finally { inFlight.current = false; setBusy(false); }
   }

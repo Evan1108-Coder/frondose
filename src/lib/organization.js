@@ -3,7 +3,7 @@ import { normalizeSidebarLayout } from './sidebar-layout.js';
 
 export const NAV_ITEMS = [
   { id: "overview", label: "Today", key: "O" },
-  { id: "rumbo-agent", label: "Rumbo Agent", key: "" },
+  { id: "rumbo-agent", label: "Talvori", key: "" },
   { id: "starred", label: "Starred", key: "Z" },
   { id: "focus", label: "Focus", key: "F" },
   { id: "inbox", label: "Inbox", key: "I" },

@@ -26,7 +26,7 @@ export function createConnectionJobs({ db, env, check, get, sync, imports, audit
   else db.prepare("UPDATE platform_sync_jobs SET state='pending' WHERE state='running'").run();
   let processing = false, closed = false;
   const supported = provider => ['github', 'linear', 'slack'].includes(CONNECTOR_CATALOG[provider]?.auth_family);
-  const secretFor = provider => env[`RUMBO_${CONNECTOR_CATALOG[provider].auth_family.toUpperCase()}_WEBHOOK_SECRET`];
+  const secretFor = provider => env[`TALVORI_${CONNECTOR_CATALOG[provider].auth_family.toUpperCase()}_WEBHOOK_SECRET`];
   const configuredKinds = connection => CONNECTOR_CATALOG[connection.provider].sync_kinds.filter(kind => {
     try { connectionReadOptions(connection.provider, connection.settings.read_options || {}, kind); return true; }
     catch (error) { if (error.code === 'invalid_read_options') return false; throw error; }
@@ -51,13 +51,13 @@ export function createConnectionJobs({ db, env, check, get, sync, imports, audit
     if (input) {
       const minutes = Number(input.reconcile_minutes ?? row?.reconcile_minutes ?? 0), webhooks = input.webhooks_enabled ?? Boolean(row?.webhooks_enabled), auto = input.auto_update_imports ?? Boolean(row?.auto_update_imports);
       if (![0, 5, 15, 30, 60, 360, 1440].includes(minutes) || typeof webhooks !== 'boolean' || typeof auto !== 'boolean') throw fail('invalid_policy', 'Choose a supported synchronization schedule.');
-      if (webhooks && (!supported(connection.provider) || !secretFor(connection.provider))) throw fail('webhook_setup_required', 'The Rumbo operator must configure a supported provider webhook signing secret first.', 409);
+      if (webhooks && (!supported(connection.provider) || !secretFor(connection.provider))) throw fail('webhook_setup_required', 'The Talvori operator must configure a supported provider webhook signing secret first.', 409);
       await check(actor, connection, 'connections.sync');
       if (auto) await check(actor, connection, 'connections.import');
       db.prepare('INSERT INTO platform_sync_policies VALUES(?,?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET actor_json=excluded.actor_json,webhooks_enabled=excluded.webhooks_enabled,reconcile_minutes=excluded.reconcile_minutes,next_reconcile_at=excluded.next_reconcile_at,auto_update_imports=excluded.auto_update_imports').run(id, JSON.stringify(actor), Number(webhooks), minutes, minutes ? Date.now() + minutes * 60000 : 0, Number(auto));
       row = db.prepare('SELECT * FROM platform_sync_policies WHERE connection_id=?').get(id); audit(connection, actor, 'sync_policy_updated', { reconcile_minutes: minutes, webhooks_enabled: webhooks, auto_update_imports: auto });
     }
-    const base = env.RUMBO_CONNECTION_CALLBACK_URL || 'http://127.0.0.1:4174/api/connection-platform/oauth/callback';
+    const base = env.TALVORI_CONNECTION_CALLBACK_URL || 'http://127.0.0.1:4174/api/connection-platform/oauth/callback';
     return { webhooks_supported: supported(connection.provider), webhooks_configured: Boolean(secretFor(connection.provider)), webhooks_enabled: Boolean(row?.webhooks_enabled), reconcile_minutes: row?.reconcile_minutes || 0, auto_update_imports: Boolean(row?.auto_update_imports), webhook_url: new URL(`/api/connection-platform/webhooks/${id}`, base).href, next_reconcile_at: row?.next_reconcile_at ? new Date(row.next_reconcile_at).toISOString() : null };
   }
   async function jobs(id, actor) { const connection = get(id); await check(actor, connection, 'connections.view'); return db.prepare('SELECT id,resource_id,kind,state,attempts,next_attempt_at,last_error,created_at,updated_at FROM platform_sync_jobs WHERE connection_id=? ORDER BY created_at DESC LIMIT 200').all(id); }

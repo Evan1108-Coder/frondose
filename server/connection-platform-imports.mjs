@@ -34,7 +34,7 @@ export function createConnectionImports({ db, check, audit, get }) {
   const checkTargetScope = (connection, row, targetType) => {
     if (connection.scope_type !== 'team') return;
     const team = row.team_id || (row.project_id ? db.prepare('SELECT * FROM projects WHERE id=?').get(row.project_id)?.team_id : null);
-    if (team !== connection.scope_id || targetType === 'project' && row.team_id !== connection.scope_id) throw fail('scope_required', 'The linked Rumbo object is outside this connection’s team.', 403);
+    if (team !== connection.scope_id || targetType === 'project' && row.team_id !== connection.scope_id) throw fail('scope_required', 'The linked Talvori object is outside this connection’s team.', 403);
   };
   const activeDestination = (table, id, connection) => {
     const row = db.prepare(`SELECT * FROM ${table} WHERE id=? AND workspace_id=?`).get(id, connection.workspace_id);
@@ -66,14 +66,14 @@ export function createConnectionImports({ db, check, audit, get }) {
   };
   async function importObject(connectionId, input, actor) {
     const connection = get(connectionId), target = TARGETS[input?.target_type];
-    if (!target || typeof input.object_id !== 'string') throw fail('invalid_import', 'Choose an external object and a Rumbo target type.');
+    if (!target || typeof input.object_id !== 'string') throw fail('invalid_import', 'Choose an external object and a Talvori target type.');
     await check(actor, connection, 'connections.import');
     const object = source(connection, input.object_id), content = JSON.parse(object.content);
     const values = { title: object.title.slice(0, 500), text: `${textContent(content.fields || content).slice(0, 90000)}${object.url ? `\n\nSource: ${object.url}` : ''}`.trim() };
     const externalHash = digest(values), existing = db.prepare('SELECT * FROM platform_object_links WHERE object_id=? AND target_type=?').get(object.id, input.target_type);
     if (existing) {
       const row = db.prepare(`SELECT * FROM ${target.table} WHERE id=? AND workspace_id=?`).get(existing.target_id, connection.workspace_id);
-      if (!row || row.archived_at) throw fail('target_unavailable', 'The linked Rumbo object is archived or unavailable.', 409);
+      if (!row || row.archived_at) throw fail('target_unavailable', 'The linked Talvori object is archived or unavailable.', 409);
       await authorizeTarget(actor, connection, row, input.target_type);
       const local = targetValues(row, target), localHash = digest(local);
       if (externalHash === existing.external_hash) return { status: 'unchanged', link: existing };
@@ -142,7 +142,7 @@ export function createConnectionImports({ db, check, audit, get }) {
     const current = db.prepare(`SELECT * FROM ${target.table} WHERE id=? AND workspace_id=?`).get(link.target_id, connection.workspace_id);
     if (!current || current.archived_at) throw fail('target_unavailable', 'The destination is archived or unavailable.', 409);
     await authorizeTarget(actor, connection, current, link.target_type);
-    if (digest(targetValues(current, target)) !== conflict.local_hash) throw fail('stale_conflict', 'The Rumbo object changed again. Import again to review the latest conflict.', 409);
+    if (digest(targetValues(current, target)) !== conflict.local_hash) throw fail('stale_conflict', 'The Talvori object changed again. Import again to review the latest conflict.', 409);
     source(connection, link.object_id);
     db.exec('BEGIN'); try {
       if (input.resolution === 'use_external') writeValues(target, link.target_id, JSON.parse(conflict.external_value));

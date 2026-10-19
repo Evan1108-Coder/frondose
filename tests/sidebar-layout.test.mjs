@@ -28,7 +28,7 @@ test('custom groups and freely placed entities survive preference normalization 
   assert.deepEqual(moved.groups[0].items,['workbench']);
 });
 
-test('saved layouts restore Rumbo Agent below Today without disturbing other rows or custom groups', () => {
+test('saved layouts restore Talvori below Today without disturbing other rows or custom groups', () => {
   const preferences = normalizeOrganization({version:1, visibility:{'rumbo-agent':'hidden'}, layout:{
     root:['projects','custom:work','inbox','overview','rumbo-agent'],
     groups:[{id:'custom:work',name:'Work',collapsed:true,items:['workbench','rumbo-agent','overview','entity:projects:p1']}],
@@ -44,7 +44,7 @@ test('saved layouts restore Rumbo Agent below Today without disturbing other row
   assert.deepEqual(moveSidebarEntry(preferences.layout,'inbox','root','overview').root.slice(0,3),['overview','rumbo-agent','inbox']);
 });
 
-test('legacy layouts missing Rumbo Agent place it at the top and leave unrelated visibility alone', () => {
+test('legacy layouts missing Talvori place it at the top and leave unrelated visibility alone', () => {
   const preferences = normalizeOrganization({version:1,order:{primary:['inbox','focus','overview']},visibility:{overview:'hidden',inbox:'hidden','rumbo-agent':'activity'},layout:{root:['inbox','projects','overview'],groups:[]}});
   assert.deepEqual(preferences.layout.root.slice(0,4),['overview','rumbo-agent','inbox','projects']);
   assert.equal(preferences.visibility.overview,'hidden');

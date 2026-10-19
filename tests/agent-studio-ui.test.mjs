@@ -93,5 +93,5 @@ test('Studio controls expose honest provider boundaries and reviewed operations'
   assert.match(roster, /Recorded usage below is separate from account billing/);
   assert.match(roster, /<AgentUsageDisclosure key=\{`\$\{workspace.id\}:\$\{agent.id\}`\} agentId=\{agent.id\} workspaceId=\{workspace.id\}/);
   assert.match(roster, /new AbortController\(\)/);
-  assert.doesNotMatch(roster, /rumboActions\.(?:startRun|startSession)\(/);
+  assert.doesNotMatch(roster, /talvoriActions\.(?:startRun|startSession)\(/);
 });

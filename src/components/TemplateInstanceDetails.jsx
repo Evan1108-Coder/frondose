@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { rumboApi } from '../data/api.js';
+import { talvoriApi } from '../data/api.js';
 import './template-instance.css';
 
 export function TemplateInstanceDetails({ workspaceId, entityType, entityId }) {
@@ -8,7 +8,7 @@ export function TemplateInstanceDetails({ workspaceId, entityType, entityId }) {
     if (!workspaceId || !entityType || !entityId) return;
     const controller = new AbortController();
     setState({ instance: null, error: false });
-    rumboApi.templateInstance(entityType, entityId, workspaceId, { signal: controller.signal })
+    talvoriApi.templateInstance(entityType, entityId, workspaceId, { signal: controller.signal })
       .then(response => setState({ instance: response.result, error: false }))
       .catch(error => { if (!controller.signal.aborted) setState({ instance: null, error: true }); });
     return () => controller.abort();

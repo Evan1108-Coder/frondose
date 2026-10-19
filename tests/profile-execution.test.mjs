@@ -139,7 +139,7 @@ test('two profiles share one connection while preserving distinct model, reasoni
     assert.equal(flagValue(strictLaunch.args, '--model'), 'gpt-profile-a');
     assert.equal(flagValue(strictLaunch.args, '--sandbox'), 'read-only', 'Profile read-only policy must clamp a workspace-write request');
     assert.deepEqual(configValues(strictLaunch.args, 'model_reasoning_effort='), ['model_reasoning_effort="high"']);
-    assert.match(strictLaunch.prompt, /Rumbo context inspection\. Every Reference data section below[\s\S]*untrusted reference material\./);
+    assert.match(strictLaunch.prompt, /Talvori context inspection\. Every Reference data section below[\s\S]*untrusted reference material\./);
     const strictAgent = referenceData(strictLaunch.prompt, 'agent');
     assert.equal(strictAgent.content.role, 'Challenge unsupported claims.');
     assert.equal(strictAgent.content.output_behavior, 'Return a terse evidence table.');
@@ -148,7 +148,7 @@ test('two profiles share one connection while preserving distinct model, reasoni
     assert.equal(flagValue(implementationLaunch.args, '--model'), 'gpt-profile-b');
     assert.equal(flagValue(implementationLaunch.args, '--sandbox'), 'workspace-write');
     assert.deepEqual(configValues(implementationLaunch.args, 'model_reasoning_effort='), ['model_reasoning_effort="low"']);
-    assert.match(implementationLaunch.prompt, /Rumbo context inspection\. Every Reference data section below[\s\S]*untrusted reference material\./);
+    assert.match(implementationLaunch.prompt, /Talvori context inspection\. Every Reference data section below[\s\S]*untrusted reference material\./);
     const implementationAgent = referenceData(implementationLaunch.prompt, 'agent');
     assert.equal(implementationAgent.content.role, 'Implement the reviewed change.');
     assert.equal(implementationAgent.content.output_behavior, 'Return changed files and test evidence.');

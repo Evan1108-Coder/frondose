@@ -23,7 +23,7 @@ function fixture({ configured = true } = {}) {
   f.saveCredential = (provider, value) => db.prepare(`INSERT OR REPLACE INTO ai_account_connections
     (id,workspace_id,actor_id,provider,state,encrypted_credential,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
     .run(provider, 'ws', actor.id, provider, 'connected', seal(provider, typeof value === 'string' ? value : JSON.stringify(value)), new Date().toISOString(), new Date().toISOString());
-  f.service = createAiConnectionsService({ db, dataDir: directory, env: { RUMBO_CONNECTION_ENCRYPTION_KEY: key.toString('base64'), ...(configured ? { RUMBO_HF_CLIENT_ID: 'isolated-app' } : {}) },
+  f.service = createAiConnectionsService({ db, dataDir: directory, env: { TALVORI_CONNECTION_ENCRYPTION_KEY: key.toString('base64'), ...(configured ? { TALVORI_HF_CLIENT_ID: 'isolated-app' } : {}) },
     authorize: (workspaceId, currentActor) => {
       if (workspaceId !== 'ws' || currentActor.id !== actor.id) throw Object.assign(new Error('Denied'), { statusCode: 403 });
       return f.authorizeOverride?.();

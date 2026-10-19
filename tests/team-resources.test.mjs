@@ -58,7 +58,7 @@ test('links reject executable URLs, credentials and invalid branch shapes withou
   assert.equal((await add('branch', { url: 'https://github.com/example/repo/tree/feature/resources' })).result.kind, 'branch');
 }));
 
-test('Rumbo references require active matching workspace records, and updates retain resource type', async () => fixture(async ({ db, call, add }) => {
+test('Talvori references require active matching workspace records, and updates retain resource type', async () => fixture(async ({ db, call, add }) => {
   const resource = (await add('project', { ref_id: 'project' })).result;
   assert.equal(resource.ref_id, 'project');
   await assert.rejects(add('project', { ref_id: 'foreign-project' }), /workspace/);

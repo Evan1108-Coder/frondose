@@ -1,0 +1,9 @@
+.agent-links { min-width: 0; padding-block: 16px; }
+.agent-links > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.agent-links h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.agent-links p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.agent-links-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.agent-links-list button { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+.agent-links-list button:hover { background: var(--hover); }
+.agent-links-dialog { padding: 24px; display: grid; gap: 16px; }
+.agent-links-hint { max-width: 64ch; }

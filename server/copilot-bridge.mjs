@@ -9,7 +9,7 @@ const fail = (code, message, statusCode = 409) => Object.assign(new Error(messag
 const stamp = () => new Date().toISOString();
 const scrub = value => String(value || '').replace(/\u001b\[[0-9;]*m/g, '').replace(/(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]+/g, '[redacted]').slice(0, 100_000);
 const modelId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(value);
-const client = { protocolVersion: 1, clientInfo: { name: 'rumbo', title: 'Rumbo', version: '0.1.0' }, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } };
+const client = { protocolVersion: 1, clientInfo: { name: 'talvori', title: 'Talvori', version: '0.1.0' }, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } };
 
 export function createCopilotBridge({ db, dataDir, authorize, env = process.env, spawnProcess = spawn }) {
   const operations = new Map(), logins = new Map(), generations = new Map();
@@ -58,7 +58,7 @@ export function createCopilotBridge({ db, dataDir, authorize, env = process.env,
     const exited = new Promise((_, reject) => { rejectExit = reject; }); exited.catch(() => {});
     const peer = createAgentJsonlPeer(child, { jsonrpc: true,
       onRequest: request => {
-        onEvent({ type: 'permission.denied', summary: 'Copilot capability request denied. Rumbo actions require review.', payload: {} });
+        onEvent({ type: 'permission.denied', summary: 'Copilot capability request denied. Talvori actions require review.', payload: {} });
         return request.method === 'session/request_permission' ? { result: { outcome: { outcome: 'cancelled' } } } : { error: { code: -32601, message: 'File, terminal and interactive capabilities are disabled.' } };
       },
       onNotification: message => {
@@ -104,7 +104,7 @@ export function createCopilotBridge({ db, dataDir, authorize, env = process.env,
   async function models(workspaceId, actor) { const session = await open(workspaceId, actor); try { session.fresh(); return session.models; } finally { session.dispose(); } }
   async function startRun({ workspaceId, actor, prompt, model = '', workMode = 'conversation', permissionMode = 'read-only', nativeToolBridge, cwd, allowedRoot, reasoningEffort, timeoutMs = 1800000, signal, verification = false }, callbacks = {}) {
     scope(workspaceId, actor);
-    if (workMode !== 'conversation' || permissionMode !== 'read-only' || nativeToolBridge || cwd || allowedRoot || reasoningEffort) throw fail('copilot_options', 'Copilot currently supports General chat and reviewed final-reply Rumbo actions, without native tools or project folders.', 400);
+    if (workMode !== 'conversation' || permissionMode !== 'read-only' || nativeToolBridge || cwd || allowedRoot || reasoningEffort) throw fail('copilot_options', 'Copilot currently supports General chat and reviewed final-reply Talvori actions, without native tools or project folders.', 400);
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100_000 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 1800000 || model && !modelId(model)) throw fail('invalid_runtime_request', 'Choose a valid prompt, model and execution deadline.', 400);
     if (!verification && status(workspaceId, actor).state !== 'connected') throw fail('not_connected', 'Test your Copilot account before starting a conversation.');
     const controller = new AbortController();
@@ -164,7 +164,7 @@ export function createCopilotBridge({ db, dataDir, authorize, env = process.env,
     const capture = chunk => { if (auth.status === 'running') auth.output = scrub(auth.output + chunk.toString()).slice(-12000); };
     child.stdout.on('data', capture); child.stderr.on('data', capture); child.stdin.on('error', () => {}); child.stdin.end();
     auth.timer = setTimeout(() => { auth.status = 'expired'; terminateAgentProcess(child); }, 5 * 60_000); auth.timer.unref?.();
-    child.on('error', reason => { clearTimeout(auth.timer); auth.status = 'failed'; auth.output = reason.code === 'ENOENT' ? 'Install GitHub Copilot CLI on the Rumbo server, then try again.' : 'Could not start Copilot sign-in.'; });
+    child.on('error', reason => { clearTimeout(auth.timer); auth.status = 'failed'; auth.output = reason.code === 'ENOENT' ? 'Install GitHub Copilot CLI on the Talvori server, then try again.' : 'Could not start Copilot sign-in.'; });
     child.on('close', code => { clearTimeout(auth.timer); if (auth.status === 'running') { auth.status = code === 0 ? 'complete' : 'failed'; if (code === 0 && !closed) save(workspaceId, actor, 'configured'); } });
     return status(workspaceId, actor);
   }

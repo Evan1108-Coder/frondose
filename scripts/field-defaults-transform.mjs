@@ -13,6 +13,12 @@ const SENSITIVE_FORM = /password|passcode|credential|api.?key|private.?key|secre
 const slug = value => value.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
 const words = value => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 const digest = value => createHash('sha256').update(value).digest('hex').slice(0, 12);
+// Product-facing labels change; semantic IDs must still find existing defaults.
+const legacyFieldIdentity = value => value.replaceAll('Talvori', 'Rumbo').replaceAll('talvori', 'rumbo');
+const LEGACY_REBRAND_KEYS = Object.freeze({
+  'source.views-rumbo-agent.agent-onboarding.rumbo.802a60c75c6a': 'source.views-rumbo-agent.agent-onboarding.rumbo-agent.5b3e6a176e8e',
+  'source.views-rumbo-agent.history-dialog.search-conversations.f1eeab9bdd0c': 'source.views-rumbo-agent.history-dialog.search-conversations.842435947877',
+});
 
 // Shared primitives/editor functions have no page heading in their own AST.
 // These are product-facing scopes, not identities; changing the wording does
@@ -50,7 +56,7 @@ const SHARED_PRODUCT_SCOPES = {
   ActionDialog: 'Plugins · Review connection action',
   MilestoneCriteriaEditor: 'Project milestones · Acceptance criteria',
   SkillEvaluationPrepare: 'Skill evaluations · Evaluate Skill',
-  AgentOnboarding: 'Rumbo Agent setup · Make it yours',
+  AgentOnboarding: 'Talvori setup · Make it yours',
   CommandLibrary: 'Slash commands · Command library',
   HierarchyDialog: 'Routes · Create sub-route / Move Route',
   UpdateWorkChanges: 'Updates · Report work changes',
@@ -203,8 +209,9 @@ export function analyzeFieldSource(source, filename) {
     // metadata is inferred separately and must never re-key saved defaults.
     const identityLabel = literal(node, 'data-field-default-label') || literal(node, 'aria-label') || literal(fieldWrapper ?? {}, 'label') || labelText || literal(node, 'placeholder') || literal(node, 'name') || words(expression(node, 'value', source).replace(/[{}]/g, '').split('.').at(-1)) || words(type);
     const context = wrappers.map(item => ['title', 'aria-label', 'label'].map(name => expression(item, name, source)).filter(Boolean).join(':')).filter(Boolean).join('/');
-    const semantic = `${path}|${component}|${context}|${expression(node, 'name', source)}|${expression(node, 'value', source)}|${expression(node, 'aria-label', source)}|${identityLabel}|${type}`;
-    const key = `source.${slug(path.replace(/\.jsx$/, ''))}.${slug(component)}.${slug(identityLabel)}.${digest(semantic)}`;
+    const semantic = legacyFieldIdentity(`${path}|${component}|${context}|${expression(node, 'name', source)}|${expression(node, 'value', source)}|${expression(node, 'aria-label', source)}|${identityLabel}|${type}`);
+    const generatedKey = `source.${slug(legacyFieldIdentity(path).replace(/\.jsx$/, ''))}.${slug(legacyFieldIdentity(component))}.${slug(legacyFieldIdentity(identityLabel))}.${digest(semantic)}`;
+    const key = LEGACY_REBRAND_KEYS[generatedKey] || generatedKey;
     const semanticType = type === 'text' && /^hh:mm$/i.test(literal(node, 'placeholder') || '') ? 'time' : type;
     const { page, label } = displayMetadata(node, ancestors, component, identityLabel, semanticType, words(path.split('/').at(-1).replace(/\.jsx$/, '')), displayCaches);
     const metadata = ['type', 'autoComplete', 'name', 'placeholder', 'value'].map(name => expression(node, name, source)).join(' ');

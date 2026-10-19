@@ -4,7 +4,7 @@
 .rumbo-select-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .rumbo-select-trigger > svg { flex: 0 0 16px; width: 16px; height: 16px; color: var(--muted); }
 .rumbo-select-trigger:hover:not(:disabled) { background: var(--hover); border-color: var(--muted); }
-.rumbo-select-trigger:focus-visible, .rumbo-select[data-open] > .rumbo-select-trigger { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 2px; }
+.rumbo-select-trigger:focus-visible, .rumbo-select[data-open] > .rumbo-select-trigger { border-color: var(--focus); outline: none; box-shadow: none; }
 .rumbo-select-trigger:disabled { cursor: not-allowed; opacity: .5; }
 .rumbo-select-placeholder { color: var(--muted); }
 .rumbo-select-panel { z-index: 160; overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--elevated); color: var(--text); box-sizing: border-box; scroll-padding: 6px; }

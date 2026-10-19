@@ -9,7 +9,7 @@ test('reaction catalog contains over 200 distinct line glyphs and a broad access
   assert.equal(new Set(REACTION_CATALOG.map(item => item.id)).size, REACTION_CATALOG.length);
   assert.equal(new Set(EMOJI_REACTIONS.map(item => item.glyph)).size, EMOJI_REACTIONS.length);
   assert.equal(new Set(ICON_REACTIONS.map(item => JSON.stringify(item.path || icons[item.icon]))).size, ICON_REACTIONS.length);
-  assert.ok(ICON_REACTIONS.filter(item => item.category === 'Rumbo' && item.path).length >= 16);
+  assert.ok(ICON_REACTIONS.filter(item => item.category === 'Talvori' && item.path).length >= 16);
   for (const item of REACTION_CATALOG) {
     assert.ok(item.name && item.category);
     assert.equal(getReaction(item.id), item);

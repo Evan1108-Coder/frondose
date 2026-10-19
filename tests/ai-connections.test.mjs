@@ -16,7 +16,7 @@ function fixture(env = {}) {
   const fetchImpl = async (url, options) => {
     requests.push({ url, options });
     if (url.endsWith('/auth/keys')) return Response.json({ key: 'sk-or-v1-user-secret' });
-    if (url.endsWith('/key')) return Response.json({ data: { label: 'Rumbo key', limit_remaining: 9.5 } });
+    if (url.endsWith('/key')) return Response.json({ data: { label: 'Talvori key', limit_remaining: 9.5 } });
     if (url.endsWith('/models/user')) return Response.json({ data: [{ id: 'example/text-model', name: 'Text model', architecture: { output_modalities: ['text'] } }] });
     if (url.endsWith('/chat/completions')) return Response.json({ choices: [{ message: { content: 'OK' } }], usage: { prompt_tokens: 4, completion_tokens: 1 } });
     if (url.endsWith('/oauth/token')) return Response.json({ access_token: 'hf_oauth_isolated', refresh_token: 'hf_refresh_isolated', expires_in: 3600 });
@@ -89,9 +89,9 @@ test('pending OAuth cannot complete after local disconnect', async () => {
 
 test('Hugging Face requires operator OAuth registration then uses scoped PKCE and user inference', async () => {
   const missing = fixture();
-  try { await assert.rejects(missing.service.hfStart({ workspace_id: 'ws_a' }, { id: 'user_a' }, '127.0.0.1:4174'), /RUMBO_HF_CLIENT_ID/); }
+  try { await assert.rejects(missing.service.hfStart({ workspace_id: 'ws_a' }, { id: 'user_a' }, '127.0.0.1:4174'), /TALVORI_HF_CLIENT_ID/); }
   finally { missing.close(); }
-  const f = fixture({ RUMBO_HF_CLIENT_ID: 'hf-app-id' });
+  const f = fixture({ TALVORI_HF_CLIENT_ID: 'hf-app-id' });
   try {
     const actor = { id: 'user_a' }, started = await f.service.hfStart({ workspace_id: 'ws_a' }, actor, '127.0.0.1:4174');
     const url = new URL(started.authorization_url), state = url.searchParams.get('state');

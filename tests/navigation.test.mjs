@@ -32,7 +32,7 @@ test('team section deep links preserve the selected tab', () => {
   assert.throws(() => pageHash('teams', 'team_1', { section: 'invalid' }), TypeError);
 });
 
-test("existing Rumbo hashes keep their view and identifier", () => {
+test("existing Talvori hashes keep their view and identifier", () => {
   assert.deepEqual(parsePage("#/projects/project_sourcelens"), {
     view: "projects", id: "project_sourcelens", projectId: null,
   });

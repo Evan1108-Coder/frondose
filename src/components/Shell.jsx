@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { House, Inbox, Folder, GitBranch, MessageCircle, Play, Bot, Plug, Settings, Compass, Search, ChevronDown, ChevronRight, Plus, Check, PanelLeft, ArrowRight, X, BookOpen, Keyboard, Users, SquarePen, Pin } from "./icons.jsx";
 import { Button, Dialog, IconButton, SearchField, useApp } from "../ui.jsx";
 import { byUpdated, initials, val, visible } from "../lib/model.js";
-import { RumboSymbol } from "./Brand.jsx";
+import { TalvoriSymbol } from "./Brand.jsx";
 import { AgentIdentity } from './AgentIdentity.jsx';
 import { agentVisibleInSidebar } from '../lib/agents.js';
 import { Tooltip } from "./Tooltip.jsx";
@@ -27,15 +27,15 @@ import { SidebarLayout } from './SidebarLayout.jsx';
 import { SidebarResizeHandle } from './SidebarResizeHandle.jsx';
 import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
-import { RumboAgentOrb } from './RumboAgentOrb.jsx';
-import { useRumboAgentAppearance } from '../lib/rumbo-agent-appearance.js';
+import { TalvoriAgentOrb } from './TalvoriAgentOrb.jsx';
+import { useTalvoriAgentAppearance } from '../lib/talvori-agent-appearance.js';
 
-function RumboAgentNavIcon() {
+function TalvoriAgentNavIcon() {
   const { workspace } = useApp();
-  const appearance = useRumboAgentAppearance(workspace?.id);
-  return <RumboAgentOrb color={appearance.orb_color} compact />;
+  const appearance = useTalvoriAgentAppearance(workspace?.id);
+  return <TalvoriAgentOrb color={appearance.orb_color} compact />;
 }
-const NAV_ICONS = { 'rumbo-agent': RumboAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+const NAV_ICONS = { 'rumbo-agent': TalvoriAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
 const MORE_DESTINATIONS = [
   ['Work', 'focus', 'updates', 'tasks', 'work', 'workbench', 'workflows', 'operations'],
@@ -66,7 +66,7 @@ export function Sidebar({
   } = useApp();
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const { colorsFor } = useIconColors();
-  const agentAppearance = useRumboAgentAppearance(workspace?.id);
+  const agentAppearance = useTalvoriAgentAppearance(workspace?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [itemOptions, setItemOptions] = useState(null);
@@ -253,7 +253,7 @@ export function Sidebar({
             aria-expanded={workspaceOpen}
             onClick={() => { setWorkspaceOpen(!workspaceOpen); setCreateOpen(false); }}
           >
-            {workspace.image_url ? <img className="workspace-picture" src={workspace.image_url} alt="" /> : <RumboSymbol size={34} decorative />}
+            {workspace.image_url ? <img className="workspace-picture" src={workspace.image_url} alt="" /> : <TalvoriSymbol size={34} decorative />}
             <span className="workspace-name">{workspace.name}</span>
             <ChevronDown morphTo={workspaceOpen ? ChevronUp : ChevronDown} interactive={false} />
           </button>
@@ -388,8 +388,7 @@ export function Sidebar({
                 className={`nav-item sidebar-chat ${page.id === chat.id && (page.view === "chats" || page.view === "rumbo-agent") ? "active" : ""}`}
                 onClick={() => go(chat.kind === 'rumbo-agent' ? 'rumbo-agent' : 'chats', chat.id)}>
                 </ColorableNavItem></Tooltip>{optionsButton('chats', chat)}</div>)}
-              {!chats.length ? <button className="sidebar-empty-action" onClick={() => create("chat")}><Plus /><span>Start a conversation</span></button>
-                : <button className="sidebar-all-chats" onClick={() => go("chats")}><span>All conversations</span><ArrowRight /></button>}
+              {!chats.length ? <button className="sidebar-empty-action" onClick={() => create("chat")}><Plus /><span>Start a conversation</span></button> : null}
             </Collapse>
           </section>
           </SidebarLayout>
@@ -400,7 +399,7 @@ export function Sidebar({
         </div>
       </aside>
       {arrange.dialog}
-      {moreOpen ? <Dialog title="More in Rumbo" subtitle="Every page is still available. Choose All tools in sidebar settings to keep them visible." onClose={() => setMoreOpen(false)} className="sidebar-more-dialog"><div className="sidebar-more-groups">{MORE_DESTINATIONS.map(([title, ...ids]) => <section key={title}><h3>{title}</h3><div>{ids.map(id => { const item = NAV.find(entry => entry.id === id); const Icon = item.icon; return <button type="button" key={id} onClick={() => { setMoreOpen(false); go(id); }}><Icon aria-hidden="true" /><span>{item.label}</span><ArrowRight aria-hidden="true" /></button>; })}</div></section>)}<Button variant="ghost" icon={PanelLeft} onClick={() => { setMoreOpen(false); customizeSidebar(); }}>Customize navigation</Button></div></Dialog> : null}
+      {moreOpen ? <Dialog title="More in Talvori" subtitle="Every page is still available. Choose All tools in sidebar settings to keep them visible." onClose={() => setMoreOpen(false)} className="sidebar-more-dialog"><div className="sidebar-more-groups">{MORE_DESTINATIONS.map(([title, ...ids]) => <section key={title}><h3>{title}</h3><div>{ids.map(id => { const item = NAV.find(entry => entry.id === id); const Icon = item.icon; return <button type="button" key={id} onClick={() => { setMoreOpen(false); go(id); }}><Icon aria-hidden="true" /><span>{item.label}</span><ArrowRight aria-hidden="true" /></button>; })}</div></section>)}<Button variant="ghost" icon={PanelLeft} onClick={() => { setMoreOpen(false); customizeSidebar(); }}>Customize navigation</Button></div></Dialog> : null}
       {itemOptions ? <Dialog title={itemOptions.title} subtitle="Sidebar options" onClose={() => setItemOptions(null)}><div className="sidebar-item-dialog">
         {itemOptions.view === 'teams' ? <Button icon={Settings} onClick={() => { const teamId = itemOptions.id; setItemOptions(null); go('settings', `team:${teamId}`); }}>Area settings</Button> : null}
         <Button icon={Pin} onClick={() => { toggleFavorite(itemOptions); setItemOptions(null); }}>{favorites.some(item => favoriteKey(item) === favoriteKey(itemOptions)) ? 'Remove from favorites' : 'Add to favorites'}</Button><Button icon={PanelLeftClose} onClick={() => { try { updateOrganization({ ...organization, hiddenItems: [...organization.hiddenItems, { view: itemOptions.view, id: itemOptions.id }] }); setItemOptions(null); notify('Hidden from sidebar. Restore it in Customize sidebar.'); } catch (error) { notify(error.message, 'error'); } }}>Hide from sidebar</Button><p className="organization-note">This does not archive anything or stop active work. You can still find it through search or its collection.</p></div></Dialog> : null}
@@ -505,7 +504,7 @@ export function CommandPalette({ onClose }) {
     }
   }
   return (
-    <Dialog title="Search Rumbo" onClose={onClose} className="command-dialog">
+    <Dialog title="Search Talvori" onClose={onClose} className="command-dialog">
       <div className="command-search">
         <Search />
         <input

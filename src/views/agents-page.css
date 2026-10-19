@@ -19,7 +19,7 @@
 .agent-readiness.is-paused i { background: none; border: 1px solid var(--faint); }
 .agents-page .text-button { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
 .agents-page .text-button svg { width: 16px; height: 16px; flex-shrink: 0; }
-.agent-workspace { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(330px, 1fr); gap: 28px; align-items: start; }
+.agent-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start; }
 .agent-roster, .agent-inspector { min-width: 0; }
 .agent-roster-toolbar { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; }
 .agent-roster-toolbar .search-field { min-width: 0; flex: 1; }
@@ -58,7 +58,7 @@
 .agent-detail-tabs button[aria-selected="true"] { border-bottom-color: var(--secondary); color: var(--text); }
 .agent-detail-tabs button:hover { color: var(--text); }
 .agent-detail-tabs span { color: var(--faint); font-size: 11px; }
-.agent-detail-content { padding: 24px 22px; display: grid; gap: 22px; }
+.agent-detail-content { padding: 24px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 28px; }
 .agent-detail-section h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13px; font-weight: 550; color: var(--text); }
 .agent-detail-section h3 svg { width: 16px; height: 16px; color: var(--muted); }
 .agent-detail-section p { margin: 0; color: var(--secondary); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
@@ -110,9 +110,9 @@
 .agent-mobile-back.text-button { display: none; }
 .agent-dialog-copy { margin: 0; color: var(--secondary); }
 .form-validation-error { margin: 20px 24px 0; }
-@media (min-width: 1600px) { .agent-workspace { grid-template-columns: minmax(0, 1fr) 430px; gap: 36px; } }
+@media (min-width: 1600px) { .agent-workspace { gap: 32px; } }
 @media (max-width: 1200px) and (min-width: 801px) {
-  .agent-workspace { grid-template-columns: minmax(0, 1fr) minmax(300px, .95fr); gap: 18px; }
+  .agent-workspace { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .agent-row-main { grid-template-columns: 36px minmax(0, 1fr); gap: 10px; }
   .agent-row-main > .agent-readiness { grid-column: 2; margin-top: -5px; }
   .agent-row-main .agent-identity { width: 36px; height: 36px; grid-row: span 2; }

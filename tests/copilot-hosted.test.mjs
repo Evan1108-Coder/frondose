@@ -14,7 +14,7 @@ function deferred() { let resolve; const promise = new Promise(done => { resolve
 function fixture(t, overrides = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'rumbo-copilot-oauth-test-')), db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE workspaces(id TEXT PRIMARY KEY); INSERT INTO workspaces VALUES ('ws'),('other');");
-  const requests = [], env = { RUMBO_GITHUB_CLIENT_ID: 'fixture_client', RUMBO_GITHUB_CLIENT_SECRET: 'fixture_operator_secret' };
+  const requests = [], env = { TALVORI_GITHUB_CLIENT_ID: 'fixture_client', TALVORI_GITHUB_CLIENT_SECRET: 'fixture_operator_secret' };
   const fetchImpl = async (url, options) => {
     requests.push({ url, options });
     const custom = await overrides.fetch?.(url, options); if (custom) return custom;
@@ -35,15 +35,15 @@ test('hosted Copilot PKCE binds the callback to actor, workspace, origin and one
   assert.equal(url.origin, 'https://github.com'); assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
   assert.equal(url.searchParams.get('redirect_uri'), `http://${host}/api/ai-connections/copilot/callback`);
   const state = url.searchParams.get('state');
-  await assert.rejects(f.oauth.complete(state, 'code', { id: 'other' }, host), /another Rumbo session/);
-  await assert.rejects(f.oauth.complete(state, 'code', actor, 'localhost:4174'), /another Rumbo session/);
+  await assert.rejects(f.oauth.complete(state, 'code', { id: 'other' }, host), /another Talvori session/);
+  await assert.rejects(f.oauth.complete(state, 'code', actor, 'localhost:4174'), /another Talvori session/);
   assert.equal(f.requests.length, 0);
   const result = await f.oauth.complete(state, 'code', actor, host);
   assert.equal(result.state, 'configured'); assert.equal(result.method, 'github_oauth');
   assert.equal(f.oauth.status('other', actor), null); assert.equal(f.oauth.status('ws', { id: 'other' }), null);
   const exchange = JSON.parse(f.requests[0].options.body);
   assert.equal(createHash('sha256').update(exchange.code_verifier).digest('base64url'), url.searchParams.get('code_challenge'));
-  assert.equal(exchange.client_secret, f.env.RUMBO_GITHUB_CLIENT_SECRET);
+  assert.equal(exchange.client_secret, f.env.TALVORI_GITHUB_CLIENT_SECRET);
   await assert.rejects(f.oauth.complete(state, 'code', actor, host), /expired/);
   assert.doesNotMatch(f.db.prepare('SELECT encrypted_credential FROM ai_account_connections').get().encrypted_credential, /ghu_|ghr_/);
   assert.doesNotMatch(JSON.stringify(result), /fixture_user_token|operator_secret|fixture_refresh/);
@@ -55,13 +55,13 @@ test('hosted Copilot PKCE binds the callback to actor, workspace, origin and one
 });
 
 test('hosted Copilot rejects missing app registration, changed registration, expired state and denied authorization', async t => {
-  const f = fixture(t); delete f.env.RUMBO_GITHUB_CLIENT_SECRET;
-  assert.deepEqual(f.oauth.setup().missing, ['RUMBO_GITHUB_CLIENT_SECRET']);
-  await assert.rejects(f.start(), /Configure/); f.env.RUMBO_GITHUB_CLIENT_SECRET = 'fixture';
+  const f = fixture(t); delete f.env.TALVORI_GITHUB_CLIENT_SECRET;
+  assert.deepEqual(f.oauth.setup().missing, ['TALVORI_GITHUB_CLIENT_SECRET']);
+  await assert.rejects(f.start(), /Configure/); f.env.TALVORI_GITHUB_CLIENT_SECRET = 'fixture';
   let url = await f.start();
   f.db.prepare("UPDATE ai_authorization_attempts SET expires_at='2000-01-01'").run();
   await assert.rejects(f.oauth.complete(url.searchParams.get('state'), 'code', actor, host), /expired/);
-  url = await f.start(); f.env.RUMBO_GITHUB_CLIENT_ID = 'replacement';
+  url = await f.start(); f.env.TALVORI_GITHUB_CLIENT_ID = 'replacement';
   await assert.rejects(f.oauth.complete(url.searchParams.get('state'), 'code', actor, host), /registration changed/);
   url = await f.start(); await assert.rejects(f.oauth.complete(url.searchParams.get('state'), null, actor, host, 'access_denied'), /not completed/);
   assert.equal(f.requests.length, 0);

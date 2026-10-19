@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowRight, ArrowUp, GitBranch, Link, Plus, RotateCcw, Minus as Unlink } from './icons.jsx';
 import { Button, Dialog, ErrorMessage, Field, Select, useApp } from '../ui.jsx';
-import { rumboApi } from '../data/api.js';
-import { refreshRumbo } from '../data/useRumbo.js';
+import { talvoriApi } from '../data/api.js';
+import { refreshTalvori } from '../data/useTalvori.js';
 import { PRIORITIES, STATUSES } from '../lib/model.js';
 import { hierarchyCandidates, hierarchyRetryRequest, hierarchySnapshotSignature, leafProgressLabel, moveSibling } from '../lib/sub-route-ui.js';
 import './sub-routes.css';
@@ -16,7 +16,7 @@ export function SubRoutes({ task }) {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
-    rumboApi.subRoutes(task.id, task.workspace_id, { signal: controller.signal }).then(response => { if (!controller.signal.aborted) setTree(response.result); }).catch(cause => { if (!controller.signal.aborted) setError(cause); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    talvoriApi.subRoutes(task.id, task.workspace_id, { signal: controller.signal }).then(response => { if (!controller.signal.aborted) setTree(response.result); }).catch(cause => { if (!controller.signal.aborted) setError(cause); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [task.id, task.workspace_id, graphSignal, reload]);
   const caps = tree?.capabilities || {}, locked = busy || Boolean(pending) || loading;
@@ -29,13 +29,13 @@ export function SubRoutes({ task }) {
     try {
       if (!pending) { retry.current = await hierarchyRetryRequest(request.input, `subroutes:${id}:${action}`); request.input.request_id = retry.current.request_id; request.input.revision = retry.current.revision; }
       setPending(request);
-      const response = await rumboApi.mutateSubRoutes(request.id, request.action, request.input);
+      const response = await talvoriApi.mutateSubRoutes(request.id, request.action, request.input);
       retry.current?.clear();
       if (!mounted.current) return false;
       setPending(null);
       if (!response.result?.tree || response.result?.approval_required) { setError(new Error('This change requires approval. The hierarchy has not been reported as changed.')); return false; }
       setDialog(null); if (response.result.tree.route?.id === task.id) setTree(response.result.tree); notify(request.action === 'create' ? 'Sub-route created. No agent was started.' : 'Route hierarchy updated');
-      await refreshRumbo().catch(() => {}); setReload(value => value + 1); return true;
+      await refreshTalvori().catch(() => {}); setReload(value => value + 1); return true;
     } catch (cause) {
       if (!mounted.current) return false;
       setError(cause); if (cause.status >= 400 && cause.status < 500 && cause.status !== 408) { setPending(null); retry.current?.clear(); } return false;

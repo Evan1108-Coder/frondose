@@ -58,7 +58,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
   let pendingPty;
   async function pty() {
     if (ptyFactory) return ptyFactory;
-    pendingPty ??= import('node-pty').then(module => module.default ?? module).catch(() => { pendingPty = null; throw validationError('Interactive terminal support is unavailable. Install the project’s node-pty dependency and restart Rumbo.'); });
+    pendingPty ??= import('node-pty').then(module => module.default ?? module).catch(() => { pendingPty = null; throw validationError('Interactive terminal support is unavailable. Install the project’s node-pty dependency and restart Talvori.'); });
     return pendingPty;
   }
   function scope(workspaceId, projectId) {
@@ -81,7 +81,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     if (!environmentId && root.split(sep).some(part => blocked.test(part))) throw validationError('Credential, dependency, and private application folders cannot be linked to Workbench.');
     const privateRoot = resolve(dataDir);
     // Managed worktrees are intentionally under storage; the database and credentials are not.
-    if (!environmentId && (inside(root, privateRoot) || inside(privateRoot, root))) throw validationError('Rumbo’s private storage cannot be used as a project folder.');
+    if (!environmentId && (inside(root, privateRoot) || inside(privateRoot, root))) throw validationError('Talvori’s private storage cannot be used as a project folder.');
     return root;
   }
   async function fileFor(root, path) {

@@ -1,5 +1,5 @@
 /**
- * Rumbo's slash-command vocabulary.
+ * Talvori's slash-command vocabulary.
  *
  * This module intentionally does not execute commands. A command is only executable
  * when its caller supplies its id in `executableCommandIds`; this keeps the menu
@@ -75,7 +75,7 @@ function fromRows(category, rows, defaults = {}) {
 const core = fromRows(COMMAND_CATEGORIES.CORE, [
   ['help', 'Search commands and explain their parameters.', { usage: '/help [query]', aliases: ['commands'] }],
   ['agent', 'Select the agent that will receive the composed message.', { usage: '/agent [agent]', operation: 'draft' }],
-  ['rumbo', 'Prepare a request in Rumbo agent without sending or starting work.', { usage: '/rumbo [instruction]', operation: 'draft', contexts: [...COMPOSERS, 'workbench'] }],
+  ['talvori', 'Prepare a request in Talvori without sending or starting work.', { id: 'rumbo', aliases: ['rumbo'], usage: '/talvori [instruction]', operation: 'draft', contexts: [...COMPOSERS, 'workbench'] }],
   ['ask', 'Prepare a bounded question for an agent using selected context.', { usage: '/ask [agent] [instruction]', operation: 'draft', action: { agentStart: true, paid: true } }],
   ['mention', 'Insert a person, team, or agent mention.', { usage: '/mention [person|team|agent]', operation: 'draft' }],
   ['reply', 'Reply to the selected message, update, or finding.', { operation: 'draft' }],
@@ -86,7 +86,7 @@ const core = fromRows(COMMAND_CATEGORIES.CORE, [
   ['priority', 'Prepare a priority change.', { usage: '/priority [level]', operation: 'write' }],
   ['due', 'Prepare a due-date change.', { usage: '/due [date]', operation: 'write' }],
   ['label', 'Prepare label additions or removals.', { usage: '/label [label]', operation: 'write' }],
-  ['link', 'Link a Rumbo or connected object.', { usage: '/link [object]', operation: 'write' }],
+  ['link', 'Link a Talvori or connected object.', { usage: '/link [object]', operation: 'write' }],
   ['unlink', 'Prepare removal of a relationship.', { usage: '/unlink [object]', operation: 'write', risk: 'confirmation' }],
   ['context', 'Inspect context selected for the current draft or run.', { aliases: ['context show'] }],
   ['context add', 'Add an authorized source to the selected context.', { usage: '/context add [source]', operation: 'draft' }],
@@ -127,8 +127,8 @@ const work = fromRows(COMMAND_CATEGORIES.WORK, [
   ['reject', 'Reject the selected proposal or output with a reason.', { operation: 'write', risk: 'confirmation' }],
   ['decision', 'Record a decision, rationale, owner, and affected work.', { operation: 'write' }],
   ['handoff', 'Prepare a handoff with outcome, context, state, and next steps.', { operation: 'draft' }],
-  ['follow', 'Subscribe to relevant Rumbo updates.', { usage: '/follow [object]', operation: 'write' }],
-  ['unfollow', 'Stop updates for a Rumbo object.', { usage: '/unfollow [object]', operation: 'write' }],
+  ['follow', 'Subscribe to relevant Talvori updates.', { usage: '/follow [object]', operation: 'write' }],
+  ['unfollow', 'Stop updates for a Talvori object.', { usage: '/unfollow [object]', operation: 'write' }],
 ], { contexts: WORK_CONTEXTS });
 
 const agent = fromRows(COMMAND_CATEGORIES.AGENT, [
@@ -150,15 +150,15 @@ const agent = fromRows(COMMAND_CATEGORIES.AGENT, [
 ]);
 
 const navigation = fromRows(COMMAND_CATEGORIES.NAVIGATION, [
-  ['open', 'Open a Rumbo object.', { usage: '/open [object]' }],
-  ['find', 'Search Rumbo.', { usage: '/find [query]', aliases: ['search'] }],
+  ['open', 'Open a Talvori object.', { usage: '/open [object]' }],
+  ['find', 'Search Talvori.', { usage: '/find [query]', aliases: ['search'] }],
   ['code', 'Open Code at a repository or path.', { usage: '/code [repository|path]' }],
   ['design', 'Open linked design context.', { usage: '/design [file|frame]' }],
   ['inbox', 'Open Inbox.'], ['focus', 'Open Focus.'], ['workbench', 'Open Workbench.'],
   ['connections', 'Open Connections.'],
   ['settings', 'Open a Settings section.', { usage: '/settings [section]' }],
   ['history', 'Show activity and version history.', { usage: '/history [object]' }],
-  ['back', 'Navigate to the previous Rumbo page.'],
+  ['back', 'Navigate to the previous Talvori page.'],
 ], { contexts: EVERYWHERE });
 
 const scheduling = fromRows(COMMAND_CATEGORIES.SCHEDULING, [
@@ -167,7 +167,7 @@ const scheduling = fromRows(COMMAND_CATEGORIES.SCHEDULING, [
   ['rule new', 'Open the rule builder with current context.', { operation: 'draft' }],
   ['rule preview', 'Preview matching objects and proposed effects.'],
   ['rule pause', 'Pause an existing rule after confirmation.', { operation: 'write', risk: 'confirmation' }],
-  ['schedule', 'Prepare a supported Rumbo action for a specified time.', { usage: '/schedule [action] [time]', operation: 'draft' }],
+  ['schedule', 'Prepare a supported Talvori action for a specified time.', { usage: '/schedule [action] [time]', operation: 'draft' }],
   ['notify', 'Prepare a notification with a preview.', { usage: '/notify [destination]', operation: 'draft' }],
   ['digest', 'Configure an update digest.', { usage: '/digest [scope] [schedule]', operation: 'write' }],
 ]);
@@ -252,7 +252,7 @@ const connectionRows = {
     ['import', 'Preview import of selected Jira work.', 'draft'], ['create', 'Prepare creation of a Jira issue.', 'draft'],
     ['transition', 'Prepare a validated Jira workflow transition.', 'draft'], ['comment', 'Prepare a Jira comment.', 'draft'],
     ['sync', 'Preview or apply configured Jira synchronization.', 'external', false, 'confirmation'],
-    ['link', 'Link a Jira issue to Rumbo work.', 'write'], ['conflicts', 'Open Jira synchronization conflicts.', 'read'],
+    ['link', 'Link a Jira issue to Talvori work.', 'write'], ['conflicts', 'Open Jira synchronization conflicts.', 'read'],
   ],
   slack: [
     ['capture', 'Capture an authorized Slack message or thread as draft work.', 'draft'],
@@ -264,7 +264,7 @@ const connectionRows = {
     ['attach', 'Attach an authorized Figma object.', 'draft'], ['inspect', 'Inspect a linked Figma object.', 'read'],
     ['compare', 'Compare implementation evidence with selected frames.', 'read'], ['review', 'Prepare a design review.', 'draft'],
     ['comments', 'Read or prepare supported Figma comments.', 'draft'], ['changes', 'Review changes to linked designs.', 'read'],
-    ['map', 'Map design objects to code or Rumbo work.', 'write'],
+    ['map', 'Map design objects to code or Talvori work.', 'write'],
   ],
   figjam: [
     ['attach', 'Attach an authorized FigJam board or section.', 'draft'], ['extract', 'Extract draft work from selected board content.', 'draft'],

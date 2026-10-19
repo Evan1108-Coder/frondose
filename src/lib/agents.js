@@ -3,7 +3,7 @@ import { isBrowserAiProvider, isScopedAiProvider } from './ai-providers.js';
 import { API_PROVIDERS } from './ai-provider-catalog.js';
 
 export const AGENT_PROVIDERS = {
-  copilot: { name: 'GitHub Copilot', company: 'GitHub', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'General chat; tools disabled', description: 'Use your private Copilot local ACP connection for reviewed conversations.' },
+  copilot: { name: 'GitHub Copilot', company: 'GitHub', capabilities: ['Conversations', 'Reviewed Talvori actions'], permissions: 'General chat; tools disabled', description: 'Use your private Copilot local ACP connection for reviewed conversations.' },
   codex: {
     name: "Codex",
     company: "OpenAI",
@@ -16,11 +16,11 @@ export const AGENT_PROVIDERS = {
     company: "Anthropic",
     capabilities: ["Read and search"],
     permissions: "Read-only analysis",
-    description: "Read code, explore a project, and explain findings. Editing is not supported in Rumbo yet.",
+    description: "Read code, explore a project, and explain findings. Editing is not supported in Talvori yet.",
   },
-  openrouter: { name: 'OpenRouter', company: 'OpenRouter', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: 'Use an explicitly selected model through your connected OpenRouter account.' },
-  huggingface: { name: 'Hugging Face Inference', company: 'Hugging Face', capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: 'Use a chat model through your configured Hugging Face account.' },
-  ...Object.fromEntries(API_PROVIDERS.filter(item => !item.auth).map(item => [item.id, { name: item.name, company: item.brand, capabilities: ['Conversations', 'Reviewed Rumbo actions'], permissions: 'Reviewed workspace actions', description: `Use a selected model through your ${item.name} API key.` }])),
+  openrouter: { name: 'OpenRouter', company: 'OpenRouter', capabilities: ['Conversations', 'Reviewed Talvori actions'], permissions: 'Reviewed workspace actions', description: 'Use an explicitly selected model through your connected OpenRouter account.' },
+  huggingface: { name: 'Hugging Face Inference', company: 'Hugging Face', capabilities: ['Conversations', 'Reviewed Talvori actions'], permissions: 'Reviewed workspace actions', description: 'Use a chat model through your configured Hugging Face account.' },
+  ...Object.fromEntries(API_PROVIDERS.filter(item => !item.auth).map(item => [item.id, { name: item.name, company: item.brand, capabilities: ['Conversations', 'Reviewed Talvori actions'], permissions: 'Reviewed workspace actions', description: `Use a selected model through your ${item.name} API key.` }])),
 };
 
 const ACTIVE_RUN_STATUSES = new Set(["queued", "starting", "running", "needs_input", "paused"]);
@@ -31,7 +31,7 @@ export function agentReadiness(agent, connection) {
   const result = (state, label, description, action, canStartLive = false, canSimulate = !isBrowserAiProvider(agent?.provider)) =>
     ({ state, label, description, action, canStartLive, canSimulate });
   if (!agent || val(agent, "archived_at")) return result("archived", "Archived", "Restore this agent before starting a session.", "restore", false, false);
-  if (!provider) return result("unsupported", "Not supported", "This provider cannot run sessions in Rumbo yet. Choose Codex or Claude.", "configure", false, false);
+  if (!provider) return result("unsupported", "Not supported", "This provider cannot run sessions in Talvori yet. Choose Codex or Claude.", "configure", false, false);
   if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
   if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
   if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
@@ -41,13 +41,13 @@ export function agentReadiness(agent, connection) {
   if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
   if (state === "not_installed") return result("not_installed", "Setup needed", `Install ${agent.provider === 'claude' ? "Claude Code" : "Codex CLI"}, then connect your account.`, "connect");
   if (state === "connected" && connection.mode !== "demo" && (isScopedAiProvider(agent.provider) || connection.metadata?.liveAccountChecked !== false)) {
-    if (isScopedAiProvider(agent.provider)) return result('ready', 'Ready', 'Your workspace account is connected. Rumbo changes are proposed for review; project-file tools are unavailable.', 'start', true);
+    if (isScopedAiProvider(agent.provider)) return result('ready', 'Ready', 'Your workspace account is connected. Talvori changes are proposed for review; project-file tools are unavailable.', 'start', true);
     return result("ready", "Ready", "Account connected. General chat needs no folder; project-file work requires one. Access is checked again during launch.", "start", true);
   }
   const description = state === "available_not_authenticated"
     ? `${provider.name} is installed, but no account connection has been verified.`
     : state === "probe_failed"
-      ? `Rumbo could not find a working ${provider.name} installation. Check setup in Connections.`
+      ? `Talvori could not find a working ${provider.name} installation. Check setup in Connections.`
       : `Connect your ${provider.name} account to start live work. You can still try an explicit simulation.`;
   return result("needs_connection", "Connect account", description, "connect");
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { AgentLinks } from '../components/AgentLinks.jsx';
 import { Plus, ArrowLeft, ArrowRight, Folder, Pencil, Archive, GitBranch, MessageCircle, Play, Menu, LayoutGrid, CircleCheck, Users, ChevronDown, ChevronRight } from "../components/icons.jsx";
 import {
   Button,
@@ -20,7 +21,7 @@ import {
   val,
   visible,
 } from "../lib/model.js";
-import { rumboActions } from "../data/useRumbo.js";
+import { talvoriActions } from "../data/useTalvori.js";
 import { ProjectRow } from "./Overview.jsx";
 import { Tooltip } from "../components/Tooltip.jsx";
 import { ProjectHub } from "./ProjectHub.jsx";
@@ -30,7 +31,7 @@ import { featureItems } from '../lib/settings-catalog.js';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ActivityTimeline } from '../components/ActivityTimeline.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
-import { RumboAgentEntryButton } from '../components/RumboAgentEntry.jsx';
+import { TalvoriAgentEntryButton } from '../components/TalvoriAgentEntry.jsx';
 import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import { routeForestRows } from '../lib/sub-routes.js';
 import './route-hierarchy-list.css';
@@ -151,7 +152,7 @@ export function RouteRows({ routes, projectId }) {
             }
             onClick={() =>
               perform(() =>
-                rumboActions.updateTask(route.id, {
+                talvoriActions.updateTask(route.id, {
                   status: route.status === "done" ? "ready" : "done",
                 }),
               )
@@ -339,7 +340,7 @@ export function RoutesView() {
                   const id = e.dataTransfer.getData("text/rumbo-route");
                   if (routes.some((route) => route.id === id))
                     perform(() =>
-                      rumboActions.updateTask(id, { status: value }),
+                      talvoriActions.updateTask(id, { status: value }),
                     );
                 }}
               >
@@ -436,7 +437,7 @@ function RouteDetail({ route }) {
         <Button icon={Pencil} onClick={() => edit("task", route)}>
           Edit route
         </Button>
-        <RumboAgentEntryButton source={{ type: 'task', id: route.id }} />
+        <TalvoriAgentEntryButton source={{ type: 'task', id: route.id }} />
         <Button
           variant="primary"
           icon={Play}
@@ -583,14 +584,14 @@ function RouteDetail({ route }) {
           <section>
             <h3>Properties</h3>
             <p>Reported progress: <strong>{route.reported_progress == null ? 'Not set' : `${route.reported_progress}%`}</strong><br /><small>Manual assessment from published updates; separate from sub-route completion.</small></p>
-            <WorkflowSelect item={route} onChange={patch => perform(() => rumboActions.updateTask(route.id, patch))} />
-            <LabelPicker value={route.labels ?? []} onChange={labels => perform(() => rumboActions.updateTask(route.id, { labels }))} />
+            <WorkflowSelect item={route} onChange={patch => perform(() => talvoriActions.updateTask(route.id, patch))} />
+            <LabelPicker value={route.labels ?? []} onChange={labels => perform(() => talvoriActions.updateTask(route.id, { labels }))} />
             <Select
               label="Priority"
               value={route.priority}
               onChange={(value) =>
                 perform(() =>
-                  rumboActions.updateTask(route.id, { priority: value }),
+                  talvoriActions.updateTask(route.id, { priority: value }),
                 )
               }
             >
@@ -600,24 +601,7 @@ function RouteDetail({ route }) {
                 </option>
               ))}
             </Select>
-            <Select
-              label="Agent"
-              value={val(route, "assignee_agent_ids")?.[0] ?? ""}
-              onChange={(value) =>
-                perform(() =>
-                  rumboActions.updateTask(route.id, {
-                    assignee_agent_ids: value ? [value] : [],
-                  }),
-                )
-              }
-            >
-              <option value="">Unassigned</option>
-              {visible(data.agents).map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </Select>
+            <AgentLinks targetType="route" targetId={route.id} existingAgentIds={val(route, 'assignee_agent_ids') || []} />
             <dl>
               <div>
                 <dt>Due date</dt>

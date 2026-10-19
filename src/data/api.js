@@ -1,10 +1,10 @@
 const API_ROOT = "/api";
 const DEFAULT_TIMEOUT_MS = 12_000;
 
-export class RumboApiError extends Error {
+export class TalvoriApiError extends Error {
   constructor(message, { status = 0, code = "request_failed", details, cause } = {}) {
     super(message, { cause });
-    this.name = "RumboApiError";
+    this.name = "TalvoriApiError";
     this.status = status;
     this.code = code;
     this.details = details;
@@ -19,7 +19,7 @@ async function parseResponse(response) {
   if (response.status === 204) return null;
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
-    throw new RumboApiError("The Rumbo API is not available.", {
+    throw new TalvoriApiError("The Talvori API is not available.", {
       status: response.status,
       code: "api_unavailable",
     });
@@ -29,13 +29,13 @@ async function parseResponse(response) {
   try {
     payload = await response.json();
   } catch (cause) {
-    throw new RumboApiError("Rumbo received an unreadable response. Try refreshing.", {
+    throw new TalvoriApiError("Talvori received an unreadable response. Try refreshing.", {
       status: response.status, code: "invalid_response", cause,
     });
   }
   if (!response.ok) {
     const problem = payload?.error ?? payload;
-    throw new RumboApiError(problem?.message ?? `Request failed (${response.status})`, {
+    throw new TalvoriApiError(problem?.message ?? `Request failed (${response.status})`, {
       status: response.status,
       code: problem?.code,
       details: problem?.details,
@@ -94,10 +94,10 @@ export async function apiRequest(path, options = {}) {
     };
   } catch (error) {
     if (signal?.aborted) throw signal.reason ?? error;
-    if (error instanceof RumboApiError) throw error;
-    throw new RumboApiError(timedOut
+    if (error instanceof TalvoriApiError) throw error;
+    throw new TalvoriApiError(timedOut
       ? "The server took too long to respond. Check the current state before retrying."
-      : "Rumbo could not reach the server. Your existing workspace has not been changed.", {
+      : "Talvori could not reach the server. Your existing workspace has not been changed.", {
       code: timedOut ? "timeout" : "network_error", cause: error,
     });
   } finally {
@@ -115,7 +115,7 @@ const entity = async (request, key) => {
   return { ...response, result: response.result?.[key] ?? response.result };
 };
 
-export const rumboApi = {
+export const talvoriApi = {
   timeline: ({ workspaceId, targetType, targetId, cursor }, options) => get(`${API_ROOT}/timeline?${new URLSearchParams({ workspace_id: workspaceId, target_type: targetType, target_id: targetId, ...(cursor ? { cursor } : {}) })}`, options),
   subRoutes: (id, workspaceId, options) => get(`${API_ROOT}/sub-routes/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(workspaceId)}`, options),
   mutateSubRoutes: (id, action, input, options) => post(`${API_ROOT}/sub-routes/${encodeURIComponent(id)}/${encodeURIComponent(action)}`, input, options),

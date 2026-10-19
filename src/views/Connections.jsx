@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Form } from "../components/Form.jsx";
 import { ExternalLink, ArrowRight, Plug, CircleCheck, Copy, Folder, Search, RotateCcw, Link, ShieldCheck, X } from "../components/icons.jsx";
-import { rumboApi } from "../data/api.js";
-import { rumboActions } from "../data/useRumbo.js";
+import { talvoriApi } from "../data/api.js";
+import { talvoriActions } from "../data/useTalvori.js";
 import {
   Button,
   Dialog,
@@ -44,7 +44,7 @@ export function ConnectionsView() {
     [error, setError] = useState(null);
   useEffect(() => {
     let active = true;
-    rumboApi
+    talvoriApi
       .connectionSetups()
       .then((response) => {
         if (active) setSetups(response.result.setups ?? []);
@@ -216,8 +216,8 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     if (metadataOnly) return undefined;
     let active = true;
     Promise.all([
-      rumboApi.connectionSetup(provider),
-      rumboApi.connectionStatus(provider),
+      talvoriApi.connectionSetup(provider),
+      talvoriApi.connectionStatus(provider),
     ])
       .then(([s, c]) => {
         if (active) {
@@ -235,8 +235,8 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const reloadSetup = () =>
     execute(async () => {
       const [s, c] = await Promise.all([
-        rumboApi.connectionSetup(provider),
-        rumboApi.connectionStatus(provider),
+        talvoriApi.connectionSetup(provider),
+        talvoriApi.connectionStatus(provider),
       ]);
       setSetup(s.result.setup);
       setCurrent(c.result.connection);
@@ -251,7 +251,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
       return;
     let active = true;
     const timer = setInterval(() => {
-      rumboApi
+      talvoriApi
         .connectionStatus(provider)
         .then((response) => {
           if (!active) return;
@@ -259,7 +259,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
           if (response.result.connection?.state === "connected") {
             setAuthUrl(null);
             setMessage("Connected successfully.");
-            rumboActions.refresh({ quiet: true }).catch(() => {});
+            talvoriActions.refresh({ quiet: true }).catch(() => {});
           }
         })
         .catch(() => {});
@@ -271,7 +271,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
   }, [provider, connection?.state, authUrl]);
   const connect = (method) =>
     execute(async () => {
-      const result = await rumboActions.connectConnection(provider, {
+      const result = await talvoriActions.connectConnection(provider, {
         method,
         ...(method === "token" ? { token } : {}),
       });
@@ -283,7 +283,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     });
   const check = () =>
     execute(async () => {
-      const result = await rumboActions.checkConnection(provider);
+      const result = await talvoriActions.checkConnection(provider);
       setCurrent(result.connection);
       setMessage(
         result.message ??
@@ -294,7 +294,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     });
   const browse = (more = false) =>
     execute(async () => {
-      const response = await rumboApi.connectionResources(
+      const response = await talvoriApi.connectionResources(
         provider,
         more && nextPage ? { pageToken: nextPage } : {},
       );
@@ -310,7 +310,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const tabs = connectionSettingsTabs(provider, {
     connectionState: connection?.state ?? "not_connected",
   });
-  if (comingSoon) return <Dialog title={setup?.displayName ?? descriptor?.displayName ?? provider} subtitle="Coming soon" onClose={onClose} wide><div className="connection-setup"><div className="connection-detail-state"><ProviderIcon large provider={provider} /><span className="connection-preview-badge">Coming soon</span></div><div className="connection-boundary is-preview"><strong>External service connection paused</strong><p>Rumbo is focusing on AI-agent connections. Authorization, resource sync, and provider actions are unavailable for now. Existing records are preserved.</p></div></div></Dialog>;
+  if (comingSoon) return <Dialog title={setup?.displayName ?? descriptor?.displayName ?? provider} subtitle="Coming soon" onClose={onClose} wide><div className="connection-setup"><div className="connection-detail-state"><ProviderIcon large provider={provider} /><span className="connection-preview-badge">Coming soon</span></div><div className="connection-boundary is-preview"><strong>External service connection paused</strong><p>Talvori is focusing on AI-agent connections. Authorization, resource sync, and provider actions are unavailable for now. Existing records are preserved.</p></div></div></Dialog>;
   return (
     <Dialog
       title={setup?.displayName ?? descriptor?.displayName ?? provider}
@@ -386,7 +386,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
           <div className="setup-instructions">
             <h3>One-time Google setup</h3>
             <p>
-              Google requires a registered OAuth application before Rumbo can
+              Google requires a registered OAuth application before Talvori can
               open its sign-in page.
             </p>
             <ol>
@@ -399,7 +399,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
                 <code>{setup.callbackUrl}</code>
               </li>
               <li>
-                Set these server environment variables and restart Rumbo:
+                Set these server environment variables and restart Talvori:
                 <code>{setup.missing?.join("\n")}</code>
               </li>
             </ol>
@@ -529,7 +529,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
         {confirmDisconnect ? (
           <div className="disconnect-confirm">
             <p>
-              Disconnect {setup?.displayName} from Rumbo? Your external CLI
+              Disconnect {setup?.displayName} from Talvori? Your external CLI
               sign-in is kept, and your project data stays here.
             </p>
             <Button onClick={() => setConfirmDisconnect(false)}>Cancel</Button>
@@ -539,11 +539,11 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
               onClick={() =>
                 execute(async () => {
                   const result =
-                    await rumboActions.disconnectConnection(provider);
+                    await talvoriActions.disconnectConnection(provider);
                   setCurrent(result.connection);
                   setResources(null);
                   setConfirmDisconnect(false);
-                  setMessage("Disconnected from Rumbo.");
+                  setMessage("Disconnected from Talvori.");
                 })
               }
             >
@@ -687,8 +687,8 @@ function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection })
       ],
     },
     mappings: {
-      title: "Rumbo destinations and mappings",
-      description: "Choose how reviewed external objects would map into Rumbo without treating synchronization as active.",
+      title: "Talvori destinations and mappings",
+      description: "Choose how reviewed external objects would map into Talvori without treating synchronization as active.",
       rows: [
         ["Default intake", settings.mappings.intakeType],
         ["Sync direction", settings.mappings.syncDirection],
@@ -697,7 +697,7 @@ function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection })
     },
     rules: {
       title: "Connection rules",
-      description: "Rules would match provider events and prepare reviewed Rumbo work. External event ingestion is not active.",
+      description: "Rules would match provider events and prepare reviewed Talvori work. External event ingestion is not active.",
       rows: [["Rule execution", "Disabled"], ["Configured rules", String(settings.rules.items.length)], ["Agent launches", "Never automatic"]],
     },
     agents: {
@@ -712,8 +712,8 @@ function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection })
     },
     notifications: {
       title: "Notifications",
-      description: "Rumbo can describe notification preferences, but external delivery is not configured.",
-      rows: [["Rumbo Inbox", settings.notifications.inbox ? "Enabled" : "Disabled"], ["External delivery", "Unavailable"], ["Digest", settings.notifications.digest]],
+      description: "Talvori can describe notification preferences, but external delivery is not configured.",
+      rows: [["Talvori Inbox", settings.notifications.inbox ? "Enabled" : "Disabled"], ["External delivery", "Unavailable"], ["Digest", settings.notifications.digest]],
     },
     security: {
       title: "Security and scopes",

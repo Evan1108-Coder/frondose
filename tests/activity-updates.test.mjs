@@ -67,7 +67,7 @@ test('timeline records trusted actor and old/new fields without publishing draft
   assert.ok(!JSON.stringify(response.body).includes('PRIVATE TIMELINE TEXT'));
   assert.ok(!JSON.stringify(response.body).includes('Spoofed author'));
   const change = response.body.result.items.find(item => item.changes.some(change => change.field === 'reported_progress'));
-  assert.ok(change); assert.equal(change.source, 'Rumbo'); assert.notEqual(change.actor_name, 'Actor not recorded');
+  assert.ok(change); assert.equal(change.source, 'Talvori'); assert.notEqual(change.actor_name, 'Actor not recorded');
   assert.deepEqual(change.changes.find(value => value.field === 'reported_progress'), { field: 'reported_progress', before: null, after: 98 });
   assert.equal((await call('GET', `/timeline?workspace_id=${ws}&target_type=project&target_id=${project.id}&limit=1000`)).status, 400);
 });

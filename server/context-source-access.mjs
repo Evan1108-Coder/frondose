@@ -109,7 +109,7 @@ function references(read, table, key, workspaceId, path = new Set(), inspectDefi
       const saved = parse(snapshot?.source_access_json);
       if (!snapshot || snapshot.chat_id !== row.chat_id || snapshot.workspace_id !== workspaceId
         || file.rumbo_context_snapshot !== snapshot.id || file.content !== snapshot.content
-        || file.type !== 'text/markdown' || file.name !== `rumbo-context-${snapshot.id}.md`
+        || file.type !== 'text/markdown' || file.name !== `talvori-context-${snapshot.id}.md`
         || !saved || saved.version !== 1 || saved.workspace_id !== workspaceId
         || !Array.isArray(saved.sources) || saved.sources.length > 1000
         || !Array.isArray(saved.connections) || saved.connections.length
@@ -288,7 +288,7 @@ export function assertSourceAccess(db, inspection, actor, allowed, runChecks = {
 // Presentation surfaces (feeds, exports, outputs and their versions/reviews)
 // must retain the same source boundary as exact-context compilation. Follow
 // stable ancestry only; do not inspect arbitrary user text for references.
-export function assertRumboSourceReferences(db, item, table, actor, allowed) {
+export function assertTalvoriSourceReferences(db, item, table, actor, allowed) {
   if (!item || !['chats', 'runs'].includes(table) && !['chat_id', 'run_id', 'source_message_id', 'output_id', 'target_id', 'entity_id'].some(key => item[key])) return true;
   const seen = new Set(), existing = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
   const read = (target, key) => PERMISSIONS[target] && existing.has(target) && id(key) ? db.prepare(`SELECT * FROM ${target} WHERE id=?`).get(key) : null;
@@ -333,7 +333,7 @@ export function assertRumboSourceReferences(db, item, table, actor, allowed) {
   return true;
 }
 
-export function chatHasRumboSourceHistory(db, chatId) {
+export function chatHasTalvoriSourceHistory(db, chatId) {
   const existing = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
   if (existing.has('chat_collaboration') && parse(db.prepare('SELECT payload_json FROM chat_collaboration WHERE chat_id=?').get(chatId)?.payload_json)?.rumbo_source) return true;
   return existing.has('run_context_snapshots') && existing.has('runs') && Boolean(db.prepare(`SELECT 1 FROM run_context_snapshots s JOIN runs r ON r.id=s.run_id WHERE r.chat_id=? AND ${PROTECTED_CAPTURE_SQL} LIMIT 1`).get(chatId));

@@ -7,7 +7,7 @@ const MAX_LINE_BYTES = 262_144;
 const MAX_PENDING = 32;
 const jsonrpcError = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } });
 
-export function runNativeAgentToolStdio({ input = process.stdin, output = process.stdout, socketPath = process.env.RUMBO_NATIVE_TOOL_SOCKET, capability = process.env.RUMBO_NATIVE_TOOL_CAPABILITY } = {}) {
+export function runNativeAgentToolStdio({ input = process.stdin, output = process.stdout, socketPath = process.env.TALVORI_NATIVE_TOOL_SOCKET, capability = process.env.TALVORI_NATIVE_TOOL_CAPABILITY } = {}) {
   if (typeof socketPath !== 'string' || !socketPath.startsWith('/') || socketPath.length > 500 || typeof capability !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(capability)) throw new Error('Native tool bridge environment is invalid.');
   const socket = createConnection(socketPath);
   const pending = new Map();
@@ -44,7 +44,7 @@ export function runNativeAgentToolStdio({ input = process.stdin, output = proces
       const id = request.id ?? null;
       if (request.jsonrpc !== '2.0' || typeof request.method !== 'string') { if (request.id !== undefined) write(jsonrpcError(id, -32600, 'Invalid request.')); continue; }
       if (request.id === undefined) continue;
-      if (request.method === 'initialize') write({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'rumbo', version: '1' } } });
+      if (request.method === 'initialize') write({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'talvori', version: '1' } } });
       else if (request.method === 'ping') forward(id, 'ping', {});
       else if (request.method === 'tools/list') forward(id, 'tools/list', {}, (value) => value);
       else if (request.method === 'tools/call') forward(id, 'tools/call', request.params || {}, (value) => value && Array.isArray(value.content) ? value : { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }] });

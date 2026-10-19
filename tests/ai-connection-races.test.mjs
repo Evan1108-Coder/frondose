@@ -13,7 +13,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'rumbo-connection-races-')), db = new DatabaseSync(':memory:');
   db.exec("CREATE TABLE workspaces(id TEXT PRIMARY KEY); INSERT INTO workspaces VALUES ('ws');");
-  const f = { db, env: { RUMBO_HF_CLIENT_ID: 'fixture-app' }, requests: [], allowed: true, reply: null };
+  const f = { db, env: { TALVORI_HF_CLIENT_ID: 'fixture-app' }, requests: [], allowed: true, reply: null };
   const service = createAiConnectionsService({ db, dataDir: directory, env: f.env, authorize: () => { if (!f.allowed) throw Object.assign(Error('Access revoked'), { code: 'access_denied' }); }, fetchImpl: async (url, options) => {
     f.requests.push({ url, options });
     const custom = await f.reply?.(url, options); if (custom) return custom;
@@ -76,9 +76,9 @@ for (const provider of ['openrouter', 'huggingface']) {
 }
 
 test('Hugging Face binds pending and saved OAuth credentials to the registered app', async t => {
-  const f = fixture(t), state = await f.start('huggingface'); f.env.RUMBO_HF_CLIENT_ID = 'different-app';
+  const f = fixture(t), state = await f.start('huggingface'); f.env.TALVORI_HF_CLIENT_ID = 'different-app';
   await assert.rejects(f.complete('huggingface', state), { code: 'oauth_expired' }); assert.equal(f.requests.length, 0);
-  await f.complete('huggingface', await f.start('huggingface')); f.env.RUMBO_HF_CLIENT_ID = 'third-app';
+  await f.complete('huggingface', await f.start('huggingface')); f.env.TALVORI_HF_CLIENT_ID = 'third-app';
   await assert.rejects(f.service.hfCheck('ws', actor), { code: 'reconnect_required' });
   assert.equal(f.service.readyState('huggingface', 'ws', actor).error_code, 'reconnect_required');
 });

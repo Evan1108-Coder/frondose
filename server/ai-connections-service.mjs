@@ -1,3 +1,4 @@
+import { talvoriEnvironment } from './brand-config.mjs';
 import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,10 +31,11 @@ export function installAiConnections(db) {
 }
 
 export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env = process.env, authorize, onCopilotReplace }) {
+  env = talvoriEnvironment(env);
   installAiConnections(db);
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   let key;
-  if (env.RUMBO_CONNECTION_ENCRYPTION_KEY) key = Buffer.from(env.RUMBO_CONNECTION_ENCRYPTION_KEY, 'base64');
+  if (env.TALVORI_CONNECTION_ENCRYPTION_KEY) key = Buffer.from(env.TALVORI_CONNECTION_ENCRYPTION_KEY, 'base64');
   else {
     const path = join(dataDir, 'connections.key');
     try { key = readFileSync(path); }
@@ -45,7 +47,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     }
     chmodSync(path, 0o600);
   }
-  if (key.length !== 32) throw new Error('RUMBO_CONNECTION_ENCRYPTION_KEY must encode exactly 32 bytes.');
+  if (key.length !== 32) throw new Error('TALVORI_CONNECTION_ENCRYPTION_KEY must encode exactly 32 bytes.');
   let closed = false;
   const shutdown = new AbortController(), authorizationClaims = new Map(), activeRuns = new Map();
   const scopeKey = (provider, workspaceId, actor) => JSON.stringify([provider, workspaceId, actor.id]);
@@ -110,11 +112,11 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       method: config ? 'api_key' : 'oauth', ...(config ? { model_ids: config.model_ids, region: config.region, provider_workspace: config.provider_workspace } : {}) };
   };
   const callbackOrigin = host => {
-    const configured = env.RUMBO_PUBLIC_BASE_URL;
+    const configured = env.TALVORI_PUBLIC_BASE_URL;
     let url;
     try { url = new URL(configured || `http://${host}`); }
-    catch { throw failure('callback_setup', 'Configure a valid RUMBO_PUBLIC_BASE_URL.', 409); }
-    if (url.username || url.password || url.search || url.hash || url.pathname !== '/' || (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) throw failure('callback_setup', 'RUMBO_PUBLIC_BASE_URL must be an HTTPS origin, or a local loopback HTTP origin.', 409);
+    catch { throw failure('callback_setup', 'Configure a valid TALVORI_PUBLIC_BASE_URL.', 409); }
+    if (url.username || url.password || url.search || url.hash || url.pathname !== '/' || (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) throw failure('callback_setup', 'TALVORI_PUBLIC_BASE_URL must be an HTTPS origin, or a local loopback HTTP origin.', 409);
     return url.origin;
   };
   async function requestJson(url, options = {}) {
@@ -173,7 +175,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     url.searchParams.set('callback_url', `${origin}${CALLBACK}${state}`);
     url.searchParams.set('code_challenge', digest(verifier));
     url.searchParams.set('code_challenge_method', 'S256');
-    url.searchParams.set('key_label', 'Rumbo');
+    url.searchParams.set('key_label', 'Talvori');
     return { authorization_url: url.toString(), expires_at: new Date(Date.now() + 10 * 60_000).toISOString() };
   }
   async function complete(state, code, actor, host) {
@@ -200,7 +202,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
   }
   async function list(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
-    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.RUMBO_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Local ACP requires Copilot CLI and each user’s eligible Copilot subscription/access. Hosted GitHub authorization requires operator app registration; each user needs eligible Copilot access. Only explicit successful inference verifies it.' } };
+    return { ...Object.fromEntries(API_PROVIDERS.map(provider => [provider.id, publicRow(read(workspaceId, actor.id, provider.id))])), huggingface_configured: Boolean(env.TALVORI_HF_CLIENT_ID), requirements: { openrouter: 'Browser authorization or your API key.', huggingface: 'Browser authorization requires an OAuth app; a personal inference token does not.', copilot: 'Local ACP requires Copilot CLI and each user’s eligible Copilot subscription/access. Hosted GitHub authorization requires operator app registration; each user needs eligible Copilot access. Only explicit successful inference verifies it.' } };
   }
   async function check(workspaceId, actor) {
     await requireWorkspace(workspaceId, actor);
@@ -242,15 +244,15 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     return { disconnected: true, remote_key_revoked: false };
   }
   const hfClientId = () => {
-    const clientId = env.RUMBO_HF_CLIENT_ID;
-    if (typeof clientId !== 'string' || !clientId || clientId.length > 500) throw failure('operator_setup_required', 'The Rumbo operator must configure RUMBO_HF_CLIENT_ID before Hugging Face sign-in.', 409);
+    const clientId = env.TALVORI_HF_CLIENT_ID;
+    if (typeof clientId !== 'string' || !clientId || clientId.length > 500) throw failure('operator_setup_required', 'The Talvori operator must configure TALVORI_HF_CLIENT_ID before Hugging Face sign-in.', 409);
     return clientId;
   };
   const hfRedirect = host => `${callbackOrigin(host)}${HF_CALLBACK}`;
   async function hfToken(fields, signal) {
     const clientId = hfClientId();
     const headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    if (env.RUMBO_HF_CLIENT_SECRET) headers.Authorization = `Basic ${Buffer.from(`${clientId}:${env.RUMBO_HF_CLIENT_SECRET}`).toString('base64')}`;
+    if (env.TALVORI_HF_CLIENT_SECRET) headers.Authorization = `Basic ${Buffer.from(`${clientId}:${env.TALVORI_HF_CLIENT_SECRET}`).toString('base64')}`;
     const result = await hfJson('/oauth/token', { method: 'POST', headers, body: new URLSearchParams({ client_id: clientId, ...fields }).toString(), ...(signal ? { signal } : {}) });
     if (typeof result.access_token !== 'string' || !result.access_token) throw failure('oauth_invalid', 'Hugging Face did not return an access token.', 502);
     return { access_token: result.access_token, refresh_token: result.refresh_token || null, expires_at: Number.isFinite(Number(result.expires_in)) ? Date.now() + Number(result.expires_in) * 1000 : null };
@@ -297,7 +299,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
     let credential;
     try { credential = JSON.parse(unseal(row.id, row.encrypted_credential)); }
     catch { throw failure('credential_unreadable', 'Reconnect your Hugging Face account.', 409); }
-    if (credential.client_id && credential.client_id !== hfClientId()) throw failure('reconnect_required', 'Reconnect Hugging Face using the current Rumbo app registration.', 409);
+    if (credential.client_id && credential.client_id !== hfClientId()) throw failure('reconnect_required', 'Reconnect Hugging Face using the current Talvori app registration.', 409);
     if (credential.expires_at && credential.expires_at < Date.now() + 60_000) {
       if (!credential.refresh_token) throw failure('reconnect_required', 'Your Hugging Face session expired. Reconnect.', 409);
       const refreshed = await hfToken({ grant_type: 'refresh_token', refresh_token: credential.refresh_token }, signal);
@@ -436,7 +438,7 @@ export function createAiConnectionsService({ db, dataDir, fetchImpl = fetch, env
       if (provider === 'huggingface') {
         let credential;
         try { credential = JSON.parse(secret); } catch { throw failure('credential_unreadable', 'Reconnect this AI account.', 409); }
-        if (credential.client_id && credential.client_id !== hfClientId()) throw failure('reconnect_required', 'Reconnect Hugging Face using the current Rumbo app registration.', 409);
+        if (credential.client_id && credential.client_id !== hfClientId()) throw failure('reconnect_required', 'Reconnect Hugging Face using the current Talvori app registration.', 409);
         if (typeof credential.access_token !== 'string' || !credential.access_token) throw failure('credential_unreadable', 'Reconnect this AI account.', 409);
         if (credential.expires_at && credential.expires_at < Date.now() + 60_000 && !credential.refresh_token) throw failure('reconnect_required', 'Your Hugging Face session expired. Reconnect.', 409);
       }

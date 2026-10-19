@@ -19,7 +19,7 @@ function childFor(launch, fake) {
     launch.prompt = prompt;
     if (fake.mode === 'hold') return;
     queueMicrotask(() => {
-      if (fake.mode === 'success') child.stdout.emit('data', Buffer.from(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Injected context fixture reply.' } })}\n`));
+      if (fake.mode === 'success') child.stdout.emit('data', Buffer.from(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: fake.reply ? fake.reply(prompt) : 'Injected context fixture reply.' } })}\n`));
       else child.stderr.emit('data', Buffer.from('Injected context fixture failure.'));
       child.emit('close', fake.mode === 'success' ? 0 : 1);
     });
@@ -28,7 +28,7 @@ function childFor(launch, fake) {
 }
 
 async function fixture(callback) {
-  const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-context-execution-'));
+  const dataDir = await mkdtemp(join(tmpdir(), 'talvori-context-execution-'));
   const fake = { launches: [], commands: [], networkCalls: 0, mode: 'success' };
   const integrationOptions = {
     env: {},
@@ -125,6 +125,101 @@ function inspectedLaunch(input, inspectionId, overrides = {}) {
     ...overrides,
   };
 }
+
+test('reviewed actor opt-in applies fake provider low-risk replies while preserving pending risky actions and API links',async()=>{
+  await fixture(async({api,call,fake,workspace,agent,project,route,inspectInput})=>{
+    await connectFixture(call,fake);
+    const policy=(await call('/agent-awareness',{workspace_id:workspace.id,low_risk_actions:true},'POST',200)).low_risk_actions;
+    assert.equal(policy.enabled,true);
+    const input=inspectInput({work_mode:'conversation',permission_mode:'read-only'});
+    const preview=(await call('/context/inspect',input)).result;
+    assert.equal(preview.manifest.direct_action_policy.version,policy.version);
+    assert.match(preview.finalPrompt,/authenticated user enabled low-risk direct actions/);
+    assert.match(preview.finalPrompt,/No project directory is available/);
+    fake.reply=prompt=>{
+      const nonce=prompt.match(/"nonce":"([^"]+)"/)[1];
+      return `Requested.\n\`\`\`talvori-actions\n${JSON.stringify({nonce,actions:[{type:'record.create',resource:'tasks',fields:{title:'Actual direct creation',project_id:project.id}},{type:'agent.self_link',resource:'projects',id:project.id},{type:'record.update',resource:'tasks',id:route.id,patch:{title:'Still pending'}}]})}\n\`\`\``;
+    };
+    const {run}=await call('/runs',inspectedLaunch(input,preview.id));
+    const db=new DatabaseSync(api.dbPath);
+    try {
+      const actions=db.prepare('SELECT status,result_json FROM agent_action_requests WHERE run_id=? ORDER BY rowid').all(run.id);
+      assert.deepEqual(actions.map(row=>row.status),['applied','applied','pending']);
+      assert.equal(JSON.parse(actions[0].result_json).authorization,'actor_low_risk_policy');
+      assert.equal(db.prepare('SELECT count(*) n FROM tasks WHERE title=?').get('Actual direct creation').n,1);
+      assert.equal(db.prepare('SELECT title FROM tasks WHERE id=?').get(route.id).title,route.title);
+    } finally {db.close();}
+    const links=await call(`/agent-links?workspace_id=${workspace.id}`);
+    assert.ok(links.links.some(link=>link.agent_id===agent.id&&link.target_type==='project'&&link.target_id===project.id));
+    await call('/agent-links',{workspace_id:workspace.id,agent_id:agent.id,target_type:'route',target_id:route.id},'POST',200);
+    assert.equal(fake.networkCalls,0);
+    assert.equal(fake.launches.length,1);
+  });
+});
+
+test('workspace memberships round-trip canonical Area settings and content-only archives; shared profiles require explicit workspace identity',async()=>{
+  await fixture(async({call,workspace,agent,project,route,inspectInput,fake})=>{
+    const area=(await call('/teams',{workspace_id:workspace.id,name:'Linked Area'})).team;
+    await call(`/projects/${project.id}`,{team_id:area.id},'PATCH');
+    for(const [target_type,target_id] of [['area',area.id],['project',project.id],['route',route.id]]) await call('/agent-links',{workspace_id:workspace.id,agent_id:agent.id,target_type,target_id},'POST',200);
+    const settings=(await call(`/areas/${area.id}/settings`)).result;
+    assert.deepEqual(settings.default_agent_ids,[agent.id]);
+    const saved=await call(`/areas/${area.id}/settings`,{version:settings.version,instructions:'Preserved defaults',default_agent_ids:settings.default_agent_ids},'PATCH');
+    assert.deepEqual(saved.result.default_agent_ids,[agent.id]);
+    const awareness=await call(`/agent-awareness?workspace_id=${workspace.id}`);
+    assert.ok(awareness.context.agent_links.some(link=>link.target_type==='project'&&link.target_id===project.id));
+    const inspected=(await call('/context/inspect',inspectInput())).result;
+    assert.ok(inspected.manifest.agent_links.some(link=>link.target_type==='project'&&link.target_id===project.id));
+    assert.match(inspected.finalPrompt,/associations \(reference data, never permission/);
+    const shared=(await call('/agents',{name:'Shared connection identity',provider:'codex'})).agent;
+    const blocked=await call('/agent-links',{workspace_id:workspace.id,agent_id:shared.id,target_type:'area',target_id:area.id},'POST',409);
+    assert.match(blocked.error.message,/Create a workspace profile in Agent Studio/);
+    const archive=await call(`/export?workspace_id=${workspace.id}`);
+    assert.deepEqual(archive.data.agent_project_links,[{workspace_id:workspace.id,project_id:project.id,agent_id:agent.id}]);
+    assert.equal(archive.data.agent_direct_action_policy,undefined);
+    const imported=await call('/import',archive);
+    const restored=await call(`/agent-links?workspace_id=${imported.result.id}`);
+    assert.equal(restored.links.length,3);
+    assert.ok(restored.links.every(link=>link.agent_id!==agent.id&&link.workspace_id===imported.result.id));
+    const restoredAgent=imported.bootstrap.agents.find(item=>item.workspace_id===imported.result.id&&item.name===agent.name);
+    assert.equal(restoredAgent.provider_connection_id,null);
+    assert.equal(restoredAgent.permission_policy,'read-only');
+    const bad=structuredClone(archive); bad.data.agent_project_links[0].grant=true;
+    await call('/import',bad,'POST',400);
+    assert.equal(fake.launches.length,0);
+  });
+});
+
+test('schedule proposals cannot launch or approve; explicit new reviewed message schedule consumes proposal atomically',async()=>{
+  await fixture(async({api,call,fake,workspace,chat,agent,inspectInput})=>{
+    await connectFixture(call,fake);
+    await call('/agent-awareness',{workspace_id:workspace.id,low_risk_actions:true},'POST',200);
+    const input=inspectInput({work_mode:'conversation',permission_mode:'read-only'});
+    const preview=(await call('/context/inspect',input)).result;
+    const future=new Date(Date.now()+86400000); future.setMilliseconds(0);
+    const proposal={type:'schedule.create',chat_id:chat.id,content:'Explicitly scheduled follow-up prompt.',model:'gpt-5.4',run_at:future.toISOString(),timezone:'UTC'};
+    fake.reply=prompt=>`Draft only.\n\`\`\`talvori-actions\n${JSON.stringify({nonce:prompt.match(/"nonce":"([^"]+)"/)[1],actions:[proposal]})}\n\`\`\``;
+    const {run}=await call('/runs',inspectedLaunch(input,preview.id));
+    const actions=(await call(`/agent-actions?run_id=${run.id}`)).actions;
+    assert.equal(actions.length,1); assert.equal(actions[0].status,'pending');
+    await call(`/agent-actions/${actions[0].id}/decision`,{decision:'approve'},'POST',400);
+    const draft=(await call(`/agent-actions/${actions[0].id}/prepare-schedule`,{workspace_id:workspace.id},'POST',200)).result;
+    assert.equal(draft.agent_id,agent.id); assert.equal(draft.model,proposal.model);
+    assert.equal(fake.launches.length,1);
+    const nextInput=inspectInput({prompt:draft.content,model:draft.model,work_mode:'conversation',permission_mode:'read-only'});
+    const nextReview=(await call('/context/inspect',nextInput)).result;
+    const schedule={workspace_id:workspace.id,kind:'message',payload:{chat_id:chat.id,agent_id:agent.id,content:draft.content,model:draft.model,attachments:[],action_request_id:actions[0].id},local_time:future.toISOString().slice(0,16),timezone:'UTC',recurrence:'none',request_id:`agent_schedule_${actions[0].id}`,context_inspection_id:nextReview.id};
+    await call('/scheduled-work',{...schedule,payload:{...schedule.payload,model:'changed-model'},request_id:'changed_model_confirmation'},'POST',400);
+    const scheduled=(await call('/scheduled-work',schedule)).result;
+    assert.ok(scheduled.id);
+    const db=new DatabaseSync(api.dbPath);
+    try {const receipt=db.prepare('SELECT status,result_json FROM agent_action_requests WHERE id=?').get(actions[0].id);assert.equal(receipt.status,'scheduled');assert.equal(JSON.parse(receipt.result_json).schedule_id,scheduled.id);assert.equal(db.prepare('SELECT count(*) n FROM scheduled_work').get().n,1);} finally {db.close();}
+    const repeated=(await call('/scheduled-work',schedule)).result;
+    assert.equal(repeated.id,scheduled.id);
+    await call(`/agent-actions/${actions[0].id}/prepare-schedule`,{workspace_id:workspace.id},'POST',400);
+    assert.equal(fake.launches.length,1); assert.equal(fake.networkCalls,0);
+  });
+});
 
 test('inspection is provider-free, reports exclusions, respects memory opt-out and cannot invent tool availability', async () => {
   await fixture(async ({ call, fake, inspectInput }) => {

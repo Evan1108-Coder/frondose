@@ -1,3 +1,4 @@
+import { talvoriEnvironment } from './brand-config.mjs';
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 
 const stamp = () => new Date().toISOString();
@@ -9,27 +10,28 @@ const LOCAL_MARKER = 'provider-owned-local-account';
 // GitHub authorization is identity, not evidence of Copilot entitlement. Only
 // an explicit successful SDK inference test enables execution.
 export function createCopilotOAuthService({ db, env, seal, unseal, requireWorkspace, callbackOrigin, requestJson, onReplace = () => {} }) {
+  env = talvoriEnvironment(env);
   const completing = new Map(), refreshing = new Map();
   let closed = false;
   const identity = (workspace, actor) => JSON.stringify([workspace, actor?.id]);
   const read = (workspace, actor) => db.prepare("SELECT * FROM ai_account_connections WHERE workspace_id=? AND actor_id=? AND provider='copilot'").get(workspace, actor.id);
   const isOAuth = row => Boolean(row && row.encrypted_credential !== LOCAL_MARKER);
   function setup() {
-    const missing = ['RUMBO_GITHUB_CLIENT_ID', 'RUMBO_GITHUB_CLIENT_SECRET'].filter(name => typeof env[name] !== 'string' || !env[name].trim());
+    const missing = ['TALVORI_GITHUB_CLIENT_ID', 'TALVORI_GITHUB_CLIENT_SECRET'].filter(name => typeof env[name] !== 'string' || !env[name].trim());
     return { configured: !missing.length, missing, callback_path: COPILOT_CALLBACK, docs: 'https://docs.github.com/en/copilot/how-tos/copilot-sdk/setup/github-oauth' };
   }
   function client() {
     const description = setup();
-    if (!description.configured) throw fail('operator_setup_required', `Configure ${description.missing.join(' and ')} for Rumbo’s GitHub App or OAuth App.`);
-    if (!/^[A-Za-z0-9_.-]{1,200}$/.test(env.RUMBO_GITHUB_CLIENT_ID) || env.RUMBO_GITHUB_CLIENT_SECRET.length > 8192) throw fail('operator_setup_required', 'The GitHub app configuration is invalid.');
-    return env.RUMBO_GITHUB_CLIENT_ID;
+    if (!description.configured) throw fail('operator_setup_required', `Configure ${description.missing.join(' and ')} for Talvori’s GitHub App or OAuth App.`);
+    if (!/^[A-Za-z0-9_.-]{1,200}$/.test(env.TALVORI_GITHUB_CLIENT_ID) || env.TALVORI_GITHUB_CLIENT_SECRET.length > 8192) throw fail('operator_setup_required', 'The GitHub app configuration is invalid.');
+    return env.TALVORI_GITHUB_CLIENT_ID;
   }
   function assertOpen() { if (closed) throw fail('service_closed', 'The provider account service is closed.'); }
   function decoded(row) {
-    if (!isOAuth(row)) throw fail('not_connected', 'Authorize your GitHub account for this Rumbo workspace first.');
+    if (!isOAuth(row)) throw fail('not_connected', 'Authorize your GitHub account for this Talvori workspace first.');
     let value;
     try { value = JSON.parse(unseal(row.id, row.encrypted_credential)); } catch { throw fail('credential_unreadable', 'Reconnect this GitHub account.'); }
-    if (value.type !== 'github_oauth' || !/^gh[ou]_[A-Za-z0-9_]+$/.test(value.access_token) || value.access_token.length > 8192 || value.client_id !== client()) throw fail('reconnect_required', 'Reconnect GitHub using the current Rumbo app registration.');
+    if (value.type !== 'github_oauth' || !/^gh[ou]_[A-Za-z0-9_]+$/.test(value.access_token) || value.access_token.length > 8192 || value.client_id !== client()) throw fail('reconnect_required', 'Reconnect GitHub using the current Talvori app registration.');
     return value;
   }
   function status(workspace, actor) {
@@ -49,7 +51,7 @@ export function createCopilotOAuthService({ db, env, seal, unseal, requireWorksp
     return { authorization_url: url.href, callback_url: `${origin}${COPILOT_CALLBACK}` };
   }
   async function token(fields) {
-    const response = await requestJson('https://github.com/login/oauth/access_token', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: client(), client_secret: env.RUMBO_GITHUB_CLIENT_SECRET, ...fields }) });
+    const response = await requestJson('https://github.com/login/oauth/access_token', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: client(), client_secret: env.TALVORI_GITHUB_CLIENT_SECRET, ...fields }) });
     if (!/^gh[ou]_[A-Za-z0-9_]+$/.test(response.access_token || '') || response.access_token.length > 8192 || response.token_type?.toLowerCase() !== 'bearer') throw fail('oauth_invalid', 'GitHub did not return a usable user authorization. Reconnect.');
     const lifetime = (value, max) => value == null ? null : Number.isSafeInteger(value) && value > 0 && value <= max ? Date.now() + value * 1000 : (() => { throw fail('oauth_invalid', 'GitHub returned an invalid token lifetime.'); })();
     if (response.refresh_token && (!/^ghr_[A-Za-z0-9_]+$/.test(response.refresh_token) || response.refresh_token.length > 8192)) throw fail('oauth_invalid', 'GitHub returned an invalid refresh token.');
@@ -58,10 +60,10 @@ export function createCopilotOAuthService({ db, env, seal, unseal, requireWorksp
   const githubIdentity = accessToken => requestJson('https://api.github.com/user', { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
   async function complete(state, code, actor, host, denial) {
     assertOpen();
-    if (!actor?.id) throw fail('sign_in_required', 'Sign in to the same Rumbo account that started this authorization.', 401);
+    if (!actor?.id) throw fail('sign_in_required', 'Sign in to the same Talvori account that started this authorization.', 401);
     if (!/^[A-Za-z0-9_-]{32}$/.test(state || '')) throw fail('oauth_invalid', 'Invalid GitHub authorization state.', 400);
     const key = hash(state), attempt = db.prepare('SELECT * FROM ai_authorization_attempts WHERE state_hash=?').get(key);
-    if (!attempt || attempt.provider !== 'copilot' || attempt.actor_id !== actor.id || attempt.expires_at <= stamp() || attempt.callback_origin !== callbackOrigin(host)) throw fail('oauth_expired', 'This GitHub sign-in is expired or belongs to another Rumbo session.');
+    if (!attempt || attempt.provider !== 'copilot' || attempt.actor_id !== actor.id || attempt.expires_at <= stamp() || attempt.callback_origin !== callbackOrigin(host)) throw fail('oauth_expired', 'This GitHub sign-in is expired or belongs to another Talvori session.');
     await requireWorkspace(attempt.workspace_id, actor);
     const claim = db.prepare('DELETE FROM ai_authorization_attempts WHERE state_hash=? AND actor_id=?').run(key, actor.id);
     if (!claim.changes) throw fail('oauth_replayed', 'This GitHub authorization callback was already used.');

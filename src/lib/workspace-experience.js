@@ -45,5 +45,5 @@ export function describePage(data, page) {
   const collection = { 'rumbo-agent': 'chats', workflows: 'manual_workflows', updates: 'activity_entries', memory: 'memory_notes', library: 'outputs', workbench: 'projects', work: 'runs', views: 'workspace_items' }[page.view] ?? page.view;
   const item = page.id && (data[collection] ?? []).find(i => i.id === page.id && !i.archived_at);
   if (page.id && !item && !['operations', 'library', 'workflows'].includes(page.view)) return null;
-  return item?.title || item?.name || { 'rumbo-agent': 'Rumbo Agent', teams: 'Areas', overview: 'Today', work: 'Runs', chats: 'Conversations', tasks: 'Routes', workbench: 'Workbench', library: 'Knowledge', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());
+  return item?.title || item?.name || { 'rumbo-agent': 'Talvori', teams: 'Areas', overview: 'Today', work: 'Runs', chats: 'Conversations', tasks: 'Routes', workbench: 'Workbench', library: 'Knowledge', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());
 }

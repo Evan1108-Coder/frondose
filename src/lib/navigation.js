@@ -4,8 +4,8 @@ const VIEWS = new Set([
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
-const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'resources', 'documents', 'updates', 'people', 'settings']);
-const VIEW_ALIASES = { areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
+const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
+const VIEW_ALIASES = { 'talvori-agent': 'rumbo-agent', areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 
 function validId(value) {
   return typeof value === "string" && value.length > 0 &&
@@ -13,7 +13,7 @@ function validId(value) {
     value !== "." && value !== "..";
 }
 
-/** Parse only Rumbo's hash routes, not arbitrary URLs or nested paths. */
+/** Parse only Talvori's hash routes, not arbitrary URLs or nested paths. */
 export function parsePage(hash = "") {
   if (typeof hash !== "string") return home();
   try {
@@ -25,7 +25,8 @@ export function parsePage(hash = "") {
     const parts = path.split("/");
     const view = VIEW_ALIASES[parts[0]] || parts[0];
     if (parts.length > 2 || !VIEWS.has(view) && view !== 'playbooks') return home();
-    const id = parts.length === 2 ? decodeURIComponent(parts[1]) : null;
+    let id = parts.length === 2 ? decodeURIComponent(parts[1]) : null;
+    if (view === 'settings' && id === 'talvori-agent') id = 'rumbo-agent';
     if (id !== null && !validId(id)) return home();
     // URLSearchParams repairs malformed encoding; reject it instead.
     decodeURIComponent(query.replace(/\+/g, " "));
@@ -59,7 +60,9 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
   if (id !== null && !validId(id)) throw new TypeError("Invalid page identifier");
   if (projectId !== null && !validId(projectId))
     throw new TypeError("Invalid project identifier");
-  const path = `#/${view === 'teams' ? 'areas' : view}${id === null ? "" : `/${encodeURIComponent(id)}`}`;
+  const publicView = view === 'teams' ? 'areas' : view === 'rumbo-agent' ? 'talvori-agent' : view;
+  const publicId = view === 'settings' && id === 'rumbo-agent' ? 'talvori-agent' : id;
+  const path = `#/${publicView}${publicId === null ? "" : `/${encodeURIComponent(publicId)}`}`;
   if (messageId !== null && !validId(messageId)) throw new TypeError('Invalid message identifier');
   const query = new URLSearchParams();
   if (reviewId !== null) { if (!validId(reviewId)) throw new TypeError('Invalid review identifier'); query.set('review', reviewId); }

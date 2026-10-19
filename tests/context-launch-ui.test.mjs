@@ -10,7 +10,7 @@ test('context integration compiles without changing simulation or note execution
   assert.doesNotThrow(() => transformSync(work, { loader: 'jsx', format: 'esm' }));
   assert.doesNotThrow(() => transformSync(chats, { loader: 'jsx', format: 'esm' }));
   assert.match(work, /mode === "live" \? \{ context_inspection_id:/);
-  assert.match(chats, /recipient === 'note' \? await rumboActions\.createMessage/);
+  assert.match(chats, /recipient === 'note' \? await talvoriActions\.createMessage/);
   assert.match(chats, /metadata: \{ delivery: 'note'/);
 });
 
@@ -28,8 +28,9 @@ test('chat inspections and sends share exact normalized instruction and attachme
   assert.match(chats, /attachments: sentAttachments/);
   assert.match(chats, /const sentFiles = sentAttachments/);
   assert.match(chats, /content: text, attachments: sentFiles, agent_id: recipient/);
-  assert.match(chats, /if \(agent && !recoveringTurn && !contextReady\)/);
-  assert.match(chats, /context_inspection_id: reviewedContext\.result\.id/);
+  assert.match(chats, /if \(agent && !recoveringTurn && !contextReady && \(composer.permission === 'workspace-write' \|\| composer.nativeTools === true\)\)/);
+  assert.match(chats, /prepareExplicitChatSend/);
+  assert.match(chats, /context_inspection_id: captured\.id/);
   assert.match(chats, /agent\?\.version \?\? null/);
   assert.match(chats, /val\(agent, 'permission_policy'\) === 'read-only'/);
   assert.match(chats, /composer\.memory && val\(agent, 'memory_policy'\) !== 'none'/);
@@ -39,8 +40,7 @@ test('uncertain chat delivery retains original idempotency key but definite reje
   assert.match(chats, /if \(recipient !== 'note' && !composer\.turn\) composer\.turn = crypto\.randomUUID\(\)/);
   assert.match(chats, /client_turn_id: composer\.turn/);
   assert.match(chats, /if \(cause.status && cause.status < 500\) \{ composer.turn = null;/);
-  assert.match(chats, /Resending keeps the same turn ID/);
-  assert.match(chats, /If the server never received it, context is regenerated/);
+  assert.match(chats, /Retry delivery checks the same turn without duplicating work/);
   assert.match(chats, /const recoveringTurn = Boolean\(composer.turn\)/);
 });
 

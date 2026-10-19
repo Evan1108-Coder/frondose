@@ -8,7 +8,7 @@ import { validateAgentProfile, snapshotAgentProfile } from './agent-profiles.mjs
 // Content-only restore. Never restore credentials, run processes, permissions,
 // provider state, personal preferences, or claims about public account access.
 export function importWorkspace(db, archive, config, normalize, dbValue, validateCustomFields) {
-  if (archive.format !== 'rumbo.workspace' || archive.version !== 1 || !isRecord(archive.data)) throw validationError('Choose a version 1 Rumbo archive.');
+  if (!['talvori.workspace', 'rumbo.workspace'].includes(archive.format) || archive.version !== 1 || !isRecord(archive.data)) throw validationError('Choose a version 1 Talvori archive.');
   const originalActivity = archive.data.activity_entries;
   if (originalActivity !== undefined && !Array.isArray(originalActivity)) throw validationError('Invalid activity list.');
   for (const entry of originalActivity || []) if (!isRecord(entry) || !['draft', 'published'].includes(entry.publication_state || 'published')) throw validationError('Invalid activity publication state.');
@@ -18,6 +18,18 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
   const original = data.workspaces[0];
   if (!isRecord(original) || typeof original.id !== 'string' || typeof original.name !== 'string' || !original.name.trim()) throw validationError('The archive has no valid workspace.');
   validateAvatar(original.image_url ?? null);
+  if (data.agent_project_links !== undefined && (!Array.isArray(data.agent_project_links) || data.agent_project_links.length > 10000)) throw validationError('Invalid project agent associations.');
+  const projectLinkKeys = new Set();
+  const projectLinkCounts = new Map();
+  for (const link of data.agent_project_links || []) {
+    if (!isRecord(link) || Object.keys(link).some(key=>!['workspace_id','project_id','agent_id'].includes(key)) || link.workspace_id !== original.id || !Array.isArray(data.projects) || !data.projects.some(row=>row?.id === link.project_id && row.workspace_id === original.id) || !Array.isArray(data.agents) || !data.agents.some(row=>row?.id === link.agent_id && (!row.workspace_id || row.workspace_id === original.id))) throw validationError('Project agent associations require local content references, never authority.');
+    const key = JSON.stringify([link.project_id,link.agent_id]);
+    if (projectLinkKeys.has(key)) throw validationError('Duplicate project agent association.');
+    projectLinkKeys.add(key);
+    const linked = (projectLinkCounts.get(link.project_id) || 0) + 1;
+    if (linked > 50) throw validationError('Import up to 50 agent associations per project.');
+    projectLinkCounts.set(link.project_id,linked);
+  }
   const tables = ['teams', 'agents', 'projects', 'tasks', 'chats', 'messages', 'team_members', 'documents', 'milestones', 'memory_notes'];
   const ids = new Map(), uid = () => `import_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
   ids.set(original.id, uid());
@@ -114,6 +126,7 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
       snapshotAgentProfile(db, record.id, timestamp);
     }
     importExtensions(db, data, ids, workspaceId, timestamp);
+    for (const link of data.agent_project_links || []) db.prepare('INSERT INTO agent_project_links(workspace_id,project_id,agent_id,created_at) VALUES(?,?,?,?)').run(workspaceId,remap(link.project_id),remap(link.agent_id),timestamp);
     db.exec('COMMIT');
     return { id: workspaceId, importedRecords: count, skipped_activity_drafts: skippedDrafts, excluded: ['connections', 'credentials', 'sessions', 'Workflow runs, reservations and approvals', 'personal settings', 'folder access', 'private activity drafts, activity reactions and author privileges', 'chat bookmarks, follow-up drafts and attachment metadata'], reviewRequired: ['outputs', 'knowledge', 'Workflow definitions'], paused: ['work plans', 'manual Workflows'] };
   } catch (error) { db.exec('ROLLBACK'); throw error; }

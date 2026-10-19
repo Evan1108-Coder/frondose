@@ -17,16 +17,16 @@ The running local server's safe catalog endpoint was inspected on September 20. 
 
 | Connection | Local evidence | Live workspace status / next prerequisite |
 | --- | --- | --- |
-| Codex | Official CLI installed; cached Rumbo state connected | No real run or automated account probe performed; repository policy forbids using this account in automated tests |
-| Claude Code | Official CLI installed; cached Rumbo state not connected | User-owned CLI sign-in required; no real-account automated tests |
-| GitHub | Existing `gh api user` authenticated; Rumbo's explicit existing-account connect returned connected; Rumbo repository read returned HTTP 200 and 24 resources | Machine CLI access works; workspace OAuth requires Rumbo GitHub app credentials and consent; no OAuth resource/write verification |
+| Codex | Official CLI installed; cached Talvori state connected | No real run or automated account probe performed; repository policy forbids using this account in automated tests |
+| Claude Code | Official CLI installed; cached Talvori state not connected | User-owned CLI sign-in required; no real-account automated tests |
+| GitHub | Existing `gh api user` authenticated; Talvori's explicit existing-account connect returned connected; Talvori repository read returned HTTP 200 and 24 resources | Machine CLI access works; workspace OAuth requires Talvori GitHub app credentials and consent; no OAuth resource/write verification |
 | GitHub Actions | Adapter and consent fixture coverage | Same GitHub registration; repository Actions permission and approved workflow operation required |
 | GitHub Packages | Adapter and consent fixture coverage | Same GitHub registration; package authority including applicable package scope required |
 | Google Drive | Adapter and consent fixture coverage | Google registration, enabled Drive API, test-user consent, then selected-file read |
 | Google Docs | Adapter and consent fixture coverage | Same Google registration; Docs API and document permissions |
 | Google Sheets | Adapter and consent fixture coverage | Same Google registration; Sheets API and spreadsheet permissions |
 | Google Slides | Adapter and consent fixture coverage | Same Google registration; Slides API and presentation permissions |
-| Linear | Adapter and consent fixture coverage | Rumbo Linear OAuth registration and consent; Codex's separate Linear connection does not register Rumbo |
+| Linear | Adapter and consent fixture coverage | Talvori Linear OAuth registration and consent; Codex's separate Linear connection does not register Talvori |
 | Jira Cloud | Adapter and consent fixture coverage | Atlassian 3LO registration, exact callback, authorized site/project |
 | Slack | Adapter and consent fixture coverage; HTTP callback explicitly rejected | Slack app registration plus an operator-controlled HTTPS callback path; then installation and channel membership |
 | Figma | Adapter and consent fixture coverage | Figma app registration and registered external callback; draft/private eligibility or public app approval as applicable |
@@ -36,7 +36,7 @@ Each workspace connector now exposes exact configuration requirements, requested
 
 ## Local versus public distribution
 
-- GitHub and Linear document loopback OAuth callbacks. Google testing can use registered local callbacks and configured test users. These can be tested before Rumbo launches publicly.
+- GitHub and Linear document loopback OAuth callbacks. Google testing can use registered local callbacks and configured test users. These can be tested before Talvori launches publicly.
 - Google broad Drive scopes can require verification and, depending on how restricted data is handled, a security assessment before general distribution. Test-mode refresh-token expiry is not the same as production readiness.
 - Slack requires HTTPS redirect infrastructure; a full public product launch is not the same prerequisite. Merely setting a callback environment variable does not provision a secure callback service.
 - Figma draft/private/public app states govern who can authorize. Its current documentation requires an external callback and public apps undergo review.
@@ -52,6 +52,6 @@ Each workspace connector now exposes exact configuration requirements, requested
 
 ## Live checks still required
 
-Actual consent/token exchange, live selected-resource reads, live approved writes, real renewal/revocation, organization policies and rate limits remain unverified for the workspace OAuth connections. Operator configuration and user consent must precede those checks. Connection disconnect in Rumbo removes its local credential; it does not claim to revoke a provider-wide grant. No external provider messages, issues, workflow jobs, spreadsheets, slides, or comments were created by this test pass.
+Actual consent/token exchange, live selected-resource reads, live approved writes, real renewal/revocation, organization policies and rate limits remain unverified for the workspace OAuth connections. Operator configuration and user consent must precede those checks. Connection disconnect in Talvori removes its local credential; it does not claim to revoke a provider-wide grant. No external provider messages, issues, workflow jobs, spreadsheets, slides, or comments were created by this test pass.
 
 See [operator setup](connection-setup.md) and the fourteen in-app provider guides for exact supported operations and limits.

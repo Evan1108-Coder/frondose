@@ -6,7 +6,7 @@ import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { createLocalApi } from '../server/local-api.mjs';
 
-const { chromium } = await import(process.env.RUMBO_PLAYWRIGHT_MODULE || 'playwright');
+const { chromium } = await import(process.env.TALVORI_PLAYWRIGHT_MODULE || 'playwright');
 const directory = await mkdtemp(join(tmpdir(), 'rumbo-commands-ui-'));
 const projectRoot = join(directory, 'project');
 await mkdir(projectRoot);
@@ -46,7 +46,7 @@ try {
   assert.ok(await page.getByRole('option').count() > 4);
   await composer.fill('/help');
   await composer.press('Enter');
-  await page.getByRole('dialog').getByRole('heading', { name: 'Rumbo commands', exact: true }).waitFor();
+  await page.getByRole('dialog').getByRole('heading', { name: 'Talvori commands', exact: true }).waitFor();
   await page.getByRole('dialog').getByPlaceholder('Search all commands…').fill('git status');
   await page.getByRole('dialog').getByText('/git status', { exact: true }).waitFor();
   await page.getByRole('dialog').getByRole('button', { name: 'Close dialog' }).click();
@@ -56,7 +56,7 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: 'Close dialog' }).click();
   await page.goto(`${base}/#/workbench/${project.id}`);
   await page.getByRole('tab', { name: /Terminals/ }).click();
-  const launcher = page.getByRole('textbox', { name: 'Rumbo terminal command' });
+  const launcher = page.getByRole('textbox', { name: 'Talvori terminal command' });
   await launcher.fill('/git status');
   await launcher.press('Enter');
   const review = page.getByRole('dialog');

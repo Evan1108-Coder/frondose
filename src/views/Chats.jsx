@@ -3,8 +3,8 @@ import { ContextInspector } from '../components/ContextInspector.jsx';
 import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
 import { useChatFollow } from '../lib/use-chat-follow.js';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, PanelLeft, X, Link, FileText, GitFork, Clock } from "../components/icons.jsx";
-import { rumboActions, refreshRumbo } from '../data/useRumbo.js';
+import { ArrowDown, ArrowLeft, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, PanelLeft, X, Link, FileText, GitFork, Clock, Smile, SlidersHorizontal } from "../components/icons.jsx";
+import { talvoriActions, refreshTalvori } from '../data/useTalvori.js';
 import { apiRequest } from '../data/api.js';
 import { Button, Dialog, Empty, ErrorMessage, Field, IconButton, ProviderIcon, SearchField, Select, Toggle, useApp } from '../ui.jsx';
 import { UiIcon, PinOff, Check, Copy } from '../components/icons.jsx';
@@ -20,9 +20,10 @@ import { byUpdated, download, relative, val, visible } from '../lib/model.js';
 import { agentReadiness } from '../lib/agents.js';
 import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnBlocker, restoreComposer, persistComposer, messageLink, quotedMessage, threadMessages } from '../lib/chats.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
-import { prepareRumboAgentEntry } from '../lib/rumbo-agent-entry.js';
+import { prepareTalvoriAgentEntry } from '../lib/talvori-agent-entry.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.js';
+import { prepareExplicitChatSend } from '../lib/chat-send-context.js';
 import './chats-page.css';
 const ReactionPicker = lazy(() => import('../components/ReactionPicker.jsx'));
 const ActivityFeed = lazy(() => import('../components/ActivityFeed.jsx').then(module => ({ default: module.ActivityFeed })));
@@ -90,6 +91,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState(null);
+  const [accessOpen, setAccessOpen] = useState(false);
   const [reviewedContext, setReviewedContext] = useState(null), [retryDraft, setRetryDraft] = useState(null), [reviewedRetry, setReviewedRetry] = useState(null);
   const [retryNativeTools, setRetryNativeTools] = useState(false), [nativeActivityOpen, setNativeActivityOpen] = useState(false), [nativeRunId, setNativeRunId] = useState('');
   const [updatesDirty, setUpdatesDirty] = useState(false), [updatesPending, setUpdatesPending] = useState(false), [discardUpdates, setDiscardUpdates] = useState(false);
@@ -131,8 +133,10 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const readOnlyProfile = agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
   const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
   const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
-  const sentAttachments = composer.context ? [{ name: `rumbo-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
-  const assistantOptions = assistant ? { model: composer.model || '', reasoning_effort: composer.reasoning || '', include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
+  const sentAttachments = composer.context ? [{ name: `talvori-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
+  // New turns use the selected identity's model. Recovery alone retains the exact
+  // old override, so changing this UI cannot mutate an uncertain delivered turn.
+  const assistantOptions = assistant ? { ...(composer.turn && composer.model ? { model: composer.model, reasoning_effort: composer.reasoning || '' } : {}), include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
   const inspectionRequest = agent && (composer.text.trim() || composer.files.length) && !slashVisible ? {
     workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
     chat_id: chat.id, agent_id: agent.id, prompt: composer.text.trim() || 'Shared attachments',
@@ -185,9 +189,9 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     setActionBusy(true); setCollaborationError(null);
     try {
       const response = await apiRequest(`/api/chat-collaboration/${encodeURIComponent(chat.id)}`, { method: 'POST', body: { workspace_id: val(chat, 'workspace_id'), version: collaboration.version, action, ...body } });
-      await refreshRumbo();
+      await refreshTalvori();
       return response.result;
-    } catch (cause) { setCollaborationError(cause); if (cause.status === 409) await refreshRumbo(); throw cause; }
+    } catch (cause) { setCollaborationError(cause); if (cause.status === 409) await refreshTalvori(); throw cause; }
     finally { if (mounted.current) setActionBusy(false); }
   }
   function messageReactions(id) { return reactionPending?.messageId === id ? reactionPending.values : collaboration.reactions?.[id] || []; }
@@ -269,29 +273,38 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     if (sending.current || composer.sending || (!composer.text.trim() && !composer.files.length)) return;
     const slash = parseSlashCommand(composer.text);
     if (slash) {
-      if (slash.type === 'unknown') { setError(new Error(`Unknown command /${slash.name}. Use /help to search Rumbo commands.`)); return; }
+      if (slash.type === 'unknown') { setError(new Error(`Unknown command /${slash.name}. Use /help to search Talvori commands.`)); return; }
       if (slash.error) { setError(new Error(slash.error)); return; }
       await executeSlashCommand(slash.command, slash.argv, { submitted: true });
       return;
     }
     if (blocker) { setError(new Error(blocker)); return; }
     if (composer.context && composer.files.length >= 20) { setError(new Error('The context snapshot uses one attachment slot. Remove a file before sending.')); return; }
-    if (agent && !recoveringTurn && !contextReady) { setError(new Error('Inspect the current context and choose Use this context before sending to an agent.')); return; }
+    if (agent && !recoveringTurn && !contextReady && (composer.permission === 'workspace-write' || composer.nativeTools === true)) { setAccessOpen(true); return; }
     sending.current = true; composer.sending = true; setBusy(true); setError(null);
     const text = composer.text.trim() || 'Shared attachments', files = [...composer.files], version = composer.version;
     const context = composer.context;
     const sentFiles = sentAttachments;
     const metadata = { reply_to: composer.replyTo || undefined, context_snapshot_id: context?.id };
     const recipient = composer.recipient;
-    if (recipient !== 'note' && !composer.turn) composer.turn = crypto.randomUUID();
-    persistComposer(chat.id, composer, draftStorage());
     try {
-      const response = recipient === 'note' ? await rumboActions.createMessage(chat.id, {
+      const captured = recipient !== 'note' ? await prepareExplicitChatSend({
+        request: inspectionRequest, recovering: recoveringTurn,
+        reviewed: contextReady ? reviewedContext.result : null,
+        inspect: async request => (await apiRequest('/api/context/inspect', { method: 'POST', body: request })).result,
+        isCurrent: () => mounted.current && composer.version === version,
+      }) : null;
+      // Clear legacy composer defaults before persisting a new turn. Recovery
+      // must not introduce an override that the original send never used.
+      if (recipient !== 'note' && !recoveringTurn) { composer.model = ''; composer.reasoning = ''; }
+      if (recipient !== 'note' && !composer.turn) composer.turn = crypto.randomUUID();
+      persistComposer(chat.id, composer, draftStorage());
+      const response = recipient === 'note' ? await talvoriActions.createMessage(chat.id, {
         content: text, sender_type: 'user', sender_id: 'local', sender_name: data.profile?.name || 'You', attachments: sentFiles, metadata: { delivery: 'note', ...metadata },
-      }) : await rumboActions.sendChatTurn(chat.id, {
+      }) : await talvoriActions.sendChatTurn(chat.id, {
         content: text, attachments: sentFiles, agent_id: recipient, client_turn_id: composer.turn, ...metadata,
         work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission, include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true,
-        ...(contextReady ? { context_inspection_id: reviewedContext.result.id } : {}), context_pack_ids: [], area_id: inspectionRequest?.area_id ?? null,
+        ...(captured ? { context_inspection_id: captured.id } : {}), context_pack_ids: [], area_id: inspectionRequest?.area_id ?? null,
         ...assistantOptions,
         ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
       });
@@ -310,12 +323,24 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     } finally { sending.current = false; composer.sending = false; onComposerChange(); if (mounted.current) setBusy(false); }
   }
 
+  async function prepareSchedule() {
+    if (busy || composer.sending || composer.turn || !composer.text.trim() || blocker) return;
+    if (agent && (composer.permission !== 'conversation' || composer.nativeTools)) { setError(new Error('Scheduling supports Chat without native tools.')); return; }
+    const version = composer.version;
+    setBusy(true); setError(null);
+    try {
+      const captured = agent ? await prepareExplicitChatSend({ request: inspectionRequest, inspect: async request => (await apiRequest('/api/context/inspect', { method: 'POST', body: request })).result, isCurrent: () => mounted.current && composer.version === version }) : null;
+      setScheduleDraft({ version, payload: { chat_id: chat.id, agent_id: agent?.id || null, content: composer.text.trim(), attachments: sentAttachments, ...(composer.replyTo ? { reply_to: composer.replyTo } : {}), ...(composer.context ? { context_snapshot_id: composer.context.id } : {}) }, contextInspectionId: captured?.id || null });
+    } catch (cause) { if (mounted.current) setError(cause); }
+    finally { if (mounted.current) setBusy(false); }
+  }
+
   async function executeSlashCommand(command, argv = [], { submitted = false } = {}) {
     const args = argv.join(' ').trim();
     const findAgent = value => agents.find(item => [item.name, item.provider, item.id].some(candidate => String(candidate || '').toLowerCase() === value.toLowerCase()));
     setError(null);
     if (command.id === 'rumbo') {
-      prepareRumboAgentEntry({ workspaceId: val(chat, 'workspace_id'), source: task ? { type: 'task', id: task.id } : project ? { type: 'project', id: project.id } : null, instruction: args });
+      prepareTalvoriAgentEntry({ workspaceId: val(chat, 'workspace_id'), source: task ? { type: 'task', id: task.id } : project ? { type: 'project', id: project.id } : null, instruction: args });
       navigate('rumbo-agent');
       return;
     }
@@ -338,7 +363,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       if (command.connection) {
         notify(`${command.command} is registered for ${command.connection}, but its external executor is not available yet.`, 'error');
         navigate('connections');
-      } else if (submitted) setError(new Error(`${command.command} is in Rumbo’s command catalog, but it is not executable in chat yet.`));
+      } else if (submitted) setError(new Error(`${command.command} is in Talvori’s command catalog, but it is not executable in chat yet.`));
       else change({ text: `${command.command} ` });
       return;
     }
@@ -384,7 +409,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       if (!task) { setError(new Error(`${command.command} needs a Route-linked conversation.`)); return; }
       const patch = command.id === 'route.block' ? { status: 'blocked' } : command.id === 'status' ? { status: args } : command.id === 'priority' ? { priority: args } : { due_at: args || null };
       if (command.id !== 'route.block' && !args) { setError(new Error(`Add a value after ${command.command}.`)); return; }
-      await perform(() => rumboActions.updateTask(task.id, patch), `${task.title} updated.`);
+      await perform(() => talvoriActions.updateTask(task.id, patch), `${task.title} updated.`);
       change({ text: '' }); return;
     }
   }
@@ -408,7 +433,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     composer.retryNativeTools ||= {}; composer.retryNativeTools[message.id] = retryRequest.native_tools;
     persistComposer(chat.id, composer, draftStorage());
     try {
-const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
+const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
       delete composer.retryKeys[message.id];
       delete composer.retryNativeTools[message.id];
       persistComposer(chat.id, composer, draftStorage());
@@ -428,7 +453,7 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
       } else if (composeDialog.type === 'output') {
         setActionBusy(true);
         await apiRequest('/api/workflow/outputs', { method: 'POST', body: { workspace_id: val(chat, 'workspace_id'), project_id: destination || null, chat_id: chat.id, source_message_id: composeDialog.message.id, title: actionTitle, content: composeDialog.message.content, kind: 'document', author_name: val(composeDialog.message, 'sender_name') || 'You' } });
-        await refreshRumbo(); notify('Output created in Library. Review its exact version there.');
+        await refreshTalvori(); notify('Output created in Library. Review its exact version there.');
       } else {
         const result = await collaborationAction(composeDialog.type, { message_id: composeDialog.message.id, title: actionTitle, project_id: destination || undefined });
         if (composeDialog.type === 'branch') { navigate('chats', result.chat_id); notify('Branch created from reference messages. No agent was started.'); }
@@ -449,7 +474,7 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
       <div className="chat-thread-title"><h2>{chat.title}</h2><div>{project ? <button onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <span>Workspace conversation</span>}{task ? <><span>/</span><button onClick={() => navigate('tasks', task.id)}>{task.title}</button></> : null}</div></div>
       <div className="chat-thread-tools"><IconButton label={searchOpen ? 'Close message search' : 'Search messages'} onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }} aria-pressed={searchOpen}><Search morphTo={searchOpen ? X : Search} /></IconButton><Button icon={PanelLeft} onClick={() => setContextOpen(true)}>Context</Button><IconButton label="Conversation options" onClick={() => setOptionsOpen(true)}><Ellipsis /></IconButton></div>
     </header>}
-    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}</div>
+    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}<button aria-haspopup="dialog" onClick={() => setOptionsOpen(true)}><Ellipsis />More</button></div>
     <TemplateInstanceDetails workspaceId={chat.workspace_id} entityType="chats" entityId={chat.id} />
     {threadId ? <div className="chat-thread-banner"><MessageCircle /><span>Thread · {inThread.length - 1} replies</span><button onClick={() => { setThreadId(null); change({ replyTo: null }); }}>Back to conversation</button></div> : null}
     {searchOpen ? <div className="chat-message-search"><SearchField label="Search messages in conversation" placeholder="Find a message…" value={search} onChange={setSearch} /><span>{search ? `${shownMessages.length} results` : 'Search this conversation'}</span></div> : null}
@@ -475,32 +500,31 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
           if (slashVisible && slashResults.length && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); selectSlash(slashResults[Math.min(slashIndex, slashResults.length - 1)]); return; }
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && (data.settings?.preferences?.sendKey !== 'modifier' || event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy) event.currentTarget.form.requestSubmit(); }
         }} />
-        {agent ? <details><summary>{assistant ? 'Review context' : 'Context review'} · {contextReady ? 'ready' : recoveringTurn ? 'delivery recovery' : 'required'}</summary><div className="chat-context-content" style={{ maxHeight: 'min(45vh, 420px)', overflowY: 'auto' }}>{!isBrowserAiProvider(agent.provider) ? <NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} />{recoveringTurn ? <p>An earlier delivery is unconfirmed. Resending keeps the same turn ID to recover it without duplicating work. If the server never received it, context is regenerated. Inspect again to require a newly reviewed context.</p> : null}</div></details> : null}
         <div className="chat-compose-controls"><div className="chat-compose-target">
           {agent && !isBrowserAiProvider(agent.provider) ? <div className="chat-compose-modes" role="group" aria-label="Work mode">
-            <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'conversation'} onClick={() => change({ permission: 'conversation' })}>Discuss</button>
-            <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'read-only' || (composer.permission !== 'conversation' && readOnlyProfile)} onClick={() => change({ permission: 'read-only' })}>Inspect</button>
-            {agent.provider === 'codex' && !readOnlyProfile ? <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'workspace-write'} onClick={() => change({ permission: 'workspace-write' })}>Build</button> : null}
+            <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission !== 'workspace-write'} onClick={() => change({ permission: 'conversation', nativeTools: false })}>Chat</button>
+            {agent.provider === 'codex' && !readOnlyProfile ? <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'workspace-write'} onClick={() => { change({ permission: 'workspace-write' }); setAccessOpen(true); }}>Build</button> : null}
           </div> : null}
           {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation', nativeTools: false })}><option value="note">Note · only saved here</option>{agent && !readiness?.canStartLive ? <option value={agent.id} disabled>Connection needed</option> : null}{readyRecipients.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
-          {!assistant ? <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><span aria-hidden="true">☺</span></IconButton> : null}
+          {!assistant ? <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><Smile /></IconButton> : null}
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
           <IconButton label="Select context sources" onClick={() => setContextOpen(true)}><BookOpen /></IconButton>
-          {!assistant ? <IconButton label="Save follow-up draft without sending" disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={queueDraft}><Clock /></IconButton> : null}
-        </div><Button type="button" variant="ghost" icon={Clock} disabled={!composer.text.trim() || busy || composer.sending || Boolean(composer.turn) || slashVisible || Boolean(blocker) || Boolean(agent && (!contextReady || composer.permission !== 'conversation' || composer.nativeTools))} title={agent && composer.permission !== 'conversation' ? 'Switch to Discuss to schedule a message' : agent && composer.nativeTools ? 'Turn off native tools before scheduling' : undefined} onClick={() => setScheduleDraft({ version: composer.version, payload: { chat_id: chat.id, agent_id: agent?.id || null, content: composer.text.trim(), attachments: sentAttachments, ...(composer.replyTo ? { reply_to: composer.replyTo } : {}), ...(composer.context ? { context_snapshot_id: composer.context.id } : {}) }, contextInspectionId: agent ? reviewedContext.result.id : null })}>Schedule</Button><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker) || Boolean(agent && !slashVisible && !recoveringTurn && !contextReady)} aria-label={agent ? `Send to ${agent.name}` : 'Save note'}>{agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</Button></div>
+          {agent ? <IconButton label="Access and context" onClick={() => setAccessOpen(true)}><SlidersHorizontal /></IconButton> : null}
+        </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker)} aria-label={agent ? `Send to ${agent.name}` : 'Save note'}>{agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</Button></div>
       </Form>
-      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : assistant ? null : <div className="chat-compose-caption"><span>{agent ? contextReady ? 'Context reviewed. Sending is a separate action.' : recoveringTurn ? 'Unconfirmed delivery · keep the same turn ID when retrying.' : 'Open Context review, inspect, and use the context before sending.' : 'Notes stay in this conversation. No agent is contacted.'}</span><span>{data.settings?.preferences?.sendKey === 'modifier' ? 'Cmd / Ctrl + Enter' : 'Enter'} to send · Shift + Enter for a new line</span></div>}
+      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
     </div>
+    {accessOpen && agent ? <Dialog title="Access and context" subtitle="Chat prepares bounded context when you send. Project access and native tools still require explicit review." wide onClose={() => setAccessOpen(false)}><div className="dialog-body chat-context-content">{!isBrowserAiProvider(agent.provider) ? <><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><Toggle label="Read project files for this message" description="Requires a linked working folder. Turning this on does not grant write access." checked={composer.permission !== 'conversation'} disabled={busy || composer.sending || recoveringTurn || composer.permission === 'workspace-write'} onChange={value => { change({ permission: value ? 'read-only' : 'conversation' }); setReviewedContext(null); }} /></> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} /></div><footer className="dialog-footer"><Button onClick={() => setAccessOpen(false)}>Done</Button></footer></Dialog> : null}
     {scheduleDraft ? <ScheduleWorkDialog workspaceId={val(chat, 'workspace_id')} kind="message" payload={scheduleDraft.payload} contextInspectionId={scheduleDraft.contextInspectionId} onClose={() => setScheduleDraft(null)} onScheduled={() => { if (composer.version === scheduleDraft.version) { change({ text: '', files: [], turn: null, replyTo: null, context: null }); setReviewedContext(null); } }} /> : null}
     {retryDraft ? <Dialog title="Review retry context" subtitle="Retrying creates a new bounded attempt. Context is regenerated from current accessible sources; the original message stays unchanged." wide onClose={() => { if (!retrying) { setRetryDraft(null); setReviewedRetry(null); } }}><div className="dialog-body chat-context-content"><ErrorMessage error={error} />{retryAgent && !isBrowserAiProvider(retryAgent.provider) ? <NativeToolsChoice checked={retryNativeTools} disabled={Boolean(retrying) || Boolean(composer.retryKeys[retryDraft.message.id])} onChange={value => { setRetryNativeTools(value); setReviewedRetry(null); }} /> : null}{composer.retryKeys[retryDraft.message.id] ? <p>An earlier retry delivery is unconfirmed. Its native-tool choice stays fixed while recovering the same turn.</p> : null}{retryAgent ? <ContextInspector key={`retry-context:${retryDraft.message.id}:${retryAgent.version ?? 0}`} request={retryRequest} onReviewed={result => setReviewedRetry({ key: retryInspectionKey, result })} onInvalidated={() => setReviewedRetry(null)} /> : <p>This message’s agent is unavailable. Restore or configure the profile before retrying.</p>}</div><footer className="dialog-footer"><Button disabled={Boolean(retrying)} onClick={() => { setRetryDraft(null); setReviewedRetry(null); }}>Cancel</Button><Button variant="primary" busy={Boolean(retrying)} disabled={!retryContextReady || Boolean(active)} onClick={retryReviewed}>Retry message</Button></footer></Dialog> : null}
-    {updatesOpen ? <Dialog title="Conversation updates" subtitle="Progress and decisions about this conversation. Updates are separate from chat messages and never contact an agent." wide onClose={() => { if (updatesPending) notify('Resolve the pending update request before closing.'); else if (updatesDirty) setDiscardUpdates(true); else setUpdatesOpen(false); }}><div className="dialog-body" style={{ padding: 'clamp(12px, 3vw, 24px)' }}><Suspense fallback={<p role="status">Opening conversation updates…</p>}><ActivityFeed key={chat.id} workspaceId={val(chat, 'workspace_id')} targetType="chat" targetId={chat.id} onDirtyChange={setUpdatesDirty} onPendingChange={setUpdatesPending} /></Suspense></div></Dialog> : null}
+    {updatesOpen ? <Dialog className="chat-updates-dialog" title="Conversation updates" subtitle="Progress and decisions about this conversation. Updates are separate from chat messages and never contact an agent." wide onClose={() => { if (updatesPending) notify('Resolve the pending update request before closing.'); else if (updatesDirty) setDiscardUpdates(true); else setUpdatesOpen(false); }}><div className="dialog-body" style={{ padding: 'clamp(12px, 3vw, 24px)' }}><Suspense fallback={<p role="status">Opening conversation updates…</p>}><ActivityFeed key={chat.id} workspaceId={val(chat, 'workspace_id')} targetType="chat" targetId={chat.id} onDirtyChange={setUpdatesDirty} onPendingChange={setUpdatesPending} /></Suspense></div></Dialog> : null}
     {nativeActivityOpen ? <Dialog title="Conversation native tools" subtitle="Choose one recorded run. Reading tool records or reviewing a proposal never launches an agent." wide onClose={() => setNativeActivityOpen(false)}><div className="native-tool-decision"><Select label="Recorded conversation run" value={nativeRunId} onChange={setNativeRunId}><option value="">Choose run…</option>{runs.filter(run => run.mode === 'live').map(run => <option key={run.id} value={run.id}>{run.title || run.id} · {run.status} · {relative(run.created_at)}</option>)}</Select>{nativeRunId && runs.some(run => run.id === nativeRunId && run.mode === 'live') ? <NativeToolActivity key={nativeRunId} runId={nativeRunId} /> : <p>No run selected. Simulations do not invoke native tools.</p>}</div></Dialog> : null}
     {discardUpdates ? <Dialog title="Discard this update draft?" onClose={() => setDiscardUpdates(false)}><div className="dialog-body" style={{ padding: 24 }}><p>This unsaved text will be lost. Published updates and saved drafts stay unchanged.</p><div className="form-submit-row"><Button onClick={() => setDiscardUpdates(false)}>Keep editing</Button><Button variant="danger" onClick={() => { setDiscardUpdates(false); setUpdatesDirty(false); setUpdatesOpen(false); }}>Discard draft</Button></div></div></Dialog> : null}
     {contextOpen ? <Dialog title="Chat context" subtitle="Know what travels with this conversation." className="chat-context-dialog" onClose={() => setContextOpen(false)}><div className="dialog-body chat-context-content">
       <ErrorMessage error={collaborationError} />
       <AgentMemoryPanel workspaceId={val(chat, 'workspace_id')} agentId={agent?.id} projectId={project?.id} />
-      <section><h3>Selected sources</h3><p>Choose documents, memory, or a context pack. Rumbo saves an immutable text snapshot and includes it as a text attachment only when you explicitly send. Selecting sources never contacts an agent.</p><SearchField label="Filter context sources" placeholder="Find documents, memory, or packs…" value={contextQuery} onChange={setContextQuery} /><div className="chat-source-list">{contextChoices.filter(item => item.title.toLowerCase().includes(contextQuery.toLowerCase())).map(item => {
+      <section><h3>Selected sources</h3><p>Choose documents, memory, or a context pack. Talvori saves an immutable text snapshot and includes it as a text attachment only when you explicitly send. Selecting sources never contacts an agent.</p><SearchField label="Filter context sources" placeholder="Find documents, memory, or packs…" value={contextQuery} onChange={setContextQuery} /><div className="chat-source-list">{contextChoices.filter(item => item.title.toLowerCase().includes(contextQuery.toLowerCase())).map(item => {
         const key = `${item.kind}:${item.id}`, selected = contextSources.some(source => `${source.kind}:${source.id}` === key);
         return <label key={key}><input type="checkbox" checked={selected} onChange={() => setContextSources(values => selected ? values.filter(source => `${source.kind}:${source.id}` !== key) : [...values, { kind: item.kind, id: item.id }])} /><span>{item.title}<small>{item.kind === 'pack' ? 'Context pack' : item.kind === 'memory' ? 'Memory note' : 'Document'}{item.project_id && item.project_id !== project?.id ? ' · another project in this workspace' : ''}</small></span></label>;
       })}{!contextChoices.length ? <p>No sources yet. Add a project document, memory note, or context pack to select it here.</p> : null}</div><Button disabled={!contextSources.length} busy={actionBusy} onClick={async () => { try { const context = await collaborationAction('context', { sources: contextSources }); change({ context }); setContextOpen(false); notify('Context snapshot attached to the composer. Review it before sending.'); } catch {} }}>Snapshot {contextSources.length || 'selected'} sources</Button></section>
@@ -511,11 +535,13 @@ const response = await rumboActions.sendChatTurn(chat.id, { agent_id: val(run, '
       <section><Toggle label="Include saved memory" description={val(agent, 'memory_policy') === 'none' ? 'This profile excludes saved memory.' : 'Eligible notes can be included; inspect the exact selection and any limits before sending.'} checked={includeMemory} disabled={val(agent, 'memory_policy') === 'none'} onChange={value => change({ memory: value })} />{notes.map(note => <button className="chat-context-link" key={note.id} onClick={() => { setContextOpen(false); edit('memory', note); }}><BookOpen />{note.title}</button>)}</section>
       <section><h3>Attachments</h3><p>Text and code files can be sent to agents: up to 20 files, 100,000 characters each. Agent context uses at most 16 KB per file and 32 KB total. Full files remain saved here. Images are stored in notes only; they are not sent to CLI providers.</p></section>
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}
-    {commandLibraryOpen ? <Dialog title="Rumbo commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
+    {commandLibraryOpen ? <Dialog title="Talvori commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
     {optionsOpen ? <Dialog title="Conversation options" onClose={() => setOptionsOpen(false)}><div className="dialog-body chat-options">
+      <Button icon={Clock} disabled={busy || composer.sending || Boolean(composer.turn) || !composer.text.trim() || Boolean(blocker)} onClick={() => { setOptionsOpen(false); void prepareSchedule(); }}>Schedule current message</Button>
+      <Button icon={MessageCircle} disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={() => { setOptionsOpen(false); void queueDraft(); }}>Save follow-up draft</Button>
       <Button icon={Pencil} onClick={() => { setOptionsOpen(false); edit('chat', chat); }}>Edit conversation details</Button>
       <Button icon={Folder} onClick={() => openAction('move')}>Move to another project</Button>
-      <Button icon={chat.pinned ? PinOff : Pin} onClick={() => perform(async () => { await rumboActions.updateChat(chat.id, { pinned: !chat.pinned }); setOptionsOpen(false); }, chat.pinned ? 'Chat unpinned' : 'Chat pinned')}>{chat.pinned ? 'Unpin conversation' : 'Pin conversation'}</Button>
+      <Button icon={chat.pinned ? PinOff : Pin} onClick={() => perform(async () => { await talvoriActions.updateChat(chat.id, { pinned: !chat.pinned }); setOptionsOpen(false); }, chat.pinned ? 'Chat unpinned' : 'Chat pinned')}>{chat.pinned ? 'Unpin conversation' : 'Pin conversation'}</Button>
       <Button icon={Download} onClick={exportChat}>Export as Markdown</Button>
       <Button icon={Archive} onClick={() => { setOptionsOpen(false); archive('chat', chat); }}>Archive conversation</Button>
     </div></Dialog> : null}

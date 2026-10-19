@@ -52,11 +52,11 @@ async function call(path, body, method = body === undefined ? 'GET' : 'POST') {
 
 function tool(launch, name, args) {
   return new Promise((resolve, reject) => {
-    const socket = createConnection(launch.options.env.RUMBO_NATIVE_TOOL_SOCKET);
+    const socket = createConnection(launch.options.env.TALVORI_NATIVE_TOOL_SOCKET);
     let received = '';
     socket.setEncoding('utf8'); socket.setTimeout(3000, () => socket.destroy(new Error('Injected QA bridge timed out.')));
     socket.on('error', reject);
-    socket.on('connect', () => socket.write(JSON.stringify({ id: 'injected-qa-call', capability: launch.options.env.RUMBO_NATIVE_TOOL_CAPABILITY, method: 'tools/call', params: { name, arguments: args } }) + '\n'));
+    socket.on('connect', () => socket.write(JSON.stringify({ id: 'injected-qa-call', capability: launch.options.env.TALVORI_NATIVE_TOOL_CAPABILITY, method: 'tools/call', params: { name, arguments: args } }) + '\n'));
     socket.on('data', chunk => {
       received += chunk;
       if (!received.includes('\n')) return;

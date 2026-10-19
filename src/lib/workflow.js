@@ -1,5 +1,5 @@
 import { apiRequest } from '../data/api.js';
-import { refreshRumbo } from '../data/useRumbo.js';
+import { refreshTalvori } from '../data/useTalvori.js';
 
 export const OUTPUT_TYPES = ['document', 'report', 'code_change', 'design', 'test_result', 'research', 'other'];
 export const workflowLabel = value => String(value ?? '').replaceAll('_', ' ').replace(/^./, char => char.toUpperCase());
@@ -7,7 +7,7 @@ export async function workflowRequest(path, body, method = 'POST') {
   const response = await apiRequest(`/api/workflow/${path}`, { method, body });
   // A completed write must not appear failed just because the follow-up refresh
   // failed; the shared store reports sync errors and retains existing content.
-  await refreshRumbo().catch(() => {});
+  await refreshTalvori().catch(() => {});
   return response.result;
 }
 export function routeAgreement(data, taskId) { return (data.route_workflows ?? []).find(row => row.id === taskId); }
@@ -21,6 +21,6 @@ export function contextFreshness(data, snapshot) {
 }
 export function exportText(name, content) {
   const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
-  const link = document.createElement('a'); link.href = url; link.download = `${name.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 80) || 'rumbo-output'}.md`; link.click();
+  const link = document.createElement('a'); link.href = url; link.download = `${name.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 80) || 'talvori-output'}.md`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

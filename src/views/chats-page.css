@@ -118,7 +118,9 @@
 .chat-compose-modes button:disabled { opacity: .55; cursor: not-allowed; }
 .chat-compose-target .rumbo-select { min-width: 0; max-width: 220px; }
 .chat-compose-target [role="combobox"] { min-height: 34px; font-size: 12px; background: transparent; border-color: var(--border); max-width: 220px; }
-.chat-compose-target .icon-button { width: 34px; height: 34px; }
+.chat-compose-target .icon-button { width: 44px; height: 44px; flex: 0 0 44px; }
+.chat-compose-target .icon-button > svg { width: 20px; height: 20px; }
+.chat-compose-target [role="combobox"], .chat-compose-modes > button { min-height: 44px; }
 .chat-compose-caption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; padding: 11px 2px 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
 .chat-compose-notice { display: flex; align-items: flex-start; gap: 8px; padding: 12px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .chat-compose-notice > svg { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; }
@@ -135,6 +137,9 @@
 .chat-message-search .search-field { flex: 1; min-width: 0; max-width: 500px; }
 .chat-context-dialog { width: min(760px, 100%); overflow: hidden; }
 .chat-context-dialog > .dialog-heading, .chat-context-dialog > .dialog-footer { flex-shrink: 0; }
+.chat-updates-dialog { overflow: hidden; }
+.chat-updates-dialog > .dialog-heading { flex-shrink: 0; }
+.chat-updates-dialog > .dialog-body { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .chat-context-content { display: grid; gap: 26px; padding: 24px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .chat-context-content > section { min-width: 0; overflow-wrap: anywhere; }
 .chat-context-content > section + section { border-top: 1px solid var(--border); padding-top: 22px; }

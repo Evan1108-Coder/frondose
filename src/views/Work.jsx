@@ -7,7 +7,7 @@ import { ActivityTypeIcon } from '../components/ActivityTypeIcon.jsx';
 import { runActivityType } from '../lib/activity-icons.js';
 import { lazy, Suspense, useState } from "react";
 import { Play, Square, Terminal, ShieldCheck, Check, X, ArrowRight, Download, Clock, MessageCircle, FileText, Plus, FlaskConical, Pencil, Pin, PinOff, Archive, RotateCcw } from "../components/icons.jsx";
-import { rumboActions } from "../data/useRumbo.js";
+import { talvoriActions } from "../data/useTalvori.js";
 import { Form } from "../components/Form.jsx";
 import { agentReadiness } from "../lib/agents.js";
 import {
@@ -104,7 +104,7 @@ export function SessionDialog({ defaults = {}, onClose }) {
       if (defaults.chat_id && !chat) throw new Error("This chat is no longer available.");
       if (mode === "live" && (!readiness.canStartLive || !cwd)) throw new Error("Connect this agent and choose a project with a working folder before starting live work.");
       if (mode === "live" && !contextReady) throw new Error("Inspect the current context and choose Use this context before starting a live session.");
-      const result = await rumboActions.startSession({
+      const result = await talvoriActions.startSession({
         workspace_id: workspace.id,
         project_id: project?.id ?? null,
         task_id: taskId || null,
@@ -315,7 +315,7 @@ function Approval({ approval, run }) {
   const { busy, error, execute } = useAsync();
   const decide = (decision) =>
     execute(async () => {
-      await rumboActions.resolveApproval(run.id, approval.id, decision);
+      await talvoriActions.resolveApproval(run.id, approval.id, decision);
       notify(decision === "approve" ? "Request approved" : "Request denied");
     });
   return (
@@ -361,7 +361,7 @@ export function WorkView() {
     .filter((run) => filter === 'archived' ? Boolean(run.archived_at) : !run.archived_at && (filter === 'all' || filter === 'active' && activeRun(run) || filter === 'finished' && !activeRun(run)));
   const run = runs.find((item) => item.id === page.id) ?? runs[0];
   const starred = item => organization.favorites.some(favorite => favorite.view === 'work' && favorite.id === item.id);
-  const updateRun = (item, patch, message) => perform(() => rumboActions.updateRun(item.id, patch), message);
+  const updateRun = (item, patch, message) => perform(() => talvoriActions.updateRun(item.id, patch), message);
   const approvals = data.approvals.filter(
     (item) => val(item, "run_id") === run?.id && item.status === "pending",
   );
@@ -457,7 +457,7 @@ export function WorkView() {
                     <Button
                       icon={Download}
                       onClick={() => {
-                        download(`rumbo-session-${run.id}.json`, {
+                        download(`talvori-session-${run.id}.json`, {
                           run,
                           events,
                         });
@@ -471,7 +471,7 @@ export function WorkView() {
                         icon={Square}
                         onClick={() =>
                           perform(
-                            () => rumboActions.stopRun(run.id),
+                            () => talvoriActions.stopRun(run.id),
                             "Session stopped",
                           )
                         }

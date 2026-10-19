@@ -15,7 +15,7 @@ import {
   useState,
 } from "react";
 import { ArrowRight, CircleCheck, CircleAlert, X, Menu, ChevronRight, RotateCcw, LoaderCircle, Pin, PinOff } from "./components/icons.jsx";
-import { rumboActions, useRumboData, useRumboStatus } from "./data/useRumbo.js";
+import { talvoriActions, useTalvoriData, useTalvoriStatus } from "./data/useTalvori.js";
 import { apiRequest } from './data/api.js';
 import {
   AppContext,
@@ -39,7 +39,7 @@ const TeamsView = lazy(() => import('./views/Teams.jsx').then(module => ({ defau
 import { Overview, InboxView } from "./views/Overview.jsx";
 import { ProjectsView, RoutesView } from "./views/Projects.jsx";
 const ChatsView = lazy(() => import('./views/Chats.jsx').then(module => ({ default: module.ChatsView })));
-const RumboAgent = lazy(() => import('./views/RumboAgent.jsx').then(module => ({ default: module.RumboAgent })));
+const TalvoriAgent = lazy(() => import('./views/TalvoriAgent.jsx').then(module => ({ default: module.TalvoriAgent })));
 import { WorkView, SessionDialog } from "./views/Work.jsx";
 import { MemoryView } from "./views/Agents.jsx";
 const AgentsView = lazy(() => import('./views/AgentRoster.jsx').then(module => ({ default: module.AgentsView })));
@@ -48,7 +48,7 @@ const ConnectionsView = lazy(() => import('./views/AIConnections.jsx').then(modu
 const SettingsCenter = lazy(() => import('./views/settings/SettingsCenter.jsx').then(module => ({ default: module.SettingsCenter })));
 const DocsView = lazy(() => import('./views/Docs.jsx').then(module => ({ default: module.DocsView })));
 const FeedbackDialog = lazy(() => import('./components/FeedbackDialog.jsx').then(module => ({ default: module.FeedbackDialog })));
-import { RumboWordmark, RumboSymbol } from "./components/Brand.jsx";
+import { TalvoriWordmark, TalvoriSymbol } from "./components/Brand.jsx";
 import { parsePage, pageHash } from "./lib/navigation.js";
 import { trackInputModality } from "./lib/motion.js";
 import { favoriteForPage, favoriteKey, normalizeOrganization, readOrganization, saveOrganization } from "./lib/organization.js";
@@ -103,8 +103,8 @@ export function App() {
   useGlobalDisplayPreferences();
   // Include onboarding and error/loading screens, not only the workspace sidebar.
   useEffect(trackInputModality, []);
-  const rawData = useRumboData(),
-    status = useRumboStatus();
+  const rawData = useTalvoriData(),
+    status = useTalvoriStatus();
   const [page, setPage] = useState(readPage);
   const [workspaceId, setWorkspaceId] = usePreference("rumbo.workspace", null),
     [collapsed, setCollapsed] = usePreference("rumbo.sidebar.collapsed", false);
@@ -165,7 +165,7 @@ export function App() {
   useEffect(() => {
     const message = (status.error || status.syncError)?.message || '';
     if (message && message !== lastConnectionError.current) notify(message, 'error', undefined, {
-      actionLabel: 'Retry', action: () => rumboActions.refresh(),
+      actionLabel: 'Retry', action: () => talvoriActions.refresh(),
     });
     // Repeated failed background polls do not restart or resurrect the notice.
     lastConnectionError.current = message;
@@ -300,7 +300,7 @@ export function App() {
         milestone: "updateMilestone",
       }[kind];
       perform(async () => {
-        await rumboActions[action](item.id, {
+        await talvoriActions[action](item.id, {
           archived_at: new Date().toISOString(),
         });
         if (page.id === item.id) navigate(page.view, null, { projectId: page.projectId });
@@ -309,7 +309,7 @@ export function App() {
           "success",
           () =>
             perform(
-              () => rumboActions[action](item.id, { archived_at: null }),
+              () => talvoriActions[action](item.id, { archived_at: null }),
               "Restored",
             ),
         );
@@ -390,8 +390,8 @@ export function App() {
   if (!rawData && status.loading)
     return (
       <div className="app-loading">
-        <RumboSymbol size={48} />
-        <h1>Rumbo</h1>
+        <TalvoriSymbol size={48} />
+        <h1>Talvori</h1>
         <span>
           <LoaderCircle className="spin" />
           Opening your workspace…
@@ -402,10 +402,10 @@ export function App() {
     return (
       <div className="app-loading">
         <CircleAlert />
-        <h1>Unable to open Rumbo</h1>
-        <p>{status.error?.message ?? "The Rumbo server is unavailable."}</p>
+        <h1>Unable to open Talvori</h1>
+        <p>{status.error?.message ?? "The Talvori server is unavailable."}</p>
         <Button
-          onClick={() => perform(() => rumboActions.refresh())}
+          onClick={() => perform(() => talvoriActions.refresh())}
           icon={RotateCcw}
         >
           Try again
@@ -448,7 +448,7 @@ export function App() {
     teams: <TeamsView />,
     tasks: <RoutesView />,
     chats: <Suspense fallback={<div className="app-loading" role="status">Opening chats…</div>}><ChatsView /></Suspense>,
-    'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Rumbo Agent…</div>}><RumboAgent /></Suspense>,
+    'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Talvori…</div>}><TalvoriAgent /></Suspense>,
     work: <WorkView />,
     workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={page.id ?? page.projectId} /></Suspense>,
     library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={page.id} /></Suspense>,
@@ -567,7 +567,7 @@ function FirstRun({ onCreated }) {
     <div className="onboarding">
       <aside>
         <div className="onboarding-brand">
-          <RumboWordmark width={260} />
+          <TalvoriWordmark width={260} />
         </div>
         <div className="onboarding-message">
           <h1>
@@ -598,8 +598,8 @@ function FirstRun({ onCreated }) {
             e.preventDefault();
             execute(async () => {
               if (profile.trim())
-                await rumboActions.updateProfile({ name: profile.trim() });
-              const workspace = await rumboActions.createWorkspace({
+                await talvoriActions.updateProfile({ name: profile.trim() });
+              const workspace = await talvoriActions.createWorkspace({
                 name: name.trim(),
                 description: "",
               });

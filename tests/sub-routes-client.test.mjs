@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { leafRouteProgress, routeForestRows } from '../src/lib/sub-routes.js';
-import { rumboApi } from '../src/data/api.js';
+import { talvoriApi } from '../src/data/api.js';
 const route = (id, status = 'ready', extra = {}) => ({ id, status, workspace_id: 'w', project_id: 'p', team_id: null, ...extra });
 
 test('leaf progress excludes double-counted parents, cancelled and archived work', () => {
@@ -29,10 +29,10 @@ test('Sub-routes API preserves exact workspace, graph revision and retry payload
   const original = globalThis.fetch, calls = [];
   globalThis.fetch = async (path, options) => { calls.push({ path, options }); return Response.json({ result: { revision: 4, tree: {} } }); };
   try {
-    await rumboApi.subRoutes('route one', 'w&1');
+    await talvoriApi.subRoutes('route one', 'w&1');
     assert.equal(calls[0].path, '/api/sub-routes/route%20one?workspace_id=w%261');
     const input = { workspace_id: 'w&1', revision: 4, request_id: 'stable-retry-key', child_ids: ['b','a'] };
-    await rumboApi.mutateSubRoutes('route one', 'reorder', input);
+    await talvoriApi.mutateSubRoutes('route one', 'reorder', input);
     assert.equal(calls[1].path, '/api/sub-routes/route%20one/reorder');
     assert.equal(calls[1].options.method, 'POST');
     assert.deepEqual(JSON.parse(calls[1].options.body), input);

@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs';
 import { installWorkflow } from '../server/workflow-service.mjs';
 import { installActivity } from '../server/activity-service.mjs';
 import { installChatCollaboration } from '../server/chat-collaboration.mjs';
-import { captureSourceAccess, assertSourceAccess, assertRumboSourceReferences } from '../server/context-source-access.mjs';
-import { readRumboSource, assertRumboChatSource } from '../server/rumbo-agent-service.mjs';
+import { captureSourceAccess, assertSourceAccess, assertTalvoriSourceReferences } from '../server/context-source-access.mjs';
+import { readTalvoriSource, assertTalvoriChatSource } from '../server/talvori-agent-service.mjs';
 import { createAccessBoundary } from '../server/access-boundary.mjs';
 
 function fixture(t) {
@@ -67,8 +67,8 @@ test('a source move cannot erase captured document permission at the historical 
   f.message('message');
   const before = f.capture('message', 'message');
   f.move();
-  assert.equal(readRumboSource(f.db, 'workspace', { type: 'document', id: 'document' }, f.actor, f.revokeHistoricalArea).row.id, 'document', 'the current direct source remains readable');
-  assert.throws(() => assertRumboChatSource(f.db, f.chat, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
+  assert.equal(readTalvoriSource(f.db, 'workspace', { type: 'document', id: 'document' }, f.actor, f.revokeHistoricalArea).row.id, 'document', 'the current direct source remains readable');
+  assert.throws(() => assertTalvoriChatSource(f.db, f.chat, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
   for (const inspection of [before, f.capture('message', 'message')]) {
     assert.equal(assertSourceAccess(f.db, inspection, f.actor, () => true), true);
     assert.throws(() => assertSourceAccess(f.db, inspection, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
@@ -83,7 +83,7 @@ test('an update from a source-bound chat carries its original source into a seco
   const inspection = f.capture('message', 'second-message');
   assert.ok(inspection.sourceAccess.sources.some(row => row.table === 'documents' && row.id === 'document'));
   f.move();
-  assert.throws(() => assertRumboChatSource(f.db, second, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
+  assert.throws(() => assertTalvoriChatSource(f.db, second, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
   assert.throws(() => assertSourceAccess(f.db, inspection, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
 });
 
@@ -91,13 +91,13 @@ test('an update from an index-only chat retains indexed sources when reused in a
   const f = fixture(t);
   f.indexedRun();
   const update = f.update('indexed-update');
-  assert.equal(assertRumboSourceReferences(f.db, update, 'activity_entries', f.actor, () => true), true);
+  assert.equal(assertTalvoriSourceReferences(f.db, update, 'activity_entries', f.actor, () => true), true);
   const second = f.bind('second-chat', { type: 'update', id: update.id });
   f.message('second-message', second.id);
   const inspection = f.capture('message', 'second-message');
   f.move();
-  assert.throws(() => assertRumboSourceReferences(f.db, update, 'activity_entries', f.actor, f.revokeHistoricalArea), error => error.statusCode === 403, 'the chat-target update must retain indexed-source read guards');
-  assert.throws(() => assertRumboChatSource(f.db, second, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403, 'a second conversation must not launder indexed context through an update');
+  assert.throws(() => assertTalvoriSourceReferences(f.db, update, 'activity_entries', f.actor, f.revokeHistoricalArea), error => error.statusCode === 403, 'the chat-target update must retain indexed-source read guards');
+  assert.throws(() => assertTalvoriChatSource(f.db, second, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403, 'a second conversation must not launder indexed context through an update');
   assert.throws(() => assertSourceAccess(f.db, inspection, f.actor, f.revokeHistoricalArea), error => error.statusCode === 403, 'captured downstream history must retain indexed-source provenance');
 });
 
@@ -116,7 +116,7 @@ test('later indexed turns do not retroactively widen a published update revision
   const after = f.capture('activity', update.id);
   assert.equal(after.sourceAccess.sources.some(row => row.id === 'later-document' || row.id === 'later-run'), false);
   assert.deepEqual(after.sourceAccess, before.sourceAccess, 'context ancestry remains stable rather than recursively absorbing later chat turns');
-  assert.equal(assertRumboSourceReferences(f.db, update, 'activity_entries', f.actor, permittedBeforeOnly), true);
+  assert.equal(assertTalvoriSourceReferences(f.db, update, 'activity_entries', f.actor, permittedBeforeOnly), true);
   assert.equal(assertSourceAccess(f.db, before, f.actor, permittedBeforeOnly), true);
 });
 
@@ -181,17 +181,17 @@ test('output children, chat updates and historical metadata retain source guards
   const collections = ['chats', 'messages', 'outputs', 'output_versions', 'output_comments', 'output_reviews', 'activity_entries'];
   const data = Object.fromEntries(collections.map(table => [table, f.db.prepare(`SELECT * FROM ${table}`).all()]));
   const history = { id: 'history', workspace_id: 'workspace', entity_type: 'outputs', entity_id: 'output', before: data.outputs[0], after: { ...data.outputs[0], title: 'Changed title' } };
-  assert.equal(assertRumboSourceReferences(f.db, history, 'audit_log', f.actor, () => true), true);
+  assert.equal(assertTalvoriSourceReferences(f.db, history, 'audit_log', f.actor, () => true), true);
   f.move();
   const governance = { explain: (workspace, actorId, permission, scope) => ({ allowed: f.revokeHistoricalArea(workspace, { id: actorId }, permission, scope) }) };
   const access = createAccessBoundary({ db: f.db, governance });
   const filtered = access.filter(data, f.actor);
   for (const collection of collections) assert.equal(filtered[collection].length, 0, `${collection} must not reveal derived contents`);
-  assert.throws(() => assertRumboSourceReferences(f.db, history, 'audit_log', f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
+  assert.throws(() => assertTalvoriSourceReferences(f.db, history, 'audit_log', f.actor, f.revokeHistoricalArea), error => error.statusCode === 403);
 });
 
 function snapshotMessage(f) {
-  // Use an ordinary chat so no Rumbo binding/index can accidentally supply the
+  // Use an ordinary chat so no Talvori binding/index can accidentally supply the
   // missing dependency under test. The private lineage is server-captured.
   f.db.prepare('DELETE FROM chat_collaboration WHERE chat_id=?').run('chat');
   const inspection = { manifest: { resolved: { workspace_id: 'workspace', chat_id: 'chat' }, included: [{ kind: 'document', id: 'document' }], excluded: [] } };
@@ -199,7 +199,7 @@ function snapshotMessage(f) {
   f.db.prepare('INSERT INTO chat_context_snapshots(id,workspace_id,chat_id,content,sources_json,created_at,source_access_json) VALUES(?,?,?,?,?,?,?)')
     .run(snapshotId, 'workspace', 'chat', 'COPIED_SOURCE_CONTENT', JSON.stringify([{ kind: 'document', id: 'document' }]), f.now, JSON.stringify(sourceAccess));
   f.message('snapshot-message');
-  const file = { name: `rumbo-context-${snapshotId}.md`, type: 'text/markdown', content: 'COPIED_SOURCE_CONTENT', rumbo_context_snapshot: snapshotId };
+  const file = { name: `talvori-context-${snapshotId}.md`, type: 'text/markdown', content: 'COPIED_SOURCE_CONTENT', rumbo_context_snapshot: snapshotId };
   f.db.prepare("UPDATE messages SET sender_type='user',metadata_json=?,attachments_json=? WHERE id=?")
     .run(JSON.stringify({ context_snapshot_id: snapshotId }), JSON.stringify([file]), 'snapshot-message');
   return { snapshotId, file, message: f.row('messages', 'snapshot-message') };
@@ -232,7 +232,7 @@ test('historical snapshot lineage checks current source permissions as well as t
   f.move();
   const revokeCurrentArea = (_workspace, _actor, permission, scope = {}) => !(permission === 'documents.read' && scope.scope_id === 'area-after');
   assert.throws(() => assertSourceAccess(f.db, inspection, f.actor, revokeCurrentArea), { code: 'context_access_revoked' });
-  assert.throws(() => assertRumboSourceReferences(f.db, f.row('messages', 'snapshot-message'), 'messages', f.actor, revokeCurrentArea), { code: 'context_access_revoked' });
+  assert.throws(() => assertTalvoriSourceReferences(f.db, f.row('messages', 'snapshot-message'), 'messages', f.actor, revokeCurrentArea), { code: 'context_access_revoked' });
 });
 
 test('historical markers and caller JSON cannot forge snapshot authority; missing legacy lineage fails closed', t => {
@@ -250,7 +250,7 @@ test('historical markers and caller JSON cannot forge snapshot authority; missin
   f.db.prepare('UPDATE messages SET metadata_json=?,attachments_json=? WHERE id=?').run(original.metadata_json, original.attachments_json, original.id);
   f.db.prepare('UPDATE chat_context_snapshots SET source_access_json=NULL WHERE id=?').run(saved.snapshotId);
   assert.throws(() => f.capture('message', original.id), { code: 'context_access_revoked' });
-  assert.throws(() => assertRumboSourceReferences(f.db, { ...original, metadata: { sourceAccess: { sources: [] } }, attachments: [] }, 'messages', f.actor, () => true), { code: 'context_access_revoked' }, 'client-transformed JSON cannot override canonical stored lineage');
+  assert.throws(() => assertTalvoriSourceReferences(f.db, { ...original, metadata: { sourceAccess: { sources: [] } }, attachments: [] }, 'messages', f.actor, () => true), { code: 'context_access_revoked' }, 'client-transformed JSON cannot override canonical stored lineage');
 });
 
 test('ordinary historical text attachments do not become workspace-source authority', t => {

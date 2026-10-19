@@ -8,19 +8,19 @@ import { test } from 'node:test';
 import { build, createServer } from 'vite';
 import config from '../vite.config.mjs';
 
-const secret = 'RUMBO_TEST_SENTINEL_DO_NOT_SERVE_91be4d30';
+const secret = 'TALVORI_TEST_SENTINEL_DO_NOT_SERVE_91be4d30';
 const execFileAsync = promisify(execFile);
 async function makeFixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'rumbo-private-host-test-')));
   await mkdir(join(root, '.rumbo'));
   await mkdir(join(root, '.git'));
   await writeFile(join(root, '.rumbo', 'integrations.private.json'), JSON.stringify({ test: secret }), { mode: 0o600 });
-  await writeFile(join(root, '.rumbo', 'rumbo.sqlite'), secret);
-  await writeFile(join(root, '.env'), `RUMBO_TEST_SECRET=${secret}`);
-  await writeFile(join(root, '.env.local'), `RUMBO_TEST_SECRET=${secret}`);
+  await writeFile(join(root, '.rumbo', 'talvori.sqlite'), secret);
+  await writeFile(join(root, '.env'), `TALVORI_TEST_SECRET=${secret}`);
+  await writeFile(join(root, '.env.local'), `TALVORI_TEST_SECRET=${secret}`);
   await writeFile(join(root, '.git', 'config'), secret);
   await writeFile(join(root, 'test.pem'), secret);
-  await writeFile(join(root, 'index.html'), '<!doctype html><html><body><main>Public Rumbo fixture</main><script type="module" src="/app.js"></script></body></html>');
+  await writeFile(join(root, 'index.html'), '<!doctype html><html><body><main>Public Talvori fixture</main><script type="module" src="/app.js"></script></body></html>');
   await writeFile(join(root, 'app.js'), 'document.querySelector("main").dataset.ready = "true";');
   return root;
 }
@@ -40,9 +40,9 @@ test('local host binds loopback and blocks private data through direct and trans
   assert.equal(publicResponse.status, 200);
   assert.match(await publicResponse.text(), /dataset.ready/);
   const paths = [
-    '/.rumbo/integrations.private.json', '/.rumbo/rumbo.sqlite', '/%2Erumbo/integrations.private.json',
+    '/.rumbo/integrations.private.json', '/.rumbo/talvori.sqlite', '/%2Erumbo/integrations.private.json',
     '/.rumbo%2Fintegrations.private.json', '/.env', '/.env.local', '/.git/config', '/test.pem',
-    `/@fs/${root}/.rumbo/integrations.private.json`, `/@fs/${root}/.rumbo/rumbo.sqlite`,
+    `/@fs/${root}/.rumbo/integrations.private.json`, `/@fs/${root}/.rumbo/talvori.sqlite`,
   ];
   for (const path of paths) {
     for (const query of ['', '?raw', '?url', '?import', '?raw&import']) {

@@ -1,10 +1,10 @@
 # Templates, field defaults, and scheduled work
 
-This guide describes the implemented features in Rumbo. It does not imply that Rumbo can run every conceivable action or contact services that are not connected.
+This guide describes the implemented features in Talvori. It does not imply that Talvori can run every conceivable action or contact services that are not connected.
 
 ## Structured templates
 
-Route, project, and conversation templates live in Settings. A template can carry the ordinary starting content plus up to 24 custom questions. Each question has a stable identifier, a label, and a text, long-text, or choice control. You can make a question required, set a placeholder, and provide a starting answer. Choice questions need explicit choices. When using a template, answer its questions in the creation dialog. Rumbo saves those answers with the created item, so changing the template later does not silently rewrite existing work.
+Route, project, and conversation templates live in Settings. A template can carry the ordinary starting content plus up to 24 custom questions. Each question has a stable identifier, a label, and a text, long-text, or choice control. You can make a question required, set a placeholder, and provide a starting answer. Choice questions need explicit choices. When using a template, answer its questions in the creation dialog. Talvori saves those answers with the created item, so changing the template later does not silently rewrite existing work.
 
 Templates create workspace content only. They do not contact an AI provider, start a run, schedule an action, or grant access. A chat template's opening note is saved as template content; it is not sent to an agent. Review the created item before treating its answers as an approved specification.
 
@@ -32,7 +32,7 @@ Each saved preset is bounded to 4,000 characters; the destination's format and l
 
 ## Reviewed actions and scheduled messages
 
-Use Rumbo Agent to describe a supported workspace change, then inspect and explicitly approve its proposed action. Proposals do not gain authority from being written by an agent, saved as instructions, or mentioned in a schedule. Current permission, target-scope and stale-state checks still apply. This is the ordinary agent-proposal path, not a new standalone action builder.
+Use Talvori to describe a supported workspace change, then inspect and explicitly approve its proposed action. Proposals do not gain authority from being written by an agent, saved as instructions, or mentioned in a schedule. Current permission, target-scope and stale-state checks still apply. This is the ordinary agent-proposal path, not a new standalone action builder.
 
 Use a conversation's Schedule entry point to prepare a later local note or agent prompt. A supported pending agent-action proposal also offers Schedule: explicitly review the exact proposed action and target snapshot before choosing its time. Settings → Scheduled messages & actions brings accessible schedules together for inspection and management, and recorded results appear in Activity. Check the exact message or action, intended agent, context, time and execution limits. A message schedule does not grant arbitrary action permissions; proposals from any later agent response still require their normal review. External Plugin actions remain paused.
 

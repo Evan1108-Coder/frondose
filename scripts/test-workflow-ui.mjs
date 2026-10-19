@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
-const { chromium } = await import(process.env.RUMBO_PLAYWRIGHT_MODULE || 'playwright');
+const { chromium } = await import(process.env.TALVORI_PLAYWRIGHT_MODULE || 'playwright');
 import { createLocalApi } from '../server/local-api.mjs';
 const dir = await mkdtemp(join(tmpdir(), 'rumbo-workflow-browser-'));
 const forbidden = () => { throw new Error('No real providers permitted'); };

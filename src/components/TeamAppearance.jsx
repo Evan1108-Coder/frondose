@@ -5,7 +5,7 @@ import { ReactionGlyph } from './ReactionGlyph.jsx';
 import ReactionPicker from './ReactionPicker.jsx';
 import { ColorChoice } from './ColorChoice.jsx';
 import { ColorPolicyChoice } from './ColorPolicyChoice.jsx';
-import { rumboActions } from '../data/useRumbo.js';
+import { talvoriActions } from '../data/useTalvori.js';
 import { useApp, useAsync } from '../ui.jsx';
 import './team-appearance.css';
 
@@ -19,7 +19,7 @@ export function TeamIconButton({ team, size = 24 }) {
   const { busy, error, execute, setError } = useAsync();
   const { notify } = useApp();
   const value = teamAppearance(team);
-  return <><button type="button" className="team-icon-button" aria-label={`Change ${team.name} icon`} title="Change Area icon and icon color" onClick={event => { event.stopPropagation(); setError(null); setOpen(true); }}><TeamIcon team={team} size={size} /></button>{open ? createPortal(<ReactionPicker iconsOnly title="Choose Area icon" initialColor={value.icon_color} selected={[{ id: value.icon, color: value.icon_color || null }]} busy={busy} error={error} onClose={() => !busy && setOpen(false)} onSelect={icon => execute(async () => { await rumboActions.updateTeam(team.id, { icon: icon.id, icon_color: icon.color || '' }); setOpen(false); notify('Area icon updated'); })} />, document.body) : null}</>;
+  return <><button type="button" className="team-icon-button" aria-label={`Change ${team.name} icon`} title="Change Area icon and icon color" onClick={event => { event.stopPropagation(); setError(null); setOpen(true); }}><TeamIcon team={team} size={size} /></button>{open ? createPortal(<ReactionPicker iconsOnly title="Choose Area icon" initialColor={value.icon_color} selected={[{ id: value.icon, color: value.icon_color || null }]} busy={busy} error={error} onClose={() => !busy && setOpen(false)} onSelect={icon => execute(async () => { await talvoriActions.updateTeam(team.id, { icon: icon.id, icon_color: icon.color || '' }); setOpen(false); notify('Area icon updated'); })} />, document.body) : null}</>;
 }
 
 export function TeamAppearanceFields({ value, onChange }) {

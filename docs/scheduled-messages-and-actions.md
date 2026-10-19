@@ -16,7 +16,7 @@ The Playbooks workflow builder has been removed. Describe a change in an agent c
 
 The agent receives a typed catalog with required fields and stable workspace IDs in its reviewed prompt. The final response can contain up to five proposed actions. Every proposal is validated and saved for human review. The review shows item names and field changes; raw action details remain expandable. Approval rechecks both the original run sponsor and reviewer, the source context, target scope, and current target values. A reviewed receipt and the write commit together. Duplicate decisions do not repeat the write.
 
-These actions work for active Codex and Claude Code runs and for explicit chat models through connected OpenRouter or configured Hugging Face accounts. API models receive the same reviewed Rumbo prompt/action catalog, but no project-file or native MCP tools. A provider can still reject a model, rate-limit the request, or consume its account’s usage. OpenRouter/Hugging Face completion tokens are recorded as provider-reported events, not an account balance or billing ledger. Plugin actions remain unavailable while Plugins are paused. No action changes credentials, grants permissions, permanently deletes records, or approves another agent’s proposal.
+These actions work for active Codex and Claude Code runs and for explicit chat models through connected OpenRouter or configured Hugging Face accounts. API models receive the same reviewed Talvori prompt/action catalog, but no project-file or native MCP tools. A provider can still reject a model, rate-limit the request, or consume its account’s usage. OpenRouter/Hugging Face completion tokens are recorded as provider-reported events, not an account balance or billing ledger. Plugin actions remain unavailable while Plugins are paused. No action changes credentials, grants permissions, permanently deletes records, or approves another agent’s proposal.
 
 ## Schedule a message
 
@@ -43,7 +43,7 @@ The occurrence records completed, running, failed, missed or interrupted outcome
 
 ## Clock and delivery behavior
 
-- The Rumbo server must be running. An occurrence more than two minutes late is recorded as missed. Repeating schedules advance to the next future occurrence instead of sending a backlog.
+- The Talvori server must be running. An occurrence more than two minutes late is recorded as missed. Repeating schedules advance to the next future occurrence instead of sending a backlog.
 - The chosen IANA zone determines daily/weekly wall-clock time. Nonexistent times during a clock change are rejected for an explicit appointment; repeating jobs skip that nonexistent local occurrence. An ambiguous repeated clock time uses its first occurrence.
 - An occurrence is claimed durably before dispatch. Local action writes and their completed receipt are atomic. Canonical chat turn IDs prevent another send during recovery.
 - After a server interruption, a recorded canonical message/run can be reconciled. An unknown delivery is marked interrupted and is not retried automatically. Check its activity before creating another schedule.

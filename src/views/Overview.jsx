@@ -9,7 +9,7 @@ import {
   val,
   visible,
 } from "../lib/model.js";
-import { rumboActions } from "../data/useRumbo.js";
+import { talvoriActions } from "../data/useTalvori.js";
 import { WorkLabels } from '../components/WorkProperties.jsx';
 import { AccessApprovalInbox } from '../components/AccessApprovalInbox.jsx';
 
@@ -331,7 +331,7 @@ export function InboxView() {
   );
   const markRead = (ids) =>
     perform(async () => {
-      await rumboActions.updateSettings({
+      await talvoriActions.updateSettings({
         inbox: { readIds: [...new Set([...readIds, ...ids])] },
       });
       notify("Inbox updated");

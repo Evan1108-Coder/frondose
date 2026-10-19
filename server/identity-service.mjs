@@ -31,7 +31,9 @@ export function createIdentityService({ db, now = () => Date.now() }) {
     CREATE TABLE IF NOT EXISTS identity_attempts (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires_at INTEGER NOT NULL);`);
   const configured = () => Boolean(db.prepare("SELECT 1 FROM identity_users WHERE id='local-owner'").get());
   function resolve(req) {
-    const raw = /(?:^|;\s*)rumbo_session=([^;]+)/.exec(req.headers?.cookie || '')?.[1];
+    const cookies = req.headers?.cookie || '';
+    const raw = /(?:^|;\s*)talvori_session=([^;]+)/.exec(cookies)?.[1]
+      || /(?:^|;\s*)rumbo_session=([^;]+)/.exec(cookies)?.[1];
     if (raw) {
       const session = db.prepare('SELECT * FROM identity_sessions WHERE token_hash=? AND expires_at>?').get(digest(raw), now());
       if (session) {
@@ -47,7 +49,7 @@ export function createIdentityService({ db, now = () => Date.now() }) {
     db.prepare('INSERT INTO identity_sessions VALUES (?,?,?,?,?)').run(digest(raw), userId, now(), now() + 7 * 86400000, now());
     return { token: raw, user: publicUser(db.prepare('SELECT * FROM identity_users WHERE id=?').get(userId)) };
   }
-  function cookie(value, secure = false) { return `rumbo_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${value ? 604800 : 0}${secure ? '; Secure' : ''}`; }
+  function cookie(value, secure = false) { return `talvori_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${value ? 604800 : 0}${secure ? '; Secure' : ''}`; }
   function throttle(key) {
     const existing = db.prepare('SELECT * FROM identity_attempts WHERE key=?').get(key);
     if (existing?.expires_at > now() && existing.attempts >= 8) throw error('Too many attempts. Try again in 15 minutes.', 429);

@@ -1,6 +1,6 @@
 @import "./motion.css";
 
-/* Workspace-first navigation. All colors inherit Rumbo's shared theme. */
+/* Workspace-first navigation. All colors inherit Talvori's shared theme. */
 .rumbo-app { --sidebar: 280px; gap: 24px; }
 .sidebar.sidebar-v2 { padding: 12px 10px 10px; border-radius: 12px; background: linear-gradient(160deg, color-mix(in srgb, var(--nav) 99%, var(--accent) 1%) 0%, var(--nav) 56%, color-mix(in srgb, var(--nav) 99%, var(--surface) 1%) 100%); }
 .sidebar-v2 .sidebar-workspace-row { display: flex; align-items: center; gap: 2px; padding: 1px 0 20px; }
@@ -27,7 +27,8 @@
 .sidebar-v2 .nav-item > svg { width: 20px; height: 20px; flex-shrink: 0; }
 .sidebar-v2 .nav-item > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-v2 .main-nav { margin-bottom: 24px; }
-.sidebar-v2 .sidebar-more-trigger { display: flex; align-items: center; color: var(--secondary); margin-top: 8px; text-align: left; }
+.sidebar-v2 .sidebar-more-trigger { display: flex; flex: 0 0 auto; align-items: center; color: var(--secondary); margin-top: 12px; text-align: left; position: static; }
+.sidebar-v2 .sidebar-free-layout { flex: 0 0 auto; min-height: min-content; }
 .sidebar-v2 .sidebar-more-trigger:hover, .sidebar-v2 .sidebar-more-trigger.active { background: var(--hover); color: var(--text); }
 .sidebar-more-dialog > .sidebar-more-groups { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .sidebar-more-groups { display: grid; gap: 22px; padding: 20px 24px 24px; }

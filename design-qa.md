@@ -8,7 +8,7 @@ final result: passed
 - Implementation: `http://127.0.0.1:4176/#/overview`, isolated Review QA workspace; in-app browser screenshots captured inline in the Codex task. The browser returns image bytes, not a durable screenshot file path.
 - Desktop viewport: 1440 × 1000 CSS pixels, devicePixelRatio 1. Mobile: 390 × 844, devicePixelRatio 1.
 - Density: the source is treated as a 2× screenshot crop (237 × 626 logical pixels); this is an inference, not embedded device metadata. Its approximately 64-pixel row stride normalizes to 32 CSS pixels. The authorized live Linear page confirmed Inter Variable and 500-weight navigation labels; its current scale is not assumed identical to the supplied screenshot.
-- Compare the sidebar content region, not browser chrome or the entire app. Rumbo has different navigation content and more sections. No exact full-page pixel-match claim is made.
+- Compare the sidebar content region, not browser chrome or the entire app. Talvori has different navigation content and more sections. No exact full-page pixel-match claim is made.
 
 ## Comparison history
 
@@ -21,8 +21,8 @@ final result: passed
 - Fonts: existing locally bundled Inter Variable retained; label weight, size and line height normalized. No new remote font request. Long names still truncate.
 - Spacing: uniform rows and icon slots; section spacing no longer doubles; responsive drawer and collapsed rail retained.
 - Colors: existing theme tokens and explicit global/team/group/tab overrides preserved, not replaced with Linear's colors. This is intentional per the user's scoped request and existing customization requirements.
-- Assets: existing Rumbo icon library retained and sized consistently. No raster illustrations or replacement logos are required for this text/spacing-only task.
-- Copy: Rumbo navigation labels and feature structure unchanged; Linear product content is not copied.
+- Assets: existing Talvori icon library retained and sized consistently. No raster illustrations or replacement logos are required for this text/spacing-only task.
+- Copy: Talvori navigation labels and feature structure unchanged; Linear product content is not copied.
 
 ## Interaction verification
 
@@ -33,4 +33,29 @@ final result: passed
 ## Follow-up polish / limitations
 
 - Font rasterization can differ by OS and browser zoom. The screenshot does not establish exact original zoom metadata.
-- This change does not restyle the settings navigation rail, change sidebar width, or remove/reorder Rumbo features.
+- This change does not restyle the settings navigation rail, change sidebar width, or remove/reorder Talvori features.
+
+## October 19 Talvori identity and agent interaction checks
+
+Preserved the existing interface, bundled Inter typography and user layouts;
+replaced the active identity assets with the transparent Talvori T symbol and
+theme-aware wordmarks. Historical assets and stable storage identities are not
+used as active branding. Provider-hosted app registrations remain operator work.
+
+- Production build and full automated suite: 1,176 tests passed at this checkpoint;
+  four Sites packaging checks passed separately. Further focused tests cover the
+  final mention handoff and self-link review copy.
+- Read-only browser smoke visited all 19 AI provider detail pages, new and legacy
+  assistant links, help, and desktop/mobile dark/light layouts. No page errors,
+  API writes, provider inference or horizontal document overflow were observed.
+- Isolated demo database browser tests saved Area, project and Route agent
+  memberships, enabled/revoked low-risk policy, opened Initial Launch, checked a
+  full-width profile below the roster, one thin select focus border and More
+  placement at a short viewport. No page errors or mobile document overflow.
+- Simulated provider replies exercised explicit Send context capture, schedule
+  proposal preparation, final confirmation, denied permissions and safe retry.
+  This does not certify a live provider-generated schedule or complete Your dot
+  feature parity. No live paid inference was used for this task.
+- Independent read-only review passed 47 focused tests and found a self-link
+  review incorrectly falling back to archive wording; explicit membership copy
+  and a regression check were added.

@@ -1,0 +1,22 @@
+# Talvori first-use setup
+
+## Address a mentioned agent
+
+Published updates and replies show an explicit **Ask <agent>** action for each mentioned profile. A connected, workspace-accessible profile opens a Talvori draft addressed to that exact identity, carrying only the saved update ID and a short request. Typing a mention, publishing an update, opening that draft, and creating its conversation do not start an AI run. The user still sends explicitly; Send captures current accessible context and the server validates the selected profile and source again. An unavailable addressed profile never silently falls back to another identity. Private drafts and archived updates do not offer this handoff, and unsaved text or attachments are not copied. A mention is not a provider account, permission grant, or automatic task assignment.
+
+## First-use configuration
+
+Talvori now opens a full-page setup on a workspace's first visit before it can create a provider profile or new conversation. The four required choices are a display name, one of six orb colors, a purpose, and behavioral guidelines. Saving setup does **not** sign in to an AI provider, create a provider account or profile, or start a run. Codex or Claude Code must still be connected separately before a new conversation can use them.
+The “Not now” action returns to Today without saving or creating a profile; entering Talvori again resumes the first-use gate.
+
+The orb is a set of six generated transparent images served by Talvori from `/agent-orbs/`. Color changes only the visual identity; it does not change the provider, model, pricing, data access or permissions. The onboarding view has a restrained pointer-following halo and a dim code-text atmosphere behind the artwork. `prefers-reduced-motion` disables arrival motion and pointer-dependent halo movement.
+
+Identity is saved in the workspace-scoped `talvoriAgent:<workspace-id>` preference record as `display_name`, `orb_color`, `purpose`, `guidelines`, and `onboarding_complete`. An existing workspace with a Talvori preference record, deterministic profile, or saved Talvori chat is treated as legacy-complete so an upgrade does not block its prior work. Saved conversations remain readable even if setup cannot load; setup gates only new profile/chat creation. Completed setup cannot be reset through the preference endpoint.
+
+Purpose and guidelines are **not merely presentation**: when a Talvori profile is created, they are inserted into its instructions with explicit untrusted-guidance markers. Later edits update existing Talvori profiles in a savepoint and bump their immutable profile versions. The exact context inspector includes the resulting profile instructions before a send; existing run history keeps its captured version. These user-written guidelines never grant tools or permissions and cannot override the base rule to use reviewed context and propose changes for human review. The API rejects reserved markers, control characters, unsupported colors, and missing first-use purpose/guidelines. Editing an existing profile also requires `agents.write` permission; saving workspace preferences requires `workspace.write`.
+
+Preferences remain editable under Settings → Talvori. First-use setup itself is mandatory for a new workspace, but legacy users are not forced to invent answers to continue using a previously working assistant. If a legacy user leaves purpose/guidelines blank, edits to other preferences remain possible.
+
+For other UI surfaces (such as the sidebar), import `TalvoriAgentOrb` from `src/components/TalvoriAgentOrb.jsx` and render `<TalvoriAgentOrb color={appearance.orb_color} compact />`. Import `useTalvoriAgentAppearance` from `src/lib/talvori-agent-appearance.js` and call it with the current workspace ID; it returns only `{ display_name, orb_color }`, defaults to blue, and receives same-tab preference changes immediately. The hook makes only a read-only API request and does not provision an Agent.
+
+Verification: `node --test tests/talvori-agent-api.test.mjs` covers first-use gates, no hidden provider calls, required fields, guidance in the reviewed prompt, profile version updates, and existing conversation behavior. `npm run build` verifies the React UI and generated assets are bundled. This does not certify real-provider billing or public-hosted execution: Talvori still uses the available local Codex/Claude runner path.

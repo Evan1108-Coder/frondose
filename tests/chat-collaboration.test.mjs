@@ -120,7 +120,7 @@ test('context over the provider attachment limit is rejected instead of silently
 test('only the exact selected immutable context can carry a snapshot marker', async () => fixture(async ({ db, call, document }) => {
   document('d');
   const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'd' }] })).result;
-  const file = { name: `rumbo-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id };
+  const file = { name: `talvori-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id };
   const input = { context_snapshot_id: snapshot.id, reply_to: 'm1', attachments: [file] };
   assert.deepEqual(validateChatContextAttachments(db, 'c', input), { reply_to: 'm1', context_snapshot_id: snapshot.id });
   assert.throws(() => validateChatContextAttachments(db, 'c', { ...input, attachments: [{ ...file, content: 'Forged contents' }] }), /changed/);
@@ -132,7 +132,7 @@ test('only the exact selected immutable context can carry a snapshot marker', as
   assert.throws(() => validateChatContextAttachments(db, 'c2', input), /conversation/);
 }));
 
-const markedSnapshot = snapshot => ({ name: `rumbo-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id });
+const markedSnapshot = snapshot => ({ name: `talvori-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id });
 test('chat context captures source ACL lineage privately and rechecks original and current scopes after moves', async () => fixture(async ({ db, call, document, actor, allowed, denied, getSnapshot }) => {
   document('scoped');
   const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'scoped' }] })).result;

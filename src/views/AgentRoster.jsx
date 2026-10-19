@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Plus, Pencil, Ellipsis, Copy, Pause, Play, Archive, ArrowLeft, ArrowUpRight, Folder, Plug, FlaskConical, MessageCircle, ShieldCheck, Terminal, Pin, PinOff, Download } from "../components/icons.jsx";
 import { Button, Dialog, Empty, ErrorMessage, IconButton, PageHeader, SearchField, Select, Status, useApp, useAsync } from "../ui.jsx";
 import { AgentIdentity } from "../components/AgentIdentity.jsx";
-import { rumboActions } from "../data/useRumbo.js";
+import { talvoriActions } from "../data/useTalvori.js";
 import { apiRequest } from "../data/api.js";
 import { AgentMemoryPanel } from "../components/AgentMemoryPanel.jsx";
 import { agentDefaultChoices, duplicateAgentDefinition, exportAgentDefinition, parseAgentDefinition } from "../lib/agent-editor.js";
@@ -55,7 +55,7 @@ function AgentMenu({ agent, onEdit, onDuplicate, onExport, onPause, onArchive, b
 
 function ImportAgentDialog({ onClose, onImport }) {
   const [definition, setDefinition] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false);
-  return <Dialog title="Import an agent definition" subtitle="Review the profile before saving. Importing never starts work." onClose={() => !busy && onClose()}><div className="agent-import-fields"><p>Only name, role, provider, instructions, model preferences, memory policy, and expected output text are imported. Accounts, credentials, folders, Area/project/Context Pack references, and permissions are never restored. Imports start read-only and unbound.</p><label>Rumbo agent JSON file<input type="file" accept=".json,application/json" disabled={busy} onChange={async event => {
+  return <Dialog title="Import an agent definition" subtitle="Review the profile before saving. Importing never starts work." onClose={() => !busy && onClose()}><div className="agent-import-fields"><p>Only name, role, provider, instructions, model preferences, memory policy, and expected output text are imported. Accounts, credentials, folders, Area/project/Context Pack references, and permissions are never restored. Imports start read-only and unbound.</p><label>Talvori agent JSON file<input type="file" accept=".json,application/json" disabled={busy} onChange={async event => {
     const file = event.target.files?.[0]; setDefinition(null); setError(null); if (!file) return;
     if (file.size > 250000) { setError(new Error("Choose a definition smaller than 250 KB.")); return; }
     setBusy(true); try { setDefinition(parseAgentDefinition(await file.text())); } catch (problem) { setError(problem); } finally { setBusy(false); }
@@ -82,9 +82,9 @@ function ArchiveAgentDialog({ agent, onClose }) {
   return <Dialog title={`Archive ${agent.name}?`} subtitle="The profile will be hidden, not deleted." onClose={() => { if (!busy) onClose(); }}>
     <div className="form-fields"><p className="agent-dialog-copy">{!val(agent, "workspace_id") ? "This shared profile will be hidden in every workspace. " : ""}Session history and provider connections stay intact. You can restore this agent from Settings → Archive.</p><ErrorMessage error={error} /></div>
     <footer className="dialog-footer"><Button disabled={busy} onClick={onClose}>Cancel</Button><Button variant="primary" icon={Archive} busy={busy} onClick={() => execute(async () => {
-      await rumboActions.updateAgent(agent.id, { archived_at: new Date().toISOString() });
+      await talvoriActions.updateAgent(agent.id, { archived_at: new Date().toISOString() });
       onClose(); navigate("agents");
-      notify(`${agent.name} archived`, "success", () => perform(() => rumboActions.updateAgent(agent.id, { archived_at: null }), "Agent restored"));
+      notify(`${agent.name} archived`, "success", () => perform(() => talvoriActions.updateAgent(agent.id, { archived_at: null }), "Agent restored"));
     })}>Archive agent</Button></footer>
   </Dialog>;
 }
@@ -107,7 +107,7 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
     </header>
     <div className="agent-detail-quick-actions"><Button icon={MessageCircle} busy={chatAction.busy} onClick={() => chatAction.execute(async () => {
       const existing = visible(data.chats).filter(chat => !val(chat, "project_id") && !val(chat, "task_id") && (val(chat, "participant_agent_ids") ?? []).length === 1 && val(chat, "participant_agent_ids")[0] === agent.id).sort((a, b) => String(val(b, "updated_at")).localeCompare(String(val(a, "updated_at"))))[0];
-      const chat = existing ?? await rumboActions.createChat({ workspace_id: workspace.id, title: `Chat with ${agent.name}`, participant_agent_ids: [agent.id] });
+      const chat = existing ?? await talvoriActions.createChat({ workspace_id: workspace.id, title: `Chat with ${agent.name}`, participant_agent_ids: [agent.id] });
       navigate("chats", chat.id);
     })}>Chat with agent</Button><Button icon={favorite ? PinOff : Pin} aria-pressed={favorite} onClick={() => toggleFavorite({ view: "agents", id: agent.id })}>{favorite ? "Unfavorite" : "Favorite"}</Button><ErrorMessage error={chatAction.error} /></div>
     <div className="agent-detail-tabs" role="tablist" aria-label="Agent details">
@@ -119,7 +119,7 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
       {tab === "overview" ? <>
         <section className="agent-detail-section"><h3>Purpose</h3><p>{agent.role || "No role defined"}</p>{agent.description ? <small>{agent.description}</small> : null}</section>
         <section className="agent-detail-section"><h3>Instructions</h3>{agent.instructions ? <p className="agent-instruction-copy">{agent.instructions}</p> : <><p>No instructions yet. Tell this agent how to approach its work.</p><button className="text-button" onClick={() => edit("agent", agent)}>Add instructions <ArrowUpRight /></button></>}<Button onClick={() => setHistoryOpen(true)}>Compare content history</Button></section>
-        <section className="agent-detail-section"><h3>Execution defaults</h3><dl className="agent-default-list"><div><dt>Model</dt><dd>{agent.model || "Provider default"}</dd></div><div><dt>Reasoning</dt><dd>{agent.provider === "codex" ? val(agent, "reasoning_effort") || "Provider default" : "Not supported in Rumbo"}</dd></div><div><dt>Permissions</dt><dd>{val(agent, "permission_policy") === "read-only" ? "Read-only" : "Review required"}</dd></div></dl><small>Provider support is checked at launch, not when this page opens. Instructions and defaults never grant access.</small><h3 className="agent-output-heading">Expected output</h3><p className="agent-instruction-copy">{val(agent, "output_behavior") || "Not defined. Set a format, evidence requirements, and stopping condition in the profile."}</p></section>
+        <section className="agent-detail-section"><h3>Execution defaults</h3><dl className="agent-default-list"><div><dt>Model</dt><dd>{agent.model || "Provider default"}</dd></div><div><dt>Reasoning</dt><dd>{agent.provider === "codex" ? val(agent, "reasoning_effort") || "Provider default" : "Not supported in Talvori"}</dd></div><div><dt>Permissions</dt><dd>{val(agent, "permission_policy") === "read-only" ? "Read-only" : "Review required"}</dd></div></dl><small>Provider support is checked at launch, not when this page opens. Instructions and defaults never grant access.</small><h3 className="agent-output-heading">Expected output</h3><p className="agent-instruction-copy">{val(agent, "output_behavior") || "Not defined. Set a format, evidence requirements, and stopping condition in the profile."}</p></section>
         <section className="agent-detail-section"><h3><Folder />Working folder</h3><p className="agent-folder">{val(agent, "working_directory") || "Choose with each session"}</p><small>A linked project folder takes precedence.</small></section>
         <section className="agent-detail-section agent-connection-section"><h3><Plug />Connection</h3><Readiness readiness={readiness} /><p>{readiness.description}</p>
           {val(connection, "account_label") && readiness.canStartLive ? <small>{val(connection, "account_label")}</small> : null}
@@ -130,7 +130,7 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
                   : <Button icon={Plug} onClick={() => isScopedAiProvider(agent.provider) ? navigate('connections', agent.provider) : onConnect(agent.provider)}>Connect {provider.name}</Button>}
             {readiness.canSimulate ? <button className="text-button agent-simulate" onClick={() => startSession({ agent_id: agent.id, mode: "mock" })}><FlaskConical />Test with simulation</button> : null}
           </div>
-          {AGENT_PROVIDERS[agent.provider] ? <p className="agent-permission-note"><ShieldCheck />{agent.provider === "claude" ? "Read-only in Rumbo. Project editing is not supported yet." : isScopedAiProvider(agent.provider) ? "Conversations and reviewed Rumbo actions. Local file tools are unavailable." : "Choose read-only or project-edit access before each live session."}</p> : null}
+          {AGENT_PROVIDERS[agent.provider] ? <p className="agent-permission-note"><ShieldCheck />{agent.provider === "claude" ? "Read-only in Talvori. Project editing is not supported yet." : isScopedAiProvider(agent.provider) ? "Conversations and reviewed Talvori actions. Local file tools are unavailable." : "Choose read-only or project-edit access before each live session."}</p> : null}
           <small>The provider account and limits are shared with other profiles. Simulations do not use the account or validate model behavior. Ordinary ChatGPT/Claude history is not imported.</small>
         </section>
         {projects.length || chats.length ? <section className="agent-detail-section agent-linked-work"><h3>Linked work</h3>{projects.slice(0, 3).map((project) => <button key={project.id} onClick={() => navigate("projects", project.id)}><Folder /><span>{project.name}</span><ArrowUpRight /></button>)}{chats.slice(0, 3).map((chat) => <button key={chat.id} onClick={() => navigate("chats", chat.id)}><MessageCircle /><span>{chat.title}</span><ArrowUpRight /></button>)}</section> : null}
@@ -168,18 +168,18 @@ export function AgentsView() {
   const selected = filtered.find((agent) => agent.id === page.id) ?? filtered[0];
   const unavailable = page.id && !agents.some((agent) => agent.id === page.id);
   function duplicate(agent) { try { edit("agent", null, duplicateAgentDefinition(agent)); notify("Review the copy. Connection, folders, and context references are not copied; permissions start read-only."); } catch (problem) { notify(problem.message, "error"); } }
-  function exportDefinition(agent) { download(`${agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "agent"}.rumbo-agent.json`, exportAgentDefinition(agent)); notify("Definition exported without account, folder, context, or permission references. Review instruction text before sharing."); }
-  function pause(agent) { return execute(async () => { const status = agent.status === "paused" ? "available" : "paused"; await rumboActions.updateAgent(agent.id, { status }); notify(status === "paused" ? `${agent.name} paused. Existing sessions continue.` : `${agent.name} is available for new sessions.`); }); }
+  function exportDefinition(agent) { download(`${agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "agent"}.talvori-agent.json`, exportAgentDefinition(agent)); notify("Definition exported without account, folder, context, or permission references. Review instruction text before sharing."); }
+  function pause(agent) { return execute(async () => { const status = agent.status === "paused" ? "available" : "paused"; await talvoriActions.updateAgent(agent.id, { status }); notify(status === "paused" ? `${agent.name} paused. Existing sessions continue.` : `${agent.name} is available for new sessions.`); }); }
   return <main className={`page agents-page ${page.id ? "has-agent-selection" : ""}`}>
     <PageHeader title="Agent Studio" description="Specialized profiles, shared provider accounts, and work you can inspect."><Button onClick={() => setImporting(true)}>Import definition</Button>{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
-    <section className="agent-provider-strip" aria-label="Provider connections">
+    {!page.id ? <section className="agent-provider-strip" aria-label="Provider connections">
       <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).map(([id, provider]) => {
         const connection = data.connections.find((item) => item.provider === id);
         const readiness = agentReadiness({ id, provider: id, workspace_id: workspace.id, status: "available" }, connection);
         return <button key={id} className="agent-provider-summary" onClick={() => isScopedAiProvider(id) ? navigate('connections', id) : setConnectionProvider(id)} aria-label={`Manage ${provider.name} connection`}><AgentIdentity compact provider={id} /><strong>{provider.name}</strong><span className={`agent-connection-label is-${readiness.state}`}><i aria-hidden="true" />{readiness.state === "sample" ? "Connected · sample" : readiness.canStartLive ? "Connected" : readiness.state === "connecting" ? "Signing in" : readiness.state === "not_installed" ? "Not installed" : "Not connected"}</span></button>;
       })}</div>
       <button className="text-button" onClick={() => navigate("connections")}>Manage connections <ArrowUpRight /></button>
-    </section>
+    </section> : null}
     <ErrorMessage error={error} />
     {!agents.length ? <Empty kind="agents" title="Give your first agent a purpose" description="Create a profile with instructions and a default folder. Connect its provider when you’re ready for live work, or try a simulation first." action="Create an agent" onAction={() => edit("agent")} />
       : unavailable ? <Empty kind="agents" title="Agent unavailable" description="This agent may be archived or belong to another workspace. Your other profiles are still available." action="All agents" onAction={() => navigate("agents")} secondaryAction="Open archive" onSecondaryAction={() => navigate("settings", "archive")} />

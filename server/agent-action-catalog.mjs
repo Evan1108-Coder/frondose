@@ -4,6 +4,9 @@ import { guardRouteMutation, assertRouteLink, routeGraph, inspectRouteGraph, rou
 import { setRouteParent } from './sub-routes-service.mjs';
 import { recordChange } from './workspace-features.mjs';
 import { changeContext } from './change-context.mjs';
+import { areaSettings, saveAreaSettings } from './area-service.mjs';
+import { validTimezone } from '../src/lib/scheduled-time.js';
+import { validApiModel } from '../src/lib/ai-provider-catalog.js';
 
 const stamp = () => new Date().toISOString();
 const text = (max = 10000, minLength = 0) => ({ type: 'string', maxLength: max, minLength });
@@ -25,13 +28,15 @@ const settingsSchemas = {
 };
 export function actionCatalog() {
   const result = [];
+  result.push({id:'agent.self_link',type:'agent.self_link',label:'Link this agent to an Area, project or Route',review_required:true,execution:'local',direct_low_risk_eligible:true,schema:object({type:{const:'agent.self_link'},resource:choice(['teams','projects','tasks']),id:text(200,1)},['type','resource','id'])});
+  result.push({id:'schedule.create',type:'schedule.create',label:'Propose a scheduled agent prompt (confirmation required)',review_required:true,execution:'human_schedule_confirmation',schema:object({type:{const:'schedule.create'},chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1)},['type','chat_id','content','model','run_at','timezone'])});
   for (const [resource, def] of Object.entries(definitions)) {
     for (const kind of ['create','update','archive']) {
       const properties = { type: { const:`record.${kind}` }, resource: {const:resource} };
       const required = ['type','resource'];
       if (kind === 'create') { properties.fields = object({...def.fields,...def.scopes}, [def.name, ...(resource === 'milestones' ? ['project_id'] : [])]); required.push('fields'); }
       else { properties.id = text(200,1); required.push('id'); if (kind === 'update') { properties.patch = {...object(def.fields), minProperties:1}; required.push('patch'); } }
-      result.push({ id:`record.${kind}:${resource}`, type:`record.${kind}`, resource, label:`${kind === 'create' ? 'Create' : kind === 'update' ? 'Edit' : 'Archive'} ${def.label}`, review_required:true, execution:'local', schema:object(properties,required) });
+      result.push({ id:`record.${kind}:${resource}`, type:`record.${kind}`, resource, label:`${kind === 'create' ? 'Create' : kind === 'update' ? 'Edit' : 'Archive'} ${def.label}`, review_required:true, direct_low_risk_eligible:kind === 'create' && resource === 'tasks', execution:'local', schema:object(properties,required) });
     }
   }
   result.push({id:'chat.note',type:'chat.note',label:'Add local chat note',review_required:true,execution:'local',schema:object({type:{const:'chat.note'},chat_id:text(200,1),content:text(10000,1)},['type','chat_id','content'])});
@@ -77,6 +82,43 @@ function hierarchyFor(db,record) {
   const graph = routeGraph(db,record.workspace_id), task = graph.get(record.id);
   return task ? inspectRouteGraph(graph,task).sort((a,b) => a.id.localeCompare(b.id)) : [];
 }
+export function validateWorkspaceAgentLink(db,workspaceId,agentId,resource,id) {
+  active(db,'workspaces',workspaceId,workspaceId);
+  if (!['teams','projects','tasks'].includes(resource)) throw validationError('Unsupported agent link target.');
+  if (typeof agentId !== 'string' || !agentId || agentId.length > 200) throw validationError('Choose an exact workspace agent ID.');
+  if (db.prepare('SELECT 1 FROM agents WHERE id=? AND workspace_id IS NULL AND archived_at IS NULL').get(agentId)) throw Object.assign(validationError('Create a workspace profile in Agent Studio to add this shared identity here. Shared profiles are not workspace memberships.'),{statusCode:409,errorCode:'workspace_profile_required'});
+  const agent = active(db,'agents',agentId,workspaceId), target = active(db,resource,id,workspaceId);
+  const area = resource === 'teams' ? areaSettings(db,target) : null;
+  const projectLinks = resource === 'projects' ? db.prepare('SELECT agent_id FROM agent_project_links WHERE workspace_id=? AND project_id=? ORDER BY agent_id').all(workspaceId,id).map(row=>row.agent_id) : null;
+  const ids = area?.default_agent_ids || (resource === 'tasks' ? JSON.parse(target.assignee_agent_ids_json) : projectLinks || []);
+  if (!ids.includes(agent.id) && ids.length >= 50) throw validationError('Target already has the maximum agent selections.');
+  return {target,agent,area,projectLinks,parents:parentsFor(db,target,workspaceId)};
+}
+export function agentLinkPermissionTargets(before,resource) {
+  const target = before.target, prefix = resource === 'teams' ? 'workspace' : definitions[resource].permission;
+  const scope = resource === 'teams' ? {scope_type:'team',scope_id:target.id} : resource === 'projects' ? {scope_type:'project',scope_id:target.id} : routeScope(target);
+  return [{permission:`${prefix}.read`,scope},{permission:`${prefix}.write`,scope},...['read','write'].map(verb=>({permission:`agents.${verb}`,scope:{scope_type:'agent',scope_id:before.agent.id}})),...before.parents.map(parent=>({permission:`${parent.resource === 'teams' ? 'workspace' : parent.resource === 'tasks' ? 'routes' : 'projects'}.read`,scope:parent.resource === 'teams' ? {scope_type:'team',scope_id:parent.record.id} : parent.resource === 'projects' ? {scope_type:'project',scope_id:parent.record.id} : routeScope(parent.record)}))];
+}
+export function applyWorkspaceAgentLink(db,before,resource) {
+  if (!db.isTransaction) throw validationError('Agent linking requires an atomic transaction.');
+  const {target,agent,area} = before, now = stamp();
+  if (resource === 'teams') {
+    if (area.default_agent_ids.includes(agent.id)) return target;
+    const after = {...area,default_agent_ids:[...area.default_agent_ids,agent.id],version:area.version+1,updated_at:now};
+    saveAreaSettings(db,after); recordChange(db,'area_settings',area,after,'agent link'); return target;
+  }
+  if (resource === 'projects') {
+    const result = db.prepare('INSERT OR IGNORE INTO agent_project_links(workspace_id,project_id,agent_id,created_at) VALUES(?,?,?,?)').run(target.workspace_id,target.id,agent.id,now);
+    // Project activity can be readable without agent-profile access. Keep the
+    // exact identity in the separately filtered membership/action ledger.
+    if (result.changes) recordChange(db,'projects',target,{...target,agent_association_changed:true},'agent link');
+    return target;
+  }
+  const ids = JSON.parse(target.assignee_agent_ids_json);
+  if (ids.includes(agent.id)) return target;
+  db.prepare('UPDATE tasks SET assignee_agent_ids_json=?,updated_at=? WHERE id=?').run(JSON.stringify([...ids,agent.id]),now,target.id);
+  const after = db.prepare('SELECT * FROM tasks WHERE id=?').get(target.id); recordChange(db,'tasks',target,after,'agent link'); return after;
+}
 export function validateLocalAction(db,input,workspaceId,{run} = {}) {
   if (!isRecord(input)) throw validationError('Invalid local action.');
   const workspace = active(db,'workspaces',workspaceId,workspaceId);
@@ -87,6 +129,24 @@ export function validateLocalAction(db,input,workspaceId,{run} = {}) {
   return validateWithWorkspace(db,input,workspaceId,workspace,{run});
 }
 function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
+  if (input.type === 'schedule.create') {
+    exactKeys(input,['type','chat_id','content','model','run_at','timezone'],['type','chat_id','content','model','run_at','timezone']);
+    checkFields(input,{type:choice(['schedule.create']),chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1)});
+    if (!run?.agent_id || !validApiModel(input.model) || !validTimezone(input.timezone) || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(input.run_at) || !Number.isFinite(Date.parse(input.run_at)) || new Date(input.run_at).toISOString().slice(0,19) !== input.run_at.slice(0,19)) throw validationError('Propose an explicit model, UTC instant and IANA timezone for a named source agent.');
+    const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(run.agent_id);
+    if (!agent || agent.workspace_id && agent.workspace_id !== workspaceId) throw validationError('Schedule source agent unavailable.');
+    const currentChat = active(db,'chats',input.chat_id,workspaceId), parents = parentsFor(db,currentChat,workspaceId);
+    // The completed provider reply itself advances chat.updated_at after
+    // capture. A NEW context inspection reviews later history; structural chat
+    // and parent scope changes must still invalidate this scheduling intent.
+    const {updated_at,...chat} = currentChat;
+    return {proposal:{...input,content:input.content.trim(),run_at:new Date(input.run_at).toISOString()},before:{chat,parents,agent}};
+  }
+  if (input.type === 'agent.self_link') {
+    exactKeys(input,['type','resource','id'],['type','resource','id']);
+    if (!['teams','projects','tasks'].includes(input.resource) || !run?.agent_id) throw validationError('Self-link requires a canonical source agent and supported target.');
+    return {proposal:{type:input.type,resource:input.resource,id:input.id},before:validateWorkspaceAgentLink(db,workspaceId,run.agent_id,input.resource,input.id)};
+  }
   if (input.type?.startsWith('record.')) {
     const def = definitions[input.resource], creating = input.type === 'record.create', archiving = input.type === 'record.archive';
     if (!def || !['record.create','record.update','record.archive'].includes(input.type)) throw validationError('Unsupported record action.');
@@ -147,6 +207,13 @@ function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
 export function actionPermissionTargets(db,proposal,workspaceId,{run} = {}) {
   const validated = validateLocalAction(db,proposal,workspaceId,{run});
   const p = validated.proposal;
+  if (p.type === 'schedule.create') {
+    const chat = validated.before.chat, scope = chat.project_id ? {scope_type:'project',scope_id:chat.project_id} : {};
+    return [{permission:'chats.read',scope},{permission:'chats.write',scope},{permission:'agents.read',scope:{scope_type:'agent',scope_id:run.agent_id}},{permission:'agents.run',scope},...validated.before.parents.map(parent=>({permission:`${parent.resource === 'teams' ? 'workspace' : parent.resource === 'tasks' ? 'routes' : 'projects'}.read`,scope:parent.resource === 'teams' ? {scope_type:'team',scope_id:parent.record.id} : parent.resource === 'projects' ? {scope_type:'project',scope_id:parent.record.id} : routeScope(parent.record)}))];
+  }
+  if (p.type === 'agent.self_link') {
+    return agentLinkPermissionTargets(validated.before,p.resource);
+  }
   if (p.type === 'settings.update') return [{permission:'installation.settings',scope:{}}];
   if (p.type === 'memory.create') return ['agents.read','agents.write'].map(permission => ({permission,scope:run?.project_id ? {scope_type:'project',scope_id:run.project_id} : {}}));
   const resource = p.type === 'chat.note' ? 'chats' : p.resource;
@@ -175,6 +242,22 @@ export function assertActionFresh(before,current) {
 // moves or becomes archived. Staleness does not itself hide a readable request.
 export function localActionReadable(db,{proposal,before,workspaceId,run,actor,allowed}) {
   if (!actor?.id || !allowed || !isRecord(proposal)) return false;
+  if (proposal.type === 'schedule.create') {
+    if (before?.agent?.id !== run?.agent_id || !allowed(workspaceId,actor,'agents.read',{scope_type:'agent',scope_id:run.agent_id})) return false;
+    return localActionReadable(db,{proposal:{type:'chat.note',chat_id:proposal.chat_id},before,workspaceId,run,actor,allowed});
+  }
+  if (proposal.type === 'agent.self_link') {
+    if (!run?.agent_id || before?.agent?.id !== run.agent_id || before.agent.workspace_id !== workspaceId || !allowed(workspaceId,actor,'agents.read',{scope_type:'agent',scope_id:run.agent_id})) return false;
+    const agent = db.prepare('SELECT workspace_id FROM agents WHERE id=?').get(run.agent_id);
+    if (agent?.workspace_id !== workspaceId) return false;
+    const nodes = [{resource:proposal.resource,record:before.target},...(before.parents || [])];
+    for (const node of [...nodes]) {
+      const current = db.prepare(`SELECT * FROM ${node.resource} WHERE id=? AND workspace_id=?`).get(node.record?.id,workspaceId);
+      nodes.push({resource:node.resource,record:current});
+      for (const [key,resource] of [['project_id','projects'],['team_id','teams']]) if (current?.[key]) nodes.push({resource,record:db.prepare(`SELECT * FROM ${resource} WHERE id=? AND workspace_id=?`).get(current[key],workspaceId)});
+    }
+    return nodes.every(({resource,record})=>record?.workspace_id === workspaceId && allowed(workspaceId,actor,`${resource === 'teams' ? 'workspace' : definitions[resource].permission}.read`,resource === 'teams' ? {scope_type:'team',scope_id:record.id} : resource === 'projects' ? {scope_type:'project',scope_id:record.id} : routeScope(record)));
+  }
   if (proposal.type === 'settings.update') return actor.id === 'local-owner';
   if (proposal.type === 'memory.create') return allowed(workspaceId,actor,'agents.read',run?.project_id ? {scope_type:'project',scope_id:run.project_id} : {});
   const readable = (resource,item) => {
@@ -204,13 +287,17 @@ export function localActionReadable(db,{proposal,before,workspaceId,run,actor,al
 // The caller owns the durable receipt and transaction (reviewed proposal or
 // scheduled-action ledger). Execution must occur in that same transaction;
 // a claimed receipt prevents retries from applying updates twice.
-export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,actors = [actor],allowed,activeRunsFor = () => [],idempotencyKey}) {
+export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,actors = [actor],allowed,activeRunsFor = () => [],idempotencyKey,authorization = 'human_review'}) {
+  if (proposal?.type === 'schedule.create') throw validationError('Prepare this schedule draft, inspect its exact prompt/model/context, and explicitly confirm it in Schedule. Approval alone never schedules paid work.');
   if (!db.isTransaction) throw validationError('Local actions require an atomic caller-owned receipt transaction.');
   if (typeof idempotencyKey !== 'string' || !idempotencyKey || idempotencyKey.length > 240) throw validationError('Provide a bounded stable action receipt key.');
   authorizeLocalAction(db,{proposal,workspaceId,run,actors,allowed});
   const validated = validateLocalAction(db,proposal,workspaceId,{run}); assertActionFresh(before,validated.before);
   const p = validated.proposal, now = stamp(), key = createHash('sha256').update(`${workspaceId}:${idempotencyKey}`).digest('hex').slice(0,32);
-  const record = changeContext.run({actor,source:run ? `Agent proposal ${run.id}` : 'Scheduled human action'},() => {
+  const record = changeContext.run({actor,source:run ? `${authorization === 'actor_low_risk_policy' ? 'Agent direct action' : 'Agent proposal'} ${run.id}` : 'Scheduled human action'},() => {
+    if (p.type === 'agent.self_link') {
+      return applyWorkspaceAgentLink(db,validated.before,p.resource);
+    }
     if (p.type === 'settings.update') {
       const settings = mergeSettings(readSettings(db),{[p.section]:p.patch});
       db.prepare('INSERT INTO settings(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at').run(p.section,JSON.stringify(settings[p.section]),now);
@@ -240,7 +327,7 @@ export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,act
       db.prepare(`INSERT INTO ${p.resource}(id,${names.join(',')},created_at,updated_at) VALUES(?,${names.map(() => '?').join(',')},?,?)`).run(id,...Object.values(fields),now,now);
       const after = db.prepare(`SELECT * FROM ${p.resource} WHERE id=?`).get(id);
       if (p.resource === 'tasks' && p.fields.parent_task_id) setRouteParent(db,after,p.fields.parent_task_id,{actor,allowed});
-      recordChange(db,p.resource,null,after,'agent-approved create'); return after;
+      recordChange(db,p.resource,null,after,authorization === 'actor_low_risk_policy' ? 'agent direct create' : 'agent-approved create'); return after;
     }
     if (activeRunsFor(p.resource,p.id).length) throw validationError('Stop linked active sessions before changing this item.');
     const patch = p.type === 'record.archive' ? {archived_at:now} : {...p.patch};
@@ -251,5 +338,5 @@ export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,act
     const after = db.prepare(`SELECT * FROM ${p.resource} WHERE id=?`).get(p.id); const {__action_parents,__action_hierarchy,...target} = validated.before;
     recordChange(db,p.resource,target,after,p.type === 'record.archive' ? 'agent-approved archive' : 'agent-approved update'); return after;
   });
-  return {status:'applied',type:p.type,resource:p.resource || (p.type === 'chat.note' ? 'messages' : p.type === 'memory.create' ? 'agent_memories' : 'settings'),id:record.id || null,reviewed_by:actor.id,source_run_id:run?.id || null};
+  return {status:'applied',type:p.type,resource:p.resource || (p.type === 'chat.note' ? 'messages' : p.type === 'memory.create' ? 'agent_memories' : 'settings'),id:record.id || null,reviewed_by:authorization === 'actor_low_risk_policy' ? null : actor.id,...(authorization === 'actor_low_risk_policy' ? {authorized_by:actor.id,authorization} : {}),source_run_id:run?.id || null};
 }

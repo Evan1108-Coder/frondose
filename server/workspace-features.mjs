@@ -42,7 +42,7 @@ export function recordChange(db, resource, before, after, action) {
   const id = uid('change');
   db.prepare('INSERT INTO change_log VALUES (?,?,?,?,?,?,?,?,?)').run(id, workspaceId, resource, item.id, action, item.name ?? item.title ?? resource, before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, stamp());
   const context = changeContext.getStore();
-  if (context?.actor) db.prepare('INSERT INTO change_attribution VALUES(?,?,?,?)').run(id, context.actor.id, context.actor.name || 'Member', context.source || 'Rumbo');
+  if (context?.actor) db.prepare('INSERT INTO change_attribution VALUES(?,?,?,?)').run(id, context.actor.id, context.actor.name || 'Member', context.source || 'Talvori');
 }
 function activeWorkspace(db, workspaceId) {
   if (typeof workspaceId !== 'string' || !db.prepare('SELECT 1 FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId)) throw validationError('Choose an active workspace.');

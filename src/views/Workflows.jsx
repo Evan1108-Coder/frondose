@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { rumboActions } from '../data/useRumbo.js';
+import { talvoriActions } from '../data/useTalvori.js';
 import { Button, Dialog, Empty, ErrorMessage, Field, PageHeader, SearchField, Select, useApp } from '../ui.jsx';
 import { Form } from '../components/Form.jsx';
 import { ContextInspector } from '../components/ContextInspector.jsx';
@@ -41,7 +41,7 @@ function useWorkflowMutation() {
       }
       const { result } = await apiRequest(path, { method: 'POST', body: payload });
       pending.current.delete(path);
-      await rumboActions.refresh().catch(() => {});
+      await talvoriActions.refresh().catch(() => {});
       return result;
     } catch (problem) { setError(problem); throw problem; }
     finally { inFlight.current = false; setBusy(false); }
@@ -211,7 +211,7 @@ function WorkflowRun({ runId }) {
   const run = state.result, definition = run?.definition;
   const terminal = ['completed', 'failed', 'cancelled'].includes(run?.status);
   useUnsavedUpdate(false, mutation.busy);
-  async function refresh() { await rumboActions.refresh().catch(() => {}); state.reload(); }
+  async function refresh() { await talvoriActions.refresh().catch(() => {}); state.reload(); }
   async function act(body) {
     const result = await mutation.mutate(`${ROOT}/workflow-runs/${runId}/actions`, { ...body, version: run.version });
     if (result) state.reload();
@@ -287,7 +287,7 @@ function PreparedWorkflowStep({ prepared, onClose, onStarted }) {
     inFlight.current = true; setBusy(true); setError(null);
     try {
       await apiRequest('/api/runs', { method: 'POST', body: { ...prepared.run_request, context_inspection_id: reviewed.id } });
-      await rumboActions.refresh().catch(() => {}); onStarted();
+      await talvoriActions.refresh().catch(() => {}); onStarted();
     } catch (problem) { setError(problem); setReviewed(null); if (!problem.status || problem.status >= 500) setUncertain(true); }
     finally { inFlight.current = false; setBusy(false); }
   }

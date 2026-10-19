@@ -41,7 +41,7 @@ function fixture(t, behavior = {}) {
     });
     launches.push({ command, args, options }); children.push(child); return child;
   };
-  const service = createCopilotBridge({ db, dataDir: directory, env: { PATH: '/fixture', HOME: '/fixture-home', COPILOT_ALLOW_ALL: '1', GITHUB_TOKEN: 'PRIVATE_GITHUB_TOKEN', OPENAI_API_KEY: 'PRIVATE_OPENAI_KEY', RUMBO_NATIVE_TOOL_CAPABILITY: 'PRIVATE_BRIDGE' }, spawnProcess, authorize: (workspace, who) => { if (who.id === 'denied') throw Object.assign(new Error('Denied'), { statusCode: 403 }); } });
+  const service = createCopilotBridge({ db, dataDir: directory, env: { PATH: '/fixture', HOME: '/fixture-home', COPILOT_ALLOW_ALL: '1', GITHUB_TOKEN: 'PRIVATE_GITHUB_TOKEN', OPENAI_API_KEY: 'PRIVATE_OPENAI_KEY', TALVORI_NATIVE_TOOL_CAPABILITY: 'PRIVATE_BRIDGE' }, spawnProcess, authorize: (workspace, who) => { if (who.id === 'denied') throw Object.assign(new Error('Denied'), { statusCode: 403 }); } });
   t.after(async () => { service.close(); await pause(); db.close(); rmSync(directory, { recursive: true, force: true }); });
   return { service, db, directory, requests, launches, children };
 }
@@ -67,7 +67,7 @@ test('Copilot: check is not verification, models are discovered, explicit infere
   for (const launch of f.launches) {
     assert.equal(launch.command, 'copilot'); assert.equal(launch.options.shell, false);
     assert.ok(launch.args.includes('--available-tools=')); assert.ok(launch.args.includes('--deny-tool=read,write,shell,url,memory'));
-    for (const name of ['COPILOT_ALLOW_ALL', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'RUMBO_NATIVE_TOOL_CAPABILITY']) assert.equal(launch.options.env[name], undefined);
+    for (const name of ['COPILOT_ALLOW_ALL', 'GITHUB_TOKEN', 'OPENAI_API_KEY', 'TALVORI_NATIVE_TOOL_CAPABILITY']) assert.equal(launch.options.env[name], undefined);
     assert.notEqual(launch.options.cwd, f.directory); assert.ok(launch.options.cwd.includes('rumbo-copilot-'));
   }
   await pause();

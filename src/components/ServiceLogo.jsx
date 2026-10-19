@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from './icons.jsx';
 import { safeWebsiteUrl, serviceBrand } from '../lib/service-brands.js';
 
-/** Brand identity, separate from Rumbo's animated interface glyphs. */
+/** Brand identity, separate from Talvori's animated interface glyphs. */
 export function ServiceLogo({ name, url, className = '' }) {
   const [failedSource, setFailedSource] = useState(null);
   const brand = serviceBrand(name, url);

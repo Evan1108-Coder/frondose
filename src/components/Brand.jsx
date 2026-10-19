@@ -1,16 +1,15 @@
 import "./brand.css";
 
 const brandAssets = {
-  symbol: "/brand/rumbo-symbol.png",
-  appIcon: "/brand/rumbo-app-icon.png",
-  wordmark: "/brand/rumbo-wordmark-dark.png",
+  symbol: "/brand/talvori-symbol.webp",
+  appIcon: "/brand/talvori-app-icon.png",
 };
 
 function BrandIcon({
   asset,
   size = 32,
   decorative = false,
-  label = "Rumbo",
+  label = "Talvori",
   className = "",
   style,
   ...props
@@ -33,20 +32,20 @@ function BrandIcon({
 }
 
 /** Use the approved standalone mark beside workspace names and product copy. */
-export function RumboSymbol(props) {
+export function TalvoriSymbol(props) {
   return <BrandIcon {...props} asset="symbol" />;
 }
 
 /** Use the approved rounded badge for browser, app, and shortcut identities. */
-export function RumboAppIcon(props) {
+export function TalvoriAppIcon(props) {
   return <BrandIcon {...props} asset="appIcon" />;
 }
 
-/** The approved wordmark has an opaque background, retained in both themes. */
-export function RumboWordmark({
+/** Live type keeps the wordmark sharp and readable in every theme. */
+export function TalvoriWordmark({
   width = 244,
   decorative = false,
-  label = "Rumbo",
+  label = "Talvori",
   className = "",
   style,
   ...props
@@ -57,16 +56,19 @@ export function RumboWordmark({
       className={`rumbo-wordmark ${className}`.trim()}
       style={{ width, ...style }}
       data-brand-asset="wordmark"
+      role={decorative ? undefined : 'img'}
+      aria-label={decorative ? undefined : label}
+      aria-hidden={decorative || undefined}
     >
       <img
-        src={brandAssets.wordmark}
-        alt={decorative ? "" : label}
-        aria-hidden={decorative || undefined}
-        width={1942}
-        height={809}
+        src={brandAssets.symbol}
+        alt=""
+        width={64}
+        height={64}
         decoding="async"
         draggable={false}
       />
+      <span aria-hidden="true">Talvori</span>
     </span>
   );
 }

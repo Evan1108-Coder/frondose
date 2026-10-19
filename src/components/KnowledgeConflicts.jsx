@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { refreshRumbo } from '../data/useRumbo.js';
+import { refreshTalvori } from '../data/useTalvori.js';
 import { Button, Dialog, ErrorMessage, Field, Select, useApp } from '../ui.jsx';
 import { Form } from './Form.jsx';
 import { DocumentContent } from './DocumentContent.jsx';
@@ -91,7 +91,7 @@ function ConflictReport({ workspaceId, choices, projects, initialPair, onBack, o
   useEffect(() => { if (mutation.saved && !mutation.busy && !delivered.current) { delivered.current = true; onSaved(mutation.saved); } }, [mutation.saved, mutation.busy, onSaved]);
   async function refresh() {
     setRefreshing(true); setRefreshError(null); setConfirmedPair('');
-    try { await refreshRumbo(); } catch (error) { setRefreshError(error); }
+    try { await refreshTalvori(); } catch (error) { setRefreshError(error); }
     finally { setRefreshing(false); }
   }
   const optionLabel = entry => `${entry.title} · v${entry.version} · ${entry.project_id ? projects.find(project => project.id === entry.project_id)?.name || 'Project' : 'Workspace'}`;
@@ -118,7 +118,7 @@ function ConflictDetail({ id, workspaceId, projects, onBack, onNewPair, onChange
   useUnsavedUpdate(dirty, mutation.busy);
   useEffect(() => {
     if (mutation.saved && !mutation.busy && !delivered.current) {
-      delivered.current = true; void refreshRumbo().catch(() => {}); onChanged();
+      delivered.current = true; void refreshTalvori().catch(() => {}); onChanged();
       notify('Human decision recorded. Earlier captured context is unchanged.');
     }
   }, [mutation.saved, mutation.busy, notify, onChanged]);

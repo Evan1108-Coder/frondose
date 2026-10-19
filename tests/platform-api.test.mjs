@@ -15,7 +15,7 @@ async function fixture(run) {
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-platform-api-')), providerCalls = [];
   const api = createLocalApi({ dataDir, integrationOptions: {
     externalConnectionsPaused: false,
-    env: { RUMBO_GITHUB_CLIENT_ID: 'fixture-client', RUMBO_GITHUB_CLIENT_SECRET: 'fixture-secret' },
+    env: { TALVORI_GITHUB_CLIENT_ID: 'fixture-client', TALVORI_GITHUB_CLIENT_SECRET: 'fixture-secret' },
     execute: async (_command, args) => ({ stdout: args.includes('mcp') ? '[]' : 'Logged in', stderr: '', code: 0 }),
     spawnProcess: () => { const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter(); child.stdin = new EventEmitter(); child.kill = () => {}; child.stdin.end = () => queueMicrotask(() => { child.stdout.emit('data', Buffer.from(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Fixture reply.' } }) + '\n')); child.emit('close', 0); }); return child; },
     fetchImpl: async (url, options) => { providerCalls.push({ url: String(url), options }); if (String(url).includes('/oauth/')) return Response.json({ access_token: 'fixture-access-token' }); if (String(url).includes('/issues') && options.method === 'POST') return Response.json({ id: 42, title: 'Agent issue' }); if (String(url).includes('/issues')) return Response.json([{ id: 1, title: 'Cached issue', body: 'Source content' }]); if (String(url).includes('/dispatches')) return new Response(null, { status: 204 }); return Response.json([]); },

@@ -1,7 +1,7 @@
 import { createAgentJsonlPeer, terminateAgentProcess } from './agent-jsonl-peer.mjs';
 
-// Each reviewed Rumbo turn gets a fresh ephemeral native thread. Resuming an
-// opaque provider history would silently bypass Rumbo's exact-context review.
+// Each reviewed Talvori turn gets a fresh ephemeral native thread. Resuming an
+// opaque provider history would silently bypass Talvori's exact-context review.
 export function startCodexAppServer({ child, prompt, cwd, model, reasoningEffort, permissionMode, timeoutMs, signal, scrub = String }, { onEvent = () => {}, onComplete = () => {}, onUsageReport = () => {} } = {}) {
   let settled = false, turnId, threadId, text = '', stderr = '', count = 0, usageReport = null, usageCaptureIncomplete = false;
   const items = new Map();
@@ -18,9 +18,9 @@ export function startCodexAppServer({ child, prompt, cwd, model, reasoningEffort
   }
   const peer = createAgentJsonlPeer(child, {
     onRequest: message => {
-      emit('permission.denied', 'Provider tool or interactive request denied by Rumbo.');
+      emit('permission.denied', 'Provider tool or interactive request denied by Talvori.');
       if (message.method === 'item/commandExecution/requestApproval' || message.method === 'item/fileChange/requestApproval') return { result: { decision: 'decline' } };
-      return { error: { code: -32601, message: 'This capability is not granted by Rumbo.' } };
+      return { error: { code: -32601, message: 'This capability is not granted by Talvori.' } };
     },
     onFailure: reason => finish('failed', reason.message, reason.code),
     onNotification: message => {
@@ -57,7 +57,7 @@ export function startCodexAppServer({ child, prompt, cwd, model, reasoningEffort
   signal?.addEventListener('abort', stop, { once: true });
   void (async () => {
     if (signal?.aborted) { stop(); return; }
-    await peer.request('initialize', { clientInfo: { name: 'rumbo', title: 'Rumbo', version: '0.1.0' } });
+    await peer.request('initialize', { clientInfo: { name: 'talvori', title: 'Talvori', version: '0.1.0' } });
     if (settled) return;
     peer.notify('initialized');
     const result = await peer.request('thread/start', { cwd, model: model || null, approvalPolicy: 'never', sandbox: permissionMode, ephemeral: true });

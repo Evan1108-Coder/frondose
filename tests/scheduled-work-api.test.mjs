@@ -155,7 +155,7 @@ test('scheduled local snapshot notes retain historical source access and cannot 
   const f=await fixture(t),privateProject=(await f.call('/projects',{workspace_id:f.workspace.id,name:'Private snapshot source'})).project;
   const doc=(await f.call('/documents',{workspace_id:f.workspace.id,project_id:privateProject.id,title:'Snapshot evidence',content:'SNAPSHOT_NOTE_HISTORICAL_SECRET'})).document;
   const who=await signedMember(f),snapshot=(await f.call(`/chat-collaboration/${f.chat.id}`,{workspace_id:f.workspace.id,action:'context',version:0,sources:[{kind:'document',id:doc.id}]},'POST',who.cookie)).result;
-  const payload={chat_id:f.chat.id,content:'Pinned context note',context_snapshot_id:snapshot.id,attachments:[{name:`rumbo-context-${snapshot.id}.md`,type:'text/markdown',content:snapshot.content,rumbo_context_snapshot:snapshot.id}]};
+  const payload={chat_id:f.chat.id,content:'Pinned context note',context_snapshot_id:snapshot.id,attachments:[{name:`talvori-context-${snapshot.id}.md`,type:'text/markdown',content:snapshot.content,rumbo_context_snapshot:snapshot.id}]};
   const schedule=(await f.call('/scheduled-work',f.scheduleBody(payload),'POST',who.cookie)).result;
   await f.call(`/documents/${doc.id}`,{project_id:f.project.id,content:'Public current text'},'PATCH',who.ownerCookie);
   await f.call('/governance',{workspace_id:f.workspace.id,action:'grant',member_id:who.member.id,permission:'documents.read',effect:'deny',scope_type:'project',scope_id:privateProject.id,reason:'Revoke snapshot historical source'},'POST',who.ownerCookie);
@@ -167,7 +167,7 @@ test('scheduled local snapshot notes retain historical source access and cannot 
 
 test('OpenRouter scheduled message uses exact reviewed context and returns a reviewable local action',async t=>{
   const key=randomBytes(32),requests=[];
-  const f=await fixture(t,{integrationOptions:{env:{RUMBO_CONNECTION_ENCRYPTION_KEY:key.toString('base64')},fetchImpl:async(url,options)=>{
+  const f=await fixture(t,{integrationOptions:{env:{TALVORI_CONNECTION_ENCRYPTION_KEY:key.toString('base64')},fetchImpl:async(url,options)=>{
     requests.push({url,options});assert.equal(url,'https://openrouter.ai/api/v1/chat/completions');
     const prompt=JSON.parse(options.body).messages[0].content,nonce=prompt.match(/"nonce":"([^"]+)"/)?.[1];assert.ok(nonce);
     return Response.json({choices:[{message:{content:`Please review the Route.\n\`\`\`rumbo-actions\n${JSON.stringify({nonce,actions:[{type:'record.create',resource:'tasks',fields:{title:'API-provider proposed Route',project_id:f.project.id}}]})}\n\`\`\``},finish_reason:'stop'}],usage:{prompt_tokens:40,completion_tokens:15,total_tokens:55}});

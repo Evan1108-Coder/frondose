@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { rumboApi } from '../data/api.js';
+import { talvoriApi } from '../data/api.js';
 import { Button, ErrorMessage, useApp } from '../ui.jsx';
 import { Activity, ChevronDown, RotateCw } from './icons.jsx';
 import { relative } from '../lib/model.js';
@@ -15,7 +15,7 @@ function TimelinePage({ workspaceId, targetType, targetId }) {
   const [items, setItems] = useState([]), [cursor, setCursor] = useState(null), [next, setNext] = useState(null), [error, setError] = useState(null), [loading, setLoading] = useState(true), [refresh, setRefresh] = useState(0);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(null);
-    rumboApi.timeline({ workspaceId, targetType, targetId, cursor }, { signal: controller.signal }).then(({ result }) => {
+    talvoriApi.timeline({ workspaceId, targetType, targetId, cursor }, { signal: controller.signal }).then(({ result }) => {
       if (controller.signal.aborted) return;
       setItems(current => cursor ? [...new Map([...current, ...result.items].map(item => [item.id, item])).values()] : result.items); setNext(result.next_cursor);
     }).catch(cause => { if (!controller.signal.aborted) setError(cause); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });

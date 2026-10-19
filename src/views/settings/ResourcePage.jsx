@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Dialog, ErrorMessage, Field, Select, Empty, useApp, useAsync } from '../../ui.jsx';
 import { Form } from '../../components/Form.jsx';
 import { Plus, Pencil, Archive, RotateCcw, ArrowUp, ArrowDown, Clock, FileText, ArrowRight } from '../../components/icons.jsx';
-import { rumboActions } from '../../data/useRumbo.js';
-import { rumboApi } from '../../data/api.js';
+import { talvoriActions } from '../../data/useTalvori.js';
+import { talvoriApi } from '../../data/api.js';
 import { RESOURCE_TYPES, featureItems, matchingRoutes, pretty, ROUTE_STAGES, PROJECT_STAGES } from '../../lib/settings-catalog.js';
 import { visible, relative } from '../../lib/model.js';
 import { ImageField } from '../../components/ImageField.jsx';
@@ -19,12 +19,12 @@ export function ResourcePage({ kind, allowCreate = true }) {
   const spec = RESOURCE_TYPES[kind];
   const [query, setQuery] = useState(''), [archived, setArchived] = useState(false), [editor, setEditor] = useState(null), [action, setAction] = useState(null), [history, setHistory] = useState(null);
   const items = (archived ? (data.workspace_items ?? []).filter(i => i.kind === kind && i.archived_at) : featureItems(data, kind)).filter(i => `${i.name} ${i.payload.description ?? ''} ${i.payload.group ?? ''}`.toLowerCase().includes(query.toLowerCase()));
-  const update = (item, patch) => rumboActions.updateWorkspaceItem(item.id, { version: item.version, ...patch });
-  const openHistory = item => perform(async () => { const response = await rumboApi.history(item.id, workspace.id); setHistory({ item, changes: response.result }); });
+  const update = (item, patch) => talvoriActions.updateWorkspaceItem(item.id, { version: item.version, ...patch });
+  const openHistory = item => perform(async () => { const response = await talvoriApi.history(item.id, workspace.id); setHistory({ item, changes: response.result }); });
   const launchAction = async item => {
     if (kind === 'saved_view') { navigate('views', item.id); return; }
     if (kind === 'queue') { startSession({ title: item.name, prompt: item.payload.content, project_id: item.payload.project_ids[0], agent_id: item.payload.agent_ids[0] }); return; }
-    if (kind === 'automation') { const result = await perform(() => rumboActions.workspaceItemAction(item.id, { version: item.version, action: 'preview-rule' })); if (result) setAction({ item, matches: result.matches }); return; }
+    if (kind === 'automation') { const result = await perform(() => talvoriActions.workspaceItemAction(item.id, { version: item.version, action: 'preview-rule' })); if (result) setAction({ item, matches: result.matches }); return; }
     setAction({ item });
   };
   const actions = { route_label: 'Merge', project_label: 'Merge', route_template: 'Use template', project_template: 'Use template', chat_template: 'Use template', preset: 'Apply to agent', request: 'Create route', saved_view: 'Open view', context_pack: 'Preview context', collection: 'View agents', goal: 'View progress', handoff: 'Read handoff', review: 'Read deliverable', update: 'Read update', emoji: 'Copy emoji', automation: 'Preview rule', queue: 'Prepare session' };
@@ -71,7 +71,7 @@ export function ResourceEditor({ kind, item, onClose }) {
   const close = () => { if (busy) return; if (dirty && !discard) setDiscard(true); else onClose(); };
   const change = (key, value) => setPayload(p => ({ ...p, [key]: value }));
   return <Dialog title={discard ? 'Discard these changes?' : `${item ? 'Edit' : 'New'} ${spec.singular}`} subtitle={workspace.name} onClose={close}>
-    {discard ? <div className="settings-confirm"><p>Your unsaved changes will be lost.</p><Button onClick={() => setDiscard(false)}>Keep editing</Button><Button variant="danger" onClick={onClose}>Discard changes</Button></div> : <Form className="settings-resource-form" onSubmit={e => { e.preventDefault(); execute(async () => { const input = { name, payload, workspace_id: workspace.id, kind }; if (item) await rumboActions.updateWorkspaceItem(item.id, { ...input, version: item.version }); else await rumboActions.createWorkspaceItem(input); notify(`${pretty(spec.singular)} saved`); onClose(); }); }}>
+    {discard ? <div className="settings-confirm"><p>Your unsaved changes will be lost.</p><Button onClick={() => setDiscard(false)}>Keep editing</Button><Button variant="danger" onClick={onClose}>Discard changes</Button></div> : <Form className="settings-resource-form" onSubmit={e => { e.preventDefault(); execute(async () => { const input = { name, payload, workspace_id: workspace.id, kind }; if (item) await talvoriActions.updateWorkspaceItem(item.id, { ...input, version: item.version }); else await talvoriActions.createWorkspaceItem(input); notify(`${pretty(spec.singular)} saved`); onClose(); }); }}>
       <Field label="Name"><input {...defaultField('name', 'Name')} autoFocus required maxLength={160} value={name} onChange={e => setName(e.target.value)} /></Field>
       {'icon' in spec.fields ? <Field label="Status icon"><div className="resource-icon-picker"><span aria-hidden="true">{payload.icon ? <ReactionGlyph id={payload.icon} color={payload.color} size={24} /> : <FileText />}</span><Button onClick={() => setIconOpen(true)}>{payload.icon ? 'Change icon' : 'Choose icon'}</Button>{payload.icon ? <Button variant="ghost" onClick={() => change('icon', '')}>Remove</Button> : null}</div></Field> : null}
       {Object.entries(spec.fields).filter(([key]) => key !== 'icon').map(([key, field]) => field.type === 'image' ? <ImageField key={key} label={field.label} value={isEmojiImage(payload[key]) ? payload[key] : null} disabled={busy} onChange={value => change(key, value ?? '')} /> : field.type === 'choice' ? <Select key={key} label={field.label} value={payload[key]} onChange={v => change(key, v)}>{field.options.map(v => <option key={v} value={v}>{pretty(v)}</option>)}</Select> : field.type === 'refs' ? <fieldset className="resource-ref-field" key={key}><legend>{field.label}</legend>{visible(data[field.collection]).length ? visible(data[field.collection]).map(row => <label key={row.id}><input type="checkbox" checked={payload[key].includes(row.id)} onChange={e => change(key, e.target.checked ? [...payload[key], row.id] : payload[key].filter(id => id !== row.id))} /><span>{row.name ?? row.title}</span></label>) : <p>No {field.collection.replaceAll('_', ' ')} yet. You can add them later.</p>}</fieldset> : field.type === 'color' ? <Field key={key} label={field.label}><div className="resource-colors">{['#93949c', '#e06b75', '#dfae67', '#76ad91', '#6da8d6', '#9890cf'].map(color => <button type="button" aria-label={`Color ${color}`} aria-pressed={payload[key] === color} key={color} style={{ background: color }} onClick={() => change(key, color)} />)}<input aria-label="Hex color" pattern="#[a-fA-F0-9]{6}" value={payload[key]} maxLength={7} onChange={e => change(key, e.target.value)} /></div></Field> : <Field key={key} label={field.label}>{field.type === 'textarea' ? <textarea {...defaultField(key, field.label)} rows={5} maxLength={50000} value={payload[key]} onChange={e => change(key, e.target.value)} /> : <input {...defaultField(key, field.label)} maxLength={field.max ?? 500} value={payload[key]} onChange={e => change(key, e.target.value)} />}</Field>)}
@@ -124,10 +124,10 @@ function ResourceAction({ kind, item, archive, matches, onClose }) {
   const context = [p.content, ...refs.map(row => `${row.title}\n${row.content}${row.archived_at ? '\n[Archived source]' : ''}`)].filter(Boolean).join('\n\n');
   const routes = kind === 'saved_view' ? matchingRoutes(data, item) : kind === 'goal' ? matchingRoutes(data, item).filter(t => p.project_ids.length && p.project_ids.includes(t.project_id)) : [];
   const act = () => execute(async () => {
-    if (archive) { await rumboActions.updateWorkspaceItem(item.id, { version: item.version, archived_at: new Date().toISOString() }); notify('Archived. Restore it from the Archived filter.'); }
+    if (archive) { await talvoriActions.updateWorkspaceItem(item.id, { version: item.version, archived_at: new Date().toISOString() }); notify('Archived. Restore it from the Archived filter.'); }
     else if (kind === 'request' && p.route_id) navigate('tasks', p.route_id);
     else if (kind === 'emoji' || kind === 'context_pack') { await navigator.clipboard.writeText(kind === 'emoji' ? isEmojiImage(p.symbol) ? emojiShortcode(item) : p.symbol : context); notify('Copied'); }
-    else { const result = await rumboActions.workspaceItemAction(item.id, { version: item.version, action, name, field_values: kind.endsWith('_template') ? fieldValues : undefined, agent_id: agent, target_id: target, ids: matches?.map(row => row.id) }); if (result?.view) navigate(result.view, result.id); else notify(`${result.count} items updated`); }
+    else { const result = await talvoriActions.workspaceItemAction(item.id, { version: item.version, action, name, field_values: kind.endsWith('_template') ? fieldValues : undefined, agent_id: agent, target_id: target, ids: matches?.map(row => row.id) }); if (result?.view) navigate(result.view, result.id); else notify(`${result.count} items updated`); }
     onClose();
   });
   const hasAction = archive || action || ['emoji', 'context_pack'].includes(kind);
