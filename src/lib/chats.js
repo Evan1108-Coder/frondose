@@ -50,8 +50,11 @@ export function defaultRecipient(chat, agents) {
   const available = agents.filter(agent => ids.includes(agent.id) && !val(agent, 'archived_at'));
   return available.length === 1 ? available[0].id : 'note';
 }
-export function turnBlocker({ agent, readiness, folder, activeRun, files, permission = 'conversation' }) {
+export function turnBlocker({ agent, readiness, folder, activeRun, files, permission = 'conversation', recovering = false }) {
   if (!agent) return null;
+  // A stable uncertain turn is a receipt lookup first. The server rechecks
+  // new-launch authority only if it never received that exact key.
+  if (recovering) return null;
   if (!readiness?.canStartLive) return readiness?.description || 'This agent is not ready. Check its connection.';
   if (permission !== 'conversation' && !folder) return 'Coding and project-file work need a folder. Link a project folder or set this agent’s working folder, or switch to General chat.';
   if (activeRun) return 'This conversation already has work in progress. Wait for it to finish or stop the session.';
@@ -75,6 +78,7 @@ export function restoreComposer(chat, agents, storage) {
       includeChat: saved.includeChat !== false,
       includeWorkspace: typeof saved.includeWorkspace === 'boolean' ? saved.includeWorkspace : base.includeWorkspace,
       hasSavedPreferences: Object.hasOwn(saved, 'model'),
+      personalPreferencesInitialized: saved.personalPreferencesInitialized === true,
       contextPackIds: Array.isArray(saved.contextPackIds) ? [...new Set(saved.contextPackIds.filter(id => typeof id === 'string'))].slice(0, 20) : [],
       // Preserve the original choice only for recovery of an uncertain delivery.
       // A new launch never inherits native-tool consent from a saved draft.
@@ -94,7 +98,17 @@ export function restoreComposer(chat, agents, storage) {
 }
 export function persistComposer(chatId, composer, storage) {
   try {
-storage?.setItem(`rumbo.composer.v2.${chatId}`, JSON.stringify({ version: 5, model: composer.model, reasoning: composer.reasoning, includeChat: composer.includeChat, includeWorkspace: composer.includeWorkspace, contextPackIds: composer.contextPackIds, text: composer.text, files: composer.files, recipient: composer.recipient, turn: composer.turn, permission: composer.permission, memory: composer.memory, nativeTools: Boolean(composer.turn) && composer.nativeTools === true, retryKeys: composer.retryKeys, retryNativeTools: Object.fromEntries(Object.entries(composer.retryNativeTools || {}).filter(([id]) => Boolean(composer.retryKeys?.[id]))), replyTo: composer.replyTo, context: composer.context?.id ? { id: composer.context.id } : null }));
+    storage?.setItem(`rumbo.composer.v2.${chatId}`, JSON.stringify({
+      version:5, personalPreferencesInitialized:composer.personalPreferencesInitialized === true,
+      model:composer.model, reasoning:composer.reasoning, includeChat:composer.includeChat,
+      includeWorkspace:composer.includeWorkspace, contextPackIds:composer.contextPackIds,
+      text:composer.text, files:composer.files, recipient:composer.recipient, turn:composer.turn,
+      permission:composer.permission, memory:composer.memory,
+      nativeTools:Boolean(composer.turn) && composer.nativeTools === true,
+      retryKeys:composer.retryKeys,
+      retryNativeTools:Object.fromEntries(Object.entries(composer.retryNativeTools || {}).filter(([id])=>Boolean(composer.retryKeys?.[id]))),
+      replyTo:composer.replyTo, context:composer.context?.id ? {id:composer.context.id} : null,
+    }));
     storage?.setItem(`rumbo.draft.${chatId}`, composer.text);
     return true;
   } catch { return false; }

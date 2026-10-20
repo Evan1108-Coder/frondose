@@ -25,6 +25,8 @@ import { prepareTalvoriAgentEntry } from '../lib/talvori-agent-entry.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.js';
 import { prepareExplicitChatSend } from '../lib/chat-send-context.js';
+import { coordinationDraft, personalComposerDefaults } from '../lib/chat-coordination.js';
+import { coordinationRequest, coordinationDestination } from '../lib/run-coordination.js';
 import './chats-page.css';
 const ReactionPicker = lazy(() => import('../components/ReactionPicker.jsx'));
 const ActivityFeed = lazy(() => import('../components/ActivityFeed.jsx').then(module => ({ default: module.ActivityFeed })));
@@ -55,9 +57,6 @@ export function ChatsView() {
   const create = () => edit('chat', null, project ? { project_id: project.id } : {});
   const filtered = matchingChats(chats, index.messagesByChat, query);
   useEffect(() => { setQuery(''); }, [page.projectId]);
-  useEffect(() => {
-    if (page.id && chat?.kind === 'rumbo-agent') navigate('rumbo-agent', chat.id, { messageId: page.messageId || null });
-  }, [page.id, page.messageId, chat?.id, chat?.kind, navigate]);
   if (page.projectId && !project) return <main className="page"><Empty kind="projects" title="Project unavailable" description="This project may be archived or belong to another workspace." action="All chats" onAction={() => navigate('chats')} /></main>;
   if (page.id && !chat) return <main className="page"><Empty kind="chats" title="Conversation unavailable" description="This chat may be archived or outside this project." action="All chats" onAction={() => navigate('chats', null, scope)} /></main>;
   if (!chats.length) return <main className="page"><Empty kind="chats" title={project ? 'Start the project conversation' : 'Your conversations, connected'} description="Keep ideas, decisions, and agent work in the same conversation. Link a project to bring its context along." action="Create chat" onAction={create} secondaryAction={project ? 'Open project' : 'Explore projects'} onSecondaryAction={() => navigate('projects', project?.id || null)} /></main>;
@@ -69,13 +68,13 @@ export function ChatsView() {
       const messages = index.messagesByChat.get(item.id) || [], last = messages.at(-1);
       const active = (index.runsByChat.get(item.id) || []).some(run => ACTIVE_CHAT_RUNS.has(run.status));
       const linked = data.projects.find(project => project.id === val(item, 'project_id'));
-      return <button className="chat-overview-row" key={item.id} onClick={() => navigate(item.kind === 'rumbo-agent' ? 'rumbo-agent' : 'chats', item.id, scope)}><UiIcon icon={item.pinned ? Pin : MessageCircle} /><span><strong>{item.title}</strong><small>{last?.content || 'No messages yet'}</small><em>{linked?.name || 'Workspace conversation'}{active ? ' · Working' : ''}</em></span><time>{relative(val(item, 'updated_at'))}</time></button>;
+      return <button className="chat-overview-row" key={item.id} onClick={() => navigate('chats', item.id, scope)}><UiIcon icon={item.pinned ? Pin : MessageCircle} /><span><strong>{item.title}</strong><small>{last?.content || 'No messages yet'}</small><em>{linked?.name || 'Workspace conversation'}{active ? ' · Working' : ''}</em></span><time>{relative(val(item, 'updated_at'))}</time></button>;
     })}</section> : null)}{!filtered.length ? <div className="chat-list-empty"><Search /><p>No matching conversations</p><Button variant="ghost" onClick={() => setQuery('')}>Clear search</Button></div> : null}</div>
   </main>;
 }
 
 export function Conversation({ chat, index, composers, scope = {}, onComposerChange = () => {}, onToggleList, assistant }) {
-  const { data, navigate, edit, archive, perform, notify } = useApp();
+  const { data, page, navigate, edit, archive, perform, notify } = useApp();
   const agents = visible(data.agents);
   if (!composers.has(chat.id)) {
     const draft = restoreComposer(chat, agents, draftStorage());
@@ -109,12 +108,21 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const [contextSources, setContextSources] = useState([]), [contextQuery, setContextQuery] = useState(''), [collaborationError, setCollaborationError] = useState(null), [actionBusy, setActionBusy] = useState(false);
   const listRef = useRef(null), inputRef = useRef(null), fileRef = useRef(null), mounted = useRef(true), sending = useRef(false);
   const dragDepth = useRef(0);
+  const [coordinationRevision, setCoordinationRevision] = useState(0), [coordinationItems, setCoordinationItems] = useState([]), [handoffError, setHandoffError] = useState(null);
+  const [handoffReload, setHandoffReload] = useState(0);
+  const queuedRequest = useRef(null);
+  const [personalSettings,setPersonalSettings] = useState({key:'',loading:true,error:null});
   const messages = index.messagesByChat.get(chat.id) || [], runs = index.runsByChat.get(chat.id) || [];
   const active = runs.find(run => ACTIVE_CHAT_RUNS.has(run.status));
+  const activeRecipient = runs.find(run => ACTIVE_CHAT_RUNS.has(run.status) && val(run,'agent_id') === composer.recipient);
   const orphan = runs.filter(run => !val(run, 'source_message_id')).at(-1);
   const task = data.tasks.find(item => item.id === val(chat, 'task_id'));
   const project = data.projects.find(item => item.id === (val(chat, 'project_id') || val(task, 'project_id')));
   const agent = agents.find(item => item.id === composer.recipient);
+  const personalMode = chat.kind === 'rumbo-agent' && agent?.id.startsWith('rumbo_agent_');
+  const personalKey = `${chat.id}:${agent?.id || ''}`;
+  const personalPending = personalMode && !composer.turn && (personalSettings.key !== personalKey || personalSettings.loading);
+  const personalError = personalMode && !composer.turn && personalSettings.key === personalKey && personalSettings.error;
   const connection = data.connections.find(item => item.provider === agent?.provider && (!val(agent, 'provider_connection_id') || item.id === val(agent, 'provider_connection_id')));
   const readiness = agent ? agentReadiness(agent, connection) : null;
   const readyRecipients = agents.filter(item => agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive);
@@ -125,7 +133,9 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const replies = useMemo(() => { const map = new Map(); for (const message of messages) if (message.metadata?.reply_to) map.set(message.metadata.reply_to, (map.get(message.metadata.reply_to) || 0) + 1); return map; }, [messages]);
   const contextChoices = [...visible(data.documents).map(item => ({ kind: 'document', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.memory_notes).map(item => ({ kind: 'memory', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.workspace_items || []).filter(item => item.kind === 'context_pack').map(item => ({ kind: 'pack', id: item.id, title: item.name }))];
   const contextPending = Boolean(composer.context && typeof composer.context.content !== 'string');
-  const blocker = contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: active, files: composer.files, permission: composer.permission });
+  const blocker = personalPending ? 'Loading Talvori’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) });
+  const queueOnly = Boolean(activeRecipient && !composer.turn);
+  const queueBlocker = queueOnly && (composer.files.length || composer.context || composer.replyTo || composer.text.length > 10000) ? 'Queued follow-ups support plain text up to 10,000 characters. Send attachments or a reply after this run finishes.' : null;
   const inThread = threadMessages(messages, threadId);
   const shownMessages = inThread.filter(message => (!search.trim() || message.content?.toLowerCase().includes(search.trim().toLowerCase())) && (!bookmarksOnly || bookmarks.has(message.id)));
   const selectedMessages = messages.filter(message => selectedIds.has(message.id));
@@ -139,7 +149,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const sentAttachments = composer.context && !contextPending ? [{ name: `talvori-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
   // New turns use the selected identity's model. Recovery alone retains the exact
   // old override, so changing this UI cannot mutate an uncertain delivered turn.
-  const assistantOptions = assistant ? { ...(composer.turn && composer.model ? { model: composer.model, reasoning_effort: composer.reasoning || '' } : {}), include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
+  const assistantOptions = assistant || chat.kind === 'rumbo-agent' ? { ...(composer.turn && composer.model ? { model: composer.model, reasoning_effort: composer.reasoning || '' } : {}), include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
   const inspectionRequest = agent && (composer.text.trim() || composer.files.length) && !slashVisible ? {
     workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
     chat_id: chat.id, agent_id: agent.id, prompt: composer.text.trim() || 'Shared attachments',
@@ -166,6 +176,45 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const retryContextReady = reviewedRetry?.key === retryInspectionKey && Date.parse(reviewedRetry.result.expires_at) > Date.now();
   const { atBottom, scrollToEnd, setFollowing: setAtBottom } = useChatFollow(listRef, `${messages.length}:${runs.map(run => run.status).join(',')}:${search}`, data.settings?.appearance?.reduceMotion);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(()=>{
+    if(!personalMode || composer.turn) return;
+    const controller=new AbortController();setPersonalSettings({key:personalKey,loading:true,error:null});
+    apiRequest(`/api/talvori-agent?workspace_id=${encodeURIComponent(val(chat,'workspace_id'))}`,{signal:controller.signal}).then(({result})=>{
+      if(controller.signal.aborted) return;
+      const preferences=result?.preferences;
+      if(!preferences || typeof preferences!=='object') throw new Error('Talvori’s saved context preferences are unavailable. Open Talvori Setup before sending.');
+      if(!result.providers?.some(row=>row.agent?.id===agent.id)){setPersonalSettings({key:personalKey,loading:false,error:null});return;}
+      if(!preferences.provider_selected || preferences.provider!==agent.provider || !preferences.onboarding_complete) throw new Error('Choose and save Talvori’s AI connection and setup before sending.');
+      const patch=personalComposerDefaults(preferences,composer);
+      if(patch){Object.assign(composer,patch,{version:composer.version+1});persistComposer(chat.id,composer,draftStorage());render(value=>value+1);}
+      setPersonalSettings({key:personalKey,loading:false,error:null});
+    }).catch(problem=>{if(!controller.signal.aborted)setPersonalSettings({key:personalKey,loading:false,error:problem});});
+    return()=>controller.abort();
+  },[personalMode,personalKey,agent?.provider,composer.turn]);
+  useEffect(() => {
+    if (!page.coordinationRunId || !page.coordinationId) return;
+    const controller = new AbortController();
+    setHandoffError(null);
+    apiRequest(`/api/runs/${encodeURIComponent(page.coordinationRunId)}/coordination/${encodeURIComponent(page.coordinationId)}/prepare`, { method:'POST', body:{}, signal:controller.signal }).then(({result}) => {
+      if (controller.signal.aborted) return;
+      if (!agents.some(item => item.id === result.agent_id)) throw new Error('The handoff agent is unavailable.');
+      const patch = coordinationDraft(result,chat.id,composer);
+      Object.assign(composer,patch,{version:composer.version+1});
+      persistComposer(chat.id,composer,draftStorage()); render(value=>value+1);
+      navigate('chats',chat.id,{projectId:scope.projectId || null});
+      notify('Handoff loaded as a draft. No AI run has started.');
+    }).catch(problem => { if (!controller.signal.aborted) setHandoffError(problem); });
+    return () => controller.abort();
+  }, [chat.id,page.coordinationRunId,page.coordinationId,handoffReload]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const relevant = runs.slice(-20);
+    setCoordinationItems([]);
+    Promise.all(relevant.map(run => apiRequest(`/api/runs/${encodeURIComponent(run.id)}/coordination`,{signal:controller.signal}).then(({result})=>(result.items || []).filter(item=>item.target_chat_id===chat.id)).catch(()=>[]))).then(groups=>{
+      if (!controller.signal.aborted) setCoordinationItems(groups.flat().toSorted((a,b)=>a.created_at.localeCompare(b.created_at)));
+    });
+    return ()=>controller.abort();
+  }, [chat.id,runs.map(run=>`${run.id}:${run.status}`).join(','),coordinationRevision]);
   useEffect(() => {
     // Migrate legacy browser copies to an ID-only draft before any source read.
     persistComposer(chat.id, composer, draftStorage());
@@ -186,9 +235,15 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     return () => window.removeEventListener('hashchange', followLink);
   }, [chat.id, messages.length]);
   useEffect(() => {
-    if (!inputRef.current) return;
-    inputRef.current.style.height = 'auto';
-    inputRef.current.style.height = `${Math.min(220, Math.max(78, inputRef.current.scrollHeight))}px`;
+    const resize = () => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.style.height = 'auto';
+      const minimum = parseFloat(getComputedStyle(input).getPropertyValue('--composer-min-height')) || 78;
+      input.style.height = `${Math.min(matchMedia('(max-width:540px)').matches ? 140 : 220, Math.max(minimum, input.scrollHeight))}px`;
+    };
+    resize(); window.addEventListener('resize',resize);
+    return ()=>window.removeEventListener('resize',resize);
   }, [composer.text]);
   function change(changes) {
     Object.assign(composer, changes);
@@ -292,7 +347,21 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       await executeSlashCommand(slash.command, slash.argv, { submitted: true });
       return;
     }
-    if (blocker) { setError(new Error(blocker)); return; }
+    if (blocker || queueBlocker) { setError(new Error(blocker || queueBlocker)); return; }
+    if (queueOnly) {
+      sending.current = true; composer.sending = true; setBusy(true); setError(null);
+      const version = composer.version, text = composer.text.trim();
+      const signature = JSON.stringify([activeRecipient.id,text]);
+      if (queuedRequest.current?.signature !== signature) queuedRequest.current = {signature,id:crypto.randomUUID()};
+      try {
+        await apiRequest(`/api/runs/${encodeURIComponent(activeRecipient.id)}/coordination`,{method:'POST',body:coordinationRequest({kind:'steer',content:text},queuedRequest.current.id)});
+        if (composer.version === version) { composer.text=''; composer.version++; }
+        queuedRequest.current=null; persistComposer(chat.id,composer,draftStorage());
+        if (mounted.current) { setCoordinationRevision(value=>value+1); render(value=>value+1); notify('Follow-up queued. It has not been sent to the provider.'); }
+      } catch(problem) { if(mounted.current) setError(problem); }
+      finally { sending.current=false; composer.sending=false; onComposerChange(); if(mounted.current) setBusy(false); }
+      return;
+    }
     if (composer.context && composer.files.length >= 20) { setError(new Error('The context snapshot uses one attachment slot. Remove a file before sending.')); return; }
     if (agent && !recoveringTurn && !contextReady && (composer.permission === 'workspace-write' || composer.nativeTools === true)) { setAccessOpen(true); return; }
     sending.current = true; composer.sending = true; setBusy(true); setError(null);
@@ -488,7 +557,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
       <div className="chat-thread-title"><h2>{chat.title}</h2><div>{project ? <button onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <span>Workspace conversation</span>}{task ? <><span>/</span><button onClick={() => navigate('tasks', task.id)}>{task.title}</button></> : null}</div></div>
       <div className="chat-thread-tools"><IconButton label={searchOpen ? 'Close message search' : 'Search messages'} onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }} aria-pressed={searchOpen}><Search morphTo={searchOpen ? X : Search} /></IconButton><Button icon={PanelLeft} onClick={() => setContextOpen(true)}>Context</Button><IconButton label="Conversation options" onClick={() => setOptionsOpen(true)}><Ellipsis /></IconButton></div>
     </header>}
-    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}<button aria-haspopup="dialog" onClick={() => setOptionsOpen(true)}><Ellipsis />More</button></div>
+    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button className="chat-secondary-tab" aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button className="chat-secondary-tab" aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button className="chat-secondary-tab" onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}<button aria-haspopup="dialog" onClick={() => setOptionsOpen(true)}><Ellipsis />More</button></div>
     <TemplateInstanceDetails workspaceId={chat.workspace_id} entityType="chats" entityId={chat.id} />
     {threadId ? <div className="chat-thread-banner"><MessageCircle /><span>Thread · {inThread.length - 1} replies</span><button onClick={() => { setThreadId(null); change({ replyTo: null }); }}>Back to conversation</button></div> : null}
     {searchOpen ? <div className="chat-message-search"><SearchField label="Search messages in conversation" placeholder="Find a message…" value={search} onChange={setSearch} /><span>{search ? `${shownMessages.length} results` : 'Search this conversation'}</span></div> : null}
@@ -496,10 +565,12 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
     <div className="chat-thread-messages" ref={listRef} tabIndex={0} aria-label="Chat messages">
       {shownMessages.length ? <div className="chat-message-flow">{shownMessages.map(message => <ChatMessage key={message.id} message={message} chat={chat} project={project} run={index.runsByMessage.get(message.id)} onRetry={index.runsByMessage.has(message.id) ? () => retry(message, index.runsByMessage.get(message.id)) : undefined} retrying={retrying === index.runsByMessage.get(message.id)?.id} onPreview={setPreview} bookmarked={bookmarks.has(message.id)} onBookmark={() => perform(() => collaborationAction('bookmark', { message_id: message.id, enabled: !bookmarks.has(message.id) }))} onReply={() => reply(message)} onOptions={() => setMessageOptions(message)} replyMessage={messages.find(item => item.id === message.metadata?.reply_to)} onJump={jump} replyCount={replies.get(message.id) || 0} onThread={() => { setThreadId(message.id); setBookmarksOnly(false); setSearch(''); reply(message); }} onContext={() => inspectContext(message.metadata.context_snapshot_id)} selectionMode={selectionMode} selected={selectedIds.has(message.id)} onSelect={() => toggleSelection(message)} reactions={messageReactions(message.id)} reactionBusy={Boolean(reactionPending) || actionBusy} onReact={() => { setReactionError(null); setReactionMessage(message); }} onToggleReaction={reaction => reactTo(message, reaction)} />)}
         {orphan && !search ? <ChatRunStatus run={orphan} /> : null}
+        {!search && !bookmarksOnly && !threadId ? coordinationItems.map(item => <article key={item.id} className="chat-queued-follow-up"><strong>{item.author_type === 'agent' ? 'Agent handoff' : 'Your follow-up'} <small>· {item.state === 'prepared' ? 'Draft prepared · see Conversations for delivery' : 'Queued · not sent'}</small></strong><p>{item.content}</p>{item.can_prepare ? <Button onClick={()=>{ const destination=coordinationDestination(item); navigate('chats',destination.chatId,destination.options); }}>Load next-turn draft</Button> : null}</article>) : null}
       </div> : <Empty compact kind={search || bookmarksOnly ? 'search' : 'chats'} title={bookmarksOnly ? 'Keep important messages close' : search ? 'No matching messages' : 'A shared place to think'} description={bookmarksOnly ? 'Bookmark a decision or useful answer from its message actions.' : search ? 'Try another word or clear the search.' : 'Ask a connected agent to work, or save a note for later. Your project and route stay linked here.'} action={search ? 'Clear search' : undefined} onAction={() => setSearch('')} />}
     </div>
     {!atBottom && messages.length > 2 ? <div className="chat-jump"><Button icon={ArrowDown} onClick={scrollToEnd}>Latest messages</Button></div> : null}
     <div className="chat-compose-area">
+      {handoffError ? <div className="chat-handoff-error"><ErrorMessage error={handoffError} /><Button onClick={()=>setHandoffReload(value=>value+1)}>Try loading handoff again</Button><Button variant="ghost" onClick={()=>navigate('chats',chat.id,scope)}>Keep current draft</Button></div> : null}
       <Form className={`chat-compose${draggingFiles ? ' chat-compose--dragging' : ''}`} onSubmit={send} onDragEnter={fileDragEnter} onDragOver={event => { if (containsDraggedFiles(event)) event.preventDefault(); }} onDragLeave={fileDragLeave} onDrop={fileDrop}>
         {draggingFiles ? <div className="chat-compose-drop-hint" aria-hidden="true">Drop files to attach</div> : null}
         <ErrorMessage error={error} />
@@ -524,10 +595,10 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
           {!assistant ? <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><Smile /></IconButton> : null}
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
           <IconButton label="Select context sources" onClick={() => setContextOpen(true)}><BookOpen /></IconButton>
-          {agent ? <IconButton label="Access and context" onClick={() => setAccessOpen(true)}><SlidersHorizontal /></IconButton> : null}
-        </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker)} aria-label={agent ? `Send to ${agent.name}` : 'Save note'}>{agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</Button></div>
+          {agent ? <IconButton label="Access and context" disabled={personalPending || Boolean(personalError)} onClick={() => setAccessOpen(true)}><SlidersHorizontal /></IconButton> : null}
+        </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker || queueBlocker)} aria-label={queueOnly ? `Queue follow-up for ${agent.name}` : agent ? `Send to ${agent.name}` : 'Save note'}><span className="chat-send-label">{queueOnly ? 'Queue follow-up' : agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</span></Button></div>
       </Form>
-      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
+      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{personalMode ? <button onClick={()=>navigate('rumbo-agent')}>Talvori setup</button> : agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : queueOnly ? queueBlocker ? <p className="chat-compose-notice" role="status">{queueBlocker}</p> : <details className="chat-queue-explanation"><summary>Working · follow-ups queue for the next turn</summary><p>Queued instructions do not enter the current provider run. Load the draft and send it when ready, or keep chatting with another agent.</p></details> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
     </div>
     {accessOpen && agent ? <Dialog title="Access and context" subtitle="Chat prepares bounded context when you send. Project access and native tools still require explicit review." wide onClose={() => setAccessOpen(false)}><div className="dialog-body chat-context-content">{!isBrowserAiProvider(agent.provider) ? <><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><Toggle label="Read project files for this message" description="Requires a linked working folder. Turning this on does not grant write access." checked={composer.permission !== 'conversation'} disabled={busy || composer.sending || recoveringTurn || composer.permission === 'workspace-write'} onChange={value => { change({ permission: value ? 'read-only' : 'conversation' }); setReviewedContext(null); }} /></> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} /></div><footer className="dialog-footer"><Button onClick={() => setAccessOpen(false)}>Done</Button></footer></Dialog> : null}
     {scheduleDraft ? <ScheduleWorkDialog workspaceId={val(chat, 'workspace_id')} kind="message" payload={scheduleDraft.payload} contextInspectionId={scheduleDraft.contextInspectionId} onClose={() => setScheduleDraft(null)} onScheduled={() => { if (composer.version === scheduleDraft.version) { change({ text: '', files: [], turn: null, replyTo: null, context: null }); setReviewedContext(null); } }} /> : null}
@@ -552,6 +623,9 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}
     {commandLibraryOpen ? <Dialog title="Talvori commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
     {optionsOpen ? <Dialog title="Conversation options" onClose={() => setOptionsOpen(false)}><div className="dialog-body chat-options">
+      <Button onClick={()=>{setOptionsOpen(false);setNativeRunId(active?.id || runs.filter(run=>run.mode==='live').at(-1)?.id || '');setNativeActivityOpen(true);}}>Recorded native tools</Button>
+      <Button icon={MessageCircle} onClick={()=>{setOptionsOpen(false);setUpdatesOpen(true);}}>Conversation updates</Button>
+      {collaboration.drafts.length ? <Button icon={Clock} onClick={()=>{setOptionsOpen(false);setComposeDialog({type:'drafts'});}}>Saved follow-up drafts · {collaboration.drafts.length}</Button> : null}
       <Button icon={Clock} disabled={busy || composer.sending || Boolean(composer.turn) || !composer.text.trim() || Boolean(blocker)} onClick={() => { setOptionsOpen(false); void prepareSchedule(); }}>Schedule current message</Button>
       <Button icon={MessageCircle} disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={() => { setOptionsOpen(false); void queueDraft(); }}>Save follow-up draft</Button>
       <Button icon={Pencil} onClick={() => { setOptionsOpen(false); edit('chat', chat); }}>Edit conversation details</Button>
@@ -561,6 +635,8 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
       <Button icon={Archive} onClick={() => { setOptionsOpen(false); archive('chat', chat); }}>Archive conversation</Button>
     </div></Dialog> : null}
     {messageOptions ? <Dialog title="Message actions" subtitle="Keep decisions connected to the work they inform." onClose={() => setMessageOptions(null)}><div className="dialog-body chat-options">
+      <Button icon={Copy} onClick={()=>perform(async()=>{await navigator.clipboard.writeText(messageOptions.content);setMessageOptions(null);notify('Message copied');})}>Copy message</Button>
+      <Button icon={Pin} onClick={()=>perform(async()=>{await collaborationAction('bookmark',{message_id:messageOptions.id,enabled:!bookmarks.has(messageOptions.id)});setMessageOptions(null);})}>{bookmarks.has(messageOptions.id)?'Remove bookmark':'Bookmark message'}</Button>
       <Button icon={Check} onClick={() => { setSelectionMode(true); setSelectedIds(previous => new Set([...previous, messageOptions.id])); setMessageOptions(null); }}>Select message</Button>
       <Button icon={Plus} onClick={() => { setReactionMessage(messageOptions); setReactionError(null); setMessageOptions(null); }}>React to message</Button>
       <Button icon={MessageCircle} onClick={() => reply(messageOptions)}>Reply to message</Button>

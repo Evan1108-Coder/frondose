@@ -4,6 +4,8 @@ import { ContextInspector } from '../components/ContextInspector.jsx';
 import { CapturedRunContextButton } from '../components/CapturedRunContext.jsx';
 import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
 import { ActivityTypeIcon } from '../components/ActivityTypeIcon.jsx';
+import { RunCoordination } from '../components/RunCoordination.jsx';
+import { recordedWorkEvents } from '../lib/run-coordination.js';
 import { runActivityType } from '../lib/activity-icons.js';
 import { lazy, Suspense, useState } from "react";
 import { Play, Square, Terminal, ShieldCheck, Check, X, ArrowRight, Download, Clock, MessageCircle, FileText, Plus, FlaskConical, Pencil, Pin, PinOff, Archive, RotateCcw } from "../components/icons.jsx";
@@ -359,7 +361,7 @@ export function WorkView() {
   const runs = data.runs
     .toSorted(byUpdated)
     .filter((run) => filter === 'archived' ? Boolean(run.archived_at) : !run.archived_at && (filter === 'all' || filter === 'active' && activeRun(run) || filter === 'finished' && !activeRun(run)));
-  const run = runs.find((item) => item.id === page.id) ?? runs[0];
+  const run = page.id ? data.runs.find(item => item.id === page.id) : runs[0];
   const starred = item => organization.favorites.some(favorite => favorite.view === 'work' && favorite.id === item.id);
   const updateRun = (item, patch, message) => perform(() => talvoriActions.updateRun(item.id, patch), message);
   const approvals = data.approvals.filter(
@@ -390,8 +392,8 @@ export function WorkView() {
   return (
     <main className="page work-page">
       <PageHeader
-        title="Runs"
-        description="See what’s happening, review requests, and keep every session in view."
+        title="Active work"
+        description="Recorded progress, tool activity and reviewed follow-ups. Conversations stay open while agents work."
       >
         {data.runs.length ? (
           <Button variant="primary" icon={Play} onClick={() => startSession()}>
@@ -531,7 +533,7 @@ export function WorkView() {
                     <span className="muted">{events.length} events</span>
                   </div>
                   {events.length ? (
-                    events.map((event) => (
+                    recordedWorkEvents(events).map((event) => (
                       <div key={event.id} className="event-row">
                         <span className="event-marker">
                           <ActivityTypeIcon workspaceId={workspace.id} type={runActivityType(event)} size={15} />
@@ -541,6 +543,7 @@ export function WorkView() {
                           {event.payload?.command ? (
                             <code>{event.payload.command}</code>
                           ) : null}
+                          {event.payload?.output ? <details><summary>Command output</summary><pre tabIndex={0}>{String(event.payload.output).slice(-24000)}</pre></details> : null}
                           {event.type?.includes("error") &&
                           event.payload?.message ? (
                             <p className="error-text">
@@ -565,6 +568,9 @@ export function WorkView() {
                     </p>
                   )}
                 </div>
+                {events.length > 300 ? <p className="muted">Showing the latest 300 public activity records. Export retains recorded history.</p> : null}
+                <p className="muted">This timeline contains observed events and public progress messages—not private model reasoning. Tools and subtasks appear only when the provider actually reports them.</p>
+                {run.mode === 'live' ? <RunCoordination key={`coordination:${run.id}`} run={run} /> : null}
                 {output ? (
                   <section className="session-output">
                     <h3>Agent output</h3>

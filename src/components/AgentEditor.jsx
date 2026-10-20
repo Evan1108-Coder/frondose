@@ -9,6 +9,7 @@ import { AGENT_PRESETS, AGENT_REASONING_OPTIONS, agentDefaultChoices, agentFormP
 import { val } from "../lib/model.js";
 import { AgentIdentity } from "./AgentIdentity.jsx";
 import { Form } from "./Form.jsx";
+import { ImageField } from './ImageField.jsx';
 import "./agent-editor.css";
 
 const PRESET_ICONS = { build: Hammer, review: FileText, research: Search };
@@ -162,6 +163,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
             <Field label="Name">
               <input {...defaultField('name', 'Name')} autoFocus name="name" required maxLength={200} value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="e.g. Code reviewer" disabled={busy} aria-invalid={validation?.field === "name" || undefined} />
             </Field>
+            <ImageField label="Agent picture" value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} />
             <Field label="Description">
               <input {...defaultField('description', 'Description')} name="description" maxLength={1000} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder="A short description of what this agent does" disabled={busy} />
             </Field>

@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowRight, CircleCheck, CircleAlert, X, Menu, ChevronRight, RotateCcw, LoaderCircle, Pin, PinOff } from "./components/icons.jsx";
+import { ArrowRight, CircleCheck, CircleAlert, X, Menu, RotateCcw, LoaderCircle, Pin, PinOff } from "./components/icons.jsx";
 import { talvoriActions, useTalvoriData, useTalvoriStatus } from "./data/useTalvori.js";
 import { apiRequest } from './data/api.js';
 import {
@@ -55,6 +55,7 @@ import { favoriteForPage, favoriteKey, normalizeOrganization, readOrganization, 
 import { resolveShortcut } from "./lib/shortcuts.js";
 import { SidebarEditor } from "./components/SidebarEditor.jsx";
 import { NavigationHistory } from './components/NavigationHistory.jsx';
+import { Breadcrumbs } from './components/Breadcrumbs.jsx';
 import { GlobalToolbar } from './components/GlobalToolbar.jsx';
 import './components/sidebar-resize.css';
 import { canShowSidebarPreview, clampPagePreview, clampSidebarWidth, normalizeSidebarSize, shouldEnterSidebarPreview, sidebarWidthFromPointer } from './lib/sidebar-size.js';
@@ -71,6 +72,7 @@ const LibraryView = lazy(() => import('./views/Library.jsx').then(module => ({ d
 const UpdatesView = lazy(() => import('./views/Updates.jsx').then(module => ({ default: module.UpdatesView })));
 const SkillsView = lazy(() => import('./views/Skills.jsx').then(module => ({ default: module.SkillsView })));
 const WorkflowsView = lazy(() => import('./views/Workflows.jsx').then(module => ({ default: module.WorkflowsView })));
+const Reader = lazy(() => import('./views/Reader.jsx').then(module => ({ default: module.Reader })));
 
 function readPage() {
   return parsePage(location.hash);
@@ -120,7 +122,7 @@ export function App() {
     return () => window.removeEventListener('resize', measure);
   }, []);
   useEffect(() => { if (!canShowSidebarPreview(viewport.width, viewport.height)) setPreviewMode(false); }, [viewport.width, viewport.height]);
-  const previewActive = previewMode && canShowSidebarPreview(viewport.width, viewport.height) && page.view !== 'docs';
+  const previewActive = previewMode && canShowSidebarPreview(viewport.width, viewport.height) && !['docs', 'reader'].includes(page.view);
   const previewGeometry = previewActive ? clampPagePreview(previewPlacement, viewport.width, viewport.height) : null;
   const resizeSidebar = useCallback((clientX, returnWidth) => {
     if (shouldEnterSidebarPreview(clientX, window.innerWidth, window.innerHeight)) {
@@ -461,15 +463,11 @@ export function App() {
     connections: <Suspense fallback={<div className="app-loading" role="status">Opening connections…</div>}><ConnectionsView /></Suspense>,
     settings: <Suspense fallback={<div className="app-loading" role="status">Opening settings…</div>}><SettingsCenter /></Suspense>,
   }[page.view];
-  const currentProject = visible(data.projects).find(
-    (project) => project.id === (page.projectId ?? (["projects", "workbench"].includes(page.view) ? page.id : null)),
-  );
-  const currentTeam = page.view === 'teams' ? visible(data.teams).find(team => team.id === page.id) : null;
   const fieldDefinitions = fieldDefinitionsForWorkspace(data);
   return (
     <AppContext.Provider value={context}>
       <FieldDefaultsProvider workspaceId={workspace.id} definitions={fieldDefinitions}><IconColorsProvider><UnsavedUpdatesDialog />
-      <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${sidebarSize.hidden ? 'sidebar-auto-hidden' : ''} ${sidebarPeek ? 'sidebar-peek' : ''} ${previewActive ? 'sidebar-preview-mode' : ''} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''}`} style={previewGeometry ? { '--sidebar': `${viewport.width - 24}px`, '--preview-x': `${previewGeometry.x}px`, '--preview-y': `${previewGeometry.y}px`, '--preview-scale': previewGeometry.scale } : sidebarSize.width != null && (!collapsed || page.view === 'settings') ? { '--sidebar': `${sidebarSize.width}px` } : undefined}>
+      <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${sidebarSize.hidden ? 'sidebar-auto-hidden' : ''} ${sidebarPeek ? 'sidebar-peek' : ''} ${previewActive ? 'sidebar-preview-mode' : ''} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''} ${page.view === 'reader' ? 'in-reader' : ''}`} style={previewGeometry ? { '--sidebar': `${viewport.width - 24}px`, '--preview-x': `${previewGeometry.x}px`, '--preview-y': `${previewGeometry.y}px`, '--preview-scale': previewGeometry.scale } : sidebarSize.width != null && (!collapsed || page.view === 'settings') ? { '--sidebar': `${sidebarSize.width}px` } : undefined}>
         <a
           href="#main-content"
           className="skip-link"
@@ -480,7 +478,7 @@ export function App() {
         >
           Skip to content
         </a>
-        {page.view === 'docs' ? <ScreenBoundary key={`docs-${workspace.id}`}><Suspense fallback={<div className="app-loading" role="status">Opening documentation…</div>}><DocsView /></Suspense></ScreenBoundary> : <><Sidebar
+        {['docs', 'reader'].includes(page.view) ? <ScreenBoundary key={`${page.view}-${workspace.id}`}><Suspense fallback={<div className="app-loading" role="status">Opening documentation…</div>}>{page.view === 'reader' ? <Reader /> : <DocsView />}</Suspense></ScreenBoundary> : <><Sidebar
           key={workspace.id}
           collapsed={collapsed}
           setCollapsed={setCollapsed}
@@ -501,28 +499,21 @@ export function App() {
             >
               <Menu morphTo={mobileOpen ? X : Menu} />
             </IconButton>
-            <div className="breadcrumbs">
-              <span>{workspace.name}</span>
-              <ChevronRight />
-              {currentProject ? <>
-                <button onClick={() => navigate('projects')}>Projects</button><ChevronRight />
-                {page.view === 'projects' ? <strong>{currentProject.name}</strong> : <><button onClick={() => navigate('projects', currentProject.id)}>{currentProject.name}</button><ChevronRight /><strong>{NAV.find(item => item.id === page.view)?.label}</strong></>}
-              </> : currentTeam ? <><button onClick={() => navigate('teams')}>Areas</button><ChevronRight /><strong>{currentTeam.name}</strong></> : <strong>{NAV.find(item => item.id === page.view)?.label}</strong>}
-            </div>
+            <Breadcrumbs page={page} workspace={workspace} data={data} navigate={navigate} labels={Object.fromEntries(NAV.map(item => [item.id, item.label]))} />
             <NavigationHistory key={workspace.id} />
             {currentFavorite ? <IconButton label={isFavorite ? "Remove from favorites" : "Add to favorites"} className={`icon-button favorite-toggle ${isFavorite ? "is-favorite" : ""}`} aria-pressed={Boolean(isFavorite)} onClick={() => toggleFavorite(currentFavorite)}><Pin morphTo={isFavorite ? PinOff : Pin} /></IconButton> : null}
             <GlobalToolbar onSearch={() => setCommandOpen(true)} />
-            <div className="connection-health">
+            <div className="connection-health" role="status" aria-label={status.error || status.syncError ? 'Workspace connection needs attention' : status.pendingMutations ? 'Saving workspace changes' : 'Workspace connected'} title={status.error || status.syncError ? 'Connection needs attention' : 'Connected'}>
               <i
                 className={`live-dot ${status.error || status.syncError ? "offline" : ""}`}
               />
-              {status.pendingMutations
+              <span className="connection-health-label">{status.pendingMutations
                 ? "Saving…"
                 : status.syncError
                   ? "Sync interrupted"
                   : status.error
                     ? "Action failed"
-                  : "Connected"}
+                  : "Connected"}</span>
             </div>
           </header>
           <div id="main-content" className="main-scroll" tabIndex={-1}>

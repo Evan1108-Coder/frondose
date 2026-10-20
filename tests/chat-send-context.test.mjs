@@ -32,6 +32,7 @@ test('composer keeps a profile recipient selector and no inline review, model, o
   assert.doesNotMatch(composer, />Discuss<|>Inspect<|>Schedule<|Save follow-up draft|ModelChoice|☺/);
   assert.match(composer, />Chat</); assert.match(composer, /<Smile/);
   assert.doesNotMatch(agent, /ModelChoice|aria-label="AI model provider"|aria-label="Talvori Agent provider"/);
-  assert.match(agent, /agent_id: selectedAgent.id/);
+  assert.match(agent, /agent_id: requestedAgent.id/);
+  assert.doesNotMatch(agent, /<Conversation|sendChatTurn/);
   assert.match(chat, /Schedule current message/);
 });

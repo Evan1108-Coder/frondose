@@ -1,0 +1,33 @@
+.rumbo-app.in-reader { display: block; padding: 0; }
+.reader-shell { height: 100dvh; display: flex; flex-direction: column; min-width: 0; background: var(--bg); color: var(--text); }
+.reader-topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 28px; min-height: 64px; border-bottom: 1px solid var(--border); }
+.reader-back, .reader-breadcrumb, .reader-breadcrumb > button { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.reader-back { min-height: 36px; color: var(--text); font-size: 13px; text-align: left; }
+.reader-back > svg { width: 18px; height: 18px; flex: 0 0 18px; }
+.reader-breadcrumb { color: var(--muted); font-size: 12px; }
+.reader-breadcrumb > button { color: var(--muted); min-height: 36px; }
+.reader-breadcrumb > button:hover { color: var(--text); }
+.reader-breadcrumb > button > span { max-width: 180px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.reader-breadcrumb > strong { font-weight: 500; color: var(--text); }
+.reader-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; }
+.reader-document { width: min(100%, 820px); margin: 0 auto; padding: 56px 36px 80px; min-width: 0; }
+.reader-document-heading { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 30px; }
+.reader-document-heading > svg { width: 26px; height: 26px; flex: 0 0 26px; margin-top: 6px; color: var(--muted); }
+.reader-document h1 { font-size: clamp(24px, 3.4vw, 36px); font-weight: 600; line-height: 1.25; letter-spacing: -.025em; overflow-wrap: anywhere; margin: 0; }
+.reader-document h1:focus { outline: none; }
+.reader-document .document-content { font-size: 16px; line-height: 1.75; overflow-wrap: anywhere; }
+.reader-version { color: var(--muted); font-size: 12px; margin: -18px 0 28px 42px; }
+.reader-loading, .reader-unavailable > p { color: var(--muted); line-height: 1.7; }
+.reader-unavailable h1 { margin-bottom: 16px; }
+.reader-unavailable > .button { margin-top: 12px; }
+.reader-plain { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; line-height: 1.75; }
+.reader-document-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); }
+@media (max-width: 600px) {
+  .reader-topbar { padding: 10px 16px; gap: 12px; min-height: 60px; }
+  .reader-breadcrumb > button > span { display: none; }
+  .reader-document { padding: 32px 20px 48px; }
+  .reader-document-heading { gap: 12px; margin-bottom: 24px; }
+  .reader-document-heading > svg { width: 22px; height: 22px; flex-basis: 22px; margin-top: 3px; }
+  .reader-version { margin-left: 34px; }
+  .reader-document-footer .button { min-height: 40px; }
+}

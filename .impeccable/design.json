@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-20T03:36:28Z",
+  "title": "Design System: Talvori",
+  "extensions": {
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Observed exit/deceleration easing for controls, disclosures, overlays, and route entrances." },
+      { "name": "ease-in-out", "value": "cubic-bezier(0.77, 0, 0.175, 1)", "purpose": "Incumbent shared easing token; not a mandate to animate a new surface." },
+      { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Mobile and auto-hidden navigation drawer movement." },
+      { "name": "motion-feedback", "value": "100ms", "purpose": "Shared immediate-control feedback." },
+      { "name": "motion-popover", "value": "160ms", "purpose": "Popover, select, tooltip, and toast transitions; zero in reduced motion." },
+      { "name": "motion-dialog", "value": "200ms", "purpose": "Dialog transform transition; zero in reduced motion." },
+      { "name": "motion-fade", "value": "160ms", "purpose": "Overlay/disclosure fade; 80ms in reduced motion." },
+      { "name": "motion-disclosure", "value": "200ms", "purpose": "Bounded navigation tree expansion; zero in reduced motion." },
+      { "name": "motion-chevron", "value": "160ms", "purpose": "Incumbent disclosure timing token; zero in reduced motion." },
+      { "name": "motion-travel", "value": "4px", "purpose": "Overlay/disclosure travel; zero in reduced motion." },
+      { "name": "motion-scale", "value": ".98", "purpose": "Dialog starting/closing scale; one in reduced motion." },
+      { "name": "motion-popover-scale", "value": ".97", "purpose": "Popover starting scale; one in reduced motion." },
+      { "name": "mobile-drawer", "value": "220ms var(--ease-drawer)", "purpose": "Observed mobile sidebar transition, disabled for keyboard and reduced motion." },
+      { "name": "route-entrance", "value": "opacity 180ms var(--ease-out), transform 240ms var(--ease-out)", "purpose": "Existing keyed route entrance, with 8px starting travel and 25ms/45ms child delays. Recorded source behavior, not a new rule for page or live-data animation." },
+      { "name": "chat-work-pulse", "value": "1.5s ease-in-out infinite", "purpose": "Observed working dot opacity pulse; disabled by prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "shell-wide", "value": "min-width: 1400px" },
+      { "name": "shell-intermediate", "value": "min-width: 801px and max-width: 1100px" },
+      { "name": "shell-drawer", "value": "max-width: 800px" },
+      { "name": "global-search-icon", "value": "max-width: 760px" },
+      { "name": "reader-and-body-mobile", "value": "max-width: 600px" },
+      { "name": "conversation-compact", "value": "max-width: 540px" },
+      { "name": "global-language-hidden", "value": "max-width: 400px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Shared indigo action; dimensions are minimums, not fixed clipping heights.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Save changes</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 14px;border:1px solid var(--accent,#6266d5);border-radius:7px;background:var(--accent,#6266d5);color:var(--accent-text,#ffffff);font:550 14px/1.35 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;white-space:nowrap;cursor:pointer;transition:background-color 100ms,border-color 100ms,color 100ms,transform 60ms cubic-bezier(.23,1,.32,1)}.ds-primary:hover:not(:disabled){background:var(--accent-hover,#585dc4);border-color:var(--accent-hover,#585dc4)}.ds-primary:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}.ds-primary:active:not(:disabled){transform:scale(.98)}.ds-primary:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}.ds-primary:active:not(:disabled){transform:none}}:root[data-motion='reduced'] .ds-primary,:root[data-input-modality='keyboard'] .ds-primary{transition:none;transform:none}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral shared action with the same anatomy as the primary button.",
+      "html": "<button class=\"ds-secondary\" type=\"button\">Open original</button>",
+      "css": ".ds-secondary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 14px;border:1px solid var(--border,#2a2e33);border-radius:7px;background:var(--surface,#191a1b);color:var(--text,#f7f8f8);font:550 14px/1.35 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;transition:background-color 100ms,border-color 100ms,color 100ms,transform 60ms cubic-bezier(.23,1,.32,1)}.ds-secondary:hover:not(:disabled){background:var(--hover,#232326)}.ds-secondary:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}.ds-secondary:active:not(:disabled){transform:scale(.98)}.ds-secondary:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none}.ds-secondary:active:not(:disabled){transform:none}}:root[data-motion='reduced'] .ds-secondary,:root[data-input-modality='keyboard'] .ds-secondary{transition:none;transform:none}"
+    },
+    {
+      "name": "Ghost button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Low-emphasis action using neutral text and tonal hover feedback.",
+      "html": "<button class=\"ds-ghost\" type=\"button\">Clear search</button>",
+      "css": ".ds-ghost{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 14px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--muted,#a1a6af);font:550 14px/1.35 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;transition:background-color 100ms,border-color 100ms,color 100ms}.ds-ghost:hover:not(:disabled){background:var(--hover,#232326)}.ds-ghost:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}.ds-ghost:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-ghost{transition:none}}"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "search",
+      "description": "The wrapper owns the single focus border around both icon and field.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input type=\"search\" aria-label=\"Search conversations\" placeholder=\"Search conversations…\"></label>",
+      "css": ".ds-search{position:relative;display:flex;align-items:center;min-width:0;border:1px solid var(--border,#2a2e33);border-radius:8px;color:var(--text,#f7f8f8)}.ds-search>svg{position:absolute;left:12px;width:16px;height:20px;color:var(--faint,#8a8f98);pointer-events:none}.ds-search>input{width:100%;min-width:0;min-height:35px;height:35px;padding:10px 12px 10px 35px;border:0;border-radius:8px;background:transparent;color:inherit;font:12px/1.5 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;outline:none;box-shadow:none}.ds-search>input::placeholder{color:var(--faint,#8a8f98)}.ds-search:focus-within{border-color:var(--focus,#969aff);outline:none}.ds-search>input:focus-visible{outline:none;box-shadow:none}@media(forced-colors:active){.ds-search:focus-within{border-color:Highlight}}"
+    },
+    {
+      "name": "Navigation row",
+      "kind": "nav",
+      "refersTo": "navigation-row",
+      "description": "Effective standard navigation cadence after organization.css overrides.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Workspace\"><button type=\"button\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z\"/></svg><span>Conversations</span></button></nav>",
+      "css": ".ds-nav>button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:6px 8px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--muted,#a1a6af);font:500 14px/20px 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:normal;cursor:pointer;transition:color 120ms ease-out,background-color 120ms ease-out}.ds-nav>button>svg{width:16px;height:16px;flex:none}.ds-nav>button>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-nav>button[aria-current='page']{background:var(--selected,#28282c);color:var(--text,#f7f8f8)}.ds-nav>button:hover{background:var(--hover,#232326);color:var(--text,#f7f8f8)}.ds-nav>button:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px;color:var(--text,#f7f8f8)}"
+    },
+    {
+      "name": "Reaction pill",
+      "kind": "chip",
+      "refersTo": "reaction",
+      "description": "Observed message reaction shape; the sample is an inert visual preview.",
+      "html": "<button class=\"ds-reaction\" type=\"button\" aria-label=\"React with thumbs up\"><span aria-hidden=\"true\">👍</span><span>1</span></button>",
+      "css": ".ds-reaction{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:4px 9px;border:1px solid var(--border-strong,#3e3e44);border-radius:9999px;background:var(--surface,#191a1b);color:var(--secondary,#d0d6e0);font:11px/1.5 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;transition:background-color 120ms,color 120ms}.ds-reaction>span:first-child{font-size:19px}.ds-reaction:hover{background:var(--hover,#232326);color:var(--text,#f7f8f8)}.ds-reaction:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}"
+    },
+    {
+      "name": "Website result card",
+      "kind": "card",
+      "refersTo": "website-result",
+      "description": "Bounded source result with a mark slot, readable copy, and an outbound affordance.",
+      "html": "<a class=\"ds-result\" href=\"#source\"><span class=\"ds-result-mark\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3a18 18 0 0 1 0 18 18 18 0 0 1 0-18\"/></svg></span><span><strong>Linked website</strong><small>Source title and description</small></span><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><path d=\"M15 3h6v6m0-6L10 14\"/><path d=\"M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5\"/></svg></a>",
+      "css": ".ds-result{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--border,#2a2e33);border-radius:12px;color:var(--text,#f7f8f8);background:transparent;text-decoration:none;font:15px/1.5 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;transition:background-color 120ms,color 120ms}.ds-result-mark{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex:0 0 36px;padding:3px;border-radius:5px;background:var(--brand-logo-background,#ffffff);color:var(--brand-logo-fallback,#34383d)}.ds-result-mark>svg{width:18px;height:18px}.ds-result>span:nth-child(2){min-width:0;flex:1}.ds-result strong,.ds-result small{display:block;overflow-wrap:anywhere}.ds-result strong{font-weight:550}.ds-result small{color:var(--muted,#a1a6af);font-size:13px;margin-top:4px}.ds-result>svg{width:16px;height:16px;flex:none}.ds-result:hover{background:var(--hover,#232326)}.ds-result:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}@media(max-width:600px){.ds-result{padding:12px}}"
+    },
+    {
+      "name": "User message bubble",
+      "kind": "custom",
+      "refersTo": "conversation-user-bubble",
+      "description": "Conversation-only fit-content right alignment; dark neutral is preserved in either theme.",
+      "html": "<div class=\"ds-user-row\"><div class=\"ds-user-bubble\">Review the launch notes and show the code changes.</div></div>",
+      "css": ".ds-user-row{display:flex;justify-content:flex-end;min-width:0}.ds-user-bubble{width:fit-content;max-width:84%;padding:12px 18px;border-radius:20px 20px 5px 20px;background:#2c2c2c;color:#f5f5f5;font:15px/1.65 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow-wrap:anywhere}@media(max-width:600px){.ds-user-bubble{max-width:94%;padding:10px 14px}}"
+    },
+    {
+      "name": "Conversation composer",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "Single bordered text-entry wrapper; this snippet previews anatomy, not provider execution.",
+      "html": "<div class=\"ds-compose\"><textarea aria-label=\"Message\" placeholder=\"Write a note or type / for commands…\"></textarea><div class=\"ds-compose-controls\"><span>Note · only saved here</span><button type=\"button\">Save note</button></div></div>",
+      "css": ".ds-compose{padding:18px 16px 12px;border:1px solid var(--border-strong,#3e3e44);border-radius:16px;background:var(--surface,#191a1b);box-shadow:0 12px 32px rgb(0 0 0 / .08);transition:border-color 150ms ease,box-shadow 150ms ease;font-family:'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text,#f7f8f8)}.ds-compose:focus-within{border-color:color-mix(in srgb,var(--text,#f7f8f8) 32%,var(--border-strong,#3e3e44))}.ds-compose>textarea{display:block;resize:none;width:100%;min-height:78px;max-height:220px;padding:0 3px 16px;border:0;border-radius:0;outline:0;box-shadow:none;background:transparent;color:inherit;font:16px/1.6 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.ds-compose>textarea::placeholder{color:var(--muted,#a1a6af)}.ds-compose-controls{display:flex;align-items:center;justify-content:space-between;gap:12px}.ds-compose-controls>span{font-size:12px;color:var(--muted,#a1a6af)}.ds-compose-controls>button{min-height:36px;padding:7px 12px;border:1px solid var(--accent,#6266d5);border-radius:7px;background:var(--accent,#6266d5);color:var(--accent-text,#ffffff);font:550 13px/1.35 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer}.ds-compose-controls>button:hover{background:var(--accent-hover,#585dc4);border-color:var(--accent-hover,#585dc4)}.ds-compose-controls>button:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}@media(max-width:540px){.ds-compose{padding:12px 10px 8px}.ds-compose>textarea{min-height:44px;max-height:140px;padding-bottom:8px}}"
+    },
+    {
+      "name": "Conversation identity frame",
+      "kind": "custom",
+      "refersTo": "conversation-avatar",
+      "description": "Padded circular frame. Production uses the actual provider/custom mark, never this generic preview glyph as a brand substitute.",
+      "html": "<span class=\"ds-avatar\" aria-hidden=\"true\"><span class=\"ds-identity\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\"/><circle cx=\"12\" cy=\"7\" r=\"4\"/></svg></span></span>",
+      "css": ".ds-avatar{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 40px;border:1px solid var(--border,#2a2e33);border-radius:9999px;color:var(--muted,#a1a6af);background:var(--surface,#191a1b)}.ds-identity{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;border-radius:50%;overflow:hidden}.ds-identity>svg{width:20px;height:20px;flex:none}@media(max-width:600px){.ds-avatar{width:36px;height:36px;flex-basis:36px}}"
+    }
+  ]
+}

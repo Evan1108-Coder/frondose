@@ -16,10 +16,13 @@ test('published mentions offer explicit connected-profile handoffs without runni
   assert.doesNotMatch(save, /prepareTalvoriAgentEntry|sendChatTurn|createChat/);
 });
 test('addressed recipient survives delayed provider loading and never falls back to a different agent', () => {
-  assert.match(agent, /current \|\| peekTalvoriAgentEntry\(workspace.id\)\?\.agentId \|\| saved\?\.agent_id/);
-  assert.match(agent, /const selectedAgent = requestedAgentId \? recipients.find/);
-  assert.match(agent, /Selected agent unavailable · choose another/);
-  assert.match(agent, /agent_id: selectedAgent.id/);
+  assert.match(agent, /peekTalvoriAgentEntry\(workspace.id\) \|\| \(restored\?\.instruction/);
+  assert.match(agent, /agentId: restored.agent_id/);
+  assert.match(agent, /pending\?\.agentId && !requestedReady/);
+  assert.match(agent, /Talvori will not substitute another identity/);
+  assert.match(agent, /agent_id: requestedAgent.id/);
+  assert.match(agent, /!occupied && typeof draft\?\.instruction/);
+  assert.match(agent, /navigate\('chats', chat.id\)/);
   assert.doesNotMatch(entry, /choose a model|Ask Talvori agent|Prepare in Talvori agent/);
   assert.match(entry, /Send captures the current context/);
   for (const text of [activity, agent, entry]) assert.doesNotThrow(() => transformSync(text, { loader: 'jsx', format: 'esm' }));

@@ -14,7 +14,7 @@ import { createNativeAgentToolBridge } from './native-agent-tool-bridge.mjs';
 import { createNativeToolApply } from './native-tool-apply.mjs';
 import { buildTodaySummary } from './today-service.mjs';
 import { installAgentProfiles, validateAgentProfile, snapshotAgentProfile, bumpAgentProfileVersion } from './agent-profiles.mjs';
-import { talvoriAgentRoute, runModelSelection, assertTalvoriChatSource, isTalvoriAgentChat } from './talvori-agent-service.mjs';
+import { talvoriAgentRoute, runModelSelection, assertTalvoriChatSource, isTalvoriAgentChat, assertTalvoriAgentBinding } from './talvori-agent-service.mjs';
 import { installAgentProfileHistory, agentProfileHistoryRoute } from './agent-profile-history.mjs';
 import { installRunUsage, beginRunUsage, recordRunUsage, finalizeRunUsage, finalizeInterruptedRunUsage, runUsageRoute } from './run-usage-service.mjs';
 import { installKnowledgeConflicts, knowledgeConflictRoute, getKnowledgeConflictWarnings } from './knowledge-conflicts.mjs';
@@ -44,6 +44,7 @@ import { safeAgentSettings } from './agent-workspace-context.mjs';
 import { authorizeLocalAction, executeLocalAction, assertActionFresh, localActionReadable } from './agent-action-catalog.mjs';
 import { installScheduledWork, createScheduledWorkService, scheduledWorkRoute } from './scheduled-work-service.mjs';
 import { installEventWork, createEventWorkService, eventWorkRoute } from './event-work-service.mjs';
+import { installRunCoordination, runCoordinationRoute } from './run-coordination-service.mjs';
 import { createEventWorkPolicy } from './event-work-policy.mjs';
 import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider, isScopedAiProvider } from '../src/lib/ai-providers.js';
 import { createCopilotBridge } from './copilot-bridge.mjs';
@@ -90,7 +91,7 @@ const TABLE_CONFIG = {
     required: ['chat_id', 'content'],
   },
   agents: {
-    fields: ['workspace_id', 'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions', 'working_directory', 'status', 'model', 'reasoning_effort', 'memory_policy', 'context_source_ids_json', 'default_area_id', 'default_project_id', 'permission_policy', 'output_behavior', 'color', 'archived_at'],
+    fields: ['workspace_id', 'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions', 'working_directory', 'status', 'model', 'reasoning_effort', 'memory_policy', 'context_source_ids_json', 'default_area_id', 'default_project_id', 'permission_policy', 'output_behavior', 'color', 'image_url', 'archived_at'],
     required: ['name'],
   },
   memory_notes: {
@@ -471,6 +472,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installRunContextStore(db);
   installScheduledWork(db);
   installEventWork(db);
+  installRunCoordination(db);
   installSkillReliability(db);
   installAcceptanceEvidence(db);
   manualWorkflows.installManualWorkflows(db);
@@ -748,7 +750,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const inspection = await prepareAgentContext({ actor, workspaceId: input.workspace_id, projectId: input.project_id, taskId: input.task_id, chatId: input.chat_id, agent,
       prompt: input.prompt, includeMemory: input.include_memory, includeChat: input.include_chat, includeWorkspace: input.include_workspace,
       sourceMessageId: input.source_message_id, currentAttachments: input.attachments, contextPackIds: input.context_pack_ids, areaId: input.area_id,
-      permissionMode: input.permission_mode, workMode: input.work_mode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, nativeTools: input.native_tools, nativeToolNames, includeRuntime: true, runtimeNonce });
+      permissionMode: input.permission_mode, workMode: input.work_mode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, nativeTools: input.native_tools, nativeToolNames, includeRuntime: true, runtimeNonce, historical });
     if (input.workflow_step && !historical) {
       if (!manualWorkflows.manualWorkflowPreparedSourceAccess) throw validationError('Workflow context preparation is not available.');
       const extra = manualWorkflows.manualWorkflowPreparedSourceAccess({ db: getDb(), workflowStep: input.workflow_step, actor, allowed: access.allowed });
@@ -763,8 +765,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     }
     return { ...inspection, request: input };
   }
-  async function prepareAgentContext({ actor, workspaceId, projectId, taskId, chatId, agent, prompt, includeWorkspace = false, includeMemory = true, includeChat = true, sourceMessageId, currentAttachments = [], contextPackIds = [], areaId, permissionMode = 'read-only', workMode = 'conversation', timeoutMs = 1800000, model, reasoningEffort, nativeTools: enableNative = false, nativeToolNames = null, includeRuntime = false, runtimeNonce }) {
+  async function prepareAgentContext({ actor, workspaceId, projectId, taskId, chatId, agent, prompt, includeWorkspace = false, includeMemory = true, includeChat = true, sourceMessageId, currentAttachments = [], contextPackIds = [], areaId, permissionMode = 'read-only', workMode = 'conversation', timeoutMs = 1800000, model, reasoningEffort, nativeTools: enableNative = false, nativeToolNames = null, includeRuntime = false, runtimeNonce, historical = false }) {
     const db = getDb();
+    if (!historical) assertTalvoriAgentBinding(db,workspaceId,agent,actor,access.allowed);
     const selectedSource = chatId ? assertTalvoriChatSource(db, db.prepare('SELECT * FROM chats WHERE id=?').get(chatId), actor, access.allowed) : null;
     const connectionSummaries = awarenessEnabled(db, workspaceId) && agent?.id
       ? await connectionPlatform.agentContext(workspaceId, agent.id, actor).catch((error) => { if (error.statusCode === 403) return []; throw error; })
@@ -1041,6 +1044,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const providerConnection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(agent?.provider_connection_id || `conn_${provider}`);
     if (agent?.provider_connection_id && (!providerConnection || providerConnection.provider !== provider)) throw validationError('The agent’s provider connection is unavailable. Edit its profile before running.');
     if (body.mode === 'live') {
+      assertTalvoriAgentBinding(db,workspaceId,agent,actor,access.allowed);
       if (agent && !agent.provider_connection_id) return fail(res, 409, 'profile_unbound', 'Choose the shared provider connection in this agent’s profile before starting live work.');
       const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
       if (liveRuns.size >= (defaults.concurrentRuns || 2)) return fail(res, 409, 'concurrency_limit', 'The simultaneous session limit has been reached. Wait for a session to finish or increase the limit in Settings.');
@@ -1577,6 +1581,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         for (const field of ['sender_type', 'sender_id', 'sender_name', 'senderType', 'senderId', 'senderName', 'chat_id', 'chatId']) delete body[field];
       }
       const accessDecision = access.check({ actor, path, method: req.method, url, body });
+      if (await runCoordinationRoute({ db, req, res, path, body, actor, allowed: access.allowed, send, addRunEvent })) return;
       const runContextMatch = path.match(/^\/runs\/([^/]+)\/context$/);
       if (runContextMatch && req.method === 'GET') {
         const captured = readRunContext(db, runContextMatch[1]);

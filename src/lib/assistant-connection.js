@@ -1,4 +1,9 @@
-/** Catalog presence or a saved credential is not a ready AI connection. */
+/** No implicit fallback: the account must be explicitly selected for Talvori. */
+export function selectedAssistantConnection(state) {
+  if (state?.preferences?.provider_selected !== true || !state.preferences.provider || !Array.isArray(state.providers)) return null;
+  return state.providers.find(provider => provider?.provider === state.preferences.provider) || null;
+}
+
 export function hasConnectedAssistantAI(state) {
-  return Array.isArray(state?.providers) && state.providers.some(provider => provider?.connected === true);
+  return selectedAssistantConnection(state)?.connected === true;
 }

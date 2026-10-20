@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createLocalApi } from '../server/local-api.mjs';
 import { actionCatalog, validateLocalAction, actionPermissionTargets, authorizeLocalAction, assertActionFresh, executeLocalAction, localActionReadable } from '../server/agent-action-catalog.mjs';
-import { captureAgentActions, agentAwarenessRoute, actionProtocol, workspaceAwareness, directActionPolicy, executeDirectAgentAction } from '../server/agent-awareness.mjs';
+import { captureAgentActions, agentAwarenessRoute, actionProtocol, workspaceAwareness, directActionPolicy, executeDirectAgentAction, installAgentAwareness } from '../server/agent-awareness.mjs';
 import { captureRunContext } from '../server/run-context-store.mjs';
 
 function fixture(t) {
@@ -35,7 +35,7 @@ function fixture(t) {
 
 test('typed catalog and runtime protocol describe only executable local reviewed actions',t=>{
   const {db} = fixture(t), catalog = actionCatalog();
-  assert.equal(catalog.length,22);
+  assert.equal(catalog.length,23);
   assert.equal(new Set(catalog.map(item=>item.id)).size,catalog.length);
   for (const item of catalog) {assert.equal(item.review_required,true);assert.equal(item.execution,item.type === 'schedule.create' ? 'human_schedule_confirmation' : 'local');assert.equal(item.schema.additionalProperties,false);}
   assert.match(actionProtocol('nonce'),/record.create/); assert.match(actionProtocol('nonce'),/chat.note/);assert.match(actionProtocol('nonce'),/never by an agent action block/);
@@ -186,13 +186,13 @@ test('shared executor requires caller receipt transaction and rolls failed write
   assert.equal(db.prepare('SELECT count(*) n FROM documents WHERE workspace_id=?').get('ws').n,0);
 });
 
-async function enableDirect(f,enabled=true,actor=f.actor) {
+async function enableDirect(f,enabled=true,actor=f.actor,capabilityVersion) {
   let response;
-  await agentAwarenessRoute({db:f.db,req:{method:'POST'},res:{},path:'/agent-awareness',url:new URL('http://localhost'),readBody:async()=>({workspace_id:'ws',low_risk_actions:enabled}),send:(_res,_status,body)=>{response=body;},actor,allowed:f.allowed});
+  await agentAwarenessRoute({db:f.db,req:{method:'POST'},res:{},path:'/agent-awareness',url:new URL('http://localhost'),readBody:async()=>({workspace_id:'ws',low_risk_actions:enabled,...(capabilityVersion === undefined ? {} : {capability_version:capabilityVersion})}),send:(_res,_status,body)=>{response=body;},actor,allowed:f.allowed});
   return response.low_risk_actions;
 }
 function pinDirect(f,policy=directActionPolicy(f.db,'ws',f.actor)) {
-  captureRunContext(f.db,f.run.id,{finalPrompt:'Exact reviewed prompt',actionNonce:'nonce',manifest:{resolved:{workspace_id:'ws'},fingerprint:'fixture-reviewed',direct_action_policy:policy},sourceAccess:{sources:[]}});
+  captureRunContext(f.db,f.run.id,{finalPrompt:'Exact reviewed prompt',actionNonce:'nonce',manifest:{resolved:{workspace_id:'ws'},fingerprint:'fixture-reviewed',direct_action_policy:policy},sourceAccess:{version:1,workspace_id:'ws',sources:[],connections:[]}});
 }
 function directCapture(f,actions,options={}) {
   const text = `Requested.\n\`\`\`talvori-actions\n${JSON.stringify({nonce:'nonce',actions})}\n\`\`\``;
@@ -242,6 +242,63 @@ test('missing historical manifest, revocation and revoke/re-enable cannot author
     assert.equal(f.db.prepare('SELECT status FROM agent_action_requests').get().status,'pending',mode);
     assert.equal(f.db.prepare('SELECT count(*) n FROM tasks').get().n,1,mode);
   }
+});
+
+test('policy migration keeps existing enabled grants at their original capability version',t=>{
+  const db = new DatabaseSync(':memory:'); t.after(()=>db.close());
+  db.exec(`CREATE TABLE workspaces(id TEXT PRIMARY KEY);
+    CREATE TABLE agent_direct_action_policy(workspace_id TEXT NOT NULL,actor_id TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,version INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(workspace_id,actor_id));
+    INSERT INTO workspaces VALUES('ws');
+    INSERT INTO agent_direct_action_policy VALUES('ws','owner',1,7);`);
+  installAgentAwareness(db); installAgentAwareness(db);
+  assert.deepEqual(directActionPolicy(db,'ws',{id:'owner'}),{enabled:true,version:7,capability_version:1,actor_id:'owner',workspace_id:'ws'});
+});
+
+test('handoff direct authority requires a fresh explicit capability opt-in, not a software upgrade',async t=>{
+  for (const mode of ['legacy-policy','legacy-manifest','upgraded-old-turn','missing-captured-capability','unknown-capability','fresh-opt-in']) {
+    const f=fixture(t), now='2026-10-20T00:00:00.000Z';
+    f.db.prepare('UPDATE runs SET chat_id=? WHERE id=?').run('chat',f.run.id); f.run.chat_id='chat';
+    f.db.prepare('INSERT INTO chats(id,workspace_id,title,created_at,updated_at) VALUES(?,?,?,?,?)').run('target','ws','Destination',now,now);
+    const version = ['missing-captured-capability','fresh-opt-in'].includes(mode) ? 2 : undefined;
+    const policy = await enableDirect(f,true,f.actor,version);
+    if (mode === 'legacy-manifest' || mode === 'missing-captured-capability') delete policy.capability_version;
+    if (mode === 'unknown-capability') {
+      f.db.prepare('UPDATE agent_direct_action_policy SET capability_version=99').run();
+      policy.capability_version=99;
+    }
+    pinDirect(f,policy);
+    if (mode === 'upgraded-old-turn') await enableDirect(f,true,f.actor,2);
+    const proposal={type:'coordination.handoff',target_chat_id:'target',target_agent_id:'agent',content:'Review this narrow handoff next turn.'};
+    directCapture(f,[proposal]); directCapture(f,[proposal]);
+    const applied = mode === 'fresh-opt-in';
+    assert.equal(f.db.prepare('SELECT status FROM agent_action_requests').get().status,applied ? 'applied' : 'pending',mode);
+    assert.equal(f.db.prepare('SELECT count(*) n FROM run_coordination').get().n,applied ? 1 : 0,mode);
+    assert.equal(f.db.prepare('SELECT count(*) n FROM runs').get().n,1,mode);
+    assert.equal(f.db.prepare('SELECT count(*) n FROM messages').get().n,0,mode);
+    if (applied) {
+      const receipt=JSON.parse(f.db.prepare('SELECT result_json FROM agent_action_requests').get().result_json);
+      assert.equal(receipt.dispatched,false); assert.equal(receipt.authorization,'actor_low_risk_policy');
+    }
+  }
+});
+
+test('capability upgrades are bounded explicit grants and legacy clients cannot broaden policies',async t=>{
+  const f=fixture(t);
+  assert.equal((await enableDirect(f)).capability_version,1);
+  const upgraded=await enableDirect(f,true,f.actor,2);
+  assert.equal(upgraded.capability_version,2);
+  assert.equal((await enableDirect(f)).capability_version,1);
+  for (const version of [null,0,3,99,'2',2.5]) await assert.rejects(enableDirect(f,true,f.actor,version),/explicit supported low-risk/);
+  assert.match(actionProtocol('nonce',{enabled:true,capability_version:1}),/Handoff drafts are not included in this older opt-in/);
+  assert.match(actionProtocol('nonce',{enabled:true,capability_version:2}),/Recording a reversible cross-conversation handoff draft is also enabled/);
+  assert.match(actionProtocol('nonce',{enabled:true,capability_version:99}),/Every request requires human review/);
+});
+
+test('pre-capability reviewed manifests preserve only the originally enabled safe actions',async t=>{
+  const f=fixture(t), policy=await enableDirect(f);
+  delete policy.capability_version; pinDirect(f,policy);
+  directCapture(f,[{type:'record.create',resource:'tasks',fields:{title:'Legacy safe Route'}},{type:'agent.self_link',resource:'projects',id:'project'}]);
+  assert.deepEqual(f.db.prepare('SELECT status FROM agent_action_requests ORDER BY rowid').all().map(row=>row.status),['applied','applied']);
 });
 
 test('current source/target revocation and stale self-link target roll back writes and receipts',async t=>{

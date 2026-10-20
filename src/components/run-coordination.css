@@ -1,0 +1,26 @@
+.run-coordination { margin-top: 28px; min-width: 0; border-top: 1px solid var(--border); padding-top: 24px; }
+.run-coordination > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.run-coordination h3 { margin: 0 0 7px; font-size: 15px; }
+.run-coordination p { color: var(--secondary); line-height: 1.6; max-width: 72ch; }
+.run-coordination > header p { margin: 0; }
+.run-coordination article { padding: 18px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.run-coordination-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; font-size: 12px; }
+.run-coordination-meta strong { color: var(--text); font-size: 13px; }
+.run-coordination-meta span, .run-coordination-meta time, .run-coordination small { color: var(--secondary); }
+.run-coordination .run-coordination-content, .agent-action-handoff-content { margin: 0; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-coordination-form { display: grid; gap: 16px; margin-top: 22px; }
+.run-coordination-targets { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.run-coordination-form textarea { width: 100%; resize: vertical; min-height: 90px; }
+.run-coordination-submit { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; }
+.run-coordination-submit p { margin: 0; font-size: 12px; }
+.run-coordination-submit .button { flex: none; }
+.work-page .session-detail { min-width: 0; }
+.work-page .session-timeline details > summary { cursor: pointer; padding: 12px 0; color: var(--secondary); }
+.work-page .event-row pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); padding: 12px; border-radius: 8px; font: 12px/1.65 var(--font-mono,monospace); }
+@media (max-width: 640px) {
+  .run-coordination > header, .run-coordination-submit { flex-direction: column; }
+  .run-coordination-targets { grid-template-columns: minmax(0,1fr); }
+  .run-coordination > header > .button, .run-coordination-submit > .button { width: 100%; }
+  .work-page .event-row { grid-template-columns: 24px minmax(0,1fr); }
+  .work-page .event-row time { grid-column: 2; }
+}

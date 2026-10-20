@@ -2,10 +2,6 @@
 .agents-page .page-heading { margin-bottom: 28px; }
 .agents-page .page-heading h1 { font-size: 32px; letter-spacing: -.02em; }
 .agents-page .page-heading p { max-width: 640px; font-size: 15px; }
-.agent-identity { flex: 0 0 40px; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; color: var(--secondary); background: transparent; }
-.agent-identity svg { width: 22px; height: 22px; }
-.agent-identity.compact { flex-basis: 24px; width: 24px; height: 24px; border: 0; background: none; }
-.agent-identity.compact svg { width: 22px; height: 22px; }
 .agent-provider-strip { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px 24px; padding: 4px 0 20px; margin-bottom: 26px; border-bottom: 1px solid var(--border); }
 .agent-provider-summaries { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 28px; }
 .agent-provider-summary { display: inline-flex; align-items: center; gap: 9px; border: 0; padding: 4px; margin: -4px; border-radius: 6px; background: none; color: var(--secondary); font-size: 14px; }

@@ -5,6 +5,8 @@ import { apiRequest } from '../data/api.js';
 import { relative, visible } from '../lib/model.js';
 import './team-resources.css';
 import { ServiceLogo } from '../components/ServiceLogo.jsx';
+import { pageHash } from '../lib/navigation.js';
+import { readableResource } from '../lib/reader-content.js';
 
 const KINDS = { file: 'File', url: 'Web link', route: 'Route', project: 'Project', chat: 'Chat', document: 'Document', branch: 'GitHub branch' };
 const ICONS = { file: Paperclip, url: Link, route: Route, project: FolderKanban, chat: MessageSquareText, document: NotebookPen, branch: GitBranch };
@@ -20,7 +22,7 @@ function ResourceIcon({ item }) {
 }
 
 export function TeamResources({ team, compact = false, onViewAll }) {
-  const { data, navigate, notify } = useApp();
+  const { data, page, navigate, notify } = useApp();
   const [state, setState] = useState({ items: [], loading: true, error: null, storage_bytes: 0 });
   const [reload, setReload] = useState(0);
   const [query, setQuery] = useState('');
@@ -46,8 +48,11 @@ export function TeamResources({ team, compact = false, onViewAll }) {
     if (REFERENCES[item.kind]) {
       const [collection, view] = REFERENCES[item.kind];
       if (!visible(data[collection]).some(record => record.id === item.ref_id)) { notify('This linked item has been archived or removed. You can edit this resource to select another item.'); return; }
-      navigate(view, item.ref_id); return;
+      if (item.kind === 'document') navigate('reader', `document:${item.ref_id}`, { returnTo: pageHash(page.view, page.id, page) });
+      else navigate(view, item.ref_id);
+      return;
     }
+    if (readableResource(item)) { navigate('reader', `resource:${team.id}:${item.id}`, { returnTo: pageHash(page.view, page.id, page) }); return; }
     setSelection(item);
   }
   async function archiveResource(item, enabled) {

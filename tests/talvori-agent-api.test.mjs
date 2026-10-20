@@ -39,14 +39,15 @@ async function fixture(t, { onboard = true } = {}) {
   const workspace = (await call('/workspaces', { name: 'Talvori fixture' })).workspace;
   if (onboard) await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Talvori', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true } }, 'PATCH');
   const connect = async (provider = 'codex') => call(`/connections/${provider}/connect`, { method: 'existing' });
-  const create = (extra = {}) => call('/rumbo-agent/chats', { workspace_id: workspace.id, provider: 'codex', request_id: 'new-chat-fixture', ...extra });
+  const select = (provider = 'codex') => call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { provider, provider_selected: true, model: '', reasoning_effort: '' } }, 'PATCH');
+  const create = async (extra = {}) => { if (!extra.agent_id) await select(extra.provider || 'codex'); return call('/rumbo-agent/chats', { workspace_id: workspace.id, provider: 'codex', request_id: 'new-chat-fixture', ...extra }); };
   const inspect = (chat, agent, extra = {}) => ({ workspace_id: workspace.id, chat_id: chat.id, agent_id: agent.id, prompt: 'Explain this workspace carefully.', work_mode: 'conversation', permission_mode: 'read-only', ...extra });
   const send = async (input, extra = {}) => {
     const preview = (await call('/context/inspect', input)).result;
     const result = await call(`/chats/${input.chat_id}/turns`, { ...input, content: input.prompt, client_turn_id: 'rumbo-fixture-turn', context_inspection_id: preview.id, ...extra });
     return { ...result, preview };
   };
-  return { api, db, call, request, fake, workspace, connect, create, inspect, send };
+  return { api, db, call, request, fake, workspace, connect, select, create, inspect, send };
 }
 
 test('Talvori chat creation preserves a selected connected profile and its idempotent identity', async t => {
@@ -132,6 +133,94 @@ test('pre-onboarding preference records remain usable after upgrade and inherit 
   assert.equal(fake.launches.length, 0);
 });
 
+test('ready accounts never implicitly bind Talvori; legacy defaults and old personal conversations require explicit selection', async t => {
+  const { api, db, call, request, fake, workspace, connect, select, create, inspect } = await fixture(t);
+  await connect('codex'); await connect('claude');
+  const before = api.snapshot();
+  let current = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result;
+  assert.equal(current.preferences.provider, ''); assert.equal(current.preferences.provider_selected, false);
+  assert.equal(current.providers.filter(row => row.connected).length, 2);
+  const payload = { workspace_id: workspace.id, provider: 'codex', request_id: 'not-automatically-selected' };
+  assert.equal((await request('/rumbo-agent/chats', payload)).body.error.code, 'assistant_connection_required');
+  assert.equal(api.snapshot().chats.length, before.chats.length);
+  assert.equal(api.snapshot().agents.length, before.agents.length);
+  await select('codex'); const { chat, agent } = await create();
+  await call(`/agents/${agent.id}`, { instructions: 'Manually authored instructions must survive connection changes.' }, 'PATCH');
+  const legacy = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences;
+  delete legacy.provider_selected;
+  db.prepare('UPDATE settings SET value_json=? WHERE key=?').run(JSON.stringify(legacy), `rumboAgent:${workspace.id}`);
+  current = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result;
+  assert.equal(current.preferences.provider, 'codex'); assert.equal(current.preferences.provider_selected, false);
+  assert.equal((await request('/context/inspect', inspect(chat, agent))).body.error.code, 'assistant_connection_required');
+  assert.equal((await request(`/chats/${chat.id}/messages`)).status, 200, 'History remains readable while unbound');
+  await select('claude');
+  assert.equal((await request('/context/inspect', inspect(chat, agent))).body.error.code, 'assistant_connection_required', 'Another selected provider cannot silently receive this old profile’s work');
+  assert.equal(db.prepare('SELECT instructions FROM agents WHERE id=?').get(agent.id).instructions, 'Manually authored instructions must survive connection changes.');
+  await select('codex');
+  assert.equal((await request('/context/inspect', inspect(chat, agent))).status, 201);
+  assert.equal(fake.launches.length, 0);
+});
+
+test('explicit Talvori binding requires verified readiness and can be cleared without deleting history or unrelated profiles', async t => {
+  const { api, call, request, fake, workspace, connect, select, create } = await fixture(t);
+  assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { provider: 'codex', provider_selected: true } }, 'PATCH')).body.error.code, 'not_connected');
+  await connect('codex'); await select('codex'); const saved = await create();
+  const ordinary = (await call('/agents', { workspace_id: workspace.id, name: 'Independent assistant', provider: 'codex', provider_connection_id: 'conn_codex', instructions: 'Keep this authored profile.' })).agent;
+  await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { provider: '', provider_selected: false, model: '', reasoning_effort: '' } }, 'PATCH');
+  assert.ok(api.snapshot().chats.some(row => row.id === saved.chat.id));
+  assert.ok(api.snapshot().agents.some(row => row.id === saved.agent.id));
+  const other = await create({ agent_id: ordinary.id, request_id: 'ordinary-unaffected-by-personal-binding' });
+  assert.equal(other.agent.id, ordinary.id);
+  assert.equal(fake.launches.length, 0);
+});
+
+test('clearing personal binding blocks central launches but does not erase readable captured context', async t => {
+  const {db,call,request,fake,workspace,connect,create,inspect,send}=await fixture(t);
+  await connect(); const {chat,agent}=await create(); const input=inspect(chat,agent);
+  await send(input);
+  let run;
+  for(let i=0;i<80;i++){run=db.prepare('SELECT * FROM runs WHERE chat_id=? ORDER BY created_at DESC LIMIT 1').get(chat.id);if(run?.status==='completed')break;await new Promise(resolve=>setTimeout(resolve,10));}
+  assert.equal(run.status,'completed');
+  await call('/rumbo-agent/preferences',{workspace_id:workspace.id,preferences:{provider:'',provider_selected:false}},'PATCH');
+  assert.equal((await request(`/runs/${run.id}/context`)).status,200,'Historical context reads remain allowed under their source ACLs');
+  const blocked=await request('/runs',{...input,mode:'live'});
+  assert.equal(blocked.status,409);assert.equal(blocked.body.error.code,'assistant_connection_required');
+  assert.equal(fake.launches.length,1);
+});
+
+test('a scheduled personal-agent turn rechecks explicit binding at due time',async t=>{
+  const {api,db,call,fake,workspace,connect,create,inspect}=await fixture(t);
+  await connect();const {chat,agent}=await create();const input=inspect(chat,agent);
+  const preview=(await call('/context/inspect',input)).result;
+  const localTime=new Date(Date.now()+120000).toISOString().slice(0,16);
+  const schedule=(await call('/scheduled-work',{workspace_id:workspace.id,kind:'message',payload:{chat_id:chat.id,agent_id:agent.id,content:input.prompt,attachments:[]},local_time:localTime,timezone:'UTC',recurrence:'none',request_id:'personal-binding-schedule',context_inspection_id:preview.id})).result;
+  await call('/rumbo-agent/preferences',{workspace_id:workspace.id,preferences:{provider:'',provider_selected:false}},'PATCH');
+  db.prepare('UPDATE scheduled_work SET next_due_at=? WHERE id=?').run(new Date(Date.now()-1000).toISOString(),schedule.id);
+  await api.dispatchScheduledWork();
+  const history=(await call(`/scheduled-work/${schedule.id}`)).result.history;
+  assert.equal(history[0].status,'failed');assert.equal(fake.launches.length,0);
+});
+
+test('agent names and bounded uploaded pictures version independently of provider identity, and reject unsafe images', async t => {
+  const { api, db, call, request, workspace, connect, create } = await fixture(t);
+  await connect(); const { agent } = await create();
+  const picture = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5ioAAAAASUVORK5CYII=';
+  const original = agent.version;
+  const updated = (await call(`/agents/${agent.id}`, { name: 'Custom companion', image_url: picture }, 'PATCH')).agent;
+  assert.equal(updated.name, 'Custom companion'); assert.equal(updated.image_url, picture); assert.equal(updated.provider, 'codex');
+  assert.equal(updated.provider_connection_id, 'conn_codex'); assert.equal(updated.version, original + 1);
+  const latest = db.prepare('SELECT snapshot_json FROM agent_profile_versions WHERE agent_id=? AND version=?').get(agent.id, updated.version);
+  assert.equal(JSON.parse(latest.snapshot_json).image_url, picture);
+  for (const image_url of ['https://example.com/track.png', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,PHN2Zz4=', true]) {
+    assert.equal((await request(`/agents/${agent.id}`, { image_url }, 'PATCH')).status, 400);
+    assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { image_url } }, 'PATCH')).status, 400);
+  }
+  await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Talvori portrait', image_url: picture } }, 'PATCH');
+  assert.equal(api.snapshot().agents.find(row => row.id === agent.id).image_url, picture);
+  await call(`/agents/${agent.id}`, { image_url: null }, 'PATCH');
+  assert.equal(api.snapshot().agents.find(row => row.id === agent.id).image_url, null);
+});
+
 test('chat creation is idempotent and unknown/cross-workspace sources cannot create profiles or chats', async t => {
   const { api, call, request, workspace, connect, create } = await fixture(t);
   await connect();
@@ -149,7 +238,7 @@ test('chat creation is idempotent and unknown/cross-workspace sources cannot cre
 });
 
 test('Codex and Claude Talvori profiles share their existing accounts, switch per chat without model leakage, and reject unsupported reasoning', async t => {
-  const { api, call, request, fake, connect, create, inspect, send, workspace } = await fixture(t);
+  const { api, call, request, fake, connect, select, create, inspect, send, workspace } = await fixture(t);
   await connect('codex'); await connect('claude');
   const codex = await create(), claude = await create({ provider: 'claude', request_id: 'claude-chat-fixture' });
   assert.notEqual(codex.agent.id, claude.agent.id);
@@ -163,6 +252,7 @@ test('Codex and Claude Talvori profiles share their existing accounts, switch pe
   assert.equal(result.run.provider, 'claude'); assert.equal(result.run.agent_id, claude.agent.id); assert.equal(result.run.status, 'completed');
   assert.equal(fake.launches[0].command, 'claude'); assert.equal(fake.launches[0].args[fake.launches[0].args.indexOf('--model') + 1], 'fixture-claude-model');
   assert.equal(fake.launches[0].args.some(value => value.startsWith('model_reasoning_effort=')), false);
+  await select('codex');
   const next = await send(inspect(codex.chat, codex.agent, { model: 'fixture-codex-model', reasoning_effort: 'medium' }), { client_turn_id: 'switched-back-codex' });
   assert.equal(next.run.provider, 'codex'); assert.equal(fake.launches[1].command, 'codex');
   assert.equal(fake.launches[1].args[fake.launches[1].args.indexOf('--model') + 1], 'fixture-codex-model');
@@ -251,7 +341,7 @@ test('workspace preferences persist validated intent without provider calls, pro
   const agentCount = api.snapshot().agents.length;
   const settings = { provider: 'codex', model: 'fixture-model', reasoning_effort: 'low', include_workspace: false, include_memory: false, include_chat: false, context_pack_ids: [], native_tools: true };
   await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: settings }, 'PATCH');
-  assert.deepEqual((await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences, { ...settings, display_name: 'Talvori', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true });
+  assert.deepEqual((await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences, { ...settings, provider_selected: false, image_url: null, display_name: 'Talvori', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true });
   assert.equal(fake.commands.length, 0); assert.equal(fake.launches.length, 0); assert.equal(api.snapshot().agents.length, agentCount);
   for (const preferences of [{ context_pack_ids: ['missing-pack'] }, { model: '--evil-shell-option' }, { provider: 'claude', reasoning_effort: 'high' }, { native_tools: 'yes' }, { permission_mode: 'workspace-write' }]) {
     assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences }, 'PATCH')).status, 400);

@@ -34,6 +34,7 @@ export function initialAgentForm(item = null, defaults = {}) {
   const base = item ?? defaults;
   return {
     name: base.name ?? "",
+    image_url: val(base, "image_url") ?? null,
     provider: base.provider ?? "codex",
     description: base.description ?? "",
     instructions: base.instructions ?? "",
@@ -81,6 +82,7 @@ export function agentFormPayload(form, item, workspaceId) {
   return {
     workspace_id: item ? (val(item, "workspace_id") ?? null) : workspaceId,
     name: form.name.trim(),
+    image_url: form.image_url || null,
     provider: form.provider,
     description: form.description.trim(),
     instructions: form.instructions.trim(),

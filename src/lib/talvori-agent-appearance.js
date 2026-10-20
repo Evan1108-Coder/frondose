@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../data/api.js';
 
-export const DEFAULT_TALVORI_AGENT_APPEARANCE = Object.freeze({ display_name: 'Talvori', orb_color: 'blue' });
+export const DEFAULT_TALVORI_AGENT_APPEARANCE = Object.freeze({ display_name: 'Talvori', orb_color: 'blue', image_url: null });
 const EVENT = 'rumbo:agent-appearance';
 const colors = new Set(['blue', 'cyan', 'green', 'gold', 'coral', 'purple']);
 function toAppearance(preferences) {
   return {
     display_name: typeof preferences?.display_name === 'string' && preferences.display_name.trim() ? preferences.display_name : DEFAULT_TALVORI_AGENT_APPEARANCE.display_name,
     orb_color: colors.has(preferences?.orb_color) ? preferences.orb_color : DEFAULT_TALVORI_AGENT_APPEARANCE.orb_color,
+    image_url: typeof preferences?.image_url === 'string' && /^data:image\/(?:png|jpeg|webp);base64,/.test(preferences.image_url) ? preferences.image_url : null,
   };
 }
 

@@ -1,84 +1,70 @@
-import { isEmojiImage } from '../lib/custom-emojis.js';
-import { Fragment } from "react";
-import { safeUrl } from "../lib/model.js";
-import { parsePage, pageHash } from '../lib/navigation.js';
-import "./document-content.css";
+import { lazy, Suspense, useMemo } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { documentLink, emojiLookup, hasMathSyntax, normalizeMathDelimiters, remarkWorkspaceEmojis } from '../lib/document-markdown.js';
+import './document-content.css';
 import { ServiceLogo } from './ServiceLogo.jsx';
-import { serviceBrand } from '../lib/service-brands.js';
+import { FileText } from './icons.jsx';
 import { CodeViewer } from './CodeViewer.jsx';
 import { ChangeReview } from './ChangeReview.jsx';
 import { patchFiles } from '../lib/change-review.js';
 
-// Deliberately small Markdown subset. React escapes all text; raw HTML and
-// remote images never execute or load as a side effect of reading a document.
-function Inline({ text, emojis = [] }) {
-  const tokens = String(text).split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|\[[^\]\n]+\]\([^\s)]+\))/g);
-  return tokens.map((token, index) => {
-    if (token.startsWith("`") && token.endsWith("`")) return <code key={index}>{token.slice(1, -1)}</code>;
-    if ((token.startsWith("**") && token.endsWith("**")) || (token.startsWith("__") && token.endsWith("__"))) return <strong key={index}>{token.slice(2, -2)}</strong>;
-    if (token.startsWith("*") && token.endsWith("*")) return <em key={index}>{token.slice(1, -1)}</em>;
-    const link = token.match(/^\[([^\]]+)\]\(([^\s)]+)\)$/);
-    if (link?.[2].startsWith('#/')) {
-      const page = parsePage(link[2]);
-      const base = link[2].split('?')[0].replace(/^#\/teams(?=\/|$)/, '#/areas');
-      if (pageHash(page.view,page.id).split('?')[0] === base) return <a key={index} href={link[2]}>{link[1]}</a>;
-    }
-    if (link && safeUrl(link[2])) return <a key={index} href={safeUrl(link[2])} target="_blank" rel="noreferrer noopener">{serviceBrand(null, link[2]) ? <ServiceLogo url={link[2]} className="inline-service-logo" /> : null}{link[1]}</a>;
-    const parts = token.split(/(:[a-z0-9_-]+:)/g);
-    return <Fragment key={index}>{parts.map((part, position) => { const emoji = emojis.find(item => item.shortcode === part); return emoji && isEmojiImage(emoji.glyph) ? <img key={position} src={emoji.glyph} alt={part} title={emoji.name} width="22" height="22" style={{ objectFit: 'contain', verticalAlign: 'middle', display: 'inline-block' }} /> : part; })}</Fragment>;
-  });
+const MathDocument = lazy(() => import('./DocumentMath.jsx'));
+const GFM_OPTIONS = { singleTilde: false };
+const EMPTY_EMOJIS = Object.freeze([]);
+
+/** Markdown URLs are stricter than browser URLs; image sources never come from text. */
+export function documentUrlTransform(url, key) {
+  return key === 'href' ? documentLink(url)?.href : undefined;
 }
 
-export function DocumentContent({ content, className = "", emojis = [] }) {
-  const lines = String(content ?? "").replaceAll("\r\n", "\n").split("\n");
-  const blocks = [];
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index];
-    const key = index;
-    if (!line.trim()) { index++; continue; }
-    if (/^\s*```/.test(line)) {
-      const language = line.trim().slice(3).trim();
-      const code = [];
-      index++;
-      while (index < lines.length && !/^\s*```/.test(lines[index])) code.push(lines[index++]);
-      if (index < lines.length) index++;
-      const source = code.join('\n'), files = /^(diff|patch)$/i.test(language) ? patchFiles(source) : [];
-      blocks.push(files.length ? <ChangeReview key={key} comparison={{ title: 'Quoted patch', base: 'Before (quoted)', head: 'After (quoted)', notice: 'Unverified patch text from this message or document, not a repository snapshot. Reading it does not apply changes.', files }} /> : <div className="document-code" key={key}>{language ? <span>{language}</span> : null}<CodeViewer content={source} label={language || 'Code block'} /></div>);
-      continue;
-    }
-    const heading = line.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) {
-      const Tag = `h${Math.min(heading[1].length + 1, 6)}`;
-      blocks.push(<Tag key={key}><Inline emojis={emojis} text={heading[2]} /></Tag>);
-      index++;
-      continue;
-    }
-    if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)) { blocks.push(<hr key={key} />); index++; continue; }
-    if (/^>\s?/.test(line)) {
-      const quote = [];
-      while (index < lines.length && /^>\s?/.test(lines[index])) quote.push(lines[index++].replace(/^>\s?/, ""));
-      blocks.push(<blockquote key={key}><Inline emojis={emojis} text={quote.join("\n")} /></blockquote>);
-      continue;
-    }
-    const list = line.match(/^\s*(?:([-*+])|(\d+)\.)\s+(.+)$/);
-    if (list) {
-      const ordered = Boolean(list[2]);
-      const items = [];
-      while (index < lines.length) {
-        const item = lines[index].match(/^\s*(?:([-*+])|(\d+)\.)\s+(.+)$/);
-        if (!item || Boolean(item[2]) !== ordered) break;
-        const check = item[3].match(/^\[([ xX])\]\s+(.+)$/);
-        items.push(<li key={index}>{check ? <><span className="document-task-mark" aria-label={check[1] === " " ? "Unchecked" : "Checked"}>{check[1] === " " ? "☐" : "☑"}</span><Inline emojis={emojis} text={check[2]} /></> : <Inline emojis={emojis} text={item[3]} />}</li>);
-        index++;
-      }
-      blocks.push(ordered ? <ol key={key} start={Number(list[2])}>{items}</ol> : <ul key={key}>{items}</ul>);
-      continue;
-    }
-    const paragraph = [line];
-    index++;
-    while (index < lines.length && lines[index].trim() && !/^(#{1,6}\s|>\s?|\s*```|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[index])) paragraph.push(lines[index++]);
-    blocks.push(<p key={key}><Inline emojis={emojis} text={paragraph.join("\n")} /></p>);
-  }
-  return <div className={`document-content ${className}`}>{blocks}</div>;
+function QuotedCode({ node, children }) {
+  const code = node?.children?.find(child => child.tagName === 'code');
+  if (!code) return <pre>{children}</pre>;
+  const language = code.properties?.className?.find(name => name.startsWith('language-'))?.slice(9) ?? '';
+  const source = code.children?.map(child => child.value ?? '').join('').replace(/\n$/, '') ?? '';
+  const files = /^(diff|patch)$/i.test(language) ? patchFiles(source) : [];
+  return files.length ? <ChangeReview comparison={{ title: 'Quoted patch', base: 'Before (quoted)', head: 'After (quoted)', notice: 'Unverified patch text from this message or document, not a repository snapshot. Reading it does not apply changes.', files }} />
+    : <div className="document-code">{language ? <span>{language}</span> : null}<CodeViewer content={source} label={language || 'Code block'} /></div>;
+}
+
+function InternalLink({ link, children, title, onInternalLink }) {
+  const docs = ['docs', 'documents', 'reader'].includes(link.page?.view);
+  return <a href={link.href} title={title} className={docs ? 'document-doc-link' : undefined} onClick={event => {
+    if (!onInternalLink || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    onInternalLink(link.page, link.href);
+  }}>{docs ? <FileText className="document-link-icon" interactive={false} aria-hidden="true" /> : null}{children}</a>;
+}
+
+/** CommonMark + GFM, with escaped HTML, blocked image embeds and strict links. */
+export function DocumentContent({ content, className = '', emojis = EMPTY_EMOJIS, onInternalLink }) {
+  const source = String(content ?? '').replaceAll('\r\n', '\n');
+  const lookup = useMemo(() => emojiLookup(emojis), [emojis]);
+  const remarkPlugins = useMemo(() => [[remarkGfm, GFM_OPTIONS], [remarkWorkspaceEmojis, lookup]], [lookup]);
+  const components = useMemo(() => ({
+    h1: ({ children }) => <h2>{children}</h2>,
+    h2: ({ children }) => <h3>{children}</h3>,
+    h3: ({ children }) => <h4>{children}</h4>,
+    h4: ({ children }) => <h5>{children}</h5>,
+    h5: ({ children }) => <h6>{children}</h6>,
+    h6: ({ children }) => <h6>{children}</h6>,
+    pre: QuotedCode,
+    a: ({ href, title, children }) => {
+      const link = documentLink(href);
+      if (!link) return <>{children}</>;
+      if (link.kind === 'internal') return <InternalLink link={link} title={title} onInternalLink={onInternalLink}>{children}</InternalLink>;
+      if (link.kind === 'anchor') return <a href={link.href} title={title}>{children}</a>;
+      return <a href={link.href} title={title} target="_blank" rel="noreferrer noopener"><ServiceLogo url={link.href} className="inline-service-logo" />{children}</a>;
+    },
+    img: ({ node, alt }) => {
+      const emoji = lookup.byId.get(node?.properties?.['data-workspace-emoji']);
+      return emoji ? <img className="document-custom-emoji" src={emoji.glyph} alt={emoji.shortcode} title={emoji.name} width="22" height="22" /> : <span className="document-image-placeholder">[Image{alt ? `: ${alt}` : ''}]</span>;
+    },
+    table: ({ children }) => <div className="document-table-scroll" role="region" aria-label="Table" tabIndex={0}><table>{children}</table></div>,
+    input: ({ checked }) => <span className="document-task-mark" role="img" aria-label={checked ? 'Checked' : 'Unchecked'}>{checked ? '☑' : '☐'}</span>,
+  }), [lookup, onInternalLink]);
+  const props = { components, remarkPlugins, urlTransform: documentUrlTransform };
+  const fallback = <Markdown {...props}>{source}</Markdown>;
+  return <div className={`document-content ${className}`}>{hasMathSyntax(source) ? <Suspense fallback={fallback}><MathDocument {...props} content={normalizeMathDelimiters(source)} /></Suspense> : fallback}</div>;
 }

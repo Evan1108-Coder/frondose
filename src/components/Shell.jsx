@@ -33,7 +33,7 @@ import { useTalvoriAgentAppearance } from '../lib/talvori-agent-appearance.js';
 function TalvoriAgentNavIcon() {
   const { workspace } = useApp();
   const appearance = useTalvoriAgentAppearance(workspace?.id);
-  return <TalvoriAgentOrb color={appearance.orb_color} compact />;
+  return appearance.image_url ? <img src={appearance.image_url} alt="" draggable="false" style={{ width:20,height:20,objectFit:'contain',flexShrink:0 }} /> : <TalvoriAgentOrb color={appearance.orb_color} compact />;
 }
 const NAV_ICONS = { 'rumbo-agent': TalvoriAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));

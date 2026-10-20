@@ -4099,7 +4099,12 @@ dd {
   }
   .connection-health {
     font-size: 11px;
+    flex: 0 0 auto;
+    margin-left: 0;
   }
+  .connection-health-label { display: none; }
+  .topbar { gap: 8px; }
+  .topbar .global-toolbar { flex-shrink: 0; }
   .breadcrumbs {
     gap: 8px;
     font-size: 11px;

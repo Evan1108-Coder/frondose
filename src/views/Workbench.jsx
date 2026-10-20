@@ -29,7 +29,7 @@ export function Workbench({ projectId }) {
 }
 
 function ProjectWorkbench({ project }) {
-  const { data, workspace, navigate, edit, notify } = useApp();
+  const { data, page, workspace, navigate, edit, notify } = useApp();
   const [layout, setLayout] = useState(() => readWorkbenchLayout(workspace.id, project.id));
   const [summary, setSummary] = useState(null);
   const [git, setGit] = useState(null);
@@ -44,6 +44,7 @@ function ProjectWorkbench({ project }) {
   const settingsQueue = useRef(Promise.resolve()), settingsWrite = useRef(0);
   const scope = useMemo(() => ({ workspaceId: workspace.id, projectId: project.id, environmentId: layout.environmentId }), [workspace.id, project.id, layout.environmentId]);
   const patchLayout = patch => setLayout(current => ({ ...current, ...patch }));
+  useEffect(() => { if (page.reviewId) patchLayout({tab:'changes'}); },[page.reviewId]);
   const refresh = async () => { const next = await workbenchRequest(scope); setSummary(next); return next; };
   useEffect(() => { saveWorkbenchLayout(workspace.id, project.id, layout); }, [workspace.id, project.id, layout]);
   useEffect(() => {

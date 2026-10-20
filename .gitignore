@@ -7,3 +7,4 @@ dist/
 .env.*
 *.log
 npm-debug.log*
+.impeccable/review/

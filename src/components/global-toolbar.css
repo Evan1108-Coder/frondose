@@ -29,3 +29,4 @@
 .header-shortcut-settings input { accent-color: var(--accent); }
 .header-shortcut-settings label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 @media (max-width: 760px) { .global-search { width: 32px; padding: 0 8px; } .global-search span, .global-search kbd { display: none; } .global-quick-access { max-width: min(38vw, 170px); } }
+@media (max-width: 400px) { .global-language { display: none; } }

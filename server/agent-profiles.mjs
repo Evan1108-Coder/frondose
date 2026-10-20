@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { validationError } from './validation.mjs';
+import { validationError, validateAvatar } from './validation.mjs';
 import { EXECUTION_PROVIDERS } from '../src/lib/ai-providers.js';
 import { validApiModel } from '../src/lib/ai-provider-catalog.js';
 
@@ -7,7 +7,7 @@ export const AGENT_PROFILE_FIELDS = [
   'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions',
   'working_directory', 'model', 'reasoning_effort', 'memory_policy',
   'context_source_ids_json', 'default_area_id', 'default_project_id',
-  'permission_policy', 'output_behavior', 'color',
+  'permission_policy', 'output_behavior', 'color', 'image_url',
 ];
 
 const REASONING = new Set(['', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
@@ -48,6 +48,7 @@ export function installAgentProfiles(db) {
     permission_policy: "TEXT NOT NULL DEFAULT 'review'",
     output_behavior: "TEXT NOT NULL DEFAULT ''",
     version: 'INTEGER NOT NULL DEFAULT 1',
+    image_url: 'TEXT',
   });
   addColumns(db, 'runs', { agent_profile_version: 'INTEGER' });
   db.exec(`CREATE TABLE IF NOT EXISTS agent_profile_versions (
@@ -87,6 +88,8 @@ export function agentProfileReferenceReadable(db, workspaceId, table, id, { acto
 }
 
 export function validateAgentProfile(db, record, { actor, allowed, importing = false } = {}) {
+  if (record.image_url && (typeof record.image_url !== 'string' || !record.image_url.startsWith('data:'))) throw validationError('Upload a PNG, JPEG or WebP agent picture. External image URLs are not supported.');
+  validateAvatar(record.image_url ?? null);
   for (const [field, value] of Object.entries({ role: '', model: '', reasoning_effort: '', memory_policy: 'reviewed', context_source_ids_json: [], default_area_id: null, default_project_id: null, permission_policy: 'review', output_behavior: '' })) if (record[field] === undefined) record[field] = value;
   for (const [field, limit] of [['role', 200], ['model', 120], ['reasoning_effort', 20], ['output_behavior', 10_000]]) {
     const value = record[field] ?? '';

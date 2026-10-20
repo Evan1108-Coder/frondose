@@ -33,7 +33,7 @@ export const SIDEBAR_GROUPS = {
 export const SECTION_LABELS = { agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
 export const HEADER_QUICK_ACCESS = ['focus', 'inbox', 'starred', 'work', 'projects', 'chats', 'connections', 'settings'];
 export const FOCUSED_SIDEBAR_ROOT = new Set([
-  'overview', 'rumbo-agent', 'starred', 'inbox', 'work',
+  'overview', 'rumbo-agent', 'starred', 'inbox', 'work', 'workbench',
   'agents', 'teams', 'projects', 'tasks', 'chats', 'connections',
 ]);
 export function focusedSidebarHiddenKeys(organization) {

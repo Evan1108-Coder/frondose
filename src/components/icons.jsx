@@ -15,7 +15,7 @@ import {
   FolderOpen as FolderOpenNode, Settings as SettingsNode, GitBranch as GitBranchNode,
   GitFork as GitForkNode, HardDrive as HardDriveNode, Hammer as HammerNode,
   Database as DatabaseNode, House as HouseNode, Info as InfoNode, Keyboard as KeyboardNode,
-  Link as LinkNode, Menu as MenuNode, Search as SearchNode, Minus as MinusNode,
+  Link as LinkNode, Globe as GlobeNode, Menu as MenuNode, Search as SearchNode, Minus as MinusNode,
   SquarePen as SquarePenNode, Paintbrush as PaintbrushNode, Paperclip as PaperclipNode,
   Pause as PauseNode, Pencil as PencilNode, Play as PlayNode, Plug as PlugNode,
   Plus as PlusNode, Pin as PinNode, PinOff as PinOffNode, Bot as BotNode,
@@ -139,6 +139,7 @@ export const House = defineIcon("House", HouseNode);
 export const Info = defineIcon("Info", InfoNode);
 export const Keyboard = defineIcon("Keyboard", KeyboardNode);
 export const Link = defineIcon("Link", LinkNode);
+export const Globe = defineIcon("Globe", GlobeNode);
 export const Menu = defineIcon("Menu", MenuNode);
 export const Search = defineIcon("Search", SearchNode);
 export const Minus = defineIcon("Minus", MinusNode);

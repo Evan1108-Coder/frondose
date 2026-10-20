@@ -1,5 +1,5 @@
 import { ExternalLink, RotateCw, CircleCheck, Copy, Download, FileText, GitBranch, Square, MessageCircle, Pin, PinOff, Ellipsis, Plus } from "./icons.jsx";
-import { Button, IconButton, ProviderIcon, Status, useApp } from '../ui.jsx';
+import { Button, IconButton, useApp } from '../ui.jsx';
 import { DocumentContent } from './DocumentContent.jsx';
 import { download, initials, relative, val } from '../lib/model.js';
 import { ACTIVE_CHAT_RUNS } from '../lib/chats.js';
@@ -10,33 +10,30 @@ import { ReactionGlyph } from './ReactionGlyph.jsx';
 import { customEmojis } from '../lib/custom-emojis.js';
 import { getReaction, reactionKey } from '../lib/reaction-catalog.js';
 import { AgentActionReview } from './AgentActionReview.jsx';
-import { ReviewPanel } from './ReviewPanel.jsx';
+import { AgentIdentity } from './AgentIdentity.jsx';
+import { MessageResources } from './MessageResources.jsx';
+import { readerTarget } from '../lib/message-resources.js';
+import { pageHash } from '../lib/navigation.js';
 
 export function ChatRunStatus({ run, onRetry, retrying }) {
   const { data, navigate, perform } = useApp();
   const events = data.events.filter(event => val(event, 'run_id') === run.id);
   const event = events.at(-1);
   const active = ACTIVE_CHAT_RUNS.has(run.status);
-  const [expanded, setExpanded] = useState(active);
   const [clock, setClock] = useState(Date.now);
   useEffect(() => { if (!active) return; const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, [active]);
-  useEffect(() => { setExpanded(active); }, [active, run.id]);
   const summary = event?.summary || (active ? 'The session has started. Its progress will appear here.' : 'Open the session to review its result.');
   const configFailure = /invalid transport|config\.toml|tool configuration/i.test(summary);
   const failed = ['failed', 'interrupted'].includes(run.status);
   const failure = configFailure ? 'The provider could not load its tool configuration. Your message is saved.' : /403|forbidden/i.test(summary) ? 'The provider refused the connection (403). Your message is saved; check provider access before retrying.' : 'The agent could not finish this reply. Your message is saved.';
-  const activity = events.filter(item => ['agent.message', 'agent.progress', 'command.output', 'files.changed', 'context.prepared', 'provider.ready'].includes(item.type)).slice(-40).map(item => ({ ...item, summary: item.summary?.replace(/```(?:talvori|rumbo)-actions\s*\n[\s\S]*?```/g, 'Talvori actions prepared for your review.') }));
   const started = Date.parse(val(run, 'started_at') || val(run, 'created_at'));
   const elapsed = Number.isFinite(started) ? Math.max(0, Math.round(((Date.parse(val(run, 'finished_at')) || clock) - started) / 1000)) : 0;
   return <div className={`chat-run-status ${active ? 'is-active' : ''}`}>
-    <button className="chat-activity-toggle" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><span aria-hidden="true">{expanded ? '⌄' : '›'}</span><span>{run.agent_name || 'Agent'} · {active ? 'Working' : run.status === 'completed' ? 'Work complete' : failed ? 'Reply interrupted' : 'Stopped'} · {elapsed}s{run.mode === 'mock' ? ' · Simulation' : ''}</span></button>
+    <div className="chat-compact-activity"><span className={`chat-work-dot ${active ? 'is-working' : ''}`} aria-hidden="true" /><span>{run.agent_name || 'Agent'} · {active ? 'Working' : run.status === 'completed' ? 'Work complete' : failed ? 'Reply interrupted' : 'Stopped'} · {elapsed}s{run.mode === 'mock' ? ' · Simulation' : ''}</span></div>
     {failed ? <p role="status">{failure}</p> : null}
-    {expanded ? <div className="chat-activity-body">{activity.length ? activity.map(item => <div className="chat-activity-item" key={item.id}><small>{item.type === 'command.output' ? 'Command' : item.type === 'files.changed' ? 'Project changes' : item.type === 'context.prepared' ? 'Context' : 'Agent activity'}</small><p>{item.summary}</p></div>) : <p>{active ? 'Preparing the agent session…' : 'No activity was recorded.'}</p>}</div> : null}
     {failed ? <details className="chat-error-details"><summary>Technical details</summary><pre>{summary}</pre></details> : null}
-    <AgentActionReview run={run} />
-    {!active ? <ReviewPanel targetType="run" targetId={run.id} projectId={val(run, 'project_id')} /> : null}
     <div className="chat-run-actions">
-      <Button variant="ghost" icon={ExternalLink} onClick={() => navigate('work', run.id)}>View session</Button>
+      <Button variant="ghost" icon={ExternalLink} onClick={() => navigate('work', run.id)}>Open Active work</Button>
       {active ? <Button variant="ghost" icon={Square} onClick={() => perform(() => talvoriActions.stopRun(run.id), 'Session stopped')}>Stop</Button> : null}
       {['failed', 'stopped', 'cancelled', 'interrupted'].includes(run.status) && onRetry ? <Button variant="ghost" busy={retrying} icon={RotateCw} onClick={onRetry}>Retry reply</Button> : null}
     </div>
@@ -44,17 +41,24 @@ export function ChatRunStatus({ run, onRetry, retrying }) {
 }
 
 export function ChatMessage({ message, chat, project, run, onRetry, retrying, onPreview, bookmarked, onBookmark, onReply, onOptions, replyMessage, onJump, replyCount, onThread, onContext, selectionMode, selected, onSelect, reactions = [], onReact, onToggleReaction, reactionBusy }) {
-  const { data, perform, notify } = useApp();
+  const { data, page, navigate, perform, notify } = useApp();
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef(null);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
   const type = val(message, 'sender_type'), isAgent = type === 'agent';
   const profile = data.agents.find(agent => agent.id === val(message, 'sender_id'));
   const provider = profile?.provider || data.runs.find(item => item.id === message.metadata?.run_id)?.provider;
+  const replyRun = isAgent ? data.runs.find(item => item.id === message.metadata?.run_id) : null;
+  const hasReply = run && data.messages.some(item => item.sender_type === 'agent' && item.metadata?.run_id === run.id);
+  const openLink = linked => {
+    const target = readerTarget(linked.view, linked.id);
+    if (target) navigate('reader', target, { returnTo:pageHash(page.view,page.id,page) });
+    else navigate(linked.view, linked.id, linked);
+  };
   const name = val(message, 'sender_name') || (isAgent ? 'Agent' : data.profile?.name || 'You');
-  return <article id={`message-${message.id}`} tabIndex={-1} className={`chat-message ${type === 'system' ? 'chat-message-system' : ''} ${bookmarked ? 'is-bookmarked' : ''} ${selectionMode ? 'is-selectable' : ''} ${selected ? 'is-selected' : ''}`}>
+  return <article id={`message-${message.id}`} tabIndex={-1} className={`chat-message chat-message-${type === 'user' ? 'user' : isAgent ? 'agent' : 'system'} ${bookmarked ? 'is-bookmarked' : ''} ${selectionMode ? 'is-selectable' : ''} ${selected ? 'is-selected' : ''}`}>
     {selectionMode ? <label className="chat-message-select"><input type="checkbox" aria-label={`Select message from ${name}: ${message.content.slice(0, 50)}`} checked={Boolean(selected)} onChange={onSelect} /></label> : null}
-    <span className="chat-message-avatar" aria-hidden="true">{isAgent ? <ProviderIcon provider={provider} /> : type === 'system' ? <GitBranch /> : initials(name)}</span>
+    <span className="chat-message-avatar" aria-hidden="true">{isAgent ? <AgentIdentity agent={profile} provider={provider} compact /> : type === 'system' ? <GitBranch /> : initials(name)}</span>
     <div className="chat-message-main">
       <header><strong>{name}</strong>{isAgent ? <span className="chat-message-kind">{message.metadata?.mode === 'mock' ? 'Simulation' : 'Agent'}</span> : null}<time dateTime={val(message, 'created_at')}>{relative(val(message, 'created_at'))}</time>
         <div className="chat-message-actions">
@@ -73,7 +77,8 @@ export function ChatMessage({ message, chat, project, run, onRetry, retrying, on
       </header>
       {replyMessage ? <button className="chat-reply-reference" onClick={() => onJump?.(replyMessage.id)}><MessageCircle /><span>Reply to {val(replyMessage, 'sender_name')}: {replyMessage.content?.slice(0, 140)}</span></button> : null}
       {message.metadata?.delivery === 'branch_reference' ? <p className="chat-reference-label">Copied reference · no agent was run</p> : null}
-      <DocumentContent content={message.content} emojis={customEmojis(data.workspace_items, chat.workspace_id, true)} />
+      <div className="chat-message-body"><DocumentContent content={message.content} emojis={customEmojis(data.workspace_items, chat.workspace_id, true)} onInternalLink={openLink} /></div>
+      {isAgent ? <><MessageResources message={message} run={replyRun} />{replyRun ? <AgentActionReview run={replyRun} /> : null}</> : null}
       {reactions.length ? <div className="chat-reactions" role="group" aria-label="Message reactions">{reactions.map(reaction => {
         const item = getReaction(reaction.id, customEmojis(data.workspace_items, chat.workspace_id, true)); if (!item) return null;
         return <button key={reactionKey(reaction)} type="button" aria-label={`Remove ${item.name} reaction${reaction.color ? ` (${reaction.color})` : ''}`} aria-pressed="true" disabled={reactionBusy} onClick={() => onToggleReaction?.(reaction)}><ReactionGlyph item={item} id={reaction.id} color={reaction.color} size={17} /><span>1</span></button>;
@@ -88,7 +93,8 @@ export function ChatMessage({ message, chat, project, run, onRetry, retrying, on
           } else download(file.name, file.content, file.type || 'text/plain');
         }}><Download /></IconButton>
       </div>)}</div> : null}
-      {run ? <ChatRunStatus run={run} onRetry={onRetry} retrying={retrying} /> : null}
+      {run && (!hasReply || ACTIVE_CHAT_RUNS.has(run.status) || val(run,'work_mode') === 'project') ? <ChatRunStatus run={run} onRetry={onRetry} retrying={retrying} /> : null}
+      {run && !hasReply && !ACTIVE_CHAT_RUNS.has(run.status) ? <AgentActionReview run={run} /> : null}
     </div>
   </article>;
 }

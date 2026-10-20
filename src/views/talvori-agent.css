@@ -136,3 +136,37 @@
 @keyframes rumbo-compose-arrive { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes rumbo-recents-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .rumbo-agent-page * { scroll-behavior: auto; } .rumbo-agent-start > h1, .rumbo-agent-compose, .rumbo-agent-recents, .rumbo-agent-onboarding-content { animation: none; } .rumbo-agent-hero-word > span, .rumbo-agent-hero-word::after { transition: none; transform: none; } }
+
+.talvori-setup-page { background: var(--bg); }
+.talvori-setup-content { width: min(980px, calc(100% - 60px)); margin: 30px auto 64px; }
+.talvori-setup-intro { margin-bottom: 32px; }
+.talvori-setup-intro h1 { margin: 0 0 10px; font-size: 30px; letter-spacing: -.025em; }
+.talvori-setup-intro p { max-width: 70ch; margin: 0; color: var(--secondary); line-height: 1.65; }
+.talvori-setup-picture { width: 34px; height: 34px; object-fit: cover; border-radius: 50%; flex: none; }
+.talvori-setup-form .setting-row { display: grid; grid-template-columns: minmax(180px, .85fr) minmax(0, 1.25fr); align-items: start; gap: 28px; padding: 24px 0; }
+.talvori-setup-form .setting-row > span { display: grid; gap: 6px; }
+.talvori-setup-form .setting-row small { display: block; max-width: 54ch; color: var(--secondary); line-height: 1.6; }
+.talvori-setup-form .rumbo-agent-identity-fields { width: 100%; }
+.talvori-setup-form .rumbo-agent-setting-controls { justify-content: flex-start; }
+.talvori-setup-form .rumbo-agent-setting-controls .rumbo-select { min-width: 180px; max-width: 100%; }
+.talvori-setup-form .settings-panel { background: transparent; border: 0; }
+.talvori-setup-form .setting-row + .setting-row { border-top: 1px solid var(--border); }
+.talvori-setup-form .image-dropzone { flex-wrap: wrap; }
+.talvori-setup-form .image-dropzone > div:nth-child(2) { min-width: 0; }
+.talvori-setup-form .image-dropzone small { white-space: normal; }
+.talvori-setup-form .form-submit-row { justify-content: flex-end; }
+.talvori-setup-history { margin-top: 48px; }
+.talvori-setup-history h2 { font-size: 16px; margin: 0 0 12px; }
+.talvori-setup-history > button { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 20px; padding: 14px 0; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--text); text-align: left; }
+.talvori-setup-history > button:hover { color: var(--accent-text); }
+.talvori-setup-history > button > span { display: flex; align-items: center; gap: 10px; min-width: 0; overflow-wrap: anywhere; }
+.talvori-setup-history svg { width: 18px; height: 18px; flex: none; }
+.talvori-setup-history time { flex: none; color: var(--muted); font-size: 12px; }
+@media (max-width: 760px) {
+  .talvori-setup-content { width: calc(100% - 32px); margin-top: 24px; }
+  .talvori-setup-form .setting-row { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 0; }
+  .talvori-setup-form .rumbo-agent-identity-fields, .talvori-setup-form .rumbo-agent-pack-list { width: 100%; }
+  .talvori-setup-page .rumbo-agent-header-actions > .button { flex: 1; min-width: 0; white-space: normal; }
+  .talvori-setup-history > button { align-items: flex-start; gap: 12px; }
+  .talvori-setup-history time { max-width: 90px; text-align: right; }
+}

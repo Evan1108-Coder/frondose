@@ -1,4 +1,4 @@
-.document-content { color: var(--secondary); font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
+.document-content { min-width: 0; color: var(--secondary); font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
 .document-content > :first-child { margin-top: 0; }
 .document-content > :last-child { margin-bottom: 0; }
 .document-content p { margin: 0 0 18px; white-space: pre-wrap; }
@@ -9,15 +9,40 @@
 .document-content strong { font-weight: 600; color: var(--text); }
 .document-content ul, .document-content ol { padding-left: 24px; margin: 0 0 18px; }
 .document-content li { padding-left: 4px; margin: 5px 0; }
-.document-content code { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: .88em; background: var(--hover); padding: 2px 5px; border-radius: 6px; }
+.document-content li > p { margin: 0 0 8px; }
+.document-content li > ul, .document-content li > ol { margin: 6px 0 10px; }
+.document-content code { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: .9em; background: var(--hover); padding: 2px 6px; border-radius: 6px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .document-content a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .document-content a:hover { color: var(--accent); }
-.document-content blockquote { border-left: 2px solid var(--border-strong); margin: 16px 0; padding: 4px 18px; color: var(--muted); white-space: pre-wrap; }
+.document-content blockquote { border-left: 1px solid var(--border-strong); margin: 16px 0; padding: 4px 18px; color: var(--muted); white-space: pre-wrap; }
+.document-content blockquote > :last-child { margin-bottom: 0; }
 .document-content hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
 .document-content .document-code { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin: 16px 0; overflow: hidden; }
 .document-content .document-code > span { display: block; font-size: 12px; color: var(--muted); padding: 8px 16px; border-bottom: 1px solid var(--border); }
 .document-content .document-code pre { overflow-x: auto; margin: 0; padding: 16px; }
 .document-content .document-code code { background: transparent; padding: 0; white-space: pre; }
 .document-content .document-task-mark { display: inline-block; margin-right: 8px; }
+.document-content .task-list-item { list-style: none; }
+.document-content .contains-task-list { padding-left: 4px; }
+.document-content .document-table-scroll { max-width: 100%; margin: 20px 0; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.document-content table { min-width: 100%; border-collapse: collapse; text-align: left; font-size: .95em; }
+.document-content th, .document-content td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; min-width: 100px; }
+.document-content th { background: var(--surface); color: var(--text); font-weight: 600; }
+.document-content tr:last-child td { border-bottom: 0; }
+.document-content .document-custom-emoji { object-fit: contain; vertical-align: -.25em; display: inline-block; }
+.document-content .document-image-placeholder { color: var(--muted); font-size: .92em; }
+.document-content .document-link-icon { display: inline-block; vertical-align: -.15em; width: 16px; height: 16px; margin-right: 4px; }
+.document-content .footnotes { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; font-size: .9em; }
+.document-content .footnotes h2 { font-size: 16px; }
+.document-content .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 8px 0; }
+.document-content .katex { white-space: normal; font-size: 1.08em; }
+.document-content .katex-error { font-family: var(--font-mono, ui-monospace, monospace); white-space: pre-wrap; }
+.document-content .document-table-scroll:focus-visible { outline-offset: 3px; }
 .document-content .code-viewer code { font: inherit; color: inherit; background: none; padding: 0; border-radius: 0; white-space: inherit; }
 .document-code > .code-viewer { border: 0; border-radius: 0; }
+@media (max-width: 600px) {
+  .document-content { font-size: 15px; line-height: 1.7; }
+  .document-content h2 { font-size: 21px; }
+  .document-content th, .document-content td { padding: 9px 12px; }
+  .document-content blockquote { padding-left: 12px; margin-left: 0; margin-right: 0; }
+}

@@ -8,6 +8,7 @@ import { areaSettings, saveAreaSettings } from './area-service.mjs';
 import { validTimezone } from '../src/lib/scheduled-time.js';
 import { validApiModel } from '../src/lib/ai-provider-catalog.js';
 import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
+import { coordinationTarget, coordinationReference, coordinationTargetScope, createRunCoordination } from './run-coordination-service.mjs';
 
 const stamp = () => new Date().toISOString();
 const text = (max = 10000, minLength = 0) => ({ type: 'string', maxLength: max, minLength });
@@ -29,6 +30,7 @@ const settingsSchemas = {
 };
 export function actionCatalog() {
   const result = [];
+  result.push({id:'coordination.handoff',type:'coordination.handoff',label:'Record a cross-conversation agent handoff (no launch)',review_required:true,execution:'local',direct_low_risk_eligible:true,schema:object({type:{const:'coordination.handoff'},target_chat_id:text(200,1),target_agent_id:text(200,1),content:text(10000,1)},['type','target_chat_id','target_agent_id','content'])});
   result.push({id:'agent.self_link',type:'agent.self_link',label:'Link this agent to an Area, project or Route',review_required:true,execution:'local',direct_low_risk_eligible:true,schema:object({type:{const:'agent.self_link'},resource:choice(['teams','projects','tasks']),id:text(200,1)},['type','resource','id'])});
   result.push({id:'schedule.create',type:'schedule.create',label:'Propose a scheduled agent prompt (confirmation required)',review_required:true,execution:'human_schedule_confirmation',schema:object({type:{const:'schedule.create'},chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1),recurrence:choice(['none','daily','weekly'])},['type','chat_id','content','model','run_at','timezone'])});
   result.push({id:'schedule.update',type:'schedule.update',label:'Propose pausing, rescheduling or cancelling your schedule',review_required:true,execution:'local',schema:object({type:{const:'schedule.update'},schedule_id:text(200,1),version:{type:'integer',minimum:1},state:choice(['active','paused','cancelled']),run_at:text(40,1),timezone:text(100,1)},['type','schedule_id','version','state'])});
@@ -197,6 +199,14 @@ export function scheduledWorkAgentContext(db,workspaceId,{actor,allowed} = {}) {
   return {schedules,sourceAccess};
 }
 function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
+  if (input.type === 'coordination.handoff') {
+    exactKeys(input,['type','target_chat_id','target_agent_id','content'],['type','target_chat_id','target_agent_id','content']);
+    checkFields(input,{type:choice(['coordination.handoff']),target_chat_id:text(200,1),target_agent_id:text(200,1),content:text(10000,1)});
+    if (!run?.id || !run?.agent_id || !run?.chat_id || Buffer.byteLength(input.content,'utf8') > 12000) throw validationError('Handoffs require a canonical conversation run and a message within 12 KB.');
+    if (run.chat_id === input.target_chat_id && run.agent_id === input.target_agent_id) throw validationError('Choose another conversation or agent for a handoff.');
+    const target = coordinationTarget(db,{workspaceId,chatId:input.target_chat_id,agentId:input.target_agent_id});
+    return {proposal:{...input,content:input.content.trim()},before:{target,sourceAccess:coordinationReference(db,run,target).sourceAccess}};
+  }
   if (input.type === 'schedule.create') {
     exactKeys(input,['type','chat_id','content','model','run_at','timezone','recurrence'],['type','chat_id','content','model','run_at','timezone']);
     checkFields(input,{type:choice(['schedule.create']),chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1),recurrence:choice(['none','daily','weekly'])});
@@ -285,6 +295,10 @@ function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
 export function actionPermissionTargets(db,proposal,workspaceId,{run} = {}) {
   const validated = validateLocalAction(db,proposal,workspaceId,{run});
   const p = validated.proposal;
+  if (p.type === 'coordination.handoff') {
+    const scope = coordinationTargetScope({sourceAccess:validated.before.sourceAccess},p.target_chat_id);
+    return [{permission:'chats.read',scope},{permission:'chats.write',scope},{permission:'agents.run',scope},{permission:'agents.read',scope:{scope_type:'agent',scope_id:p.target_agent_id}}];
+  }
   if (p.type === 'schedule.update') return [{permission:'workspace.read',scope:{}}];
   if (p.type === 'schedule.create') {
     const chat = validated.before.chat, scope = chat.project_id ? {scope_type:'project',scope_id:chat.project_id} : {};
@@ -308,6 +322,10 @@ export function actionPermissionTargets(db,proposal,workspaceId,{run} = {}) {
 export function authorizeLocalAction(db,{proposal,workspaceId,run,actors,allowed}) {
   if (!allowed || !Array.isArray(actors) || !actors.length || actors.some(actor => !actor?.id)) throw Object.assign(new Error('Authenticated action authority is required.'),{statusCode:403});
   const requirements = actionPermissionTargets(db,proposal,workspaceId,{run});
+  if (proposal.type === 'coordination.handoff') {
+    const validated = validateLocalAction(db,proposal,workspaceId,{run});
+    for (const actor of actors) assertSourceAccess(db,{manifest:{resolved:{workspace_id:workspaceId}},sourceAccess:validated.before.sourceAccess},actor,allowed);
+  }
   if (proposal.type === 'schedule.update') {
     const row = db.prepare('SELECT * FROM scheduled_work WHERE id=? AND workspace_id=?').get(proposal.schedule_id,workspaceId);
     for (const actor of actors) assertScheduleReadable(db,row,actor,allowed);
@@ -325,6 +343,13 @@ export function assertActionFresh(before,current) {
 // moves or becomes archived. Staleness does not itself hide a readable request.
 export function localActionReadable(db,{proposal,before,workspaceId,run,actor,allowed}) {
   if (!actor?.id || !allowed || !isRecord(proposal)) return false;
+  if (proposal.type === 'coordination.handoff') {
+    try {
+      assertSourceAccess(db,{manifest:{resolved:{workspace_id:workspaceId}},sourceAccess:before?.sourceAccess},actor,allowed);
+      const target = coordinationTarget(db,{workspaceId,chatId:proposal.target_chat_id,agentId:proposal.target_agent_id});
+      return assertSourceAccess(db,coordinationReference(db,run,target),actor,allowed) === true;
+    } catch { return false; }
+  }
   if (proposal.type === 'schedule.update') {
     try {
       const row = db.prepare('SELECT * FROM scheduled_work WHERE id=? AND workspace_id=?').get(proposal.schedule_id,workspaceId);
@@ -385,6 +410,9 @@ export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,act
   const validated = validateLocalAction(db,proposal,workspaceId,{run}); assertActionFresh(before,validated.before);
   const p = validated.proposal, now = stamp(), key = createHash('sha256').update(`${workspaceId}:${idempotencyKey}`).digest('hex').slice(0,32);
   const record = changeContext.run({actor,source:run ? `${authorization === 'actor_low_risk_policy' ? 'Agent direct action' : 'Agent proposal'} ${run.id}` : 'Scheduled human action'},() => {
+    if (p.type === 'coordination.handoff') {
+      return createRunCoordination(db,{runId:run.id,input:{request_id:idempotencyKey,kind:'handoff',target_chat_id:p.target_chat_id,target_agent_id:p.target_agent_id,content:p.content},actor,allowed,authorType:'agent'});
+    }
     if (p.type === 'schedule.update') {
       if (typeof updateSchedule !== 'function' || authorization !== 'human_review') throw validationError('Schedule changes require explicit human confirmation through the canonical scheduler.');
       return updateSchedule(p,actor);
@@ -432,5 +460,5 @@ export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,act
     const after = db.prepare(`SELECT * FROM ${p.resource} WHERE id=?`).get(p.id); const {__action_parents,__action_hierarchy,...target} = validated.before;
     recordChange(db,p.resource,target,after,p.type === 'record.archive' ? 'agent-approved archive' : 'agent-approved update'); return after;
   });
-  return {status:'applied',type:p.type,resource:p.resource || (p.type === 'schedule.update' ? 'scheduled_work' : p.type === 'chat.note' ? 'messages' : p.type === 'memory.create' ? 'agent_memories' : 'settings'),id:record.id || null,reviewed_by:authorization === 'actor_low_risk_policy' ? null : actor.id,...(authorization === 'actor_low_risk_policy' ? {authorized_by:actor.id,authorization} : {}),source_run_id:run?.id || null};
+  return {status:'applied',type:p.type,resource:p.resource || (p.type === 'coordination.handoff' ? 'run_coordination' : p.type === 'schedule.update' ? 'scheduled_work' : p.type === 'chat.note' ? 'messages' : p.type === 'memory.create' ? 'agent_memories' : 'settings'),id:record.id || null,reviewed_by:authorization === 'actor_low_risk_policy' ? null : actor.id,...(authorization === 'actor_low_risk_policy' ? {authorized_by:actor.id,authorization} : {}),source_run_id:run?.id || null,...(p.type === 'coordination.handoff' ? {dispatched:false,target_chat_id:p.target_chat_id,target_agent_id:p.target_agent_id} : {})};
 }

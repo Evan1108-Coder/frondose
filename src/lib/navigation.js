@@ -1,6 +1,6 @@
 const VIEWS = new Set([
   "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
-  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "updates", "skills", "workflows",
+  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "reader", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
@@ -40,19 +40,23 @@ export function parsePage(hash = "") {
     if (messages.length > 1 || messages.length && !validId(messages[0])) return home();
     const reviews = params.getAll('review');
     if (reviews.length > 1 || reviews.length && !validId(reviews[0])) return home();
+    const returns = params.getAll('from');
+    if (returns.length > 1 || returns.length && !validReturn(returns[0])) return home();
+    const coordinationRuns = params.getAll('coordinationRun'), coordinationItems = params.getAll('coordination');
+    if (coordinationRuns.length > 1 || coordinationItems.length > 1 || coordinationRuns.length !== coordinationItems.length || [...coordinationRuns,...coordinationItems].some(value=>!validId(value))) return home();
     const sections = params.getAll('section').map(value => value === 'contacts' ? 'people' : value);
     const sectionOptions = view === 'rumbo-agent' ? ASSISTANT_SECTIONS : TEAM_SECTIONS;
     if (sections.length > 1 || (sections.length && !sectionOptions.has(sections[0]))) return home();
     // Retired Playbooks links remain useful without reviving the old builder.
     if (view === 'playbooks') return { view: 'settings', id: 'scheduled-work', projectId: null };
-    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...((view === 'teams' && id || view === 'rumbo-agent') && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
+    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'reader' && returns.length ? { returnTo: returns[0] } : {}), ...(view === 'chats' && id && coordinationRuns.length ? { coordinationRunId:coordinationRuns[0],coordinationId:coordinationItems[0] } : {}), ...((view === 'teams' && id || view === 'rumbo-agent') && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
     return home();
   }
 }
 
 /** Build a canonical hash while preserving a project-scoped list or detail. */
-export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null } = {}) {
+export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null, returnTo = null, coordinationRunId = null, coordinationId = null } = {}) {
   view = VIEW_ALIASES[view] || view;
   if (view === 'playbooks') {
     if (id !== null && !validId(id)) throw new TypeError('Invalid page identifier');
@@ -68,6 +72,11 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
   if (messageId !== null && !validId(messageId)) throw new TypeError('Invalid message identifier');
   const query = new URLSearchParams();
   if (reviewId !== null) { if (!validId(reviewId)) throw new TypeError('Invalid review identifier'); query.set('review', reviewId); }
+  if (view === 'reader' && returnTo !== null) { if (!validReturn(returnTo)) throw new TypeError('Invalid return location'); query.set('from',returnTo); }
+  if (view === 'chats' && id && (coordinationRunId !== null || coordinationId !== null)) {
+    if (!validId(coordinationRunId) || !validId(coordinationId)) throw new TypeError('Invalid coordination reference');
+    query.set('coordinationRun',coordinationRunId); query.set('coordination',coordinationId);
+  }
   if (section && view === 'teams' && id) {
     if (section === 'contacts') section = 'people';
     if (!TEAM_SECTIONS.has(section)) throw new TypeError('Invalid team section');
@@ -80,4 +89,14 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
   if (projectId && SCOPED_VIEWS.has(view)) query.set('project', projectId);
   if (messageId && ['chats', 'rumbo-agent'].includes(view) && id) query.set('message', messageId);
   return `${path}${query.size ? `?${query}` : ''}`;
+}
+
+// Temporary readers may return only to an ordinary canonical in-app location.
+// Disallow nesting before parsing so malicious deep links cannot recurse.
+function validReturn(hash) {
+  if (typeof hash !== 'string' || hash.length > 2000 || !hash.startsWith('#/') || /^(?:#\/reader)(?:\/|\?|$)/.test(hash)) return false;
+  const query = new URLSearchParams(hash.split('?')[1] || '');
+  if (query.has('from')) return false;
+  const page = parsePage(hash);
+  return page.view !== 'reader' && pageHash(page.view,page.id,page) === hash;
 }
