@@ -17,7 +17,7 @@ OWN-WORLD: Retain Talvori's Inter, neutral dark/light tokens, indigo actions, in
 
 STORY: Read a reply, follow a real document/website/result, or open Active work without losing the conversation. A temporary full-sized reader returns to its source, never a permanent sidebar destination.
 
-FIRST VIEWPORT: Existing shell; one compact conversation heading; centered 820px reading lane, fit-content user bubble right, AI avatar/prose left, real resource/result rows below. A bottom composer remains reachable. Narrow screens keep the same reading order and wrap tools, with horizontal scrolling confined to code/tables.
+FIRST VIEWPORT: Existing shell; one borderless icon toolbar instead of a repeated conversation heading/subtitle; centered 820px reading lane, fit-content user bubble right, AI avatar/prose left, real resource/result rows below. Toolbar glyphs share a 16px size, with a small Context button and one options menu. The global breadcrumb retains the name. A bottom composer remains reachable. Narrow screens preserve touch targets and disclose secondary tools through options, with horizontal scrolling confined to code/tables.
 
 FORM: User-pinned ChatGPT/Codex references, seed: none (user-pinned). Preview-only generated concept is a structural critique reference; preserve actual brand assets/navigation and do not ship the concept's invented domain or demonstration data. Signature interaction: compact live status opens separately recorded Active work; no private reasoning is fabricated. Native reduced-motion and keyboard behavior remain.
 

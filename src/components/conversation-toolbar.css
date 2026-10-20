@@ -1,0 +1,25 @@
+.conversation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0; min-height: 48px; padding: 8px 24px; border: 0; background: transparent; }
+.conversation-toolbar-views, .conversation-toolbar-actions { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.conversation-toolbar-actions { margin-left: auto; flex-shrink: 0; }
+.conversation-toolbar .icon-button, .conversation-toolbar .conversation-context-button { width: 30px; height: 30px; min-height: 30px; padding: 0; border: 0; box-shadow: none; background: transparent; color: var(--muted); flex-shrink: 0; }
+.conversation-toolbar .conversation-context-button { width: auto; gap: 6px; padding: 0 8px; font-size: 12px; }
+.conversation-toolbar .icon-button > svg, .conversation-toolbar .conversation-context-button > svg { width: 16px; height: 16px; flex-shrink: 0; }
+.conversation-toolbar button:hover { background: var(--hover); color: var(--text); }
+.conversation-toolbar button[aria-pressed="true"] { color: var(--text); }
+.conversation-toolbar button:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
+@media (max-width: 540px) {
+  .conversation-toolbar { min-height: 48px; gap: 4px; padding: 4px 6px; }
+  .conversation-toolbar-views, .conversation-toolbar-actions { gap: 2px; }
+  .conversation-toolbar .conversation-toolbar-secondary { display: none; }
+  .conversation-toolbar .icon-button, .conversation-toolbar .conversation-context-button { min-height: 40px; height: 40px; }
+  .conversation-toolbar .icon-button { width: 40px; }
+  .conversation-toolbar .conversation-context-button { padding: 0 6px; }
+}
+@media (max-width: 360px) {
+  .conversation-toolbar .conversation-context-button { width: 40px; padding: 0; }
+  .conversation-toolbar .conversation-context-button > span { display: none; }
+}
+@media (forced-colors: active) {
+  .conversation-toolbar button[aria-pressed="true"] { color: Highlight; }
+  .conversation-toolbar button:focus-visible { outline-color: Highlight; }
+}

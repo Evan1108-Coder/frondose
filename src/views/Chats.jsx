@@ -3,7 +3,7 @@ import { ContextInspector } from '../components/ContextInspector.jsx';
 import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
 import { useChatFollow } from '../lib/use-chat-follow.js';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, PanelLeft, X, Link, FileText, GitFork, Clock, Smile, SlidersHorizontal } from "../components/icons.jsx";
+import { ArrowDown, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, X, Link, FileText, GitFork, Clock, Smile, SlidersHorizontal } from "../components/icons.jsx";
 import { talvoriActions, refreshTalvori } from '../data/useTalvori.js';
 import { apiRequest } from '../data/api.js';
 import { Button, Dialog, Empty, ErrorMessage, Field, IconButton, ProviderIcon, SearchField, Select, Toggle, useApp } from '../ui.jsx';
@@ -12,6 +12,7 @@ import { customEmojis } from '../lib/custom-emojis.js';
 import { getReaction, reactionKey } from '../lib/reaction-catalog.js';
 import { Form } from '../components/Form.jsx';
 import { ChatMessage, ChatRunStatus } from '../components/ChatMessage.jsx';
+import { ConversationToolbar } from '../components/ConversationToolbar.jsx';
 import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import { ScheduleWorkDialog } from '../components/ScheduledWork.jsx';
 import { AgentMemoryPanel } from '../components/AgentMemoryPanel.jsx';
@@ -552,12 +553,15 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
     setDestination(project?.id || ''); setComposeDialog({ type, message });
   }
   return <section className="chat-thread" aria-label={chat.title} onKeyDown={event => { if (selectionMode && event.key === 'Escape' && !event.defaultPrevented && !event.target.closest('[role="dialog"]')) { event.preventDefault(); stopSelection(); } }}>
-    {assistant ? assistant.header : <header className="chat-thread-header">
-      <IconButton label="All conversations" onClick={onToggleList}><ArrowLeft /></IconButton>
-      <div className="chat-thread-title"><h2>{chat.title}</h2><div>{project ? <button onClick={() => navigate('projects', project.id)}><Folder />{project.name}</button> : <span>Workspace conversation</span>}{task ? <><span>/</span><button onClick={() => navigate('tasks', task.id)}>{task.title}</button></> : null}</div></div>
-      <div className="chat-thread-tools"><IconButton label={searchOpen ? 'Close message search' : 'Search messages'} onClick={() => { setSearchOpen(!searchOpen); setSearch(''); }} aria-pressed={searchOpen}><Search morphTo={searchOpen ? X : Search} /></IconButton><Button icon={PanelLeft} onClick={() => setContextOpen(true)}>Context</Button><IconButton label="Conversation options" onClick={() => setOptionsOpen(true)}><Ellipsis /></IconButton></div>
-    </header>}
-    <div className="chat-thread-navigation"><button className={!bookmarksOnly && !threadId ? 'selected' : ''} onClick={() => { setBookmarksOnly(false); setThreadId(null); }}>Conversation</button><button className={bookmarksOnly ? 'selected' : ''} onClick={() => { setBookmarksOnly(!bookmarksOnly); setThreadId(null); }}><Pin />Bookmarks{bookmarks.size ? ` · ${bookmarks.size}` : ''}</button><button className="chat-secondary-tab" aria-haspopup="dialog" onClick={() => { setNativeRunId(active?.id || runs.filter(run => run.mode === 'live').at(-1)?.id || ''); setNativeActivityOpen(true); }}>Native tools</button><button className="chat-secondary-tab" aria-haspopup="dialog" onClick={() => setUpdatesOpen(true)}><MessageCircle />Updates</button>{collaboration.drafts.length ? <button className="chat-secondary-tab" onClick={() => setComposeDialog({ type: 'drafts' })}><Clock />Follow-ups · {collaboration.drafts.length}</button> : null}{collaboration.branch ? <span><GitFork />Branched reference</span> : null}<button aria-haspopup="dialog" onClick={() => setOptionsOpen(true)}><Ellipsis />More</button></div>
+    {assistant ? assistant.header : <ConversationToolbar
+      onBack={onToggleList} bookmarksOnly={bookmarksOnly} inThread={Boolean(threadId)} bookmarkCount={bookmarks.size}
+      onConversation={()=>{setBookmarksOnly(false);setThreadId(null);}}
+      onBookmarks={()=>{setBookmarksOnly(!bookmarksOnly);setThreadId(null);}}
+      onNativeTools={()=>{setNativeRunId(active?.id || runs.filter(run=>run.mode==='live').at(-1)?.id || '');setNativeActivityOpen(true);}}
+      onUpdates={()=>setUpdatesOpen(true)} followUpCount={collaboration.drafts.length} onFollowUps={()=>setComposeDialog({type:'drafts'})}
+      searchOpen={searchOpen} onSearch={()=>{setSearchOpen(!searchOpen);setSearch('');}}
+      onContext={()=>setContextOpen(true)} onOptions={()=>setOptionsOpen(true)}
+    />}
     <TemplateInstanceDetails workspaceId={chat.workspace_id} entityType="chats" entityId={chat.id} />
     {threadId ? <div className="chat-thread-banner"><MessageCircle /><span>Thread · {inThread.length - 1} replies</span><button onClick={() => { setThreadId(null); change({ replyTo: null }); }}>Back to conversation</button></div> : null}
     {searchOpen ? <div className="chat-message-search"><SearchField label="Search messages in conversation" placeholder="Find a message…" value={search} onChange={setSearch} /><span>{search ? `${shownMessages.length} results` : 'Search this conversation'}</span></div> : null}
@@ -623,6 +627,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}
     {commandLibraryOpen ? <Dialog title="Talvori commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
     {optionsOpen ? <Dialog title="Conversation options" onClose={() => setOptionsOpen(false)}><div className="dialog-body chat-options">
+      {collaboration.branch ? <p className="chat-reference-label"><GitFork />Branched reference</p> : null}
       <Button onClick={()=>{setOptionsOpen(false);setNativeRunId(active?.id || runs.filter(run=>run.mode==='live').at(-1)?.id || '');setNativeActivityOpen(true);}}>Recorded native tools</Button>
       <Button icon={MessageCircle} onClick={()=>{setOptionsOpen(false);setUpdatesOpen(true);}}>Conversation updates</Button>
       {collaboration.drafts.length ? <Button icon={Clock} onClick={()=>{setOptionsOpen(false);setComposeDialog({type:'drafts'});}}>Saved follow-up drafts · {collaboration.drafts.length}</Button> : null}
