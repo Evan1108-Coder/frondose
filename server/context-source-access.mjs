@@ -133,6 +133,14 @@ function references(read, table, key, workspaceId, path = new Set(), inspectDefi
     if (table === 'agent_memories') {
       if (!row.agent_id) deny();
       addParent('agents', row.agent_id);
+      // Copied memory retains its source run's protected context. Knowing the
+      // agent or project alone must not launder revoked document/chat access.
+      // A legacy source run without a verifiable capture is not safe evidence.
+      if (row.source_run_id) {
+        const captured = parse(read('run_capture', row.source_run_id)?.inspection_json);
+        if (!protectedCapture(captured) || captured.manifest?.resolved?.workspace_id !== workspaceId) deny();
+        addDependency('runs', row.source_run_id);
+      }
     }
     if (table === 'tasks') {
       const workflow = read('route_workflows', key);
@@ -289,7 +297,7 @@ export function assertSourceAccess(db, inspection, actor, allowed, runChecks = {
 // must retain the same source boundary as exact-context compilation. Follow
 // stable ancestry only; do not inspect arbitrary user text for references.
 export function assertTalvoriSourceReferences(db, item, table, actor, allowed) {
-  if (!item || !['chats', 'runs'].includes(table) && !['chat_id', 'run_id', 'source_message_id', 'output_id', 'target_id', 'entity_id'].some(key => item[key])) return true;
+  if (!item || !['chats', 'runs', 'agent_memories'].includes(table) && !['chat_id', 'run_id', 'source_run_id', 'source_message_id', 'output_id', 'target_id', 'entity_id'].some(key => item[key])) return true;
   const seen = new Set(), existing = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(row => row.name));
   const read = (target, key) => PERMISSIONS[target] && existing.has(target) && id(key) ? db.prepare(`SELECT * FROM ${target} WHERE id=?`).get(key) : null;
   const visit = (current, currentTable) => {
@@ -305,6 +313,15 @@ export function assertTalvoriSourceReferences(db, item, table, actor, allowed) {
     if (currentTable === 'runs' && existing.has('run_context_snapshots')) {
       const captured = parse(db.prepare('SELECT inspection_json FROM run_context_snapshots WHERE run_id=?').get(current.id)?.inspection_json);
       if (protectedCapture(captured)) assertSourceAccess(db, captured, actor, allowed);
+    }
+    if (currentTable === 'agent_memories') {
+      const canonical = read('agent_memories', current.id);
+      if (!canonical?.workspace_id || current.source_run_id && canonical.source_run_id !== current.source_run_id) deny();
+      if (canonical.source_run_id) {
+        const inspection = { manifest: { resolved: { workspace_id: canonical.workspace_id }, included: [{ kind: 'agent_memories', id: canonical.id }], excluded: [] } };
+        inspection.sourceAccess = captureSourceAccess(db, inspection);
+        assertSourceAccess(db, inspection, actor, allowed);
+      }
     }
     for (const [field, target] of [['chat_id', 'chats'], ['run_id', 'runs'], ['source_message_id', 'messages'], ['output_id', 'outputs']]) if (current[field]) visit(read(target, current[field]), target);
     if (currentTable === 'messages') {

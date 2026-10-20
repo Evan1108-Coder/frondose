@@ -65,7 +65,7 @@ export function restoreComposer(chat, agents, storage) {
   const base = { text: '', files: [], recipient: defaultRecipient(chat, agents), version: 0, turn: null, permission: 'conversation', memory: true, nativeTools: false, model: '', reasoning: '', includeChat: true, includeWorkspace: chat.kind === 'rumbo-agent', contextPackIds: [], retryKeys: {}, retryNativeTools: {}, replyTo: null, context: null };
   try {
     const saved = JSON.parse(storage?.getItem(`rumbo.composer.v2.${chat.id}`) || 'null');
-    if (!saved || ![2, 3, 4].includes(saved.version)) return { ...base, text: storage?.getItem(`rumbo.draft.${chat.id}`) || '' };
+    if (!saved || ![2, 3, 4, 5].includes(saved.version)) return { ...base, text: storage?.getItem(`rumbo.draft.${chat.id}`) || '' };
     return { ...base, text: typeof saved.text === 'string' ? saved.text.slice(0,100000) : '',
       files: Array.isArray(saved.files) ? saved.files.filter(file => file && typeof file.name === 'string' && typeof file.content === 'string') : [],
       recipient: typeof saved.recipient === 'string' ? saved.recipient : base.recipient,
@@ -86,13 +86,15 @@ export function restoreComposer(chat, agents, storage) {
       retryKeys: saved.retryKeys && typeof saved.retryKeys === 'object' && !Array.isArray(saved.retryKeys) ? saved.retryKeys : {},
       retryNativeTools: saved.retryNativeTools && typeof saved.retryNativeTools === 'object' && !Array.isArray(saved.retryNativeTools) ? Object.fromEntries(Object.entries(saved.retryNativeTools).filter(([id, value]) => typeof saved.retryKeys?.[id] === 'string' && typeof value === 'boolean')) : {},
       replyTo: typeof saved.replyTo === 'string' ? saved.replyTo : null,
-      context: saved.context && typeof saved.context.id === 'string' && typeof saved.context.content === 'string' && saved.context.content.length <= 15000 ? saved.context : null,
+      // Never restore protected snapshot text from browser storage, including
+      // legacy drafts. The UI fetches this ID again under current source access.
+      context: saved.context && typeof saved.context.id === 'string' && saved.context.id.length > 0 && saved.context.id.length <= 200 ? { id: saved.context.id } : null,
     };
   } catch { return base; }
 }
 export function persistComposer(chatId, composer, storage) {
   try {
-storage?.setItem(`rumbo.composer.v2.${chatId}`, JSON.stringify({ version: 4, model: composer.model, reasoning: composer.reasoning, includeChat: composer.includeChat, includeWorkspace: composer.includeWorkspace, contextPackIds: composer.contextPackIds, text: composer.text, files: composer.files, recipient: composer.recipient, turn: composer.turn, permission: composer.permission, memory: composer.memory, nativeTools: Boolean(composer.turn) && composer.nativeTools === true, retryKeys: composer.retryKeys, retryNativeTools: Object.fromEntries(Object.entries(composer.retryNativeTools || {}).filter(([id]) => Boolean(composer.retryKeys?.[id]))), replyTo: composer.replyTo, context: composer.context }));
+storage?.setItem(`rumbo.composer.v2.${chatId}`, JSON.stringify({ version: 5, model: composer.model, reasoning: composer.reasoning, includeChat: composer.includeChat, includeWorkspace: composer.includeWorkspace, contextPackIds: composer.contextPackIds, text: composer.text, files: composer.files, recipient: composer.recipient, turn: composer.turn, permission: composer.permission, memory: composer.memory, nativeTools: Boolean(composer.turn) && composer.nativeTools === true, retryKeys: composer.retryKeys, retryNativeTools: Object.fromEntries(Object.entries(composer.retryNativeTools || {}).filter(([id]) => Boolean(composer.retryKeys?.[id]))), replyTo: composer.replyTo, context: composer.context?.id ? { id: composer.context.id } : null }));
     storage?.setItem(`rumbo.draft.${chatId}`, composer.text);
     return true;
   } catch { return false; }

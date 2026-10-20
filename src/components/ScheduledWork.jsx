@@ -12,11 +12,11 @@ export function ScheduleTimeFields({ time, setTime, timezone, setTimezone, disab
   return <div className="schedule-time-fields"><Field label="Date"><DateField disabled={disabled} required value={time.split('T')[0] || ''} onChange={date => setTime(`${date}T${time.split('T')[1] || '12:00'}`)} /></Field><Field label="Time"><input disabled={disabled} required pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" value={time.split('T')[1] || ''} onChange={event => setTime(`${time.split('T')[0] || ''}T${event.target.value}`)} placeholder="HH:mm" maxLength={5} /></Field><Field label="Time zone"><input disabled={disabled} required value={timezone} onChange={event => setTimezone(event.target.value)} placeholder="Asia/Shanghai" /></Field></div>;
 }
 
-export function ScheduleWorkDialog({ workspaceId, kind, payload, contextInspectionId, contextInspection, initialRunAt, initialTimezone, title, onClose, onScheduled }) {
+export function ScheduleWorkDialog({ workspaceId, kind, payload, contextInspectionId, contextInspection, initialRunAt, initialTimezone, initialRecurrence = 'none', title, onClose, onScheduled }) {
   const { notify } = useApp();
   const [timezone, setTimezone] = useState(() => validTimezone(initialTimezone) ? initialTimezone : defaultZone());
   const [time, setTime] = useState(() => localScheduleTime(Number.isFinite(Date.parse(initialRunAt)) ? Date.parse(initialRunAt) : Date.now() + 30 * 60000, validTimezone(initialTimezone) ? initialTimezone : defaultZone()));
-  const [recurrence, setRecurrence] = useState('none'), [busy, setBusy] = useState(false), [error, setError] = useState(null);
+  const [recurrence, setRecurrence] = useState(() => ['none','daily','weekly'].includes(initialRecurrence) ? initialRecurrence : 'none'), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const request = useRef(payload.action_request_id && kind === 'message' ? `agent_schedule_${payload.action_request_id}` : crypto.randomUUID());
   async function save(event) {
     event.preventDefault(); setBusy(true); setError(null);
@@ -32,7 +32,8 @@ export function ScheduleWorkDialog({ workspaceId, kind, payload, contextInspecti
     {payload.model ? <p className="schedule-context-note">Agent model: <code>{payload.model}</code></p> : null}
     {contextInspection ? <details className="schedule-reviewed-context"><summary>Exact context for this scheduled message</summary><pre tabIndex={0}>{contextInspection.finalPrompt}</pre><p>Captured until {new Date(contextInspection.expires_at).toLocaleTimeString()}. Confirming saves this bounded context, not new access or native-tool permission.</p></details> : null}
     <ScheduleTimeFields disabled={busy} time={time} setTime={setTime} timezone={timezone} setTimezone={setTimezone} />
-    {kind === 'message' && !payload.action_request_id ? <Field label="Repeat"><Select disabled={busy} value={recurrence} onChange={setRecurrence}><option value="none">Do not repeat</option><option value="daily">Every day at this time</option><option value="weekly">Every week on this day</option></Select></Field> : null}
+    {kind === 'message' ? <Field label="Repeat">{payload.action_request_id ? <p>{recurrence === 'daily' ? 'Every day at this time' : recurrence === 'weekly' ? 'Every week on this day' : 'Do not repeat'}</p> : <Select disabled={busy} value={recurrence} onChange={setRecurrence}><option value="none">Do not repeat</option><option value="daily">Every day at this time</option><option value="weekly">Every week on this day</option></Select>}</Field> : null}
+    {recurrence !== 'none' && payload.agent_id ? <p className="schedule-context-note">Confirming authorizes a separate agent run for each occurrence until you pause or cancel. Provider usage may be charged each time; response actions still require their own applicable review.</p> : null}
     <p className="schedule-context-note">{contextInspectionId ? 'This message saves the context you reviewed. Later conversation or workspace changes will not be included.' : kind === 'action' ? 'Talvori checks the target and your access again when the action runs. A changed target needs a fresh review.' : 'This saves a note in the selected conversation without contacting an AI.'} Talvori’s server must be running at the scheduled time.</p>
     <ErrorMessage error={error} /><footer className="form-submit-row"><Button disabled={busy} onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" icon={Clock} busy={busy}>{kind === 'action' ? 'Approve and schedule' : 'Schedule message'}</Button></footer>
   </form></Dialog>;

@@ -88,14 +88,20 @@ export function createScheduledWorkService({ db, allowed, actorFor, prepareMessa
     });
   }
   function update(id, body, actor) {
-    exact(body, ['version', 'state', 'local_time', 'timezone']);
+    exact(body, ['version', 'state', 'local_time', 'run_at', 'timezone']);
     return transaction(() => {
       const row = getRow(id, actor, true);
       if (row.version !== body.version) throw error('This schedule changed. Reload it first.', 'stale_schedule', 409);
       if (!['active', 'paused', 'cancelled'].includes(body.state) || ['cancelled', 'finished'].includes(row.state)) throw error('This schedule can no longer be changed.', 'schedule_finished', 409);
       let due = row.next_due_at, timezone = row.timezone;
+      if (body.run_at !== undefined && body.local_time !== undefined) throw error('Choose either an exact instant or a local time, not both.');
       if (body.timezone !== undefined && !validTimezone(body.timezone)) throw error('Choose a valid time zone.');
-      if (body.timezone !== undefined && body.local_time === undefined) throw error('Choose a local date and time when changing the time zone.');
+      if (body.timezone !== undefined && body.local_time === undefined && body.run_at === undefined) throw error('Choose a local date and time when changing the time zone.');
+      if (body.run_at !== undefined) {
+        if (body.timezone === undefined || typeof body.run_at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(body.run_at) || !Number.isFinite(Date.parse(body.run_at)) || new Date(body.run_at).toISOString().slice(0,19) !== body.run_at.slice(0,19)) throw error('Choose an exact UTC instant and a valid time zone.');
+        due = new Date(body.run_at).toISOString(); timezone = body.timezone;
+        if (Date.parse(due) <= new Date(now()).getTime() || Date.parse(due) > new Date(now()).getTime() + 5 * 366 * 86400000) throw error('Choose a future time within the next five years.');
+      }
       if (body.local_time !== undefined) { timezone = body.timezone || timezone; try { due = scheduleInstant(body.local_time, timezone); } catch (cause) { throw error(cause.message); } if (Date.parse(due) <= new Date(now()).getTime() || Date.parse(due) > new Date(now()).getTime() + 5 * 366 * 86400000) throw error('Choose a future time within the next five years.'); }
       if (body.state === 'active' && Date.parse(due) <= new Date(now()).getTime()) throw error('Choose a new future time before resuming this schedule.');
       db.prepare('UPDATE scheduled_work SET state=?,next_due_at=?,timezone=?,version=version+1,updated_at=? WHERE id=?').run(body.state, due, timezone, instant(), id);

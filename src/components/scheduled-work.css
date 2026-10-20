@@ -8,6 +8,8 @@
 .schedule-time-fields { display: grid; grid-template-columns: 1fr 100px; gap: 16px; }
 .schedule-time-fields > .field:last-child { grid-column: 1 / -1; }
 .chat-context-content .agent-action-fields > div { min-height: 0; padding: 12px 0; }
+.agent-action-schedule-fields { gap: 4px; }
+.chat-context-content .agent-action-schedule-fields > div { margin: 0; padding: 8px 0; }
 .schedule-time-fields input { width: 100%; min-width: 0; }
 .scheduled-content-preview { padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
 .scheduled-content-preview strong { font-size: 13px; }

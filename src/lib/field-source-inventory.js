@@ -257,6 +257,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "source.components-assistant-activity.assistant-activity.search-runs-agents-or-conversati.e8c5b3ec9ec1",
+    "page": "Activity",
+    "label": "Search agent activity",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "source.components-change-review.change-review.filter-files.076d253ff71e",
     "page": "Code & reviews · Changed files and review notes",
     "label": "Filter changed files",
@@ -285,6 +293,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "Appearance & navigation · Colors",
     "label": "Custom hex color",
     "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-conversation-sources.conversation-sources.find-a-decision-or-earlier-discu.563635342ce0",
+    "page": "Conversation Sources",
+    "label": "Search past conversation messages",
+    "type": "search",
     "eligible": true,
     "reason": null
   },

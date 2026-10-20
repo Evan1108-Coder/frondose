@@ -15,6 +15,7 @@ import { ChatMessage, ChatRunStatus } from '../components/ChatMessage.jsx';
 import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import { ScheduleWorkDialog } from '../components/ScheduledWork.jsx';
 import { AgentMemoryPanel } from '../components/AgentMemoryPanel.jsx';
+import { ConversationSources } from '../components/ConversationSources.jsx';
 import { CommandLibrary, SlashCommandMenu } from '../components/SlashCommandMenu.jsx';
 import { byUpdated, download, relative, val, visible } from '../lib/model.js';
 import { agentReadiness } from '../lib/agents.js';
@@ -89,6 +90,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const composer = composers.get(chat.id);
   const [, render] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
+  const [contextReload, setContextReload] = useState(0), [contextLoadError, setContextLoadError] = useState(null);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [scheduleDraft, setScheduleDraft] = useState(null);
   const [accessOpen, setAccessOpen] = useState(false);
@@ -122,7 +124,8 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const bookmarks = new Set(collaboration.bookmarks || []);
   const replies = useMemo(() => { const map = new Map(); for (const message of messages) if (message.metadata?.reply_to) map.set(message.metadata.reply_to, (map.get(message.metadata.reply_to) || 0) + 1); return map; }, [messages]);
   const contextChoices = [...visible(data.documents).map(item => ({ kind: 'document', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.memory_notes).map(item => ({ kind: 'memory', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.workspace_items || []).filter(item => item.kind === 'context_pack').map(item => ({ kind: 'pack', id: item.id, title: item.name }))];
-  const blocker = composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: active, files: composer.files, permission: composer.permission });
+  const contextPending = Boolean(composer.context && typeof composer.context.content !== 'string');
+  const blocker = contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: active, files: composer.files, permission: composer.permission });
   const inThread = threadMessages(messages, threadId);
   const shownMessages = inThread.filter(message => (!search.trim() || message.content?.toLowerCase().includes(search.trim().toLowerCase())) && (!bookmarksOnly || bookmarks.has(message.id)));
   const selectedMessages = messages.filter(message => selectedIds.has(message.id));
@@ -133,7 +136,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const readOnlyProfile = agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
   const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
   const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
-  const sentAttachments = composer.context ? [{ name: `talvori-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
+  const sentAttachments = composer.context && !contextPending ? [{ name: `talvori-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
   // New turns use the selected identity's model. Recovery alone retains the exact
   // old override, so changing this UI cannot mutate an uncertain delivered turn.
   const assistantOptions = assistant ? { ...(composer.turn && composer.model ? { model: composer.model, reasoning_effort: composer.reasoning || '' } : {}), include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
@@ -163,6 +166,17 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const retryContextReady = reviewedRetry?.key === retryInspectionKey && Date.parse(reviewedRetry.result.expires_at) > Date.now();
   const { atBottom, scrollToEnd, setFollowing: setAtBottom } = useChatFollow(listRef, `${messages.length}:${runs.map(run => run.status).join(',')}:${search}`, data.settings?.appearance?.reduceMotion);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    // Migrate legacy browser copies to an ID-only draft before any source read.
+    persistComposer(chat.id, composer, draftStorage());
+    if (!composer.context || typeof composer.context.content === 'string') return;
+    const id = composer.context.id, controller = new AbortController();
+    setContextLoadError(null);
+    apiRequest(`/api/chat-collaboration/${encodeURIComponent(chat.id)}/snapshots/${encodeURIComponent(id)}?workspace_id=${encodeURIComponent(val(chat, 'workspace_id'))}`, { signal: controller.signal }).then(response => {
+      if (!controller.signal.aborted && composer.context?.id === id) { composer.context = response.result; render(value => value + 1); }
+    }).catch(cause => { if (!controller.signal.aborted) setContextLoadError(cause); });
+    return () => controller.abort();
+  }, [chat.id, composer.context?.id, contextReload]);
   useEffect(() => {
     function followLink() {
       const id = new URLSearchParams(location.hash.split('?')[1] || '').get('message');
@@ -491,7 +505,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
         <ErrorMessage error={error} />
         {!composeDialog && !contextOpen ? <ErrorMessage error={collaborationError} /> : null}
         {replyMessage ? <div className="chat-composer-reply"><MessageCircle /><span>Replying to {val(replyMessage, 'sender_name')}<small>{replyMessage.content.slice(0, 150)}</small></span><IconButton label="Cancel reply" onClick={() => change({ replyTo: null })}><X /></IconButton></div> : null}
-        {composer.context ? <div className="chat-context-tray"><FileText /><button type="button" onClick={() => setPreview({ name: 'Selected context snapshot', content: composer.context.content, type: 'text/markdown' })}>{composer.context.sources?.length || 0} sources · inspect exact snapshot</button><IconButton label="Remove selected context" onClick={() => change({ context: null })}><X /></IconButton></div> : null}
+        {composer.context ? <div className="chat-context-tray"><FileText /><button type="button" onClick={() => contextPending ? setContextReload(value => value + 1) : setPreview({ name: 'Selected context snapshot', content: composer.context.content, type: 'text/markdown' })}>{contextPending ? contextLoadError ? 'Reload selected context' : 'Loading selected context…' : `${composer.context.sources?.length || 0} sources · inspect exact snapshot`}</button><IconButton label="Remove selected context" onClick={() => change({ context: null })}><X /></IconButton></div> : null}
         {composer.files.length ? <div className="chat-compose-files" aria-label="Attached files">{composer.files.map((file, index) => <span key={`${file.name}-${index}`}><Paperclip /><button type="button" onClick={() => setPreview(file)}>{file.name}</button><IconButton label={`Remove ${file.name}`} onClick={() => change({ files: composer.files.filter((_, i) => i !== index) })}><X /></IconButton></span>)}</div> : null}
         <SlashCommandMenu text={composer.text} context="chat" activeIndex={slashIndex} onActiveIndexChange={setSlashIndex} onSelect={selectSlash} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} />
         <textarea ref={inputRef} aria-label="Message" data-field-default-key="conversation.compose.message" data-field-default-page="Conversation composer" data-field-default-label="Message" data-field-default-mode="create" value={composer.text} maxLength={100000} placeholder={agent ? `Ask ${agent.name}…` : 'Write a note or type / for commands…'} onChange={event => { setSlashIndex(0); change({ text: event.target.value }); }} onKeyDown={event => {
@@ -524,10 +538,11 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
     {contextOpen ? <Dialog title="Chat context" subtitle="Know what travels with this conversation." className="chat-context-dialog" onClose={() => setContextOpen(false)}><div className="dialog-body chat-context-content">
       <ErrorMessage error={collaborationError} />
       <AgentMemoryPanel workspaceId={val(chat, 'workspace_id')} agentId={agent?.id} projectId={project?.id} />
-      <section><h3>Selected sources</h3><p>Choose documents, memory, or a context pack. Talvori saves an immutable text snapshot and includes it as a text attachment only when you explicitly send. Selecting sources never contacts an agent.</p><SearchField label="Filter context sources" placeholder="Find documents, memory, or packs…" value={contextQuery} onChange={setContextQuery} /><div className="chat-source-list">{contextChoices.filter(item => item.title.toLowerCase().includes(contextQuery.toLowerCase())).map(item => {
+      <ConversationSources workspaceId={val(chat, 'workspace_id')} chatId={chat.id} selected={contextSources} disabled={actionBusy || recoveringTurn} onToggle={source => setContextSources(values => values.some(item => item.kind === source.kind && item.id === source.id) ? values.filter(item => item.kind !== source.kind || item.id !== source.id) : values.length < 20 ? [...values, source] : values)} />
+      <section><h3>Selected sources</h3><p>Combine selected past messages with documents, memory, or a context pack. Talvori saves the exact selected text as an immutable snapshot, up to 15 KB. Only explicit Send passes it to the agent; search and selection never do.</p><SearchField label="Filter context sources" placeholder="Find documents, memory, or packs…" value={contextQuery} onChange={setContextQuery} /><div className="chat-source-list">{contextChoices.filter(item => item.title.toLowerCase().includes(contextQuery.toLowerCase())).map(item => {
         const key = `${item.kind}:${item.id}`, selected = contextSources.some(source => `${source.kind}:${source.id}` === key);
-        return <label key={key}><input type="checkbox" checked={selected} onChange={() => setContextSources(values => selected ? values.filter(source => `${source.kind}:${source.id}` !== key) : [...values, { kind: item.kind, id: item.id }])} /><span>{item.title}<small>{item.kind === 'pack' ? 'Context pack' : item.kind === 'memory' ? 'Memory note' : 'Document'}{item.project_id && item.project_id !== project?.id ? ' · another project in this workspace' : ''}</small></span></label>;
-      })}{!contextChoices.length ? <p>No sources yet. Add a project document, memory note, or context pack to select it here.</p> : null}</div><Button disabled={!contextSources.length} busy={actionBusy} onClick={async () => { try { const context = await collaborationAction('context', { sources: contextSources }); change({ context }); setContextOpen(false); notify('Context snapshot attached to the composer. Review it before sending.'); } catch {} }}>Snapshot {contextSources.length || 'selected'} sources</Button></section>
+        return <label key={key}><input type="checkbox" checked={selected} disabled={actionBusy || recoveringTurn || !selected && contextSources.length >= 20} onChange={() => setContextSources(values => selected ? values.filter(source => `${source.kind}:${source.id}` !== key) : [...values, { kind: item.kind, id: item.id }])} /><span>{item.title}<small>{item.kind === 'pack' ? 'Context pack' : item.kind === 'memory' ? 'Memory note' : 'Document'}{item.project_id && item.project_id !== project?.id ? ' · another project in this workspace' : ''}</small></span></label>;
+      })}{!contextChoices.length ? <p>No documents, memory notes, or context packs yet. Past messages can still be selected above.</p> : null}</div><Button disabled={!contextSources.length || recoveringTurn} busy={actionBusy} onClick={async () => { try { const context = await collaborationAction('context', { sources: contextSources }); change({ context }); setContextOpen(false); notify('Context snapshot attached to the composer. Review it before sending.'); } catch {} }}>Snapshot {contextSources.length || 'selected'} sources</Button></section>
       <section><h3>Connected work</h3>{project ? <button className="chat-context-link" onClick={() => { setContextOpen(false); navigate('projects', project.id); }}><Folder />{project.name}</button> : <p>No project linked.</p>}{task ? <button className="chat-context-link" onClick={() => navigate('tasks', task.id)}><GitBranch />{task.title}</button> : null}<Button icon={Pencil} onClick={() => { setContextOpen(false); edit('chat', chat); }}>Edit chat details</Button></section>
       <ReviewPanel targetType="chat" targetId={chat.id} projectId={project?.id} />
       <section><h3>Agents in this chat</h3>{agents.filter(item => (val(chat, 'participant_agent_ids') || []).includes(item.id)).map(item => <button className="chat-context-link" key={item.id} onClick={() => navigate('agents', item.id)}><ProviderIcon provider={item.provider} />{item.name}</button>)}<p>The composer chooses who receives each message. Other agents are not contacted automatically.</p></section>

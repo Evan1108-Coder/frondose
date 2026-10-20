@@ -59,3 +59,37 @@ used as active branding. Provider-hosted app registrations remain operator work.
 - Independent read-only review passed 47 focused tests and found a self-link
   review incorrectly falling back to archive wording; explicit membership copy
   and a regression check were added.
+
+## October 20 personal agent follow-through
+
+Added Activity and Scheduled sections within the existing Talvori interface,
+explicit past-message retrieval, and confirmed recurring/management proposals.
+The incumbent navigation, fonts, theme tokens and review controls are retained.
+No live provider account or real workspace record was used for these tests.
+
+- Production build passed; full suite: 1,205 tests passed, zero failed. Four
+  Sites packaging tests passed. The pre-existing large-chunk warning remains.
+- Browser plugin/skill absent; bundled Playwright used with all API calls
+  intercepted for interaction fixtures, at desktop 1440×1000 and mobile 390×844.
+  Page identity, meaningful rendering, no framework overlay, no app errors,
+  screenshots and target interactions passed.
+- Activity: deep links, status/text filtering, output and conversation links,
+  exact selected-run Stop and no schedule cancellation from Stop were checked.
+  Simulation labels remain distinct; completed execution is not accepted output.
+- Scheduled: embedded management, cancellation confirmation, focus read
+  deduplication, held stale GET versus confirmed PATCH, revoked-source prompt
+  removal, dialog closure and explicit Retry recovery were checked.
+- Retrieval: typing/search/selection never executed work; snapshot creation used
+  IDs only; browser storage omitted source contents; restored context required
+  current authorization, and a denied reload blocked Send until removal.
+- Proposals: daily recurrence survived final confirmation; denied preparation
+  or save stayed pending; owner-denied schedule management stayed pending;
+  exact confirmed cancellation applied. Real API tests used temporary SQLite
+  and fake providers for source revocation, current/historical ACLs, DST exact
+  instants, stale versions, idempotency and per-actor privacy.
+- The generated safe Field Defaults inventory now has 211 definitions. All 209
+  prior keys remain. The initially stale generated catalog was regenerated and
+  the complete suite rerun successfully.
+- Unimplemented autonomy, event watching, fresh-state recurring context,
+  multi-channel contact and off-app notifications remain explicit limitations
+  in `docs/personal-agent-capabilities.md`, not claims of tested behavior.

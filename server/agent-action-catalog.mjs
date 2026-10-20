@@ -7,6 +7,7 @@ import { changeContext } from './change-context.mjs';
 import { areaSettings, saveAreaSettings } from './area-service.mjs';
 import { validTimezone } from '../src/lib/scheduled-time.js';
 import { validApiModel } from '../src/lib/ai-provider-catalog.js';
+import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
 
 const stamp = () => new Date().toISOString();
 const text = (max = 10000, minLength = 0) => ({ type: 'string', maxLength: max, minLength });
@@ -29,7 +30,8 @@ const settingsSchemas = {
 export function actionCatalog() {
   const result = [];
   result.push({id:'agent.self_link',type:'agent.self_link',label:'Link this agent to an Area, project or Route',review_required:true,execution:'local',direct_low_risk_eligible:true,schema:object({type:{const:'agent.self_link'},resource:choice(['teams','projects','tasks']),id:text(200,1)},['type','resource','id'])});
-  result.push({id:'schedule.create',type:'schedule.create',label:'Propose a scheduled agent prompt (confirmation required)',review_required:true,execution:'human_schedule_confirmation',schema:object({type:{const:'schedule.create'},chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1)},['type','chat_id','content','model','run_at','timezone'])});
+  result.push({id:'schedule.create',type:'schedule.create',label:'Propose a scheduled agent prompt (confirmation required)',review_required:true,execution:'human_schedule_confirmation',schema:object({type:{const:'schedule.create'},chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1),recurrence:choice(['none','daily','weekly'])},['type','chat_id','content','model','run_at','timezone'])});
+  result.push({id:'schedule.update',type:'schedule.update',label:'Propose pausing, rescheduling or cancelling your schedule',review_required:true,execution:'local',schema:object({type:{const:'schedule.update'},schedule_id:text(200,1),version:{type:'integer',minimum:1},state:choice(['active','paused','cancelled']),run_at:text(40,1),timezone:text(100,1)},['type','schedule_id','version','state'])});
   for (const [resource, def] of Object.entries(definitions)) {
     for (const kind of ['create','update','archive']) {
       const properties = { type: { const:`record.${kind}` }, resource: {const:resource} };
@@ -128,11 +130,77 @@ export function validateLocalAction(db,input,workspaceId,{run} = {}) {
   }
   return validateWithWorkspace(db,input,workspaceId,workspace,{run});
 }
+const utcInstant = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,19) === value.slice(0,19);
+const scheduleSummary = row => ({id:row.id,workspace_id:row.workspace_id,creator_id:row.creator_id,kind:row.kind,title:row.title,state:row.state,version:row.version,timezone:row.timezone,recurrence:row.recurrence,next_due_at:row.next_due_at});
+
+// Schedules belong to their authenticated creator, not everyone who can read
+// the workspace. Preserve all original prompt/action source boundaries when
+// even their title or timing is copied into a later reviewed agent context.
+function scheduleReference(db,row) {
+  const payload = JSON.parse(row.payload_json), review = JSON.parse(row.review_json);
+  const resolved = {workspace_id:row.workspace_id}, included = [];
+  if (row.kind === 'message') {
+    resolved.chat_id = payload.chat_id;
+    if (payload.agent_id) resolved.agent_id = payload.agent_id;
+    if (review.chat?.project_id) resolved.project_id = review.chat.project_id;
+    if (review.chat?.task_id) resolved.task_id = review.chat.task_id;
+  } else {
+    if (!review.run?.id || ['schedule.create','schedule.update'].includes(review.proposal?.type)) throw validationError('Schedule source unavailable.');
+    included.push({kind:'run',id:review.run.id});
+    const targetKind = {projects:'project',tasks:'route',documents:'document'}[review.proposal?.resource];
+    if (targetKind && review.proposal.id) included.push({kind:targetKind,id:review.proposal.id});
+    if (review.proposal?.resource === 'chats') resolved.chat_id = review.proposal.id;
+    if (review.proposal?.resource === 'milestones' && review.proposal.id) resolved.project_id = db.prepare('SELECT project_id FROM milestones WHERE id=? AND workspace_id=?').get(review.proposal.id,row.workspace_id)?.project_id;
+    if (review.proposal?.chat_id) resolved.chat_id = review.proposal.chat_id;
+    const record = review.proposal?.fields || review.before;
+    for (const [field,kind] of [['project_id','project'],['team_id','area'],['task_id','route'],['parent_task_id','route']]) if (record?.[field]) included.push({kind,id:record[field]});
+    for (const parent of review.before?.parents || review.before?.__action_parents || []) {
+      const kind = {projects:'project',teams:'area',tasks:'route'}[parent.resource];
+      if (kind && parent.record?.id) included.push({kind,id:parent.record.id});
+    }
+  }
+  if (review.schedule_proposal_id) {
+    const original = db.prepare('SELECT run_id FROM agent_action_requests WHERE id=? AND workspace_id=?').get(review.schedule_proposal_id,row.workspace_id);
+    if (!original) throw validationError('Schedule source unavailable.');
+    included.push({kind:'run',id:original.run_id});
+  }
+  const inspection = {manifest:{resolved,included},sourceAccess:captureSourceAccess(db,{manifest:{resolved,included}})};
+  if (review.inspection?.sourceAccess) {
+    inspection.sourceAccess.sources.push(...review.inspection.sourceAccess.sources);
+    inspection.sourceAccess.connections.push(...review.inspection.sourceAccess.connections);
+  }
+  return {inspection,payload,review};
+}
+function assertScheduleReadable(db,row,actor,allowed,capturedAccess) {
+  if (!row || !actor?.id || row.creator_id !== actor.id || !allowed?.(row.workspace_id,actor,'workspace.read',{})) throw Object.assign(validationError('This schedule is unavailable.'),{statusCode:403});
+  const reference = scheduleReference(db,row);
+  assertSourceAccess(db,reference.inspection,actor,allowed);
+  if (capturedAccess) assertSourceAccess(db,{manifest:{resolved:{workspace_id:row.workspace_id}},sourceAccess:capturedAccess},actor,allowed);
+  if (row.kind === 'action') {
+    const run = db.prepare('SELECT * FROM runs WHERE id=?').get(reference.review.run.id);
+    if (!run || !localActionReadable(db,{proposal:reference.review.proposal,before:reference.review.before,workspaceId:row.workspace_id,run,actor,allowed})) throw Object.assign(validationError('This schedule is unavailable.'),{statusCode:403});
+  }
+  return reference;
+}
+export function scheduledWorkAgentContext(db,workspaceId,{actor,allowed} = {}) {
+  const schedules = [], sourceAccess = {version:1,workspace_id:workspaceId,sources:[],connections:[]};
+  if (!actor?.id || !allowed?.(workspaceId,actor,'workspace.read',{}) || !db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_work'").get()) return {schedules,sourceAccess};
+  for (const row of db.prepare("SELECT * FROM scheduled_work WHERE workspace_id=? AND creator_id=? AND state IN ('active','paused') ORDER BY next_due_at,id LIMIT 30").all(workspaceId,actor.id)) {
+    try {
+      const reference = assertScheduleReadable(db,row,actor,allowed);
+      if (schedules.length >= 15 || sourceAccess.sources.length + reference.inspection.sourceAccess.sources.length > 750) continue;
+      schedules.push({...scheduleSummary(row),chat_id:reference.payload.chat_id || null,agent_id:reference.payload.agent_id || null});
+      sourceAccess.sources.push(...reference.inspection.sourceAccess.sources);
+      sourceAccess.connections.push(...reference.inspection.sourceAccess.connections);
+    } catch { /* Restricted or malformed schedules are absent, not placeholders. */ }
+  }
+  return {schedules,sourceAccess};
+}
 function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
   if (input.type === 'schedule.create') {
-    exactKeys(input,['type','chat_id','content','model','run_at','timezone'],['type','chat_id','content','model','run_at','timezone']);
-    checkFields(input,{type:choice(['schedule.create']),chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1)});
-    if (!run?.agent_id || !validApiModel(input.model) || !validTimezone(input.timezone) || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(input.run_at) || !Number.isFinite(Date.parse(input.run_at)) || new Date(input.run_at).toISOString().slice(0,19) !== input.run_at.slice(0,19)) throw validationError('Propose an explicit model, UTC instant and IANA timezone for a named source agent.');
+    exactKeys(input,['type','chat_id','content','model','run_at','timezone','recurrence'],['type','chat_id','content','model','run_at','timezone']);
+    checkFields(input,{type:choice(['schedule.create']),chat_id:text(200,1),content:text(10000,1),model:text(120,1),run_at:text(40,1),timezone:text(100,1),recurrence:choice(['none','daily','weekly'])});
+    if (!run?.agent_id || !validApiModel(input.model) || !validTimezone(input.timezone) || !utcInstant(input.run_at)) throw validationError('Propose an explicit model, UTC instant and IANA timezone for a named source agent.');
     const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(run.agent_id);
     if (!agent || agent.workspace_id && agent.workspace_id !== workspaceId) throw validationError('Schedule source agent unavailable.');
     const currentChat = active(db,'chats',input.chat_id,workspaceId), parents = parentsFor(db,currentChat,workspaceId);
@@ -141,6 +209,16 @@ function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
     // and parent scope changes must still invalidate this scheduling intent.
     const {updated_at,...chat} = currentChat;
     return {proposal:{...input,content:input.content.trim(),run_at:new Date(input.run_at).toISOString()},before:{chat,parents,agent}};
+  }
+  if (input.type === 'schedule.update') {
+    exactKeys(input,['type','schedule_id','version','state','run_at','timezone'],['type','schedule_id','version','state']);
+    checkFields({schedule_id:input.schedule_id,state:input.state,...(input.run_at !== undefined ? {run_at:input.run_at} : {}),...(input.timezone !== undefined ? {timezone:input.timezone} : {})},{schedule_id:text(200,1),state:choice(['active','paused','cancelled']),run_at:text(40,1),timezone:text(100,1)});
+    if (!Number.isSafeInteger(input.version) || input.version < 1 || (input.run_at === undefined) !== (input.timezone === undefined) || input.run_at !== undefined && (!utcInstant(input.run_at) || !validTimezone(input.timezone))) throw validationError('Use the exact current schedule version and a UTC instant with its IANA zone when changing time.');
+    const sponsor = run?.id && db.prepare('SELECT actor_id FROM agent_run_sponsors WHERE run_id=?').get(run.id);
+    const row = sponsor && db.prepare("SELECT * FROM scheduled_work WHERE id=? AND workspace_id=? AND creator_id=? AND state IN ('active','paused')").get(input.schedule_id,workspaceId,sponsor.actor_id);
+    if (!row) throw validationError('Choose one of the source sponsor’s available schedules.');
+    if (row.version !== input.version) throw Object.assign(validationError('This schedule changed. Request a fresh proposal.'),{statusCode:409,errorCode:'stale_schedule'});
+    return {proposal:{...input,...(input.run_at ? {run_at:new Date(input.run_at).toISOString()} : {})},before:{schedule:scheduleSummary(row),sourceAccess:scheduleReference(db,row).inspection.sourceAccess}};
   }
   if (input.type === 'agent.self_link') {
     exactKeys(input,['type','resource','id'],['type','resource','id']);
@@ -207,6 +285,7 @@ function validateWithWorkspace(db,input,workspaceId,workspace,{run} = {}) {
 export function actionPermissionTargets(db,proposal,workspaceId,{run} = {}) {
   const validated = validateLocalAction(db,proposal,workspaceId,{run});
   const p = validated.proposal;
+  if (p.type === 'schedule.update') return [{permission:'workspace.read',scope:{}}];
   if (p.type === 'schedule.create') {
     const chat = validated.before.chat, scope = chat.project_id ? {scope_type:'project',scope_id:chat.project_id} : {};
     return [{permission:'chats.read',scope},{permission:'chats.write',scope},{permission:'agents.read',scope:{scope_type:'agent',scope_id:run.agent_id}},{permission:'agents.run',scope},...validated.before.parents.map(parent=>({permission:`${parent.resource === 'teams' ? 'workspace' : parent.resource === 'tasks' ? 'routes' : 'projects'}.read`,scope:parent.resource === 'teams' ? {scope_type:'team',scope_id:parent.record.id} : parent.resource === 'projects' ? {scope_type:'project',scope_id:parent.record.id} : routeScope(parent.record)}))];
@@ -229,6 +308,10 @@ export function actionPermissionTargets(db,proposal,workspaceId,{run} = {}) {
 export function authorizeLocalAction(db,{proposal,workspaceId,run,actors,allowed}) {
   if (!allowed || !Array.isArray(actors) || !actors.length || actors.some(actor => !actor?.id)) throw Object.assign(new Error('Authenticated action authority is required.'),{statusCode:403});
   const requirements = actionPermissionTargets(db,proposal,workspaceId,{run});
+  if (proposal.type === 'schedule.update') {
+    const row = db.prepare('SELECT * FROM scheduled_work WHERE id=? AND workspace_id=?').get(proposal.schedule_id,workspaceId);
+    for (const actor of actors) assertScheduleReadable(db,row,actor,allowed);
+  }
   for (const actor of actors) for (const {permission,scope} of requirements) if (permission === 'installation.settings' ? actor.id !== 'local-owner' : !allowed(workspaceId,actor,permission,scope)) throw Object.assign(new Error('The action’s sponsor or reviewer no longer has target access.'),{statusCode:403});
 }
 export function assertActionFresh(before,current) {
@@ -242,6 +325,13 @@ export function assertActionFresh(before,current) {
 // moves or becomes archived. Staleness does not itself hide a readable request.
 export function localActionReadable(db,{proposal,before,workspaceId,run,actor,allowed}) {
   if (!actor?.id || !allowed || !isRecord(proposal)) return false;
+  if (proposal.type === 'schedule.update') {
+    try {
+      const row = db.prepare('SELECT * FROM scheduled_work WHERE id=? AND workspace_id=?').get(proposal.schedule_id,workspaceId);
+      assertScheduleReadable(db,row,actor,allowed,before?.sourceAccess);
+      return before?.schedule?.creator_id === actor.id;
+    } catch { return false; }
+  }
   if (proposal.type === 'schedule.create') {
     if (before?.agent?.id !== run?.agent_id || !allowed(workspaceId,actor,'agents.read',{scope_type:'agent',scope_id:run.agent_id})) return false;
     return localActionReadable(db,{proposal:{type:'chat.note',chat_id:proposal.chat_id},before,workspaceId,run,actor,allowed});
@@ -287,7 +377,7 @@ export function localActionReadable(db,{proposal,before,workspaceId,run,actor,al
 // The caller owns the durable receipt and transaction (reviewed proposal or
 // scheduled-action ledger). Execution must occur in that same transaction;
 // a claimed receipt prevents retries from applying updates twice.
-export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,actors = [actor],allowed,activeRunsFor = () => [],idempotencyKey,authorization = 'human_review'}) {
+export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,actors = [actor],allowed,activeRunsFor = () => [],idempotencyKey,authorization = 'human_review',updateSchedule}) {
   if (proposal?.type === 'schedule.create') throw validationError('Prepare this schedule draft, inspect its exact prompt/model/context, and explicitly confirm it in Schedule. Approval alone never schedules paid work.');
   if (!db.isTransaction) throw validationError('Local actions require an atomic caller-owned receipt transaction.');
   if (typeof idempotencyKey !== 'string' || !idempotencyKey || idempotencyKey.length > 240) throw validationError('Provide a bounded stable action receipt key.');
@@ -295,6 +385,10 @@ export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,act
   const validated = validateLocalAction(db,proposal,workspaceId,{run}); assertActionFresh(before,validated.before);
   const p = validated.proposal, now = stamp(), key = createHash('sha256').update(`${workspaceId}:${idempotencyKey}`).digest('hex').slice(0,32);
   const record = changeContext.run({actor,source:run ? `${authorization === 'actor_low_risk_policy' ? 'Agent direct action' : 'Agent proposal'} ${run.id}` : 'Scheduled human action'},() => {
+    if (p.type === 'schedule.update') {
+      if (typeof updateSchedule !== 'function' || authorization !== 'human_review') throw validationError('Schedule changes require explicit human confirmation through the canonical scheduler.');
+      return updateSchedule(p,actor);
+    }
     if (p.type === 'agent.self_link') {
       return applyWorkspaceAgentLink(db,validated.before,p.resource);
     }
@@ -338,5 +432,5 @@ export function executeLocalAction(db,{proposal,before,workspaceId,run,actor,act
     const after = db.prepare(`SELECT * FROM ${p.resource} WHERE id=?`).get(p.id); const {__action_parents,__action_hierarchy,...target} = validated.before;
     recordChange(db,p.resource,target,after,p.type === 'record.archive' ? 'agent-approved archive' : 'agent-approved update'); return after;
   });
-  return {status:'applied',type:p.type,resource:p.resource || (p.type === 'chat.note' ? 'messages' : p.type === 'memory.create' ? 'agent_memories' : 'settings'),id:record.id || null,reviewed_by:authorization === 'actor_low_risk_policy' ? null : actor.id,...(authorization === 'actor_low_risk_policy' ? {authorized_by:actor.id,authorization} : {}),source_run_id:run?.id || null};
+  return {status:'applied',type:p.type,resource:p.resource || (p.type === 'schedule.update' ? 'scheduled_work' : p.type === 'chat.note' ? 'messages' : p.type === 'memory.create' ? 'agent_memories' : 'settings'),id:record.id || null,reviewed_by:authorization === 'actor_low_risk_policy' ? null : actor.id,...(authorization === 'actor_low_risk_policy' ? {authorized_by:actor.id,authorization} : {}),source_run_id:run?.id || null};
 }

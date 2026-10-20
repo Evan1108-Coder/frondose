@@ -16,6 +16,9 @@ import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.j
 import { download, relative, val, visible } from '../lib/model.js';
 import { Button, Dialog, ErrorMessage, Field, IconButton, SearchField, Select, useApp } from '../ui.jsx';
 import './talvori-agent.css';
+import { AssistantActivity } from '../components/AssistantActivity.jsx';
+import { ScheduledWorkSettings } from './settings/ScheduledWorkSettings.jsx';
+import { pageHash } from '../lib/navigation.js';
 
 function draftStorage() { try { return sessionStorage; } catch { return undefined; } }
 function creationKey(workspaceId) { return `rumbo-agent:create:${workspaceId}`; }
@@ -49,10 +52,12 @@ function providerId(item) { return item?.provider || item?.id || ''; }
 function providerReady(item) { return item?.connected === true; }
 
 function AgentHeader({ currentChat, chats, onChat, onNew, onOptions, onSettings, identity }) {
-  return <header className="rumbo-agent-header">
+  const { page } = useApp();
+  const section = page.section || 'conversation';
+  return <><header className="rumbo-agent-header">
     <div className="rumbo-agent-identity"><IconButton label="Chat options" disabled={!currentChat} onClick={onOptions}><Ellipsis /></IconButton><TalvoriAgentOrb compact color={identity?.orb_color} /><strong>{identity?.display_name || 'Talvori'}</strong></div>
     <div className="rumbo-agent-header-actions"><Button variant="ghost" onClick={onSettings}>Preferences</Button><Select aria-label="Current Talvori conversation" value={currentChat?.id || ''} onChange={onChat}><option value="">New conversation</option>{chats.map(chat => <option key={chat.id} value={chat.id}>{chat.title}</option>)}</Select><Button icon={Plus} onClick={onNew}>New chat</Button></div>
-  </header>;
+  </header><nav className="assistant-section-nav" aria-label="Talvori sections">{[['conversation', 'Conversation'], ['activity', 'Activity'], ['scheduled', 'Scheduled']].map(([id, label]) => <a key={id} href={pageHash('rumbo-agent', currentChat?.id || null, { section: id })} aria-current={section === id ? 'page' : undefined}>{label}</a>)}</nav></>;
 }
 
 function AgentOnboarding({ workspaceId, initial, onComplete, onExit }) {
@@ -225,6 +230,7 @@ export function TalvoriAgent() {
   }
 
   const header = <AgentHeader currentChat={currentChat} chats={chats} identity={agentState?.preferences} onChat={id => navigate('rumbo-agent', id || null)} onNew={() => navigate('rumbo-agent')} onOptions={() => currentChat && setActions(currentChat)} onSettings={() => navigate('settings', 'rumbo-agent')} />;
+  if (page.section === 'activity' || page.section === 'scheduled') return <main className="rumbo-agent-page">{header}<div className="assistant-section-panel" key={`${workspace.id}:${page.section}`}>{page.section === 'activity' ? <AssistantActivity /> : <ScheduledWorkSettings embedded />}</div></main>;
   if (currentChat && (loading || !agentState)) return <main className="rumbo-agent-page rumbo-agent-conversation">{header}<section className="rumbo-agent-start">{loading ? <p className="rumbo-agent-loading" role="status">Loading model and context preferences…</p> : <div className="rumbo-agent-disconnected"><h1>Conversation settings unavailable</h1><p>Your saved conversation and history have not been changed. Retry before editing or sending so Talvori can apply the correct model and context defaults.</p><ErrorMessage error={error} /><Button variant="primary" onClick={() => setReload(value => value + 1)}>Retry</Button></div>}</section></main>;
   if (currentChat) return <main className="rumbo-agent-page rumbo-agent-conversation"><Conversation key={currentChat.id} chat={currentChat} index={index} composers={composers.current} scope={{ projectId: val(currentChat, 'project_id') || null }} onComposerChange={() => refreshComposer(value => value + 1)} assistant={{ header, preferences: agentState?.preferences || {}, renderControls: props => <AssistantControls {...props} /> }} />{error ? <ErrorMessage error={error} /> : null}{actionChat ? <ChatActions chat={actionChat} active={activeFor(actionChat)} onClose={() => setActions(null)} onRename={() => { setRename(actionChat); setActions(null); }} onPin={() => mutateChat(() => talvoriActions.updateChat(actionChat.id, { pinned: !actionChat.pinned }), actionChat.pinned ? 'Conversation unpinned' : 'Conversation pinned')} onExport={() => exportChat(actionChat)} onArchive={() => { setActions(null); archive('chat', actionChat); }} onDelete={() => { setConfirmDelete(actionChat); setActions(null); }} /> : null}{renameChat ? <RenameDialog chat={renameChat} busy={busy} error={error} onClose={() => setRename(null)} onSave={title => mutateChat(() => talvoriActions.updateChat(renameChat.id, { title }), 'Conversation renamed')} /> : null}{deleteChat ? <Dialog title="Delete this conversation?" subtitle={deleteChat.title} onClose={() => !busy && setConfirmDelete(null)}><p className="rumbo-agent-destructive-copy">This permanently removes the conversation and its saved history. Source-bound conversations may need to be archived instead so their provenance remains intact.</p><ErrorMessage error={error} /><footer className="dialog-footer"><Button disabled={busy} onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" busy={busy} onClick={async () => { if (await mutateChat(() => talvoriApi.deleteChat(deleteChat.id), 'Conversation deleted')) navigate('rumbo-agent'); }}>Delete conversation</Button></footer></Dialog> : null}</main>;
   if (!loading && !agentState && error) return <main className="rumbo-agent-page">{header}<section className="rumbo-agent-start"><div className="rumbo-agent-disconnected"><h1>Talvori settings unavailable</h1><p>Your saved conversations remain available from the conversation menu. Retry before creating a draft so Talvori can apply the correct model and context defaults.</p><ErrorMessage error={error} /><Button variant="primary" onClick={() => setReload(value => value + 1)}>Retry</Button></div></section></main>;

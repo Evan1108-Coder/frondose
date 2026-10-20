@@ -12,7 +12,7 @@ test('schedule proposal preparation uses canonical exact content/model and creat
 });
 test('revoked access and mismatched canonical scopes never reach context capture or scheduling', async () => {
   await assert.rejects(prepareScheduleProposal({ proposalId: 'intent-1', workspaceId: 'ws', prepare: async () => { throw new Error('Source access revoked'); }, inspect: () => assert.fail() }), /revoked/);
-  for (const patch of [{ workspace_id: 'other' }, { agent_id: 'other' }, { action_request_id: 'other' }, { model: '' }, {timezone:'Invalid/Zone'}]) {
+  for (const patch of [{ workspace_id: 'other' }, { agent_id: 'other' }, { action_request_id: 'other' }, { model: '' }, {timezone:'Invalid/Zone'}, {recurrence:'hourly'}]) {
     await assert.rejects(prepareScheduleProposal({ proposalId: 'intent-1', workspaceId: 'ws', agentId: 'agent', prepare: async () => ({ ...proposed(), ...patch }), inspect: () => assert.fail() }), /no longer matches/);
   }
 });
@@ -26,6 +26,10 @@ test('UI requires separate schedule confirmation instead of normal approval and 
   assert.match(review, /onClick=\{reviewSchedule\}>Review schedule/);
   assert.match(review, /kind="message" payload=\{messageSchedule.payload\}/);
   assert.match(dialog, /initialRunAt/); assert.match(dialog, /initialTimezone/);
+  assert.match(review, /initialRecurrence=\{messageSchedule.proposed.recurrence/);
+  assert.match(dialog, /Confirming authorizes a separate agent run for each occurrence/);
+  assert.match(review, /Confirm schedule change/);
+  assert.match(review, /selected.proposal.type !== 'schedule.update'/);
   assert.match(dialog, /agent_schedule_\$\{payload.action_request_id\}/);
   assert.match(dialog, /onSubmit=\{save\}/);
 });

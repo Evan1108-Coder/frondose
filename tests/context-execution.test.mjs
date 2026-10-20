@@ -113,6 +113,28 @@ async function connectFixture(call, fake) {
   fake.launches.length = 0;
 }
 
+test('explicit past-message search and selection enters the exact captured provider prompt without discovery side effects', async () => {
+  await fixture(async ({ api, call, fake, workspace, chat, inspectInput }) => {
+    const past = (await call('/chats', { workspace_id: workspace.id, title: 'Earlier decision' })).chat;
+    const message = (await call(`/chats/${past.id}/messages`, { content: 'PAST_DECISION_INCLUDED_EXACTLY' })).message;
+    await call(`/chats/${past.id}/messages`, { content: 'UNSELECTED_SECRET_NOT_INCLUDED' });
+    const retrieved = (await call(`/chat-collaboration/${chat.id}/retrieval?${new URLSearchParams({ workspace_id: workspace.id, query: 'PAST_DECISION' })}`)).result;
+    assert.equal(retrieved.results[0].id, message.id);
+    const selected = (await call(`/chat-collaboration/${chat.id}`, { workspace_id: workspace.id, version: 0, action: 'context', sources: [{ kind: 'message', id: message.id }] }, 'POST', 200)).result;
+    assert.equal(fake.launches.length, 0); assert.equal(fake.networkCalls, 0); assert.equal(api.snapshot().runs.length, 0);
+    const attachment = { name: `talvori-context-${selected.id}.md`, type: 'text/markdown', content: selected.content, rumbo_context_snapshot: selected.id };
+    await connectFixture(call, fake);
+    const input = inspectInput({ attachments: [attachment], context_pack_ids: [], include_memory: false, include_chat: false });
+    const preview = (await call('/context/inspect', input)).result;
+    assert.match(preview.finalPrompt, /PAST_DECISION_INCLUDED_EXACTLY/);
+    assert.doesNotMatch(preview.finalPrompt, /UNSELECTED_SECRET_NOT_INCLUDED/);
+    await call('/runs', inspectedLaunch(input, preview.id));
+    assert.equal(fake.launches.length, 1);
+    assert.equal(fake.launches[0].prompt, preview.finalPrompt);
+    assert.equal(fake.networkCalls, 0);
+  });
+});
+
 function inspectedLaunch(input, inspectionId, overrides = {}) {
   return {
     ...input,

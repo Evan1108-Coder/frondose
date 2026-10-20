@@ -8,6 +8,10 @@ import { installChatCollaboration, chatCollaborationRoute, chatCollaborationSnap
 import { installWorkspaceFeatures } from '../server/workspace-features.mjs';
 import { threadMessages, messageLink, quotedMessage, restoreComposer, persistComposer, chatMarkdown } from '../src/lib/chats.js';
 import { EMOJI_REACTIONS, ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
+import { readConversationSource, searchConversationSources } from '../server/conversation-retrieval.mjs';
+import { installRunContextStore } from '../server/run-context-store.mjs';
+import { captureSourceAccess, assertSourceAccess, assertTalvoriSourceReferences } from '../server/context-source-access.mjs';
+import { installAgentAwareness } from '../server/agent-awareness.mjs';
 
 async function fixture(fn) {
   const dir = await mkdtemp(join(tmpdir(), 'rumbo-chat-collaboration-'));
@@ -248,7 +252,131 @@ test('thread navigation, quotation, source exports and composer context restorat
   const map = new Map(), storage = { getItem: key => map.get(key), setItem: (key, value) => map.set(key, value) };
   const composer = { ...restoreComposer({ id: 'c' }, [], storage), replyTo: 'a', context: { id: 'ctx', content: 'Snapshot', sources: [] }, text: 'Follow-up' };
   persistComposer('c', composer, storage);
-  assert.equal(restoreComposer({ id: 'c' }, [], storage).context.content, 'Snapshot');
+  assert.deepEqual(restoreComposer({ id: 'c' }, [], storage).context, { id: 'ctx' });
+  assert.doesNotMatch(map.get('rumbo.composer.v2.c'), /Snapshot/);
   assert.equal(restoreComposer({ id: 'c' }, [], storage).replyTo, 'a');
   assert.match(chatMarkdown({ id: 'chat', title: 'Example' }, messages), /Source: \[Open message\]/);
 });
+
+test('past-message retrieval is literal, workspace-bound, bounded and read-only', () => fixture(async ({ db, message, actor, allowed }) => {
+  message('past', 'c2', 'Launch decision: blue logo, 100% ready_soon.');
+  message('foreign-decision', 'other-c', 'Launch decision: SECRET_FOREIGN');
+  message('current-decision', 'c', 'Launch decision: CURRENT_EXCLUDED');
+  const before = db.prepare('SELECT COUNT(*) n FROM chat_collaboration').get().n;
+  const search = query => searchConversationSources(db, { workspaceId: 'ws', excludeChatId: 'c', query, actor, allowed });
+  assert.deepEqual(search('decision').results.map(item => item.id), ['past']);
+  assert.deepEqual(search('100%').results.map(item => item.id), ['past']);
+  assert.equal(search('%').results.length, 1, 'Percent is literal, not a wildcard');
+  assert.equal(search("' OR 1=1 --").results.length, 0);
+  assert.equal(JSON.stringify(search('decision')).includes('SECRET_FOREIGN'), false);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM chat_collaboration').get().n, before);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM runs').get().n, 0);
+  for (let index = 0; index < 25; index++) message(`bounded-${index}`, 'c2', `Repeated search keyword ${index}`);
+  assert.equal(search('keyword').results.length, 20);
+  for (const query of ['', ' ', 'x'.repeat(201), null, {}]) assert.throws(() => search(query), /1–200/);
+  assert.throws(() => searchConversationSources(db, { workspaceId: 'other', query: 'decision', actor, allowed }), { code: 'conversation_source_unavailable' });
+}));
+
+test('retrieval filters revoked parents, archived chats and unreadable derived agent replies', () => fixture(async ({ db, message, document, actor, allowed, denied, now }) => {
+  message('safe', 'c2', 'retrieval-key SAFE');
+  message('restricted', 'c', 'retrieval-key RESTRICTED');
+  document('derived-source');
+  installRunContextStore(db);
+  db.prepare('INSERT INTO runs(id,workspace_id,chat_id,provider,agent_name,status,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run('derived-run', 'ws', 'c2', 'codex', 'Fixture', 'completed', 'Derived reply', now, now);
+  const inspection = { manifest: { resolved: { workspace_id: 'ws' }, included: [{ kind: 'documents', id: 'derived-source' }], excluded: [] } };
+  inspection.sourceAccess = captureSourceAccess(db, inspection);
+  db.prepare('INSERT INTO run_context_snapshots VALUES(?,?,?,?)').run('derived-run', 'ws', JSON.stringify(inspection), Date.now());
+  message('derived', 'c2', 'retrieval-key DERIVED_SECRET', { run_id: 'derived-run' });
+  db.prepare("UPDATE messages SET sender_type='agent' WHERE id='derived'").run();
+  denied.add('documents.read:project:p'); denied.add('chats.read:project:p');
+  const result = searchConversationSources(db, { workspaceId: 'ws', query: 'retrieval-key', actor, allowed });
+  assert.deepEqual(result.results.map(item => item.id), ['safe']);
+  assert.doesNotMatch(JSON.stringify(result), /RESTRICTED|DERIVED_SECRET|derived-source|derived-run/);
+  assert.throws(() => readConversationSource(db, 'ws', 'derived', { actor, allowed }), { code: 'conversation_source_unavailable' });
+  denied.clear(); db.prepare("UPDATE chats SET archived_at=? WHERE id='c2'").run(now);
+  assert.throws(() => readConversationSource(db, 'ws', 'safe', { actor, allowed }), { code: 'conversation_source_unavailable' });
+}));
+
+test('selected past messages become immutable exact snapshots with both old and current source scopes', () => fixture(async ({ db, message, call, actor, allowed, denied, getSnapshot }) => {
+  message('selected-past', 'c2', 'PAST_MESSAGE_EXACT_V1');
+  const selected = (await call('context', { sources: [{ kind: 'message', id: 'selected-past' }, { kind: 'message', id: 'selected-past' }] })).result;
+  assert.equal(selected.sources.length, 1);
+  assert.match(selected.content, /PAST_MESSAGE_EXACT_V1/);
+  const options = { chatId: 'c', workspaceId: 'ws', attachments: [markedSnapshot(selected)], actor, allowed };
+  const pinned = chatContextSnapshotAccess(db, options);
+  assert.ok(pinned.sources.some(ref => ref.table === 'messages' && ref.id === 'selected-past'));
+  assert.ok(pinned.sources.some(ref => ref.table === 'chats' && ref.id === 'c2' && ref.scope.scope_id === 'p2'));
+  db.prepare("UPDATE messages SET content='PAST_MESSAGE_CHANGED' WHERE id='selected-past'").run();
+  assert.match((await getSnapshot(selected.id)).content, /PAST_MESSAGE_EXACT_V1/);
+  db.prepare("UPDATE chats SET project_id='p' WHERE id='c2'").run();
+  denied.add('chats.read:project:p2');
+  assert.throws(() => chatContextSnapshotAccess(db, options), { code: 'context_access_revoked' });
+  await assert.rejects(getSnapshot(selected.id), { code: 'context_access_revoked' });
+  denied.clear(); denied.add('chats.read:project:p');
+  assert.throws(() => chatContextSnapshotAccess(db, options), { code: 'context_access_revoked' });
+}));
+
+test('past source selection rejects forged text, foreign IDs, denied messages and oversize snapshots atomically', () => fixture(async ({ db, message, call, denied }) => {
+  message('long-past', 'c2', '界'.repeat(6000));
+  await assert.rejects(call('context', { sources: [{ kind: 'message', id: 'foreign' }] }), /outside your access/);
+  await assert.rejects(call('context', { sources: [{ kind: 'message', id: 'm1', content: 'Forged' }] }), /source IDs only/);
+  await assert.rejects(call('context', { sources: [{ kind: 'chat', id: 'c2' }] }), /valid context/);
+  await assert.rejects(call('context', { sources: [{ kind: 'message', id: 'long-past' }] }), /15 KB/);
+  await assert.rejects(call('context', { sources: Array.from({ length: 21 }, () => ({ kind: 'message', id: 'm1' })) }), /20 context/);
+  denied.add('chats.read:project:p2');
+  await assert.rejects(call('context', { sources: [{ kind: 'message', id: 'long-past' }] }), /outside your access/);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM chat_context_snapshots').get().n, 0);
+}));
+
+test('retrieval route validates destination access and returns no private lineage or authority', () => fixture(async ({ db, message, actor, allowed, denied }) => {
+  message('past-route', 'c2', 'retrieval route target');
+  const retrieve = async (query, who = actor) => {
+    let output;
+    const handled = await chatCollaborationRoute({ db, req: { method: 'GET' }, res: {}, path: '/chat-collaboration/c/retrieval', url: new URL(`http://localhost/?${new URLSearchParams({ workspace_id: 'ws', query })}`), send: (_res, status, payload) => { output = { status, ...payload }; }, actor: who, allowed });
+    assert.equal(handled, true); return output;
+  };
+  const response = await retrieve('retrieval');
+  assert.equal(response.status, 200); assert.equal(response.result.results[0].id, 'past-route');
+  assert.doesNotMatch(JSON.stringify(response), /source_access|sourceAccess|nonce|capability|token/);
+  denied.add('chats.read:project:p');
+  await assert.rejects(retrieve('retrieval'), { code: 'context_access_revoked' });
+  denied.clear(); await assert.rejects(retrieve('retrieval', { id: 'other-user' }), { code: 'context_access_revoked' });
+}));
+
+test('legacy composer context is restored by reference only and never re-persisted as protected text', () => {
+  const map = new Map(), storage = { getItem: key => map.get(key), setItem: (key, value) => map.set(key, value) };
+  map.set('rumbo.composer.v2.c', JSON.stringify({ version: 4, text: 'My draft', context: { id: 'ctx', content: 'PROTECTED_SOURCE', sources: [{ title: 'PRIVATE_TITLE' }] } }));
+  const restored = restoreComposer({ id: 'c' }, [], storage);
+  assert.deepEqual(restored.context, { id: 'ctx' });
+  assert.equal(restored.text, 'My draft');
+  persistComposer('c', { ...restored, context: { id: 'ctx', content: 'PROTECTED_SOURCE', sources: [{ title: 'PRIVATE_TITLE' }] } }, storage);
+  assert.doesNotMatch(map.get('rumbo.composer.v2.c'), /PROTECTED_SOURCE|PRIVATE_TITLE/);
+  assert.equal(JSON.parse(map.get('rumbo.composer.v2.c')).version, 5);
+});
+
+test('agent memory preserves source-run lineage and cannot launder revoked conversation/document access', () => fixture(async ({ db, document, actor, allowed, denied, now }) => {
+  installRunContextStore(db); installAgentAwareness(db);
+  document('memory-origin');
+  db.prepare('INSERT INTO agents(id,workspace_id,name,provider,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('memory-agent', 'ws', 'Memory agent', 'codex', now, now);
+  db.prepare('INSERT INTO runs(id,workspace_id,chat_id,provider,agent_name,status,title,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run('memory-origin-run', 'ws', 'c', 'codex', 'Fixture', 'completed', 'Origin', now, now);
+  const original = { manifest: { resolved: { workspace_id: 'ws', chat_id: 'c' }, included: [{ kind: 'documents', id: 'memory-origin' }], excluded: [] } };
+  original.sourceAccess = captureSourceAccess(db, original);
+  db.prepare('INSERT INTO run_context_snapshots VALUES(?,?,?,?)').run('memory-origin-run', 'ws', JSON.stringify(original), Date.now());
+  db.prepare('INSERT INTO agent_memories(id,workspace_id,agent_id,title,content,source_run_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run('derived-memory', 'ws', 'memory-agent', 'Copied decision', 'MEMORY_SOURCE_SECRET', 'memory-origin-run', now, now);
+  const memory = db.prepare("SELECT * FROM agent_memories WHERE id='derived-memory'").get();
+  const inspected = { manifest: { resolved: { workspace_id: 'ws' }, included: [{ kind: 'agent_memories', id: memory.id }], excluded: [] } };
+  inspected.sourceAccess = captureSourceAccess(db, inspected);
+  assert.ok(inspected.sourceAccess.sources.some(ref => ref.table === 'runs' && ref.id === 'memory-origin-run'));
+  assert.ok(inspected.sourceAccess.sources.some(ref => ref.table === 'documents' && ref.id === 'memory-origin'));
+  assert.equal(assertSourceAccess(db, inspected, actor, allowed), true);
+  assert.equal(assertTalvoriSourceReferences(db, memory, 'agent_memories', actor, allowed), true);
+  denied.add('documents.read:project:p');
+  assert.throws(() => assertSourceAccess(db, inspected, actor, allowed), { code: 'context_access_revoked' });
+  assert.throws(() => assertTalvoriSourceReferences(db, memory, 'agent_memories', actor, allowed), { code: 'context_access_revoked' });
+  assert.throws(() => assertTalvoriSourceReferences(db, { id: memory.id, title: memory.title }, 'agent_memories', actor, allowed), { code: 'context_access_revoked' }, 'Partial presentation rows cannot omit canonical lineage');
+  denied.clear(); denied.add('chats.read:project:p');
+  assert.throws(() => assertSourceAccess(db, inspected, actor, allowed), { code: 'context_access_revoked' });
+  denied.clear(); db.prepare("DELETE FROM run_context_snapshots WHERE run_id='memory-origin-run'").run();
+  assert.throws(() => captureSourceAccess(db, inspected), { code: 'context_access_revoked' });
+  assert.throws(() => assertTalvoriSourceReferences(db, memory, 'agent_memories', actor, allowed), { code: 'context_access_revoked' });
+}));

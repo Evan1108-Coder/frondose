@@ -3,6 +3,7 @@ import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
 import { captureSourceAccess, assertSourceAccess, chatHasTalvoriSourceHistory } from './context-source-access.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
+import { readConversationSource, searchConversationSources } from './conversation-retrieval.mjs';
 
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
@@ -100,13 +101,18 @@ export function chatContextSnapshotAccess(db, { chatId, workspaceId, attachments
   return sourceAccess;
 }
 
-function assembleContext(db, chat, selections) {
+function assembleContext(db, chat, selections, authorization) {
   if (!Array.isArray(selections) || selections.length > 20) throw validationError('Choose up to 20 context sources.');
   const sources = [], seen = new Set();
   function add(kind, id) {
-    if (!['document', 'memory', 'pack'].includes(kind) || typeof id !== 'string') throw validationError('Choose a valid context source.');
+    if (!['document', 'memory', 'pack', 'message'].includes(kind) || typeof id !== 'string' || !id || id.length > 200) throw validationError('Choose a valid context source.');
     if (seen.has(`${kind}:${id}`)) return;
     seen.add(`${kind}:${id}`);
+    if (kind === 'message') {
+      const { message, chat: sourceChat } = readConversationSource(db, chat.workspace_id, id, authorization);
+      sources.push({ kind, id, title: `${sourceChat.title} · ${message.sender_name || 'Message'}`, chat_id: sourceChat.id, updated_at: message.updated_at, content: message.content || '' });
+      return;
+    }
     const table = kind === 'document' ? 'documents' : kind === 'memory' ? 'memory_notes' : 'workspace_items';
     const item = db.prepare(`SELECT * FROM ${table} WHERE id=? AND workspace_id=? AND archived_at IS NULL`).get(id, chat.workspace_id);
     if (!item || kind === 'pack' && item.kind !== 'context_pack') throw validationError('Context sources must be active and belong to this workspace.');
@@ -118,7 +124,7 @@ function assembleContext(db, chat, selections) {
     } else sources.push({ kind, id, title: item.title, updated_at: item.updated_at, content: item.content || '' });
     if (sources.length > 50) throw validationError('This selection expands to more than 50 sources. Use a smaller context pack.');
   }
-  for (const selection of selections) { if (!isRecord(selection)) throw validationError('Invalid context selection.'); add(selection.kind, selection.id); }
+  for (const selection of selections) { if (!isRecord(selection) || Object.keys(selection).some(key => !['kind', 'id'].includes(key))) throw validationError('Choose source IDs only; context text is resolved by Talvori.'); add(selection.kind, selection.id); }
   const content = sources.map(source => `## ${source.title}\nSource: ${source.kind}:${source.id}\nSnapshot of: ${source.updated_at}${source.version ? ` · version ${source.version}` : ''}\n\n${source.content}`).join('\n\n---\n\n');
   // The existing provider attachment path has a 16 KB per-file limit. Reject,
   // rather than silently claiming a larger snapshot was completely delivered.
@@ -128,6 +134,16 @@ function assembleContext(db, chat, selections) {
 }
 
 export async function chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed }) {
+  const retrieval = path.match(/^\/chat-collaboration\/([^/]+)\/retrieval$/);
+  if (retrieval && req.method === 'GET') {
+    const workspaceId = url.searchParams.get('workspace_id');
+    const target = chatInWorkspace(db, decodeURIComponent(retrieval[1]), workspaceId);
+    const inspection = { manifest: { resolved: { workspace_id: workspaceId, chat_id: target.id }, included: [], excluded: [] } };
+    inspection.sourceAccess = captureSourceAccess(db, inspection);
+    assertSourceAccess(db, inspection, actor, allowed);
+    const result = searchConversationSources(db, { workspaceId, query: url.searchParams.get('query'), excludeChatId: target.id, actor, allowed });
+    send(res, 200, { result }); return true;
+  }
   const match = path.match(/^\/chat-collaboration\/([^/]+)(?:\/snapshots\/([^/]+))?$/);
   if (!match) return false;
   const body = req.method === 'GET' ? {} : await readBody(req);
@@ -180,7 +196,7 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
         break;
       }
       case 'context': {
-        const assembled = assembleContext(db, chat, body.sources);
+        const assembled = assembleContext(db, chat, body.sources, { actor, allowed });
         const inspection = { manifest: { resolved: { workspace_id: chat.workspace_id, chat_id: chat.id }, included: assembled.sources, excluded: [] } };
         const sourceAccess = captureSourceAccess(db, inspection);
         assertSourceAccess(db, { ...inspection, sourceAccess }, actor, allowed);

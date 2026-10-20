@@ -155,7 +155,7 @@ export function createAccessBoundary({ db, governance }) {
     };
     if (body.source_message_id) checkSource('messages', body.source_message_id);
     if (Array.isArray(body.sources) && (parts[0] === 'workflow' && parts[1] === 'context' || parts[0] === 'chat-collaboration' && body.action === 'context')) {
-      const sourceTables = { document: 'documents', memory: 'memory_notes', pack: 'workspace_items', documents: 'documents', memory_notes: 'memory_notes', knowledge_entries: 'knowledge_entries' };
+      const sourceTables = { document: 'documents', memory: 'memory_notes', pack: 'workspace_items', message: 'messages', documents: 'documents', memory_notes: 'memory_notes', knowledge_entries: 'knowledge_entries' };
       for (const source of body.sources) {
         const sourceTable = sourceTables[source?.kind || source?.type];
         if (!sourceTable) failure('Unsupported context source.');

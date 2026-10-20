@@ -199,6 +199,10 @@
 .chat-source-list label span { min-width: 0; overflow-wrap: anywhere; }
 .chat-source-list label small { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
 .chat-source-list > p { padding: 10px 14px; }
+.chat-retrieval-search { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chat-retrieval-search > :first-child { flex: 1 1 220px; min-width: 0; }
+.chat-retrieval-excerpt { display: block; margin-top: 8px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.chat-conversation-sources > p, .chat-conversation-sources > div > p { font-size: 13px; line-height: 1.5; }
 .chat-action-form { display: grid; gap: 20px; }
 .chat-action-warning { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .chat-followups { display: grid; gap: 14px; }

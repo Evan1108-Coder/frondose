@@ -123,6 +123,98 @@ async function signedMember(f) {
   return {member,cookie:signed.cookie,ownerCookie:owner.cookie};
 }
 
+async function proposedAction(f,proposal,{cookie,content='Prepare a schedule change'}={}) {
+  const response=await f.call(`/chats/${f.chat.id}/turns`,{agent_id:f.agent.id,content,client_turn_id:`proposal_${crypto.randomUUID()}`,work_mode:'conversation'},'POST',cookie);
+  for(let i=0;i<80;i++){const run=f.db.prepare('SELECT * FROM runs WHERE id=?').get(response.run.id);if(run?.status==='completed')break;await new Promise(resolve=>setTimeout(resolve,10));}
+  const run=f.db.prepare('SELECT * FROM runs WHERE id=?').get(response.run.id);assert.equal(run.status,'completed');
+  captureAgentActions(f.db,run.id,`\`\`\`talvori-actions\n${JSON.stringify({nonce:'schedule_fixture',actions:[proposal]})}\n\`\`\``,'schedule_fixture');
+  return f.db.prepare('SELECT * FROM agent_action_requests WHERE run_id=?').get(run.id);
+}
+
+test('conversational daily/weekly intents require fresh exact review and preserve explicit recurrence',async t=>{
+  const f=await fixture(t);await f.call('/connections/codex/connect',{method:'existing'});
+  for (const recurrence of ['daily','weekly']) {
+    const content=`Exact ${recurrence} check-in`,proposal={type:'schedule.create',chat_id:f.chat.id,content,model:'fixture-model',run_at:'2026-10-08T12:01:00.000Z',timezone:'UTC',recurrence};
+    const action=await proposedAction(f,proposal),prepared=(await f.call(`/agent-actions/${action.id}/prepare-schedule`,{workspace_id:f.workspace.id})).result;
+    assert.equal(prepared.recurrence,recurrence);assert.equal(f.db.prepare('SELECT count(*) n FROM scheduled_work').get().n,recurrence==='daily'?0:1);
+    assert.equal((await f.request(`/agent-actions/${action.id}/decision`,{decision:'approve'})).status,400);
+    const preview=await f.inspect(content,{model:proposal.model}),body=f.scheduleBody({action_request_id:action.id,chat_id:f.chat.id,agent_id:f.agent.id,content,model:proposal.model,attachments:[]},{request_id:`intent_schedule_${action.id}`,context_inspection_id:preview.id,recurrence});
+    assert.equal((await f.request('/scheduled-work',{...body,recurrence:'none'})).status,400);
+    const created=(await f.call('/scheduled-work',body)).result;
+    assert.equal(created.recurrence,recurrence);assert.equal(f.db.prepare('SELECT status FROM agent_action_requests WHERE id=?').get(action.id).status,'scheduled');
+    assert.equal((await f.call('/scheduled-work',body)).result.id,created.id);
+  }
+  assert.equal(f.prompts.length,2,'only the two explicit source turns ran; proposing or saving never launches');
+  f.time('2026-10-08T12:01:00.000Z');await f.api.dispatchScheduledWork();await f.waitTerminal();await f.api.dispatchScheduledWork();
+  assert.equal(f.prompts.length,4);const jobs=(await f.call(`/scheduled-work?workspace_id=${f.workspace.id}`)).result;
+  assert.equal(jobs.find(item=>item.recurrence==='daily').next_due_at,'2026-10-09T12:01:00.000Z');assert.equal(jobs.find(item=>item.recurrence==='weekly').next_due_at,'2026-10-15T12:01:00.000Z');
+});
+
+test('conversational pause, exact-instant reschedule and cancel stay pending until owner confirmation',async t=>{
+  const f=await fixture(t);await f.call('/connections/codex/connect',{method:'existing'});
+  const schedule=(await f.call('/scheduled-work',f.scheduleBody({chat_id:f.chat.id,content:'Owned note'},{recurrence:'daily'}))).result;
+  let version=schedule.version;
+  for(const change of [{state:'paused'},{state:'active',run_at:'2026-10-08T12:05:00.000Z',timezone:'UTC'},{state:'cancelled'}]) {
+    const action=await proposedAction(f,{type:'schedule.update',schedule_id:schedule.id,version,...change});
+    assert.equal(action.status,'pending');assert.equal(f.db.prepare('SELECT version FROM scheduled_work WHERE id=?').get(schedule.id).version,version);
+    const delayed=await f.request('/scheduled-work',f.scheduleBody({action_request_id:action.id},{kind:'action',request_id:`no_nested_${action.id}`}));assert.equal(delayed.status,400);
+    const beforePrompts=f.prompts.length,confirmed=await f.call(`/agent-actions/${action.id}/decision`,{decision:'approve'});
+    assert.equal(confirmed.status,'applied');assert.equal(f.prompts.length,beforePrompts,'management never contacts a provider');
+    const current=(await f.call(`/scheduled-work/${schedule.id}`)).result;
+    assert.equal(current.state,change.state);assert.equal(current.version,++version);
+    if(change.run_at) assert.equal(current.next_due_at,change.run_at);
+    assert.equal((await f.request(`/agent-actions/${action.id}/decision`,{decision:'approve'})).status,400);
+    assert.equal(f.db.prepare('SELECT version FROM scheduled_work WHERE id=?').get(schedule.id).version,version);
+    assert.equal(JSON.parse(f.db.prepare('SELECT result_json FROM agent_action_requests WHERE id=?').get(action.id).result_json).resource,'scheduled_work');
+  }
+  f.time('2026-10-08T12:05:00.000Z');await f.api.dispatchScheduledWork();assert.equal(f.db.prepare('SELECT count(*) n FROM messages WHERE kind=? AND content=?').get('note','Owned note').n,0);
+});
+
+test('stale schedule-management proposals fail without consuming their pending receipt',async t=>{
+  const f=await fixture(t);await f.call('/connections/codex/connect',{method:'existing'});
+  const schedule=(await f.call('/scheduled-work',f.scheduleBody({chat_id:f.chat.id,content:'Do not override'}))).result;
+  const action=await proposedAction(f,{type:'schedule.update',schedule_id:schedule.id,version:1,state:'cancelled'});
+  await f.call(`/scheduled-work/${schedule.id}`,{version:1,state:'paused'},'PATCH');
+  assert.equal((await f.request(`/agent-actions/${action.id}/decision`,{decision:'approve'})).status,409);
+  assert.equal(f.db.prepare('SELECT status FROM agent_action_requests WHERE id=?').get(action.id).status,'pending');assert.equal((await f.call(`/scheduled-work/${schedule.id}`)).result.state,'paused');
+});
+
+test('schedule awareness is sponsor-only and another manager cannot confirm or copy owner schedule metadata',async t=>{
+  const f=await fixture(t);await f.call('/connections/codex/connect',{method:'existing'});
+  const schedule=(await f.call('/scheduled-work',f.scheduleBody({chat_id:f.chat.id,content:'OWNER_PRIVATE_SCHEDULE_TITLE'}))).result;
+  const action=await proposedAction(f,{type:'schedule.update',schedule_id:schedule.id,version:1,state:'paused'}),who=await signedMember(f);
+  const memberAware=await f.call(`/agent-awareness?workspace_id=${f.workspace.id}`,undefined,'GET',who.cookie);
+  assert.ok(!JSON.stringify(memberAware).includes('OWNER_PRIVATE_SCHEDULE_TITLE'));assert.equal(memberAware.context.schedules.length,0);
+  assert.equal((await f.request(`/agent-actions/${action.id}/decision`,{decision:'approve'},'POST',who.cookie)).status,403);
+  const ownAware=await f.call(`/agent-awareness?workspace_id=${f.workspace.id}`,undefined,'GET',who.ownerCookie);assert.equal(ownAware.context.schedules[0].id,schedule.id);
+  const input={workspace_id:f.workspace.id,chat_id:f.chat.id,agent_id:f.agent.id,prompt:'List my schedules',work_mode:'conversation',include_chat:false,include_memory:false,include_workspace:true};
+  const memberPreview=(await f.call('/context/inspect',input,'POST',who.cookie)).result;assert.equal(memberPreview.manifest.schedules.length,0);assert.ok(!memberPreview.finalPrompt.includes('OWNER_PRIVATE_SCHEDULE_TITLE'));
+  const ownPreview=(await f.call('/context/inspect',input,'POST',who.ownerCookie)).result;assert.equal(ownPreview.manifest.schedules[0].id,schedule.id);assert.match(ownPreview.finalPrompt,/OWNER_PRIVATE_SCHEDULE_TITLE/);
+  const privateSchedule=(await f.call('/scheduled-work',f.scheduleBody({chat_id:f.chat.id,content:'MEMBER_PRIVATE_SCHEDULE_TITLE'},{request_id:'member_private_schedule'}),'POST',who.cookie)).result;
+  assert.ok(!JSON.stringify((await f.call(`/agent-awareness?workspace_id=${f.workspace.id}`,undefined,'GET',who.ownerCookie)).context.schedules).includes('MEMBER_PRIVATE_SCHEDULE_TITLE'));
+  const sourceRun=f.db.prepare('SELECT * FROM runs WHERE id=?').get(action.run_id);
+  assert.throws(()=>captureAgentActions(f.db,sourceRun.id,`\`\`\`talvori-actions\n${JSON.stringify({nonce:'foreign_schedule',actions:[{type:'schedule.update',schedule_id:privateSchedule.id,version:1,state:'cancelled'}]})}\n\`\`\``,'foreign_schedule'),/source sponsor/);
+});
+
+test('schedule metadata copied into a later run preserves original historical source ACLs',async t=>{
+  const f=await fixture(t);await f.call('/connections/codex/connect',{method:'existing'});
+  const privateProject=(await f.call('/projects',{workspace_id:f.workspace.id,name:'Private schedule source'})).project;
+  const doc=(await f.call('/documents',{workspace_id:f.workspace.id,project_id:privateProject.id,title:'Private evidence',content:'PRIVATE_SCHEDULE_CONTEXT'})).document;
+  const pack=(await f.call('/workspace-items',{workspace_id:f.workspace.id,kind:'context_pack',name:'Schedule evidence',payload:{description:'',content:'',document_ids:[doc.id],memory_ids:[]}})).result,who=await signedMember(f);
+  const originalInput={workspace_id:f.workspace.id,chat_id:f.chat.id,agent_id:f.agent.id,prompt:'PRIVATE_SCHEDULE_TITLE',work_mode:'conversation',include_chat:false,include_memory:false,include_workspace:false,context_pack_ids:[pack.id]};
+  const original=(await f.call('/context/inspect',originalInput,'POST',who.cookie)).result;
+  const schedule=(await f.call('/scheduled-work',f.scheduleBody({chat_id:f.chat.id,agent_id:f.agent.id,content:originalInput.prompt,attachments:[]},{context_inspection_id:original.id}),'POST',who.cookie)).result;
+  const laterInput={workspace_id:f.workspace.id,chat_id:f.chat.id,agent_id:f.agent.id,prompt:'List my active schedules',work_mode:'conversation',include_chat:false,include_memory:false,include_workspace:true};
+  const later=(await f.call('/context/inspect',laterInput,'POST',who.cookie)).result;assert.equal(later.manifest.schedules[0].id,schedule.id);
+  const started=await f.call(`/chats/${f.chat.id}/turns`,{agent_id:f.agent.id,content:laterInput.prompt,client_turn_id:'captured_schedule_metadata',work_mode:'conversation',include_chat:false,include_memory:false,include_workspace:true,context_inspection_id:later.id},'POST',who.cookie);
+  for(let i=0;i<80 && f.db.prepare('SELECT status FROM runs WHERE id=?').get(started.run.id).status!=='completed';i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal((await f.request(`/runs/${started.run.id}/context`,undefined,'GET',who.cookie)).status,200);
+  await f.call(`/documents/${doc.id}`,{project_id:f.project.id,content:'Public current text'},'PATCH',who.ownerCookie);
+  await f.call('/governance',{workspace_id:f.workspace.id,action:'grant',member_id:who.member.id,permission:'documents.read',effect:'deny',scope_type:'project',scope_id:privateProject.id,reason:'Revoke original schedule evidence'},'POST',who.ownerCookie);
+  const hidden=await f.request(`/runs/${started.run.id}/context`,undefined,'GET',who.cookie);assert.equal(hidden.status,403);assert.ok(!JSON.stringify(hidden.body).includes('PRIVATE_SCHEDULE_TITLE'));
+  assert.equal((await f.call(`/agent-awareness?workspace_id=${f.workspace.id}`,undefined,'GET',who.cookie)).context.schedules.length,0);
+});
+
 test('AI scheduling rechecks historical source ACL and conceals unreadable schedules after sources move',async t=>{
   const f=await fixture(t);await f.call('/connections/codex/connect',{method:'existing'});
   const privateProject=(await f.call('/projects',{workspace_id:f.workspace.id,name:'Historical private scope'})).project;

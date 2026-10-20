@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button, Dialog, ErrorMessage, useApp } from '../../ui.jsx';
 import { Clock, RotateCw } from '../../components/icons.jsx';
 import { apiRequest } from '../../data/api.js';
 import { RescheduleWorkDialog } from '../../components/ScheduledWork.jsx';
 import { localScheduleTime } from '../../lib/scheduled-time.js';
+import { createScheduledWorkLoader } from '../../lib/scheduled-work-loader.js';
 
 function ScheduleCard({ item, busy, onTime, onState, onCancel }) {
   const { data, navigate } = useApp();
@@ -32,31 +33,40 @@ function ScheduleCard({ item, busy, onTime, onState, onCancel }) {
   </article>;
 }
 
-export function ScheduledWorkSettings() {
-  const { workspace, navigate, notify } = useApp();
-  const [items, setItems] = useState([]), [loading, setLoading] = useState(true), [error, setError] = useState(null), [reload, setReload] = useState(0), [selected, setSelected] = useState(null), [cancel, setCancel] = useState(null), [busy, setBusy] = useState(false);
-  const pending = useRef(false);
-  pending.current = items.some(item => item.state === 'active' || item.history.some(event => event.status === 'running'));
+// The keyed boundary removes the previous workspace's prompts and dialogs on
+// the workspace-changing render, before any effect or new request completes.
+export function ScheduledWorkSettings({ embedded = false, header = true }) {
+  const { workspace } = useApp();
+  return <ScheduledWorkList key={workspace.id} workspaceId={workspace.id} embedded={embedded} header={header} />;
+}
+
+function ScheduledWorkList({ workspaceId, embedded, header }) {
+  const { navigate, notify } = useApp();
+  const [selected, setSelected] = useState(null), [cancel, setCancel] = useState(null);
+  const loader = useMemo(() => createScheduledWorkLoader(signal => apiRequest(`/api/scheduled-work?workspace_id=${encodeURIComponent(workspaceId)}`, { signal }).then(response => response.result)), [workspaceId]);
+  const { items, loading, error, busy } = useSyncExternalStore(loader.subscribe, loader.getSnapshot, loader.getSnapshot);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError(null);
-    const fetchItems = () => apiRequest(`/api/scheduled-work?workspace_id=${encodeURIComponent(workspace.id)}`, { signal: controller.signal }).then(response => { setItems(response.result); setError(null); }).catch(cause => { if (!controller.signal.aborted) setError(current => current?.message === cause.message ? current : cause); });
-    fetchItems().finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    const timer = setInterval(() => { if (pending.current && !document.hidden) fetchItems(); }, 15000);
-    const focus = () => { if (pending.current) fetchItems(); };
-    window.addEventListener('focus', focus);
-    return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', focus); };
-  }, [workspace.id, reload]);
-  const replace = value => setItems(current => current.map(item => item.id === value.id ? value : item));
+    void loader.start();
+    const refreshVisible = () => { if (!document.hidden) void loader.load(); };
+    const timer = setInterval(refreshVisible, 15000);
+    window.addEventListener('focus', refreshVisible);
+    window.addEventListener('online', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => { loader.dispose(); clearInterval(timer); window.removeEventListener('focus', refreshVisible); window.removeEventListener('online', refreshVisible); document.removeEventListener('visibilitychange', refreshVisible); };
+  }, [loader]);
+  useEffect(() => { if (error) { setSelected(null); setCancel(null); } }, [error]);
+  const visibleSelected = !error && selected && items.some(item => item.id === selected.id) ? selected : null;
+  const visibleCancel = !error && cancel && items.some(item => item.id === cancel.id) ? cancel : null;
+  const replace = value => { if (loader.accept(value)) void loader.load(); };
   async function change(item, state) {
-    setBusy(true); setError(null);
-    try { const response = await apiRequest(`/api/scheduled-work/${item.id}`, { method: 'PATCH', body: { version: item.version, state } }); replace(response.result); setCancel(null); notify(state === 'cancelled' ? 'Schedule cancelled' : state === 'paused' ? 'Schedule paused' : 'Schedule resumed'); }
-    catch (cause) { setError(cause); } finally { setBusy(false); }
+    const result = await loader.mutate(() => apiRequest(`/api/scheduled-work/${item.id}`, { method: 'PATCH', body: { version: item.version, state } }).then(response => response.result));
+    if (result) { setCancel(null); notify(state === 'cancelled' ? 'Schedule cancelled' : state === 'paused' ? 'Schedule paused' : 'Schedule resumed'); }
   }
   return <>
-    <header className="scheduled-settings-header"><div><h1>Scheduled messages & actions</h1><p>Schedule from a conversation or an agent’s proposed action. Manage upcoming work and its activity here.</p></div><Button icon={RotateCw} onClick={() => setReload(value => value + 1)} disabled={loading}>Refresh</Button></header>
+    {header ? <header className="scheduled-settings-header"><div>{embedded ? <h2>Scheduled messages & actions</h2> : <h1>Scheduled messages & actions</h1>}<p>Schedule from a conversation or an agent’s proposed action. Manage upcoming work and its activity here.</p></div><Button icon={RotateCw} onClick={() => loader.load()} disabled={loading || busy}>Refresh</Button></header> : null}
     <ErrorMessage error={error} />
-    {loading ? <p role="status">Loading schedules…</p> : !items.length ? <div className="scheduled-settings-empty"><Clock /><h2>Nothing scheduled</h2><p>Write a message in a conversation, then choose Schedule. An agent’s proposed change can also be approved for a later time.</p><Button onClick={() => navigate('chats')}>Open conversations</Button></div> : <div className="scheduled-settings-list">{items.map(item => <ScheduleCard key={item.id} item={item} busy={busy} onTime={setSelected} onState={change} onCancel={setCancel} />)}</div>}
-    {selected ? <RescheduleWorkDialog item={selected} onClose={() => setSelected(null)} onSaved={replace} /> : null}
-    {cancel ? <Dialog title="Cancel this schedule?" subtitle={cancel.title} onClose={() => !busy && setCancel(null)}><div className="schedule-dialog-body"><p>Future occurrences will stop. Messages and actions that have already run stay in their history.</p><footer className="form-submit-row"><Button disabled={busy} onClick={() => setCancel(null)}>Keep schedule</Button><Button variant="danger" busy={busy} onClick={() => change(cancel, 'cancelled')}>Cancel schedule</Button></footer></div></Dialog> : null}
+    {loading ? <p role="status">Loading schedules…</p> : error ? <div className="scheduled-settings-empty"><Clock /><h2>Schedules unavailable</h2><p>Talvori could not refresh your schedules. Previously loaded prompts are hidden until access and data can be checked again.</p><Button onClick={() => loader.load()}>Retry schedules</Button></div> : !items.length ? <div className="scheduled-settings-empty"><Clock /><h2>Nothing scheduled</h2><p>Write a message in a conversation, then choose Schedule. An agent’s proposed change can also be approved for a later time.</p><Button onClick={() => navigate('chats')}>Open conversations</Button></div> : <div className="scheduled-settings-list">{items.map(item => <ScheduleCard key={item.id} item={item} busy={busy} onTime={setSelected} onState={change} onCancel={setCancel} />)}</div>}
+    {visibleSelected ? <RescheduleWorkDialog item={visibleSelected} onClose={() => setSelected(null)} onSaved={replace} /> : null}
+    {visibleCancel ? <Dialog title="Cancel this schedule?" subtitle={visibleCancel.title} onClose={() => !busy && setCancel(null)}><div className="schedule-dialog-body"><p>Future occurrences will stop. Messages and actions that have already run stay in their history.</p><footer className="form-submit-row"><Button disabled={busy} onClick={() => setCancel(null)}>Keep schedule</Button><Button variant="danger" busy={busy} onClick={() => change(visibleCancel, 'cancelled')}>Cancel schedule</Button></footer></div></Dialog> : null}
   </>;
 }

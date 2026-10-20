@@ -35,7 +35,7 @@ function fixture(t) {
 
 test('typed catalog and runtime protocol describe only executable local reviewed actions',t=>{
   const {db} = fixture(t), catalog = actionCatalog();
-  assert.equal(catalog.length,21);
+  assert.equal(catalog.length,22);
   assert.equal(new Set(catalog.map(item=>item.id)).size,catalog.length);
   for (const item of catalog) {assert.equal(item.review_required,true);assert.equal(item.execution,item.type === 'schedule.create' ? 'human_schedule_confirmation' : 'local');assert.equal(item.schema.additionalProperties,false);}
   assert.match(actionProtocol('nonce'),/record.create/); assert.match(actionProtocol('nonce'),/chat.note/);assert.match(actionProtocol('nonce'),/never by an agent action block/);
@@ -301,7 +301,8 @@ test('schedule intents are never direct authority and reject forged identity, in
   assert.equal(receipt.status,'pending');
   assert.equal(f.db.prepare('SELECT count(*) n FROM scheduled_work').get().n,0);
   assert.throws(()=>f.execute(proposal),/explicitly confirm/);
-  for(const patch of [{agent_id:'forged'},{run_at:'2026-02-30T01:00:00Z'},{timezone:'Invalid/Zone'},{model:''},{chat_id:'foreign-chat'}]) assert.throws(()=>f.validate({...proposal,...patch}));
+  for(const patch of [{agent_id:'forged'},{run_at:'2026-02-30T01:00:00Z'},{timezone:'Invalid/Zone'},{model:''},{chat_id:'foreign-chat'},{recurrence:'hourly'}]) assert.throws(()=>f.validate({...proposal,...patch}));
+  for (const recurrence of ['none','daily','weekly']) assert.equal(f.validate({...proposal,recurrence}).proposal.recurrence,recurrence);
   const snapshot=f.validate(proposal);
   f.db.prepare('UPDATE chats SET updated_at=? WHERE id=?').run('2026-10-19','chat');
   assert.doesNotThrow(()=>assertActionFresh(snapshot.before,f.validate(proposal).before));

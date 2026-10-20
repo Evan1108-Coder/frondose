@@ -1,5 +1,7 @@
 # Talvori
 
+Personal agent status: [current capabilities, Your dot comparison and required setup](docs/personal-agent-capabilities.md).
+
 Formerly Rumbo. See the [rebrand and provider-consent checklist](docs/talvori-rebrand.md)
 for compatibility, new logo assets and required provider-dashboard changes.
 

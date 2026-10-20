@@ -5,6 +5,7 @@ const VIEWS = new Set([
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
 const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
+const ASSISTANT_SECTIONS = new Set(['conversation', 'activity', 'scheduled']);
 const VIEW_ALIASES = { 'talvori-agent': 'rumbo-agent', areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 
 function validId(value) {
@@ -40,10 +41,11 @@ export function parsePage(hash = "") {
     const reviews = params.getAll('review');
     if (reviews.length > 1 || reviews.length && !validId(reviews[0])) return home();
     const sections = params.getAll('section').map(value => value === 'contacts' ? 'people' : value);
-    if (sections.length > 1 || (sections.length && !TEAM_SECTIONS.has(sections[0]))) return home();
+    const sectionOptions = view === 'rumbo-agent' ? ASSISTANT_SECTIONS : TEAM_SECTIONS;
+    if (sections.length > 1 || (sections.length && !sectionOptions.has(sections[0]))) return home();
     // Retired Playbooks links remain useful without reviving the old builder.
     if (view === 'playbooks') return { view: 'settings', id: 'scheduled-work', projectId: null };
-    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'teams' && id && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
+    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...((view === 'teams' && id || view === 'rumbo-agent') && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
     return home();
   }
@@ -70,6 +72,10 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
     if (section === 'contacts') section = 'people';
     if (!TEAM_SECTIONS.has(section)) throw new TypeError('Invalid team section');
     query.set('section', section === 'people' ? 'contacts' : section);
+  }
+  if (section && view === 'rumbo-agent') {
+    if (!ASSISTANT_SECTIONS.has(section)) throw new TypeError('Invalid assistant section');
+    query.set('section', section);
   }
   if (projectId && SCOPED_VIEWS.has(view)) query.set('project', projectId);
   if (messageId && ['chats', 'rumbo-agent'].includes(view) && id) query.set('message', messageId);

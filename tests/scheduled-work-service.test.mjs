@@ -50,6 +50,13 @@ test('invalid dates/zones/horizons and recurring action approvals are rejected',
   assert.throws(()=>f.service.update(created.id,{version:1,state:'active',local_time:'2032-01-01T12:00'},f.actor),/five years/);
 });
 
+test('exact UTC rescheduling preserves the selected fold instant and rejects ambiguous or unsupported fields',async t=>{
+  const f=fixture(t),created=await f.service.create(f.body(),f.actor);
+  const changed=f.service.update(created.id,{version:created.version,state:'active',run_at:'2026-11-01T06:30:00.000Z',timezone:'America/New_York'},f.actor);
+  assert.equal(changed.next_due_at,'2026-11-01T06:30:00.000Z');assert.equal(changed.timezone,'America/New_York');assert.equal(f.deliveries.length,0);
+  for (const patch of [{run_at:'2026-11-01T06:30:00Z'},{run_at:'2026-02-30T06:30:00Z',timezone:'UTC'},{run_at:'2026-11-01T06:30:00Z',timezone:'Invalid/Zone'},{run_at:'2026-11-01T06:30:00Z',timezone:'UTC',local_time:'2026-11-01T06:30'},{content:'Overwrite prompt'},{recurrence:'daily'}]) assert.throws(()=>f.service.update(created.id,{version:changed.version,state:'active',...patch},f.actor));
+});
+
 test('concurrent creation and ticks preserve one durable schedule and one send',async t=>{
   let release;const gate=new Promise(resolve=>{release=resolve;});
   const f=fixture(t,{prepareMessage:async body=>{await gate;return {title:'Message',payload:body.payload,review:{}};}});
