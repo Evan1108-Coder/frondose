@@ -4,9 +4,9 @@ import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
 import { actionCatalog, localActionProtocol, validateLocalAction, executeLocalAction, assertActionFresh, localActionReadable, validateWorkspaceAgentLink, agentLinkPermissionTargets, applyWorkspaceAgentLink, scheduledWorkAgentContext } from './agent-action-catalog.mjs';
 export { scheduledWorkAgentContext } from './agent-action-catalog.mjs';
 import { readRunContext } from './run-context-store.mjs';
+import { safeAgentSettings, configurationSummary, workspaceConfigurationRows, emojiMetadata } from './agent-workspace-context.mjs';
 
 const stamp = () => new Date().toISOString();
-const readSettings = db => Object.fromEntries(db.prepare('SELECT key,value_json FROM settings').all().map(row => [row.key, JSON.parse(row.value_json)]));
 export function installAgentAwareness(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS agent_action_requests (
     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -68,13 +68,16 @@ export function agentMemories(db, workspaceId, agentId, projectId, { filter = va
 export function workspaceAwareness(db, workspaceId, { filter = value => value, actor, allowed } = {}) {
   const workspace = db.prepare('SELECT id,name,description FROM workspaces WHERE id=?').get(workspaceId);
   const select = (table, columns) => db.prepare(`SELECT workspace_id,${columns} FROM ${table} WHERE workspace_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 30`).all(workspaceId);
-  const settings = readSettings(db);
+  const settings = safeAgentSettings(db,{workspaceId,filter});
   const recentActions = db.prepare('SELECT id,workspace_id,run_id,status,proposal_json FROM agent_action_requests WHERE workspace_id=? ORDER BY created_at DESC LIMIT 10').all(workspaceId).map(row => ({ id: row.id, workspace_id: row.workspace_id, run_id: row.run_id, status: row.status, type: JSON.parse(row.proposal_json).type }));
   const agents = db.prepare('SELECT id,workspace_id,name,provider,status FROM agents WHERE (workspace_id=? OR workspace_id IS NULL) AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 30').all(workspaceId);
   const sessions = db.prepare('SELECT id,workspace_id,project_id,chat_id,agent_id,agent_name,title,status FROM runs WHERE workspace_id=? ORDER BY created_at DESC LIMIT 20').all(workspaceId);
   const organization = db.prepare('SELECT id,workspace_id,kind,name FROM workspace_items WHERE workspace_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 30').all(workspaceId);
-  const visible = filter({ workspaces: workspace ? [workspace] : [], agents, runs: sessions, workspace_items: organization, projects: select('projects', 'id,name,status,goal,team_id,start_date,target_date'), tasks: select('tasks', 'id,title,status,project_id,team_id,priority,due_at'), teams: select('teams', 'id,name'), documents: select('documents', 'id,title,project_id,team_id'), milestones: select('milestones','id,title,project_id,status,target_date'), chats: select('chats','id,title,project_id,task_id,pinned'), actions: recentActions, settings: { appearance: settings.appearance, preferences: settings.preferences, notifications: settings.notifications, agentDefaults: settings.agentDefaults } });
-  return JSON.stringify({ workspace: visible.workspaces[0] || null, agents: visible.agents, sessions: visible.runs, organization: visible.workspace_items, projects: visible.projects, routes: visible.tasks, teams: visible.teams, documents: visible.documents, milestones: visible.milestones, chats: visible.chats, recentActions: visible.actions, schedules: scheduledWorkAgentContext(db,workspaceId,{actor,allowed}).schedules, settings: visible.settings, action_catalog: actionCatalog(), scope: 'Up to 30 recent accessible items of each kind, 20 sessions and 15 active/paused schedules belonging only to this authenticated account; document contents and private credentials are not included. Preferences are shared across workspaces. The catalog describes reviewable local proposals, not autonomous authority or available external Plugins.' });
+  const visible = filter({ workspaces: workspace ? [workspace] : [], agents, runs: sessions, workspace_items: organization, projects: select('projects', 'id,name,status,goal,team_id,start_date,target_date'), tasks: select('tasks', 'id,title,status,project_id,team_id,priority,due_at'), teams: select('teams', 'id,name'), documents: select('documents', 'id,title,project_id,team_id'), milestones: select('milestones','id,title,project_id,status,target_date'), chats: select('chats','id,title,project_id,task_id,pinned'), actions: recentActions });
+  const configurationRows = filter({workspace_items:workspaceConfigurationRows(db,workspaceId)}).workspace_items || [];
+  const configuration = configurationRows.map(configurationSummary).filter(Boolean).slice(0,40);
+  const emojis = configurationRows.map(emojiMetadata).filter(Boolean).slice(0,40);
+  return JSON.stringify({ workspace: visible.workspaces[0] || null, agents: visible.agents, sessions: visible.runs, organization: visible.workspace_items, projects: visible.projects, routes: visible.tasks, teams: visible.teams, documents: visible.documents, milestones: visible.milestones, chats: visible.chats, recentActions: visible.actions, schedules: scheduledWorkAgentContext(db,workspaceId,{actor,allowed}).schedules, settings: settings.values, settings_note:settings.note, configuration, emojis, action_catalog: actionCatalog(), scope: 'Up to 30 recent accessible items of each kind, 20 sessions, 40 configuration summaries, 40 active custom emoji shortcodes and 15 active/paused schedules belonging only to this authenticated account. This is a bounded snapshot, not continuous observation or complete workspace contents. Safe server settings retain their private actor boundary. Document bodies, other conversation content, browser-local preferences, drafts, credentials and security grants are not included. The catalog describes reviewable local proposals, not autonomous authority or available external Plugins.' });
 }
 
 export function actionProtocol(nonce,policy) {

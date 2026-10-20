@@ -112,6 +112,7 @@ export function getInspection(db, id, { actorId, workspaceId } = {}) {
   const row = db.prepare('SELECT * FROM run_context_inspections WHERE id=? AND actor_id=? AND workspace_id=?').get(id, actorId, workspaceId);
   if (!row) fail('This context inspection is unavailable.', 'context_inspection_unavailable', 403);
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_work'").get() && db.prepare('SELECT 1 FROM scheduled_work WHERE inspection_id=?').get(id)) fail('This context review belongs to a scheduled message. Inspect again to send another message.', 'context_inspection_reserved', 409);
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='event_work'").get() && db.prepare('SELECT 1 FROM event_work WHERE inspection_id=?').get(id)) fail('This context review belongs to an event subscription. Inspect again to send another message.', 'context_inspection_reserved', 409);
   if (row.expires_at <= Date.now()) fail('This context inspection expired. Review the context again.', 'context_inspection_expired', 409);
   return decodePreview(row);
 }
@@ -122,6 +123,7 @@ export function consumeInspection(db, id, runId) {
     const row = db.prepare('SELECT * FROM run_context_inspections WHERE id=?').get(id);
     if (!row) fail('This context inspection is unavailable.', 'context_inspection_unavailable', 403);
     if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scheduled_work'").get() && db.prepare('SELECT 1 FROM scheduled_work WHERE inspection_id=?').get(id)) fail('This context review belongs to a scheduled message.', 'context_inspection_reserved', 409);
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='event_work'").get() && db.prepare('SELECT 1 FROM event_work WHERE inspection_id=?').get(id)) fail('This context review belongs to an event subscription.', 'context_inspection_reserved', 409);
     if (row.consumed_run_id === runId) return decodePreview(row);
     if (row.consumed_run_id) fail('This context inspection was used by a different run.', 'context_inspection_consumed', 409);
     if (row.expires_at <= Date.now()) fail('This context inspection expired. Review the context again.', 'context_inspection_expired', 409);

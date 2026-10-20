@@ -22,7 +22,13 @@ export function installWorkspaceFeatures(db) {
       entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
       name TEXT NOT NULL, before_json TEXT, after_json TEXT, created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS change_log_scope ON change_log(workspace_id,created_at);
-    CREATE TABLE IF NOT EXISTS change_attribution (change_id TEXT PRIMARY KEY REFERENCES change_log(id) ON DELETE CASCADE, actor_id TEXT, actor_name TEXT NOT NULL, source TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS change_attribution (change_id TEXT PRIMARY KEY REFERENCES change_log(id) ON DELETE CASCADE, actor_id TEXT, actor_name TEXT NOT NULL, source TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS event_change_scopes (
+      change_id TEXT PRIMARY KEY REFERENCES change_log(id) ON DELETE CASCADE,
+      workspace_id TEXT NOT NULL, source_table TEXT NOT NULL, source_id TEXT NOT NULL,
+      target_table TEXT NOT NULL, target_id TEXT NOT NULL, project_id TEXT, area_id TEXT);
+    CREATE TRIGGER IF NOT EXISTS event_change_scope_immutable BEFORE UPDATE ON event_change_scopes
+      BEGIN SELECT RAISE(ABORT,'Recorded event scopes are immutable'); END;`);
 }
 export function featureSnapshot(db) {
   return {
@@ -41,6 +47,29 @@ export function recordChange(db, resource, before, after, action) {
   // Only workspace content is retained; never credentials or connection payloads.
   const id = uid('change');
   db.prepare('INSERT INTO change_log VALUES (?,?,?,?,?,?,?,?,?)').run(id, workspaceId, resource, item.id, action, item.name ?? item.title ?? resource, before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null, stamp());
+  // Save event routing at the same instant as the change. Looking up the latest
+  // Route/project when the worker later wakes can otherwise route a queued move
+  // into the wrong project or Area. Old history has no invented backfill.
+  if (after && ['tasks', 'activity_entries'].includes(resource)) {
+    const targets = { project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', chat: 'chats', milestone: 'milestones', output: 'outputs' };
+    let targetTable = resource === 'tasks' ? 'tasks' : targets[after.target_type];
+    let targetId = resource === 'tasks' ? after.id : after.target_id;
+    let target = resource === 'tasks' ? after : targetTable && db.prepare(`SELECT * FROM ${targetTable} WHERE id=?`).get(targetId);
+    let requestProjects = [];
+    if (target && after.target_type === 'request') {
+      const payload = JSON.parse(target.payload_json || '{}');
+      requestProjects = payload.project_ids || [];
+      if (payload.route_id) {
+        targetTable = 'tasks'; targetId = payload.route_id;
+        target = db.prepare('SELECT * FROM tasks WHERE id=?').get(targetId);
+      }
+    }
+    if (target && target.workspace_id === workspaceId) {
+      const projectId = target.project_id || (requestProjects.length === 1 ? requestProjects[0] : null);
+      const project = targetTable === 'projects' ? target : projectId && db.prepare('SELECT * FROM projects WHERE id=?').get(projectId);
+      db.prepare('INSERT INTO event_change_scopes VALUES(?,?,?,?,?,?,?,?)').run(id, workspaceId, resource, after.id, targetTable, targetId, project?.id || null, project?.team_id || target.team_id || null);
+    }
+  }
   const context = changeContext.getStore();
   if (context?.actor) db.prepare('INSERT INTO change_attribution VALUES(?,?,?,?)').run(id, context.actor.id, context.actor.name || 'Member', context.source || 'Talvori');
 }

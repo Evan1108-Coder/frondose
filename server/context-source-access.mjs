@@ -1,6 +1,6 @@
-export const CONTEXT_SOURCE_KINDS = Object.freeze({ workspace: 'workspaces', area: 'teams', area_instructions: 'area_settings', agent: 'agents', project: 'projects', route: 'tasks', context_pack: 'workspace_items', pack: 'workspace_items', document: 'documents', documents: 'documents', memory: 'memory_notes', memory_notes: 'memory_notes', agent_memories: 'agent_memories', knowledge: 'knowledge_entries', knowledge_entries: 'knowledge_entries', message: 'messages', output: 'outputs', output_version: 'output_versions', context_snapshot: 'context_snapshots', skill: 'skills', skill_version: 'skill_versions', run: 'runs', activity: 'activity_entries' });
+export const CONTEXT_SOURCE_KINDS = Object.freeze({ workspace: 'workspaces', area: 'teams', area_instructions: 'area_settings', agent: 'agents', project: 'projects', route: 'tasks', chat: 'chats', milestone: 'milestones', workspace_configuration: 'workspace_items', emoji: 'workspace_items', settings: 'settings', context_pack: 'workspace_items', pack: 'workspace_items', document: 'documents', documents: 'documents', memory: 'memory_notes', memory_notes: 'memory_notes', agent_memories: 'agent_memories', knowledge: 'knowledge_entries', knowledge_entries: 'knowledge_entries', message: 'messages', output: 'outputs', output_version: 'output_versions', context_snapshot: 'context_snapshots', skill: 'skills', skill_version: 'skill_versions', run: 'runs', activity: 'activity_entries' });
 const KINDS = CONTEXT_SOURCE_KINDS;
-const PERMISSIONS = { workspaces: 'workspace.read', teams: 'workspace.read', area_settings: 'workspace.read', agents: 'agents.read', projects: 'projects.read', tasks: 'routes.read', chats: 'chats.read', messages: 'chats.read', workspace_items: 'workspace.read', documents: 'documents.read', memory_notes: 'documents.read', agent_memories: 'agents.read', knowledge_entries: 'documents.read', outputs: 'documents.read', output_versions: 'documents.read', context_snapshots: 'documents.read', skills: 'agents.read', skill_versions: 'agents.read', runs: 'agents.read', activity_entries: 'workspace.read', milestones: 'projects.read' };
+const PERMISSIONS = { workspaces: 'workspace.read', teams: 'workspace.read', area_settings: 'workspace.read', agents: 'agents.read', projects: 'projects.read', tasks: 'routes.read', chats: 'chats.read', messages: 'chats.read', workspace_items: 'workspace.read', settings: 'workspace.read', documents: 'documents.read', memory_notes: 'documents.read', agent_memories: 'agents.read', knowledge_entries: 'documents.read', outputs: 'documents.read', output_versions: 'documents.read', context_snapshots: 'documents.read', skills: 'agents.read', skill_versions: 'agents.read', runs: 'agents.read', activity_entries: 'workspace.read', milestones: 'projects.read' };
 const TABLES = new Set([...Object.keys(PERMISSIONS), 'route_workflows', 'platform_connections', 'platform_external_objects']);
 const deny = () => { throw Object.assign(new Error('Some captured context is no longer available to you.'), { code: 'context_access_revoked', errorCode: 'context_access_revoked', statusCode: 403 }); };
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -27,6 +27,7 @@ function reader(db) {
       ? db.prepare('SELECT * FROM chat_context_snapshots WHERE id=?').get(key)
       : table === 'current_skill_version' && existing.has('skill_versions') && existing.has('skills') && id(key)
       ? db.prepare('SELECT v.* FROM skill_versions v JOIN skills s ON s.id=v.skill_id AND s.version=v.number WHERE s.id=?').get(key)
+      : table === 'settings' && existing.has(table) && id(key) ? db.prepare('SELECT key AS id,value_json FROM settings WHERE key=?').get(key)
       : TABLES.has(table) && existing.has(table) && id(key) ? db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(key) : null;
     rows.set(cacheKey, value); return value;
   };
@@ -57,7 +58,7 @@ function references(read, table, key, workspaceId, path = new Set(), inspectDefi
   const cacheKey = `${table}:${key}:${workspaceId}:${inspectDefinition}`;
   if (read.references.has(cacheKey)) return read.references.get(cacheKey);
   const row = read(table, key);
-  if (!row || row.archived_at) deny();
+  if (!row || row.archived_at && !(table === 'workspace_items' && row.kind === 'emoji')) deny();
   const nextPath = new Set(path).add(`${table}:${key}`), parents = [], dependencies = [];
   const addParent = (target, parentId, definition = true) => { if (parentId) parents.push(...references(read, target, parentId, workspaceId, nextPath, definition)); };
   const addDependency = (target, sourceId) => { if (!sourceId) deny(); dependencies.push(...references(read, target, sourceId, workspaceId, nextPath)); };
@@ -148,9 +149,9 @@ function references(read, table, key, workspaceId, path = new Set(), inspectDefi
     }
   }
   const shared = table === 'agents' && row.workspace_id == null;
-  const scopeWorkspace = table === 'workspaces' ? row.id : table === 'messages' ? parents[0]?.workspace_id : shared ? workspaceId : row.workspace_id;
+  const scopeWorkspace = table === 'workspaces' ? row.id : table === 'settings' ? workspaceId : table === 'messages' ? parents[0]?.workspace_id : shared ? workspaceId : row.workspace_id;
   if (scopeWorkspace !== workspaceId) deny();
-  if (table === 'workspace_items' && !['context_pack', 'request'].includes(row.kind)) deny();
+  if (table === 'workspace_items' && !['context_pack', 'request', 'emoji', 'route_label', 'project_label', 'route_status', 'project_status', 'route_template', 'project_template', 'chat_template'].includes(row.kind)) deny();
   if (table === 'workspace_items' && row.kind === 'request') {
     const payload = parse(row.payload_json); if (!payload) deny();
     if (payload.route_id) addDependency('tasks', payload.route_id);
@@ -208,6 +209,8 @@ export function captureSourceAccess(db, inspection) {
   for (const source of visible) {
     if (!record(source)) deny();
     if (KINDS[source.kind]) remember(KINDS[source.kind], source.id);
+    if (source.kind === 'message_reactions') remember('messages',source.id);
+    if (source.kind === 'personal_instructions' && source.settings_key === 'personalization') remember('settings','personalization');
     if (source.kind === 'attachment') {
       const owner = typeof source.id === 'string' ? source.id.slice(0, source.id.lastIndexOf(':')) : '';
       if (!owner) deny();
@@ -252,7 +255,10 @@ export function assertSourceAccess(db, inspection, actor, allowed, runChecks = {
   };
   const checkRef = ref => {
     if (!record(ref) || ref.workspace_id !== workspaceId || !PERMISSIONS[ref.table] || ref.permission !== PERMISSIONS[ref.permission_table || ref.table] || !record(ref.scope)) deny();
-    if (ref.shared && actor.id !== 'local-owner') deny();
+    // Server settings are the local owner's private configuration. An agent's
+    // reply derived from them must retain that boundary through history, memory,
+    // retrieval and exports, not become readable merely through its chat.
+    if ((ref.shared || ref.table === 'settings') && actor.id !== 'local-owner') deny();
     permit(ref.permission, ref.scope);
     // A snapshot may legitimately include its own run identity (for example
     // recorded usage). Its records/scopes still need checks, but recursively

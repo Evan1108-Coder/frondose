@@ -41,6 +41,22 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "event-work.create.prompt",
+    "page": "Event trigger",
+    "label": "Prompt",
+    "type": "textarea",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "event-work.create.title",
+    "page": "Event trigger",
+    "label": "Name",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "knowledge.new.content",
     "page": "New knowledge",
     "label": "Content",
@@ -397,6 +413,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "Workspaces, Projects & Routes · New / Edit",
     "label": "Working folder",
     "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-event-work.event-work-dialog.minimum-time-between-runs-minute.edbf5b951a45",
+    "page": "Review event-triggered work / New event trigger",
+    "label": "Minimum time between runs (minutes)",
+    "type": "number",
     "eligible": true,
     "reason": null
   },

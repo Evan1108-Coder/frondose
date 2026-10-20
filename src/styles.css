@@ -178,6 +178,11 @@ select:focus {
   outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
+/* Text fields already have a focused border. Do not draw a second perimeter.
+   Keep the separate keyboard indicator on non-text/native controls. */
+:is(input, textarea, select):not(:where([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"], [type="image"])):focus-visible {
+  outline: none;
+}
 button:focus:not(:focus-visible) {
   outline: none;
 }
@@ -931,6 +936,8 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 .search-field > svg {
   position: absolute;
@@ -940,25 +947,26 @@ input[type="checkbox"] {
   pointer-events: none;
 }
 .search-field input {
-  min-height: 37px;
-  height: 37px;
+  min-height: 35px;
+  height: 35px;
   font-size: 12px;
   padding-left: 35px;
   background: transparent;
+  border: 0;
 }
 /* Search is one control: focus encloses the icon and input together. */
-.search-field { border-radius: 8px; }
 :is(.search-field, .settings-search, .command-search):focus-within {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  border-color: var(--focus);
+  outline: none;
 }
 :is(.search-field, .settings-search, .command-search) input:focus,
 :is(.search-field, .settings-search, .command-search) input:focus-visible {
   outline: none;
   box-shadow: none;
 }
-.search-field input:focus { border-color: var(--border); }
-.command-search:focus-within { outline-offset: -2px; border-radius: 10px 10px 0 0; }
+@media (forced-colors: active) {
+  :root, :root[data-theme] { --focus: Highlight; }
+}
 .select-wrap {
   position: relative;
   display: flex;
@@ -3380,7 +3388,9 @@ dd {
   align-items: center;
   gap: 12px;
   padding: 15px 20px;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid transparent;
+  border-bottom-color: var(--border);
+  border-radius: 10px 10px 0 0;
 }
 .command-search > svg {
   color: var(--muted);

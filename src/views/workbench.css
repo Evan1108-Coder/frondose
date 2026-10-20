@@ -89,9 +89,9 @@
 .wb-terminal-tabs small { color:var(--muted);font-size:11px; }
 .wb-terminal-tabs svg { width:15px;height:15px; }
 .wb-slash-launcher { position:relative;display:flex;align-items:center;gap:9px;margin:10px 18px 0;padding:9px 11px;border:1px solid var(--border);border-radius:7px;background:var(--surface); }
-.wb-slash-launcher:focus-within { outline:2px solid var(--focus);outline-offset:1px; }
+.wb-slash-launcher:focus-within { border-color:var(--focus);outline:none; }
 .wb-slash-launcher>svg { width:16px;height:16px;color:var(--muted);flex-shrink:0; }
-.wb-slash-launcher>input { min-width:0;flex:1;outline:0;font:13px ui-monospace,SFMono-Regular,Menlo,monospace; }
+.wb-slash-launcher>input { min-width:0;flex:1;border:0;background:transparent;outline:0;box-shadow:none;font:13px ui-monospace,SFMono-Regular,Menlo,monospace; }
 .wb-slash-launcher .slash-command-menu { bottom:auto;top:calc(100% + 6px); }
 .wb-terminal-info { justify-content:space-between;gap:12px;padding:10px 18px; }
 .wb-terminal-info>span { display:flex;flex-direction:column;min-width:0;gap:5px; }

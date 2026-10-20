@@ -40,8 +40,11 @@ import * as manualWorkflows from './manual-workflow-service.mjs';
 import { installRouteTools, routeToolsSnapshot, routeToolsRoute } from './route-tools.mjs';
 import { installTeamResources, teamResourcesRoute } from './team-resources.mjs';
 import { installAgentAwareness, agentAwarenessRoute, workspaceAwareness, awarenessEnabled, actionProtocol, recordActionProtocol, connectionActionProtocol, captureAgentActions, agentMemories, validateAgentProposal, directActionPolicy, executeDirectAgentAction, workspaceAgentLinks, scheduleProposalProtocol, scheduledWorkAgentContext } from './agent-awareness.mjs';
+import { safeAgentSettings } from './agent-workspace-context.mjs';
 import { authorizeLocalAction, executeLocalAction, assertActionFresh, localActionReadable } from './agent-action-catalog.mjs';
 import { installScheduledWork, createScheduledWorkService, scheduledWorkRoute } from './scheduled-work-service.mjs';
+import { installEventWork, createEventWorkService, eventWorkRoute } from './event-work-service.mjs';
+import { createEventWorkPolicy } from './event-work-policy.mjs';
 import { EXECUTION_PROVIDERS, BROWSER_AI_PROVIDERS, isBrowserAiProvider, isScopedAiProvider } from '../src/lib/ai-providers.js';
 import { createCopilotBridge } from './copilot-bridge.mjs';
 import { createCopilotHostedRuntime } from './copilot-hosted-runtime.mjs';
@@ -467,6 +470,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installAgentProfileHistory(db);
   installRunContextStore(db);
   installScheduledWork(db);
+  installEventWork(db);
   installSkillReliability(db);
   installAcceptanceEvidence(db);
   manualWorkflows.installManualWorkflows(db);
@@ -769,7 +773,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const nativeAvailable = enableNative && canPropose && Boolean(agent?.provider_connection_id) && ['codex', 'claude'].includes(agent?.provider);
     const availableTools = listNativeAgentTools().map(tool => ({ id: tool.name, available: nativeAvailable && (nativeToolNames === null || nativeToolNames.includes(tool.name)), description: tool.description,
       reason: nativeToolNames !== null && !nativeToolNames.includes(tool.name) ? 'not_allowed_by_pinned_skill' : nativeAvailable ? '' : !enableNative ? 'not_enabled_for_run' : !canPropose ? 'workspace_awareness_paused' : 'profile_not_connected' }));
-    const personalInstructions = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='personalization'").get()?.value_json, {}).instructions || '';
+    const personalInstructions = safeAgentSettings(db,{filter:data=>access.filter(data,actor)}).values.personalization?.instructions || '';
     const inspection = buildContextInspection({
       db, workspaceId, projectId, taskId, chatId, agentId: agent?.id, areaId: areaId || selectedSource?.areaId, prompt,
       includeMemory, includeChat, includeWorkspace, sourceMessageId, currentAttachments, contextPackIds,
@@ -1230,11 +1234,12 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     }
     let target = targetId && ['projects', 'tasks', 'documents', 'milestones', 'chats'].includes(resource) ? db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(targetId) : null;
     if (!target) { resource = 'workspaces'; target = db.prepare('SELECT * FROM workspaces WHERE id=?').get(job.workspace_id); }
-    changeContext.run({ actor, source: 'Scheduled work' }, () => recordChange(db, resource, target, target, `${state} scheduled ${job.kind === 'message' ? 'message' : 'action'}`));
+    changeContext.run({ actor, source: job.event_trigger ? 'Event-triggered work' : 'Scheduled work' }, () => recordChange(db, resource, target, target, `${state} ${job.event_trigger ? 'event-triggered' : 'scheduled'} ${job.kind === 'message' ? 'message' : 'action'}`));
   }
+  let scheduledWorkHooks;
   function makeScheduledWork() {
     const db = getDb();
-    return createScheduledWorkService({ db, allowed: access.allowed, actorFor: scheduleActor, now: scheduledWorkOptions.now, graceMs: scheduledWorkOptions.graceMs,
+    scheduledWorkHooks = { db, allowed: access.allowed, actorFor: scheduleActor, now: scheduledWorkOptions.now, graceMs: scheduledWorkOptions.graceMs,
       activity: scheduleActivity,
       authorizePayload(job, actor) {
         if (job.kind === 'message') {
@@ -1283,7 +1288,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         if (preview.consumed_run_id || input.chat_id !== chat.id || input.agent_id !== payload.agent_id || input.prompt !== payload.content.trim() || JSON.stringify(input.attachments) !== JSON.stringify(attachments)) throw validationError('The message changed after context review. Inspect it again.');
         if (input.work_mode !== 'conversation' || input.permission_mode !== 'read-only' || input.native_tools || input.workflow_step || input.skill_evaluation || input.source_message_id) throw validationError('Schedule a new General chat message without project-file tools.');
         const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(payload.agent_id);
-        if (!agent || agent.status === 'paused') throw validationError('Choose an available agent.');
+        if (!agent || agent.status === 'paused' || !agent.provider_connection_id) throw validationError('Choose an available agent bound to its AI connection.');
         governance.authorize(body.workspace_id, actor.id, 'agents.run', chat.project_id ? { scope_type: 'project', scope_id: chat.project_id } : {});
         if (providerState(agent.provider, body.workspace_id, actor).state !== 'connected') throw validationError('Connect this agent before scheduling its message.');
         const fresh = await compileContext(input, actor, preview.inspection.actionNonce);
@@ -1333,14 +1338,28 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         if (response.payload?.error) throw Object.assign(new Error(response.payload.error.message), { code: response.payload.error.code, statusCode: response.statusCode });
         const result = response.payload;
         if (!result?.run?.id) throw validationError('The scheduled agent message could not be confirmed.');
-        if (result.message?.id) db.prepare('UPDATE messages SET metadata_json=? WHERE id=?').run(JSON.stringify({ ...result.message.metadata, scheduled_work_id: job.id, scheduled_occurrence_id: occurrence.id }), result.message.id);
+        if (result.message?.id) db.prepare('UPDATE messages SET metadata_json=? WHERE id=?').run(JSON.stringify({ ...result.message.metadata, ...(job.event_trigger ? { event_work_id: job.id, event_occurrence_id: occurrence.id } : { scheduled_work_id: job.id, scheduled_occurrence_id: occurrence.id }) }), result.message.id);
         scheduleActivity(job, actor, 'sent');
         return { run_id: result.run.id, message_id: result.message?.id, chat_id: chat.id };
       },
-    });
+    };
+    return createScheduledWorkService(scheduledWorkHooks);
   }
   let scheduledWork = makeScheduledWork();
-  const scheduledWorkTimer = setInterval(() => { if (!closed) scheduledWork.dispatchDue().catch(() => {}); }, scheduledWorkOptions.scheduleIntervalMs ?? 15000);
+  function makeEventWork() {
+    const db = getDb();
+    return createEventWorkService({ ...scheduledWorkHooks, ...createEventWorkPolicy({ db, allowed: access.allowed, filter: (data, actor) => access.filter(data, actor) }),
+      authorizeDelivery(job, actor) {
+        const chat = scheduleChat(job.payload.chat_id, job.workspace_id, actor, true);
+        const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(job.payload.agent_id);
+        if (!agent || agent.status === 'paused' || !agent.provider_connection_id || agent.version !== job.review.input.profile_version || agent.provider_connection_id !== job.review.input.provider_connection_id) throw Object.assign(validationError('The saved agent configuration changed. Create a freshly reviewed event subscription.'), { code: 'event_profile_changed', statusCode: 409 });
+        governance.authorize(job.workspace_id, actor.id, 'agents.run', chat.project_id ? { scope_type: 'project', scope_id: chat.project_id } : {});
+        if (providerState(agent.provider, job.workspace_id, actor).state !== 'connected') throw Object.assign(validationError('Reconnect and verify this agent’s AI connection before enabling event work.'), { code: 'not_connected', statusCode: 409 });
+      },
+    });
+  }
+  let eventWork = makeEventWork();
+  const scheduledWorkTimer = setInterval(() => { if (!closed) scheduledWork.dispatchDue().then(() => eventWork.dispatchEvents()).catch(() => {}); }, scheduledWorkOptions.scheduleIntervalMs ?? 15000);
   scheduledWorkTimer.unref?.();
 
   function middleware(req, res, next = () => {}) {
@@ -1440,6 +1459,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       }
       if (path === '/playbooks' || path.startsWith('/playbooks/')) return fail(res, 410, 'feature_retired', 'Playbooks has been removed. Use agent actions and scheduled messages instead.');
       if (await scheduledWorkRoute({ service: scheduledWork, req, res, path, url, body, actor, send })) return;
+      if (await eventWorkRoute({ service: eventWork, req, res, path, url, body, actor, send })) return;
       if (path === '/ai-connections' && req.method === 'GET') {
         const workspaceId = url.searchParams.get('workspace_id');
         return send(res, 200, { result: { ...await aiConnections.list(workspaceId, actor), copilot: providerState('copilot', workspaceId, actor), copilot_oauth_setup: aiConnections.copilotOAuth.setup(), deployment: { mode: deployment.hosted ? 'public' : 'local', origin: deployment.origin, local_runners_available: !deployment.hosted } } });
@@ -1885,11 +1905,12 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     workbenchCheckpoints = createWorkbenchCheckpointService({ db: store.db, workbench, allowed: access.allowed, activeSessionsFor: activeRunsFor });
     changeReviews = makeReviews();
     scheduledWork = makeScheduledWork();
+    eventWork = makeEventWork();
     closed = false;
     return snapshot(store.db);
   }
 
-  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dbPath: store.dbPath };
+  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), dbPath: store.dbPath };
 }
 
 export default createLocalApi;

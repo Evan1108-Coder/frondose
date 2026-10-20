@@ -41,6 +41,25 @@ async function fixture(t) {
   return { api, db, request, call, workspace, project, agent, capture };
 }
 
+test('owner communication settings do not enter another account’s preview or captured derived history',async t=>{
+  const {request,call,workspace,agent,capture}=await fixture(t);
+  await call('/settings',{personalization:{instructions:'OWNER_PRIVATE_COMMUNICATION_PREFERENCE'}},'PATCH');
+  const {run,preview}=await capture({include_workspace:true});
+  assert.match(preview.finalPrompt,/OWNER_PRIVATE_COMMUNICATION_PREFERENCE/);
+  const member=(await call('/governance',{workspace_id:workspace.id,action:'create_member',name:'Reader',email:'private-settings-reader@example.com'})).result;
+  const owner=await request('/identity/setup',{name:'Owner',email:'private-settings-owner@example.com',password:'owner fixture password 123'});
+  const invitation=(await call('/identity/invite',{workspace_id:workspace.id,member_id:member.id},'POST',owner.cookie)).result;
+  const accepted=await request('/identity/accept',{token:invitation.invitation_token,password:'reader fixture password 123'});
+  assert.equal(accepted.status,200);
+  const current=await request('/context/inspect',{workspace_id:workspace.id,agent_id:agent.id,prompt:'Describe my settings.',work_mode:'conversation',include_workspace:true,include_chat:false},'POST',accepted.cookie);
+  assert.equal(current.status,201,JSON.stringify(current.body));
+  assert.doesNotMatch(JSON.stringify(current.body),/OWNER_PRIVATE_COMMUNICATION_PREFERENCE/);
+  assert.ok(!current.body.result.manifest.included.some(value=>value.kind==='settings'||value.kind==='personal_instructions'));
+  const historical=await request(`/runs/${run.id}/context`,undefined,'GET',accepted.cookie);
+  assert.equal(historical.status,403);
+  assert.doesNotMatch(JSON.stringify(historical.body),/OWNER_PRIVATE_COMMUNICATION_PREFERENCE/);
+});
+
 test('captured document text keeps its historical project permission boundary after the document moves', async t => {
   const { db, request, call, workspace, project, capture } = await fixture(t);
   const privateProject = (await call('/projects', { workspace_id: workspace.id, name: 'Private work' })).project;

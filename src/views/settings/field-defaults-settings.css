@@ -7,7 +7,8 @@
 .field-default-shortcut-help { font-size: 13px; }
 .field-default-search { display: grid; gap: 8px; font-weight: 600; }
 .field-default-search input, .field-default-value input[type="text"], .field-default-value textarea, .field-default-value select { width: 100%; min-width: 0; color: var(--text); background: var(--input); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: inherit; }
-.field-default-search input:focus-visible, .field-default-value :is(input, textarea, select):focus-visible, .field-default-settings button:focus-visible { outline: 2px solid var(--accent, #6266d5); outline-offset: 2px; }
+.field-default-search input:focus, .field-default-value :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select):focus { border-color: var(--focus); outline: none; box-shadow: none; }
+.field-default-settings button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .field-default-page { display: grid; gap: 12px; }
 .field-default-page h2 { font-size: 17px; margin: 12px 0 0; }
 .field-default-card { padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); display: grid; gap: 16px; }

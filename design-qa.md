@@ -93,3 +93,45 @@ No live provider account or real workspace record was used for these tests.
 - Unimplemented autonomy, event watching, fresh-state recurring context,
   multi-channel contact and off-app notifications remain explicit limitations
   in `docs/personal-agent-capabilities.md`, not claims of tested behavior.
+
+## October 20 focus, workspace expressions and event-triggered work
+
+Production build passed. The full suite passed 1,254 tests, zero failures,
+skips or cancellations. Four separate Sites packaging checks and a final 25-test
+event backend/API rerun passed. The pre-existing large-chunk build warning remains;
+this task does not claim a bundle-size optimization.
+
+Preserved the incumbent Talvori layout, typography and theme tokens. Text inputs
+now use a single thin focus border, including compound searches and composers;
+buttons and checkbox/radio controls retain their keyboard focus indicators.
+Forced-colors mode uses the system Highlight color for field focus.
+
+- Browser plugin/skill was unavailable; bundled Playwright was used with every
+  API request intercepted by fixtures. The focus regression reproduced the old
+  second outline, then passed 40 computed/rendered checks across dark/light
+  themes, specialized fields, wrapped searches, keyboard controls and forced
+  colors. Desktop/mobile screenshots were inspected. No app errors or API writes.
+- The no-AI gate passed six interaction checks: Connect AI before onboarding,
+  working connection navigation, readable saved history/Activity, setup only
+  after connection, a composer only after setup/readiness, and removal of that
+  composer after disconnection. No mock response was presented as live AI.
+- Event work was tested on desktop 1440×1000 and mobile 390×844: explicit fresh
+  context and recurring charge/event-metadata consent, same-ID retry after an
+  uncertain save, stale-safe pause/resume, cancellation confirmation, skip
+  receipts, access-revocation cleanup and disconnected controls. No app/console
+  errors or live API/provider writes. Review actions remain reachable by dialog
+  scrolling; the new textarea uses one thin focus border.
+- Independent final review inspected event list/review and disconnected-state
+  screenshots; it found no blocking overlap or clipped unreachable controls.
+- Safe Field Defaults inventory: 214 definitions, retaining all 211 prior keys.
+  New entries cover the event name, prompt and cooldown. All are convenience
+  inputs, not recurring-execution consent or authority.
+- Workspace/context tests use temporary SQLite fixtures and injected provider
+  processes. They check owner-private settings, safe configuration projection,
+  semantic and archived custom reactions, immutable retrieved messages,
+  historical source revocation and context budgets. No real account inference
+  or subjective human-like response quality is certified by these tests.
+
+Event support is bounded local recorded events, not browser-open triggers,
+external Plugin watchers, autonomous fresh-state research or an already hosted
+24/7 service. Timed schedules retain their original frozen-context contract.

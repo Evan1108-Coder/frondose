@@ -1,8 +1,9 @@
 # Personal agent capabilities
 
-Talvori now brings conversations, recorded Activity and Scheduled work together.
-It can reuse explicitly selected past messages and propose reviewed schedule
-changes. It is not an OpenAI Your dot integration or full replacement.
+Talvori brings conversations, recorded Activity and Scheduled work together.
+It can reuse explicitly selected past messages, propose reviewed schedule
+changes, and run opt-in subscriptions for supported workspace events. It is not
+an OpenAI Your dot integration or full replacement.
 
 OpenAI describes Your dot as coordinating background work, searching prior
 conversations, retaining notes, and following scheduled or supported events.
@@ -15,6 +16,9 @@ Sources: [Tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory
 | Capability | Talvori status | Boundary |
 | --- | --- | --- |
 | Chat with connected agents | Implemented | Each user authorizes their own supported provider. Account verification and model entitlement are separate. |
+| Require an AI connection | Implemented | Without a ready connection, Talvori opens a Connect AI screen before onboarding/new chat. Saved history and future-work management remain readable. The server still checks readiness on every launch. |
+| Understand workspace configuration and expressions | Bounded implementation | Readable work summaries, allowlisted server settings, template/label/status configuration, selected-message reactions and custom-emoji metadata enter the exact inspected context. Credentials, private drafts, browser-local preferences and omitted content do not. |
+| Natural language and emojis | Implemented guidance and rendering | The agent can use Unicode emojis and listed active custom shortcodes, following the user's style. Model replies are not guaranteed; reactions never authorize actions. It must not pretend to be human or claim complete awareness. |
 | Inspect ongoing work and results | Implemented | Talvori → Activity shows permission-filtered recorded runs, runtime approval gates, outputs and conversation links. Completed execution is not proof of achieved results. |
 | Stop active work | Implemented | Stop affects the selected run. It does not undo changes or cancel future schedules. |
 | Manage future work | Implemented | Talvori → Scheduled and Settings use the same canonical schedules, controls and occurrence receipts. |
@@ -24,7 +28,8 @@ Sources: [Tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory
 | Keep scoped reference notes | Implemented | Approved agent memory is included according to current scope/access. Saves remain reviewed; derived notes retain original run-source permissions. |
 | Change workspace records | Bounded implementation | The low-risk policy allows safe new Routes and self-membership links. Supported other edits remain proposals. Unsupported actions are rejected rather than simulated. |
 | Parallel delegated agents and automatic report-back | Not implemented | Existing manual Workflows and handoff records are not an autonomous coordinator. No unsupported paid agent launches are enabled. |
-| Decide when to sleep and wake or react to events | Not implemented | Fixed schedules are not an event-trigger or adaptive continuation engine. Repeating a frozen snapshot is not fresh-state monitoring. |
+| React to supported workspace events | Bounded implementation | Explicit subscriptions cover human-created/updated Routes and published updates/replies. Scope, recurring-provider consent, current/historical source access, cooldowns, receipts and limits are enforced. Only event type, source type/ID and recorded time are refreshed; event bodies and other fresh workspace contents are not. |
+| Decide autonomously when to sleep and wake | Not implemented | Explicit schedules/subscriptions are not an adaptive continuation engine. Repeating a frozen snapshot plus bounded event metadata is not fresh-state monitoring. |
 | Autonomous cross-chat research and note maintenance | Not implemented | Explicit retrieval and approved memory are not continuous background research. |
 | Browser/desktop control or personal remote-runner pairing | Not implemented | Local Workbench tools are not isolated public browser/computer workers. Public visitors never inherit the server operator's CLI account. |
 | Slack/Teams/email contact and app actions | Not released | Non-AI Plugins remain paused. Catalog entries do not authorize or execute service actions. |
@@ -45,11 +50,29 @@ Sources: [Tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory
 4. Ask a connected agent for a schedule or schedule change. A reply only creates
    a pending proposal. Review the real prompt/model/time/timezone/repetition or
    state change before confirming. See [action and schedule boundaries](agent-actions-direct.md).
+5. Open **Scheduled → Event-triggered work** to choose a supported event, exact
+   scope and existing connected-agent conversation. Inspect the prompt/context,
+   then explicitly authorize recurring provider usage and the bounded future
+   event metadata. Creation itself never launches a run. Pause or cancel future
+   deliveries there; use Activity to inspect or stop an already running agent.
+   See [event-triggered work](event-triggered-work.md).
 
 Scheduled prompts repeat the original reviewed snapshot, not future edits or
 newly created sources. No context-refresh permission is implied. Missed or
 uncertain dispatches are recorded without blind retries. Access, credentials,
 profile and source checks still apply at delivery.
+
+Event subscriptions add only the separately consented event metadata described
+above. They do not silently refresh old timed schedules. Up to five triggers can
+be active per creator/workspace, with at least a five-minute cooldown and at most
+12 dispatches per trigger in a rolling 24 hours. Skipped events are not queued;
+events while the server is stopped are not backfilled. These are run-count
+limits, not a currency budget or a guarantee of provider availability.
+
+For exact included settings, reaction behavior, selection limits and privacy
+exclusions, see [workspace awareness](agent-workspace-awareness.md). A ready
+connection and a broad overview do not give the agent literal access to every
+workspace field or browser preference.
 
 ## What the owner must provide
 
@@ -66,7 +89,7 @@ isolated automated test fixtures.
 | Hosted ChatGPT/Claude subscription authorization | Required provider approval and a supported integration agreement, not a copied local/OSS OAuth client ID. Direct provider API-key routes are separate alternatives. Current restrictions and sources are recorded in [AI connections](ai-connections.md). |
 
 No owner credential, domain or approval can switch on the unimplemented
-coordinator, event engine, autonomous retrieval, push delivery or isolated
+coordinator, adaptive continuation, autonomous retrieval, push delivery or isolated
 computer workers. Those remain engineering work; they must not be described as
 blocked merely on an API key. Real account tests and production hardening also
 remain necessary before claiming open public readiness; current public mode is
@@ -79,5 +102,8 @@ They cover search ACLs and historical lineage, snapshot mutation/revocation,
 ID-only browser drafts, recurring conversion, owner/version checks, stale
 schedule proposals, DST instant preservation, exactly-once decisions and
 schedule-list races. Browser checks exercise Activity, Scheduled, retrieval and
-proposal review on desktop/mobile without real paid calls. The build and whole
+proposal review on desktop/mobile without real paid calls. Additional event
+tests cover consent, scope, duplicate dispatch, restart recovery and permission
+loss; workspace-context tests check settings privacy and reaction provenance.
+The build and whole
 suite must pass before pushing; real provider entitlement is a separate test.

@@ -5,6 +5,7 @@ import { apiRequest } from '../../data/api.js';
 import { RescheduleWorkDialog } from '../../components/ScheduledWork.jsx';
 import { localScheduleTime } from '../../lib/scheduled-time.js';
 import { createScheduledWorkLoader } from '../../lib/scheduled-work-loader.js';
+import { EventWork } from '../../components/EventWork.jsx';
 
 function ScheduleCard({ item, busy, onTime, onState, onCancel }) {
   const { data, navigate } = useApp();
@@ -68,5 +69,6 @@ function ScheduledWorkList({ workspaceId, embedded, header }) {
     {loading ? <p role="status">Loading schedules…</p> : error ? <div className="scheduled-settings-empty"><Clock /><h2>Schedules unavailable</h2><p>Talvori could not refresh your schedules. Previously loaded prompts are hidden until access and data can be checked again.</p><Button onClick={() => loader.load()}>Retry schedules</Button></div> : !items.length ? <div className="scheduled-settings-empty"><Clock /><h2>Nothing scheduled</h2><p>Write a message in a conversation, then choose Schedule. An agent’s proposed change can also be approved for a later time.</p><Button onClick={() => navigate('chats')}>Open conversations</Button></div> : <div className="scheduled-settings-list">{items.map(item => <ScheduleCard key={item.id} item={item} busy={busy} onTime={setSelected} onState={change} onCancel={setCancel} />)}</div>}
     {visibleSelected ? <RescheduleWorkDialog item={visibleSelected} onClose={() => setSelected(null)} onSaved={replace} /> : null}
     {visibleCancel ? <Dialog title="Cancel this schedule?" subtitle={visibleCancel.title} onClose={() => !busy && setCancel(null)}><div className="schedule-dialog-body"><p>Future occurrences will stop. Messages and actions that have already run stay in their history.</p><footer className="form-submit-row"><Button disabled={busy} onClick={() => setCancel(null)}>Keep schedule</Button><Button variant="danger" busy={busy} onClick={() => change(visibleCancel, 'cancelled')}>Cancel schedule</Button></footer></div></Dialog> : null}
+    <EventWork key={workspaceId} workspaceId={workspaceId} />
   </>;
 }

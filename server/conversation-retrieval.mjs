@@ -1,5 +1,6 @@
 import { validationError } from './validation.mjs';
 import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
+import { messageReactionContext } from './agent-workspace-context.mjs';
 
 const unavailable = () => Object.assign(validationError('This conversation source is unavailable or outside your access.'), { code: 'conversation_source_unavailable', statusCode: 403 });
 const validId = value => typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\u0000-\u001f]/.test(value);
@@ -16,7 +17,8 @@ export function readConversationSource(db, workspaceId, messageId, { actor, allo
   const inspection = { manifest: { resolved: { workspace_id: workspaceId }, included: [{ kind: 'message', id: message.id }], excluded: [] } };
   try { inspection.sourceAccess = captureSourceAccess(db, inspection); assertSourceAccess(db, inspection, actor, allowed); }
   catch { throw unavailable(); }
-  return { message, chat };
+  const expressions = messageReactionContext(db,{workspaceId,chatId:chat.id,messageIds:[message.id],filter:data=>data});
+  return { message, chat, reactions:expressions.messages[0]?.reactions || [], customEmojis:expressions.customEmojis };
 }
 
 function excerpt(content, query) {
