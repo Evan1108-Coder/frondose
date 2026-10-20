@@ -16,6 +16,7 @@ const sourceTables = { document: 'documents', update: 'activity_entries', task: 
 const sourceKinds = { document: 'documents', update: 'activity', task: 'route', project: 'project' };
 const stamp = () => new Date().toISOString();
 const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 28);
+export const isPersonalTalvoriProfile = agent => Boolean(agent?.workspace_id && agent?.provider && agent.id === profileId(agent.workspace_id, agent.provider));
 const parse = (value, fallback = {}) => { try { return JSON.parse(value); } catch { return fallback; } };
 const deny = (message = 'This Talvori context is unavailable.') => { throw Object.assign(new Error(message), { statusCode: 403, code: 'access_denied' }); };
 const fail = (message, code, statusCode = 409) => { throw Object.assign(new Error(message), { statusCode, code }); };

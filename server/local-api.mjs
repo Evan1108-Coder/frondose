@@ -14,7 +14,8 @@ import { createNativeAgentToolBridge } from './native-agent-tool-bridge.mjs';
 import { createNativeToolApply } from './native-tool-apply.mjs';
 import { buildTodaySummary } from './today-service.mjs';
 import { installAgentProfiles, validateAgentProfile, snapshotAgentProfile, bumpAgentProfileVersion } from './agent-profiles.mjs';
-import { talvoriAgentRoute, runModelSelection, assertTalvoriChatSource, isTalvoriAgentChat, assertTalvoriAgentBinding } from './talvori-agent-service.mjs';
+import { talvoriAgentRoute, runModelSelection, assertTalvoriChatSource, isTalvoriAgentChat, assertTalvoriAgentBinding, isPersonalTalvoriProfile } from './talvori-agent-service.mjs';
+import { installLocalAiWorkspaces, enableLocalAi, localAiEnabled } from './local-ai-workspace.mjs';
 import { installAgentProfileHistory, agentProfileHistoryRoute } from './agent-profile-history.mjs';
 import { installRunUsage, beginRunUsage, recordRunUsage, finalizeRunUsage, finalizeInterruptedRunUsage, runUsageRoute } from './run-usage-service.mjs';
 import { installKnowledgeConflicts, knowledgeConflictRoute, getKnowledgeConflictWarnings } from './knowledge-conflicts.mjs';
@@ -204,6 +205,7 @@ function present(row) {
     else if (key === 'pinned' || key === 'requires_approval') result[key] = Boolean(value);
     else result[key] = value;
   }
+  if (isPersonalTalvoriProfile(row)) result.personal_agent = true;
   return result;
 }
 function rows(statement, ...params) { return statement.all(...params).map(present); }
@@ -465,6 +467,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installAgentAwareness(db);
   installActivity(db);
   seed(db, { demo: seedMode === 'demo' });
+  installLocalAiWorkspaces(db);
   installAreas(db);
   installSkills(db);
   installAgentProfiles(db);
@@ -585,6 +588,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       catch (reason) { return { provider, state: 'not_connected', error_code: reason.code || 'access_denied' }; }
     }
     if (deployment.hosted && !isBrowserAiProvider(provider)) return { provider, state: 'not_connected', error_code: 'personal_runner_required' };
+    if (['codex', 'claude'].includes(provider) && !localAiEnabled(getDb(), workspaceId, provider)) return { provider, state: 'not_connected', workspace_activation_required: true };
     return isBrowserAiProvider(provider) ? aiConnections.readyState(provider, workspaceId, actor) : integration.status(provider);
   }
   function startProviderRun(options, callbacks) {
@@ -1442,7 +1446,15 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       res.filterTalvoriData = data => {
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
         const filtered = access.filter(data, actor);
-        const enrichConnections = snapshot => { if (Array.isArray(snapshot?.connections)) snapshot.connections = snapshot.connections.map(connection => isScopedAiProvider(connection.provider) ? { ...connection, metadata: {}, mode: connection.provider === 'copilot' ? 'personal-runtime' : 'browser-api', workspace_states: Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'connections.view') ? [[workspace.id, providerState(connection.provider, workspace.id, actor).state]] : [])) } : deployment.hosted && ['codex', 'claude'].includes(connection.provider) ? { ...connection, state: 'not_connected', account_label: null, metadata: {}, mode: 'personal_runner_required' } : connection); };
+        const enrichConnections = snapshot => {
+          if (!Array.isArray(snapshot?.connections)) return;
+          snapshot.connections = snapshot.connections.map(connection => {
+            if (!isScopedAiProvider(connection.provider) && !['codex', 'claude'].includes(connection.provider)) return connection;
+            const workspace_states = Object.fromEntries(db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all().flatMap(workspace => access.allowed(workspace.id, actor, 'connections.view') ? [[workspace.id, providerState(connection.provider, workspace.id, actor).state]] : []));
+            if (isScopedAiProvider(connection.provider)) return { ...connection, metadata: {}, mode: connection.provider === 'copilot' ? 'personal-runtime' : 'browser-api', workspace_states };
+            return deployment.hosted ? { ...connection, state: 'not_connected', account_label: null, metadata: {}, mode: 'personal_runner_required', workspace_states } : { ...connection, workspace_states };
+          });
+        };
         enrichConnections(filtered);
         enrichConnections(filtered.bootstrap);
         return filtered;
@@ -1615,6 +1627,35 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await governanceRoute({ db, req, res, path, url, readBody, send, actor: { ...actor, authenticated: actor.mode === 'account' } })) return;
       const platformResult = await connectionPlatform.handle({ method: req.method, path, query: Object.fromEntries(url.searchParams), body, actor });
       if (platformResult) return send(res, platformResult.statusCode, platformResult.body);
+      const localAiOperation = path.match(/^\/connections\/(codex|claude)\/(status|connect|check|disconnect)$/);
+      if (localAiOperation) {
+        const [, provider, operation] = localAiOperation;
+        const workspaceId = body.workspace_id || url.searchParams.get('workspace_id');
+        if (workspaceId) {
+          if (!db.prepare('SELECT 1 FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId)) throw validationError('Choose an active workspace.');
+          governance.authorize(workspaceId, actor.id, req.method === 'GET' ? 'connections.view' : 'connections.use');
+        }
+        if (req.method === 'GET' && operation === 'status') return send(res, 200, { connection: workspaceId ? providerState(provider, workspaceId, actor) : integration.status(provider) });
+        if (req.method === 'POST' && ['connect', 'check'].includes(operation)) {
+          const result = operation === 'connect' ? await integration.connect(provider, body) : { connection: await integration.authStatus(provider) };
+          if (['connected', 'connecting'].includes(result.connection?.state)) {
+            // Legacy owner clients explicitly connected the installation. Preserve
+            // that call for existing workspaces, never for ones created afterward.
+            const targets = workspaceId ? [{ id: workspaceId }] : db.prepare('SELECT id FROM workspaces WHERE archived_at IS NULL').all();
+            for (const target of targets) enableLocalAi(db, target.id, provider);
+          }
+          return send(res, 200, { ...result, connection: workspaceId ? providerState(provider, workspaceId, actor) : result.connection });
+        }
+        if (req.method === 'POST' && operation === 'disconnect' && workspaceId) {
+          db.prepare('DELETE FROM local_ai_workspace_connections WHERE workspace_id=? AND provider=?').run(workspaceId, provider);
+          return send(res, 200, { connection: providerState(provider, workspaceId, actor), message: 'Disconnected in this workspace. Other workspaces and CLI sign-in are unchanged.' });
+        }
+        if (req.method === 'POST' && operation === 'disconnect') {
+          const connection = integration.disconnect(provider);
+          db.prepare('DELETE FROM local_ai_workspace_connections WHERE provider=?').run(provider);
+          return send(res, 200, { connection, message: 'Disconnected from Talvori. CLI sign-in remains available in your other applications.' });
+        }
+      }
       if (await integration.handle(req, res, { path, url })) return;
       if (await workbench.handle({ req, res, path, url, readBody, send })) return;
       if (await agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor, actor, allowed: access.allowed, filter: data => access.filter(data, actor),

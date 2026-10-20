@@ -38,12 +38,13 @@ test('paused, archived, and unsupported agents cannot launch either type of sess
   assert.deepEqual(AGENT_PROVIDERS.claude.capabilities, ['Read and search']);
 });
 
-test('sidebar shows the built-in Talvori profile and connected working agents only', () => {
+test('Your Agents sidebar excludes personal Talvori and shows connected working profiles', () => {
   const connected = { id: 'conn_codex', provider: 'codex', state: 'connected', metadata: { liveAccountChecked: true } };
   assert.equal(agentVisibleInSidebar({ ...agent, provider_connection_id: connected.id }, [connected]), true);
   assert.equal(agentVisibleInSidebar({ ...agent, provider_connection_id: connected.id }, []), false);
   assert.equal(agentVisibleInSidebar({ ...agent, status: 'paused', provider_connection_id: connected.id }, [connected]), false);
-  assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', provider_connection_id: connected.id }, []), true);
+  assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', personal_agent: true, provider_connection_id: connected.id }, [connected]), false);
+  assert.equal(agentVisibleInSidebar({ ...agent, name: 'Talvori', provider_connection_id: connected.id }, [connected]), true, 'A user-chosen name is not personal-agent identity');
   assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', archived_at: 'now' }, [connected]), false);
 });
 

@@ -16,6 +16,10 @@ const digest = value => createHash('sha256').update(value).digest('hex').slice(0
 // Product-facing labels change; semantic IDs must still find existing defaults.
 const legacyFieldIdentity = value => value.replaceAll('Talvori', 'Rumbo').replaceAll('talvori', 'rumbo');
 const LEGACY_REBRAND_KEYS = Object.freeze({
+  // Explicit accessible labels must not discard saved personal-agent defaults.
+  'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.agent-name.dd98317cae38': 'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.agent-name.b83e499d6b30',
+  'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.guidelines.3894eaf704b9': 'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.guidelines.4f5700e8f77b',
+  'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.purpose.d23c92cfca14': 'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.purpose.32b086b6238c',
   'source.views-rumbo-agent.agent-onboarding.rumbo.802a60c75c6a': 'source.views-rumbo-agent.agent-onboarding.rumbo-agent.5b3e6a176e8e',
   'source.views-rumbo-agent.history-dialog.search-conversations.f1eeab9bdd0c': 'source.views-rumbo-agent.history-dialog.search-conversations.842435947877',
 });

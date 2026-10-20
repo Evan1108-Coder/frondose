@@ -50,6 +50,32 @@ async function fixture(t, { onboard = true } = {}) {
   return { api, db, call, request, fake, workspace, connect, select, create, inspect, send };
 }
 
+test('new workspaces do not inherit local AI activation, personal setup, profiles or conversations', async t => {
+  const { call, request, workspace, fake } = await fixture(t, { onboard: false });
+  await call('/connections/codex/connect', { method: 'existing', workspace_id: workspace.id });
+  const other = (await call('/workspaces', { name: 'Independent workspace' })).workspace;
+  const state = (await call(`/talvori-agent?workspace_id=${other.id}`)).result;
+  assert.equal(state.providers.find(item => item.provider === 'codex').connected, false);
+  assert.equal(state.preferences.provider, ''); assert.equal(state.preferences.provider_selected, false);
+  assert.equal(state.preferences.onboarding_complete, false);
+  const before = await call('/bootstrap');
+  assert.equal(before.connections.find(item => item.provider === 'codex').workspace_states[workspace.id], 'connected');
+  assert.equal(before.connections.find(item => item.provider === 'codex').workspace_states[other.id], 'not_connected');
+  assert.equal(before.agents.filter(item => item.workspace_id === other.id).length, 0);
+  assert.equal(before.chats.filter(item => item.workspace_id === other.id).length, 0);
+  const profile = (await call('/agents', { workspace_id: other.id, provider: 'codex', name: 'Unactivated profile', provider_connection_id: 'conn_codex' })).agent;
+  const blockedRun = await request('/runs', { workspace_id: other.id, agent_id: profile.id, provider: 'codex', prompt: 'Must not start.', mode: 'live', work_mode: 'conversation', permission_mode: 'read-only' });
+  assert.equal(blockedRun.status, 409); assert.equal(blockedRun.body.error.code, 'not_connected');
+  assert.equal((await request('/talvori-agent/preferences', { workspace_id: other.id, preferences: { provider: 'codex', provider_selected: true } }, 'PATCH')).status, 409);
+  assert.equal((await call(`/connections/codex/status?workspace_id=${other.id}`)).connection.state, 'not_connected', 'Reading status never activates an account');
+  await call('/connections/codex/connect', { method: 'existing', workspace_id: other.id });
+  await call('/connections/codex/disconnect', { workspace_id: other.id });
+  assert.equal((await call(`/connections/codex/status?workspace_id=${workspace.id}`)).connection.state, 'connected', 'Disconnect is workspace-only');
+  assert.equal((await call(`/connections/codex/status?workspace_id=${other.id}`)).connection.state, 'not_connected');
+  assert.equal((await call('/bootstrap')).connections.find(item => item.provider === 'codex').workspace_states[other.id], 'not_connected');
+  assert.equal(fake.launches.length, 0);
+});
+
 test('Talvori chat creation preserves a selected connected profile and its idempotent identity', async t => {
   const { call, request, workspace, connect, create, fake, api } = await fixture(t);
   await connect();
@@ -79,6 +105,8 @@ test('opening Talvori is read-only; disconnected creation stores nothing and con
   assert.equal(api.snapshot().chats.length, 0); assert.equal(api.snapshot().agents.length, before.agents.length);
   await connect();
   const first = await create(), second = await create({ request_id: 'second-chat-fixture' });
+  assert.equal(first.agent.personal_agent, true, 'Personal identity is derived server-side, not from the display name');
+  assert.equal((await call('/bootstrap')).agents.find(agent => agent.id === first.agent.id).personal_agent, true);
   assert.equal(first.agent.id, second.agent.id); assert.notEqual(first.chat.id, second.chat.id);
   assert.equal(first.agent.provider_connection_id, 'conn_codex'); assert.equal(first.chat.kind, 'rumbo-agent');
   await call(`/agents/${first.agent.id}`, { model: 'configured-fixture-model' }, 'PATCH');

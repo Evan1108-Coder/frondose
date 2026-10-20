@@ -35,7 +35,7 @@ export function agentReadiness(agent, connection) {
   if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
   if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
   if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
-  const state = connection?.provider === agent.provider ? isScopedAiProvider(agent.provider) ? connection.workspace_states?.[val(agent, 'workspace_id')] || connection.state : connection.state : "not_connected";
+  const state = connection?.provider === agent.provider ? connection.workspace_states ? connection.workspace_states[val(agent, 'workspace_id')] || 'not_connected' : connection.state : "not_connected";
   if (state === 'connected' && connection.mode === 'demo' && connection.metadata?.simulated === true)
     return result('sample', 'Connected · sample', 'A simulated connection in a view-only sample workspace. No provider account is connected and no session can start.', 'inspect', false, false);
   if (state === "connecting") return result("connecting", "Signing in", `Finish ${provider.name} sign-in in the provider window.`, "connect");
@@ -55,7 +55,7 @@ export function agentReadiness(agent, connection) {
 /** Keep setup-only profiles in Agent Studio, not the working-agent sidebar. */
 export function agentVisibleInSidebar(agent, connections = []) {
   if (!agent || val(agent, 'archived_at')) return false;
-  if (typeof agent.id === 'string' && agent.id.startsWith('rumbo_agent_')) return true;
+  if (agent.personal_agent === true) return false;
   const connection = connections.find(item => item.provider === agent.provider && (!agent.provider_connection_id || item.id === agent.provider_connection_id));
   return agentReadiness(agent, connection).state === 'ready';
 }

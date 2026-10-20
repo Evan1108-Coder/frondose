@@ -19,7 +19,7 @@ export const NAV_ITEMS = [
   { id: "projects", label: "Projects", key: "P" },
   { id: "tasks", label: "Routes", key: "R" },
   { id: "chats", label: "Conversations", key: "C" },
-  { id: "agents", label: "Agents", key: "A" },
+  { id: "agents", label: "Your Agents", key: "A" },
   { id: "skills", label: "Skills", key: "K" },
   { id: "memory", label: "Memory", key: "M" },
   { id: "connections", label: "AI connections", key: "N" },
@@ -30,7 +30,7 @@ export const SIDEBAR_GROUPS = {
   sections: ["agents", "teams", "projects", "workspace", "views", "chats"],
   tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
 };
-export const SECTION_LABELS = { agents: "Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
+export const SECTION_LABELS = { agents: "Your Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
 export const HEADER_QUICK_ACCESS = ['focus', 'inbox', 'starred', 'work', 'projects', 'chats', 'connections', 'settings'];
 export const FOCUSED_SIDEBAR_ROOT = new Set([
   'overview', 'rumbo-agent', 'starred', 'inbox', 'work', 'workbench',
@@ -149,7 +149,7 @@ export function organizationCounts(data, preferences) {
     views: (data.workspace_items ?? []).filter(i => i.kind === 'saved_view' && !i.archived_at).length,
     operations: (data.workspace_items ?? []).filter(i => !i.archived_at && ['queue', 'handoff', 'request'].includes(i.kind)).length,
     favorites: preferences.favorites.filter(f => resolveFavorite(data, f)).length,
-    agents: visible(data.agents).length, teams: visible(data.teams).length, projects: visible(data.projects).length,
+    agents: visible(data.agents).filter(agent => !agent.personal_agent).length, teams: visible(data.teams).length, projects: visible(data.projects).length,
     workspace: visible(data.tasks).filter(t => t.status !== "done").length + visible(data.memory_notes).length,
     tasks: visible(data.tasks).filter(t => ["blocked", "review"].includes(t.status)).length,
     chats: visible(data.chats).length, memory: visible(data.memory_notes).length,

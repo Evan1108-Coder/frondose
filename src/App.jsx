@@ -247,6 +247,7 @@ export function App() {
       runIds = new Set(runs.map((item) => item.id));
     return {
       ...rawData,
+      connections: (rawData.connections ?? []).map(connection => connection.workspace_states ? { ...connection, state: connection.workspace_states[workspace?.id] || 'not_connected' } : connection),
       workspaces: workspace ? [workspace] : [],
       projects,
       tasks,

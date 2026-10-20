@@ -13,6 +13,7 @@ import { relative, val, visible } from '../lib/model.js';
 import { Button, ErrorMessage, useApp } from '../ui.jsx';
 import { ScheduledWorkSettings } from './settings/ScheduledWorkSettings.jsx';
 import { TalvoriAgentPreferences } from './settings/TalvoriAgentPreferences.jsx';
+import { TalvoriWelcome } from '../components/TalvoriWelcome.jsx';
 import './talvori-agent.css';
 
 function draftStorage() { try { return sessionStorage; } catch { return undefined; } }
@@ -25,6 +26,7 @@ function savedCreation(workspaceId) {
 export function TalvoriAgent() {
   const { data, workspace, page, navigate, notify } = useApp();
   const [state, setState] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(null), [busy, setBusy] = useState(false), [reload, setReload] = useState(0);
+  const [editingWorkspace, setEditingWorkspace] = useState(null);
   const workspaceRef = useRef(workspace.id), creation = useRef(null);
   workspaceRef.current = workspace.id;
   const revision = useMemo(() => JSON.stringify((data.connections || []).map(item => [item.id, item.state, item.connected, item.updated_at, item.workspace_states])), [data.connections]);
@@ -85,12 +87,13 @@ export function TalvoriAgent() {
   }
 
   const canOpen = !loading && Boolean(state) && (pending?.agentId ? requestedReady : ready && preferences.onboarding_complete);
+  const showWelcome = !preferences.onboarding_complete && editingWorkspace !== workspace.id;
   return <main className="rumbo-agent-page talvori-setup-page"><header className="rumbo-agent-header"><div className="rumbo-agent-identity">{preferences.image_url ? <img className="talvori-setup-picture" src={preferences.image_url} alt="" /> : <TalvoriAgentOrb compact color={preferences.orb_color} />}<strong>{preferences.display_name || 'Talvori'}</strong></div><div className="rumbo-agent-header-actions"><Button icon={MessageCircle} disabled={!canOpen} busy={busy} onClick={() => openConversation()}>{pending?.agentId ? `Open draft for ${requestedAgent?.name || 'agent'}` : 'Open conversation'}</Button><Button icon={Plus} disabled={loading || !ready || !preferences.onboarding_complete || Boolean(pending?.agentId)} busy={busy} onClick={() => openConversation({ forceNew: true })}>New conversation</Button></div></header>
     <nav className="assistant-section-nav" aria-label="Talvori sections">{[['conversation', 'Setup'], ['activity', 'Activity'], ['scheduled', 'Scheduled']].map(([id, label]) => <a key={id} href={pageHash('rumbo-agent', null, { section: id })} aria-current={section === id ? 'page' : undefined}>{label}</a>)}</nav>
     <ErrorMessage error={error} />
     {loading ? <p className="rumbo-agent-loading" role="status">Loading Talvori…</p> : !state ? <section className="talvori-setup-content"><h1>Talvori is unavailable</h1><Button onClick={() => setReload(value => value + 1)}>Retry</Button></section> : <>
-      {!ready ? <div className="rumbo-agent-connection-notice" role="status"><span>{preferences.provider_selected ? 'Talvori’s selected AI connection needs to be reconnected. Saved work remains readable.' : 'Choose Talvori’s AI connection in Setup. Connected accounts are never selected automatically.'}</span>{preferences.provider_selected ? <Button onClick={() => navigate('connections', preferences.provider)}>Reconnect AI</Button> : section !== 'conversation' ? <Button onClick={() => navigate('rumbo-agent')}>Choose connection</Button> : null}</div> : null}
-      {section === 'activity' || section === 'scheduled' ? <div className="assistant-section-panel" key={`${workspace.id}:${section}`}>{section === 'activity' ? <AssistantActivity /> : <ScheduledWorkSettings embedded />}</div> : <section className="talvori-setup-content"><div className="talvori-setup-intro"><h1>Your Talvori</h1><p>Set its identity and choose the AI account it uses. Talk with Talvori in Conversations; follow work in Activity or manage timed and event-triggered work in Scheduled.</p></div><TalvoriAgentPreferences embedded initialState={state} onSaved={next => setState(current => ({ ...current, preferences: next }))} />{chats.length ? <section className="talvori-setup-history"><h2>Recent conversations</h2>{chats.slice(0, 6).map(chat => <button key={chat.id} onClick={() => navigate('chats', chat.id)}><span><MessageCircle />{chat.title}</span><time>{relative(chat.updated_at)}</time></button>)}</section> : null}</section>}
+      {!ready && (preferences.provider_selected || section !== 'conversation') ? <div className="rumbo-agent-connection-notice" role="status"><span>{preferences.provider_selected ? 'Talvori’s selected AI connection needs to be reconnected. Saved work remains readable.' : 'Choose Talvori’s AI connection in Setup. Connected accounts are never selected automatically.'}</span>{preferences.provider_selected ? <Button onClick={() => navigate('connections', preferences.provider)}>Reconnect AI</Button> : section !== 'conversation' ? <Button onClick={() => navigate('rumbo-agent')}>Choose connection</Button> : null}</div> : null}
+      {section === 'activity' || section === 'scheduled' ? <div className="assistant-section-panel" key={`${workspace.id}:${section}`}>{section === 'activity' ? <AssistantActivity /> : <ScheduledWorkSettings embedded />}</div> : showWelcome ? <TalvoriWelcome onCreate={() => setEditingWorkspace(workspace.id)} /> : <section className="talvori-setup-content"><div className="talvori-setup-intro"><h1>{preferences.onboarding_complete ? 'Your Talvori' : 'Create your Talvori'}</h1><p>Choose its connection and identity, then set how it approaches your work. You can change everything here later.</p></div><TalvoriAgentPreferences embedded key={workspace.id} initialState={state} onSaved={next => setState(current => ({ ...current, preferences: next }))} />{chats.length ? <section className="talvori-setup-history"><h2>Recent conversations</h2>{chats.slice(0, 6).map(chat => <button key={chat.id} onClick={() => navigate('chats', chat.id)}><span><MessageCircle />{chat.title}</span><time>{relative(chat.updated_at)}</time></button>)}</section> : null}</section>}
     </>}
   </main>;
 }

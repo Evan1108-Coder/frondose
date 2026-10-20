@@ -314,7 +314,7 @@ export function Sidebar({
           </div>
           <section data-layout-id="agents" className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
             <div className="collapsed-section-link">{navItem("agents")}</div>
-            {sectionHeader("agents", "Agents", "agents", () => create("agent"))}
+            {sectionHeader("agents", "Your Agents", "agents", () => create("agent"))}
             <Collapse id="navigation-agents" className="sidebar-section-content nav-group" open={preferences.sections.agents}>
               {agents.map(agent => {
                 const active = data.runs.filter(run => val(run, "agent_id") === agent.id && runningStatuses.has(run.status)).length;

@@ -146,7 +146,9 @@ export function AgentsView() {
   const [connectionProvider, setConnectionProvider] = useState(null), [archiveAgent, setArchiveAgent] = useState(null);
   const [importing, setImporting] = useState(false);
   const { busy, error, execute } = useAsync();
-  const agents = visible(data.agents).sort((a, b) => a.name.localeCompare(b.name));
+  const agents = visible(data.agents).filter(agent => !agent.personal_agent).sort((a, b) => a.name.localeCompare(b.name));
+  const personalSelection = page.id && visible(data.agents).some(agent => agent.id === page.id && agent.personal_agent);
+  useEffect(() => { if (personalSelection) navigate('rumbo-agent'); }, [personalSelection, navigate]);
   const summaries = new Map(agents.map((agent) => [agent.id, summarizeAgent(agent, data)]));
   const filtered = agents.filter((agent) => {
     const state = summaries.get(agent.id).readiness.state;
@@ -159,7 +161,7 @@ export function AgentsView() {
   function exportDefinition(agent) { download(`${agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "agent"}.talvori-agent.json`, exportAgentDefinition(agent)); notify("Definition exported without account, folder, context, or permission references. Review instruction text before sharing."); }
   function pause(agent) { return execute(async () => { const status = agent.status === "paused" ? "available" : "paused"; await talvoriActions.updateAgent(agent.id, { status }); notify(status === "paused" ? `${agent.name} paused. Existing sessions continue.` : `${agent.name} is available for new sessions.`); }); }
   return <main className={`page agents-page ${page.id ? "has-agent-selection" : ""}`}>
-    <PageHeader title="Agent Studio" description="Specialized profiles, shared provider accounts, and work you can inspect."><Button onClick={() => setImporting(true)}>Import definition</Button>{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
+    <PageHeader title="Your Agents" description="Specialized agents for your workspace. Your personal Talvori is managed in its own tab."><Button onClick={() => setImporting(true)}>Import definition</Button>{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
     {!page.id ? <section className="agent-provider-strip" aria-label="Provider connections">
       <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).map(([id, provider]) => {
         const connection = data.connections.find((item) => item.provider === id);

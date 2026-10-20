@@ -851,7 +851,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-agent-roster.agents-view.search-agents.ff915d511a34",
-    "page": "Agent Studio",
+    "page": "Your Agents",
     "label": "Search agents…",
     "type": "search",
     "eligible": true,

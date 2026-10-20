@@ -192,8 +192,13 @@ function ConnectionCard({ connection, setup, descriptor, onOpen }) {
     </article>
   );
 }
-export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
-  const { data, perform, notify, edit } = useApp();
+export function ConnectionDialog(props) {
+  const { workspace } = useApp();
+  return <WorkspaceConnectionDialog key={workspace.id} {...props} />;
+}
+
+function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
+  const { data, perform, notify, edit, workspace } = useApp();
   const descriptor = CONNECTION_PROVIDERS[provider];
   const comingSoon = !["codex", "claude"].includes(provider);
   const metadataOnly = comingSoon || descriptor?.implementation === "metadata_only";
@@ -209,15 +214,16 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     [activeTab, setActiveTab] = useState("overview"),
     [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const { busy, error, execute, setError } = useAsync();
-  const connection =
-    current ?? data.connections.find((item) => item.provider === provider);
+  const savedConnection = data.connections.find((item) => item.provider === provider);
+  const connection = current ?? (savedConnection?.workspace_states ? { ...savedConnection, state: savedConnection.workspace_states[workspace.id] || 'not_connected' } : savedConnection);
   const connected = connection?.state === "connected";
   useEffect(() => {
     if (metadataOnly) return undefined;
+    setCurrent(null); setAuthUrl(null); setMessage('');
     let active = true;
     Promise.all([
       talvoriApi.connectionSetup(provider),
-      talvoriApi.connectionStatus(provider),
+      talvoriApi.connectionStatus(provider, { workspaceId: workspace.id }),
     ])
       .then(([s, c]) => {
         if (active) {
@@ -231,12 +237,12 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     return () => {
       active = false;
     };
-  }, [provider, metadataOnly]);
+  }, [provider, metadataOnly, workspace.id]);
   const reloadSetup = () =>
     execute(async () => {
       const [s, c] = await Promise.all([
         talvoriApi.connectionSetup(provider),
-        talvoriApi.connectionStatus(provider),
+        talvoriApi.connectionStatus(provider, { workspaceId: workspace.id }),
       ]);
       setSetup(s.result.setup);
       setCurrent(c.result.connection);
@@ -252,7 +258,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     let active = true;
     const timer = setInterval(() => {
       talvoriApi
-        .connectionStatus(provider)
+        .connectionStatus(provider, { workspaceId: workspace.id })
         .then((response) => {
           if (!active) return;
           setCurrent(response.result.connection);
@@ -268,11 +274,12 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
       active = false;
       clearInterval(timer);
     };
-  }, [provider, connection?.state, authUrl]);
+  }, [provider, connection?.state, authUrl, workspace.id]);
   const connect = (method) =>
     execute(async () => {
       const result = await talvoriActions.connectConnection(provider, {
         method,
+        workspace_id: workspace.id,
         ...(method === "token" ? { token } : {}),
       });
       setToken("");
@@ -283,7 +290,7 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
     });
   const check = () =>
     execute(async () => {
-      const result = await talvoriActions.checkConnection(provider);
+      const result = await talvoriActions.checkConnection(provider, { workspaceId: workspace.id });
       setCurrent(result.connection);
       setMessage(
         result.message ??
@@ -529,8 +536,8 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
         {confirmDisconnect ? (
           <div className="disconnect-confirm">
             <p>
-              Disconnect {setup?.displayName} from Talvori? Your external CLI
-              sign-in is kept, and your project data stays here.
+              Disconnect {setup?.displayName} from this workspace? Other
+              workspaces, CLI sign-in, and your project data are unchanged.
             </p>
             <Button onClick={() => setConfirmDisconnect(false)}>Cancel</Button>
             <Button
@@ -539,11 +546,11 @@ export function ConnectionDialog({ provider, setup: initialSetup, onClose }) {
               onClick={() =>
                 execute(async () => {
                   const result =
-                    await talvoriActions.disconnectConnection(provider);
+                    await talvoriActions.disconnectConnection(provider, { workspaceId: workspace.id });
                   setCurrent(result.connection);
                   setResources(null);
                   setConfirmDisconnect(false);
-                  setMessage("Disconnected from Talvori.");
+                  setMessage(result.message || "Disconnected in this workspace.");
                 })
               }
             >
