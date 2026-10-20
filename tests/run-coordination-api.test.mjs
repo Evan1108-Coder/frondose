@@ -9,7 +9,7 @@ import { createLocalApi } from '../server/local-api.mjs';
 import { getInspection, captureRunContext } from '../server/run-context-store.mjs';
 
 test('authenticated coordination routes save idempotent records and prepare a protected draft without inference', async t => {
-  const directory = await mkdtemp(join(tmpdir(),'talvori-coordination-api-'));
+  const directory = await mkdtemp(join(tmpdir(),'frondose-coordination-api-'));
   let providerCalls = 0;
   const forbidden = () => { providerCalls++; throw Error('No live provider calls in coordination tests.'); };
   const api = createLocalApi({dataDir:directory,seedMode:'clean',integrationOptions:{env:{},execute:forbidden,spawnProcess:forbidden,fetchImpl:forbidden}});
@@ -43,7 +43,7 @@ test('authenticated coordination routes save idempotent records and prepare a pr
   assert.equal(prepared.dispatched,false);assert.equal(prepared.agent_id,recipient.id);
   const snapshot=(await call(`/chat-collaboration/${target.id}/snapshots/${prepared.context.id}?workspace_id=${workspace.id}`)).result;
   assert.equal(snapshot.content,prepared.context.content);
-  const followUp={workspace_id:workspace.id,chat_id:target.id,agent_id:recipient.id,prompt:prepared.content,work_mode:'conversation',include_chat:false,include_memory:false,attachments:[{name:`talvori-context-${snapshot.id}.md`,type:'text/markdown',content:snapshot.content,rumbo_context_snapshot:snapshot.id}]};
+  const followUp={workspace_id:workspace.id,chat_id:target.id,agent_id:recipient.id,prompt:prepared.content,work_mode:'conversation',include_chat:false,include_memory:false,attachments:[{name:`frondose-context-${snapshot.id}.md`,type:'text/markdown',content:snapshot.content,rumbo_context_snapshot:snapshot.id}]};
   const followUpPreview=(await call('/context/inspect',followUp)).result;
   assert.match(followUpPreview.finalPrompt,/Please independently check this result/);
   assert.equal(db.prepare('SELECT count(*) n FROM runs').get().n,1);

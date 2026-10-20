@@ -1,4 +1,4 @@
-# Talvori V1 acceptance matrix
+# Frondose V1 acceptance matrix
 
 Status: normative V1 release contract  
 Product: local-first localhost application  
@@ -7,12 +7,12 @@ External connections in V1: GitHub, Google Drive, Codex, Claude
 
 ## 1. Release definition
 
-Talvori V1 is a small but complete workspace for organizing AI-assisted work. A person can create a workspace, organize projects and tasks, hold linked one-to-one or multi-agent chats, attach project context, start supervised agent work, answer approvals, and revisit all of it after restarting Talvori. The interface uses the compact, calm organization associated with Linear, but its object model, layouts, content, and agent workflows are Talvori's own.
+Frondose V1 is a small but complete workspace for organizing AI-assisted work. A person can create a workspace, organize projects and tasks, hold linked one-to-one or multi-agent chats, attach project context, start supervised agent work, answer approvals, and revisit all of it after restarting Frondose. The interface uses the compact, calm organization associated with Linear, but its object model, layouts, content, and agent workflows are Frondose's own.
 
 The V1 hierarchy is:
 
 ```text
-Talvori
+Frondose
 └── Workspace (organizational boundary)
     ├── Projects
     │   ├── Tasks
@@ -38,9 +38,9 @@ Each matrix row names the minimum authoritative evidence required. A screenshot,
 | `UT` | Unit/contract test | Deterministic test of a pure rule or injected adapter boundary with exact assertions |
 | `IT` | Local integration test | Real local API, SQLite database, filesystem, Git repository, or child-process boundary in an isolated temporary directory |
 | `E2E` | Browser end-to-end | Playwright drives the production UI against the real local server; assertions cover visible behavior |
-| `VIS` | Visual evidence | Screenshots at the named viewport, reviewed against the Talvori tokens and layout rules |
+| `VIS` | Visual evidence | Screenshots at the named viewport, reviewed against the Frondose tokens and layout rules |
 | `A11Y` | Accessibility evidence | Automated accessibility scan plus keyboard/focus/manual checks where automation is insufficient |
-| `SMOKE` | Release smoke | Clean temporary Talvori home, production build/server, no real credentials, full golden path plus recovery cases |
+| `SMOKE` | Release smoke | Clean temporary Frondose home, production build/server, no real credentials, full golden path plus recovery cases |
 | `MANUAL-LIVE` | Explicit live-provider verification | Separate opt-in test using the owner's account; never part of automated V1 smoke |
 
 General rules:
@@ -61,7 +61,7 @@ General rules:
 | IA-03 | Contextual navigation | Project, task, chat, agent, and run links open the correct canonical object; browser back/forward restores the prior location and selection. | `E2E deep-links-history.spec`, including reload on a detail URL |
 | IA-04 | Command access | A command/search palette opens from the visible control and `Cmd/Ctrl+K`, searches core objects, and performs navigation with keyboard only. | `E2E command-palette.spec`; keyboard-only recording |
 | IA-05 | List/detail organization | Dense collections use a list/table with a selected detail or inspector; settings use grouped list/detail sections. Information does not become a wall of independent cards. | `VIS` Projects, Tasks, Chats, Live work, Settings at 1440×900 and 1024×768 |
-| IA-06 | Talvori visual identity | Neutral gray-to-gray-black palette, restrained status colors, thin borders, compact spacing, sentence-case labels, and one coherent icon family. No gradients, glowing AI effects, robot avatars, or direct copies of Linear assets. | Token/source audit; `VIS` of all primary routes |
+| IA-06 | Frondose visual identity | Neutral gray-to-gray-black palette, restrained status colors, thin borders, compact spacing, sentence-case labels, and one coherent icon family. No gradients, glowing AI effects, robot avatars, or direct copies of Linear assets. | Token/source audit; `VIS` of all primary routes |
 | IA-07 | Theme | V1 provides a polished dark theme as the default. If light/system controls are present they must be complete and persistent; otherwise they are absent rather than decorative. | `E2E appearance-persistence.spec`; `VIS` default theme |
 | IA-08 | Density and readability | Typical sidebar/list rows are compact, code/output uses monospace, long prose has a readable maximum width, and truncation exposes the full value by tooltip or detail view. | `VIS`; `E2E overflow-content.spec` with long names and messages |
 | IA-09 | Status language | Task and run statuses use text plus icon/shape, not color alone. Task status and run lifecycle are never presented as the same state machine. | `UT status-mapping`; `A11Y`; `VIS` status matrix |
@@ -116,7 +116,7 @@ General rules:
 | RUN-06 | Live work view | Compact list/table shows status, agent, workspace, project, task, source chat, current meaningful action, elapsed time, change count, and attention. Filters do not hide active attention unexpectedly. | `E2E live-work.spec`; `VIS` populated/empty/error |
 | RUN-07 | Run detail | Detail exposes conversation, normalized activity, expandable raw output, context snapshot, permission profile, changes/artifacts, and final result. | Seeded `E2E run-detail.spec`; `VIS` |
 | RUN-08 | Streaming correctness | Ordered events render once, batched deltas remain responsive, oversized command output is bounded/collapsible, and a sequence gap triggers authoritative catch-up. | Event reducer/load `UT`; WebSocket gap/reconnect `IT`; browser performance assertion |
-| RUN-09 | Follow-up/steering | A follow-up sent during a run uses adapter steering only when supported. If unavailable, Talvori offers a clear queued/interrupt-and-continue choice; an ambiguous adapter error is surfaced and not resent silently. | Adapter behavior `UT/IT`; `E2E follow-up-fallback.spec` |
+| RUN-09 | Follow-up/steering | A follow-up sent during a run uses adapter steering only when supported. If unavailable, Frondose offers a clear queued/interrupt-and-continue choice; an ambiguous adapter error is surfaced and not resent silently. | Adapter behavior `UT/IT`; `E2E follow-up-fallback.spec` |
 | RUN-10 | Stop behavior | Stop immediately shows pending, prevents duplicate stop operations, terminates the complete fake process tree, resolves pending approvals, and records Stopped. Timeout escalates and remains actionable. | Child-process-tree `IT` on supported OS; `E2E stop-run.spec` |
 | RUN-11 | Approval request | Command, filesystem, external-action, and question approvals appear in chat/run/Inbox with agent, requested action, scope, risk/context, and Allow/Deny. Genuine multiple-choice requests are never auto-approved. | Approval normalization `UT`; fake adapter `IT`; `E2E approvals.spec` |
 | RUN-12 | Approval decision | Decision is idempotent, timestamped, auditable, delivered to the exact pending request, and visibly handles already-resolved/disconnected failures. | Concurrency/idempotency `IT`; `E2E approval-race.spec` |
@@ -134,9 +134,9 @@ General rules:
 | ID | V1 requirement | Acceptance behavior | Required evidence |
 |---|---|---|---|
 | CON-01 | Connection center | Settings → Connections shows exactly GitHub, Google Drive, Codex, and Claude grouped as Services and AI agents, with Not connected, Connecting, Connected, Expired, Unavailable, and Error states. | `E2E connections-overview.spec`; `VIS` all states |
-| CON-02 | Honest connection type | Cards state whether connection is browser OAuth, locally detected CLI, or provider-managed login. Talvori does not imply ChatGPT chat-history access or that ChatGPT API usage is included. | Copy/source audit; `E2E connection-copy.spec` |
+| CON-02 | Honest connection type | Cards state whether connection is browser OAuth, locally detected CLI, or provider-managed login. Frondose does not imply ChatGPT chat-history access or that ChatGPT API usage is included. | Copy/source audit; `E2E connection-copy.spec` |
 | CON-03 | Account/resource scope | Connected card shows provider account identity when exposed, granted scopes/capabilities, selected workspace resources, last validation, and Reconnect/Manage/Disconnect. Secrets are never displayed. | Redacted fixture `E2E connection-detail.spec`; log scan |
-| CON-04 | Workspace allowance | A connection can be enabled/disabled per Talvori workspace without deleting the underlying connection. Agents cannot use a disabled connection. | Authorization `IT`; `E2E workspace-connection-policy.spec` |
+| CON-04 | Workspace allowance | A connection can be enabled/disabled per Frondose workspace without deleting the underlying connection. Agents cannot use a disabled connection. | Authorization `IT`; `E2E workspace-connection-policy.spec` |
 | CON-05 | Secrets boundary | OAuth tokens/API secrets are represented by opaque secret references and never stored in chat, run context, SQLite plaintext fields, client storage, URL query parameters, analytics, or logs. | Schema/source audit; token-canary `IT`; browser storage/log scan |
 | CON-06 | Refresh/revoke | Expired credentials move to Expired with reconnect guidance. Disconnect revokes when supported, clears local secret reference, disables dependent actions, and preserves linked historical metadata. | Mock provider `IT`; `E2E disconnect-reconnect.spec` |
 | CON-07 | Failure isolation | One unavailable connection does not break other connections or local organization features; partial failure is shown at the smallest relevant scope. | Four-adapter mixed-state `IT/E2E partial-connections.spec` |
@@ -159,7 +159,7 @@ General rules:
 | GD-01 | OAuth-ready authorization | Connect uses browser authorization with state/PKCE, exact callback handling, minimal Drive scopes, consent denial handling, and no token in the browser-facing callback URL. | OAuth contract `UT`; localhost fake Google provider `IT`; `E2E drive-oauth-mock.spec` |
 | GD-02 | File/folder picker | Search/browse deterministic mock Drive data, select individual files/folders, show type/owner/modified metadata, and link selection to workspace/project/task/chat context. | Fake Drive API `IT`; `E2E drive-picker.spec` |
 | GD-03 | Context access | A linked Drive item supplies only selected, supported mock content/metadata to a run snapshot. Unsupported binary/oversized items explain the limitation instead of silently failing. | Content-policy `UT`; adapter `IT`; `E2E drive-context.spec` |
-| GD-04 | Permission changes | Revoked file access, expired login, deleted file, API error, and offline network each produce distinct recoverable states without deleting the Talvori link/history. | Fake failure matrix `IT/E2E drive-errors.spec` |
+| GD-04 | Permission changes | Revoked file access, expired login, deleted file, API error, and offline network each produce distinct recoverable states without deleting the Frondose link/history. | Fake failure matrix `IT/E2E drive-errors.spec` |
 | GD-05 | Missing developer config | Without Google client configuration, the Connect action presents concise setup-unavailable information and does not begin a broken redirect. | Config validation `UT`; `E2E drive-unconfigured.spec` |
 | GD-06 | Live certification boundary | Google Cloud consent screen, test users, callback, minimal scopes, token refresh/revocation, and verification requirements are documented for later owner-run certification. | Checklist plus `MANUAL-LIVE`; excluded from smoke |
 
@@ -168,10 +168,10 @@ General rules:
 | ID | V1 requirement | Acceptance behavior | Required evidence |
 |---|---|---|---|
 | CX-01 | Local discovery | Detect Codex on configured/default PATH, record executable/version/capabilities, and distinguish missing, found-but-unauthenticated, ready, and diagnostic error. Refresh is explicit. | Fake executable matrix `IT`; `E2E codex-discovery.spec` |
-| CX-02 | Provider-managed auth | Talvori uses Codex CLI/App Server authentication and never copies ChatGPT credentials. UI may open official login/setup but does not promise ordinary ChatGPT chats/history or API entitlement. | Process argv/env/log audit; `E2E codex-auth-states.spec` with fake CLI |
+| CX-02 | Provider-managed auth | Frondose uses Codex CLI/App Server authentication and never copies ChatGPT credentials. UI may open official login/setup but does not promise ordinary ChatGPT chats/history or API entitlement. | Process argv/env/log audit; `E2E codex-auth-states.spec` with fake CLI |
 | CX-03 | Adapter contract | App-server adapter covers initialize, catalog, thread start/resume, turn stream, follow-up/steer, approvals, interrupt, history hydration, completion/error, and close/process cleanup. | Fake app-server contract suite `IT`; no OpenAI network |
-| CX-04 | Capability normalization | Codex plan/diff/command/file/usage/approval events map to Talvori events without losing raw diagnostic payload; unknown compatible events do not crash a run. | Fixture/unknown-event `UT`; contract suite |
-| CX-05 | Existing account semantics | Connection copy says Codex uses the account already authenticated by Codex and provider limits apply. Talvori does not claim to own, transfer, or extend the subscription. | Copy review; visible assertion in `E2E` |
+| CX-04 | Capability normalization | Codex plan/diff/command/file/usage/approval events map to Frondose events without losing raw diagnostic payload; unknown compatible events do not crash a run. | Fixture/unknown-event `UT`; contract suite |
+| CX-05 | Existing account semantics | Connection copy says Codex uses the account already authenticated by Codex and provider limits apply. Frondose does not claim to own, transfer, or extend the subscription. | Copy review; visible assertion in `E2E` |
 | CX-06 | Live certification boundary | Real login, available models, one harmless read-only prompt, stream, stop, resume, and quota/account display are verified only in an owner-approved manual session. | `MANUAL-LIVE` checklist; automation hard-disabled by default |
 
 ### Claude
@@ -179,10 +179,10 @@ General rules:
 | ID | V1 requirement | Acceptance behavior | Required evidence |
 |---|---|---|---|
 | CL-01 | Local discovery | Detect Claude Code on configured/default PATH, version, `auth status`, and supported capabilities; show missing, unauthenticated, ready, expired, and diagnostic error. | Fake CLI matrix `IT`; `E2E claude-discovery.spec` |
-| CL-02 | Provider-managed auth | Talvori relies on Claude Code/Agent SDK authentication and never reads/stores account secrets. Reauthentication guidance explains that a new session may be required. | Process/env/log audit; fake-auth `E2E` |
+| CL-02 | Provider-managed auth | Frondose relies on Claude Code/Agent SDK authentication and never reads/stores account secrets. Reauthentication guidance explains that a new session may be required. | Process/env/log audit; fake-auth `E2E` |
 | CL-03 | Adapter contract | Claude adapter covers catalog/modes, new/resumed query, streamed messages/tools, questions/permissions, follow-up, interrupt, missing-resume fallback, result/error, and complete process-tree cleanup. | Fake Claude SDK/CLI contract suite `IT`; no Anthropic network |
 | CL-04 | Capability normalization | Claude plan/tool/file/usage/question/permission events normalize without presenting application permissions as an OS sandbox. Unsupported features are explicit. | Event fixtures `UT`; capability `E2E` |
-| CL-05 | Existing account semantics | Copy says Claude uses the account/configuration managed by Claude Code and Anthropic determines plan, limits, and billing. Talvori makes no stronger subscription-credit promise. | Copy review; visible assertion in `E2E` |
+| CL-05 | Existing account semantics | Copy says Claude uses the account/configuration managed by Claude Code and Anthropic determines plan, limits, and billing. Frondose makes no stronger subscription-credit promise. | Copy review; visible assertion in `E2E` |
 | CL-06 | Live certification boundary | Real login, model listing, harmless read-only prompt, permission, interrupt, resume, and expired-login recovery are verified only after owner approval. | `MANUAL-LIVE` checklist; automation hard-disabled by default |
 
 ## 8. Local-first persistence, files, and security
@@ -198,20 +198,20 @@ General rules:
 | LOC-07 | Git/run environment | For Git projects, run config shows repository root/base branch/current status and can use an isolated temporary worktree. Uncommitted user work is never overwritten or discarded implicitly. | Temporary Git repo/worktree `IT`; dirty-repo `E2E` |
 | LOC-08 | Secret redaction | Known token/credential canaries are redacted from UI events, exports, logs, error reports, and persisted raw payloads according to policy. | Canary `IT`; recursive test-home/log scan after `SMOKE` |
 | LOC-09 | Data management | Settings shows local data path and offers export, backup, and destructive reset/delete actions with confirmation and dependency explanation. Export is readable and excludes secrets. | Export/import or backup `IT`; `E2E data-settings.spec`; archive inspection |
-| LOC-10 | No hidden telemetry | V1 sends no Talvori analytics/telemetry. External network is used only by explicitly invoked connector/provider adapters. | Network-deny smoke; dependency/config audit |
+| LOC-10 | No hidden telemetry | V1 sends no Frondose analytics/telemetry. External network is used only by explicitly invoked connector/provider adapters. | Network-deny smoke; dependency/config audit |
 
 ## 9. Local account and settings completeness
 
 | ID | V1 requirement | Acceptance behavior | Required evidence |
 |---|---|---|---|
-| SET-01 | No Talvori cloud account | V1 opens into local setup without sign-up. A local profile name/avatar preference is optional and clearly device-local. | Clean-start `E2E onboarding.spec` |
+| SET-01 | No Frondose cloud account | V1 opens into local setup without sign-up. A local profile name/avatar preference is optional and clearly device-local. | Clean-start `E2E onboarding.spec` |
 | SET-02 | Onboarding | First run explains local-first behavior, external-provider data boundaries, creates/chooses a workspace, and offers connection setup that can be skipped. Completion persists; onboarding can be revisited. | `E2E onboarding.spec` complete/skip/reload; `VIS` |
 | SET-03 | General settings | Settings includes appearance, default workspace/start page, composer send behavior, notifications where supported, and confirmation preferences. Every exposed value persists and has Reset to default. | Settings schema `UT`; `E2E general-settings.spec` |
 | SET-04 | Agent settings | Configure executable override, refresh/diagnose connection, default profile/model/mode when supported, default permission, and allowed workspaces for Codex/Claude. Invalid paths/settings fail in place. | Adapter/config `IT`; `E2E agent-settings.spec` |
 | SET-05 | Connection settings | GitHub/Drive detail exposes configuration status, account/scope/resource management, reconnect, disconnect, and provider-specific help without exposing secrets. | `E2E connection-settings.spec` |
 | SET-06 | Workspace settings | Rename/icon, default task statuses, project membership summary, enabled agents/connections, local context roots, and archive/danger zone are organized in predictable sections. | `E2E workspace-settings.spec`; `VIS` |
 | SET-07 | Keyboard shortcuts | Discoverable shortcut reference reflects implemented shortcuts and detects conflicts; critical actions remain available without shortcuts. | Shortcut registry `UT`; keyboard-only `E2E` |
-| SET-08 | About/diagnostics | Show Talvori version/build, local server/database status, sanitized diagnostics export, and links/copy for recovery. Diagnostics never include secrets or complete private document contents. | Diagnostic schema/redaction `UT`; `E2E diagnostics.spec` |
+| SET-08 | About/diagnostics | Show Frondose version/build, local server/database status, sanitized diagnostics export, and links/copy for recovery. Diagnostics never include secrets or complete private document contents. | Diagnostic schema/redaction `UT`; `E2E diagnostics.spec` |
 | SET-09 | Destructive action safety | Archive, disconnect, clear local data, remove context root, and permanent delete use differentiated confirmations and state exact impact/recovery. Repeated click cannot duplicate damage. | `E2E danger-zone.spec`; idempotency `IT` |
 
 ## 10. Error, disconnect, offline, and degraded states
@@ -248,7 +248,7 @@ The smoke suite must run against the production build and actual local server. I
 
 ### Test environment
 
-- Create a temporary `TALVORI_HOME`, SQLite database, file tree, and Git repository.
+- Create a temporary `FRONDOSE_HOME`, SQLite database, file tree, and Git repository.
 - Allocate an ephemeral loopback port; never assume the developer port is free.
 - Put deterministic fake `codex` and `claude` executables first on the child-process `PATH`.
 - Start localhost fake OAuth/API servers for GitHub and Google Drive.
@@ -303,7 +303,7 @@ The release run must retain:
 4. Screenshots of the golden-path primary routes at 1440×900 and narrow layout samples at 390×844.
 5. Accessibility scan results and keyboard checklist.
 6. External-network request ledger proving only loopback fixture traffic occurred.
-7. Recursive canary scan result for the temporary Talvori home, export, logs, and browser storage.
+7. Recursive canary scan result for the temporary Frondose home, export, logs, and browser storage.
 8. Process cleanup result showing no fake provider process remains.
 
 ## 13. Explicit non-goals for V1
@@ -311,7 +311,7 @@ The release run must retain:
 These are excluded from V1 and must not appear as active but nonfunctional product promises:
 
 - Importing or mirroring ordinary ChatGPT chat history.
-- A Talvori cloud account, team synchronization, billing, or enterprise roles.
+- A Frondose cloud account, team synchronization, billing, or enterprise roles.
 - Linear, Slack, Jira, Notion, Figma, deployment, CRM, or marketplace integrations.
 - Mobile/desktop packaging, remote relay, remote runners, or background cloud agents.
 - Autonomous hidden multi-agent loops, schedules, heartbeats, or unattended external writes.
@@ -321,15 +321,15 @@ These are excluded from V1 and must not appear as active but nonfunctional produ
 
 ## 14. Research-derived design constraints
 
-These constraints are informed by Paseo's current public architecture while keeping Talvori's product model distinct:
+These constraints are informed by Paseo's current public architecture while keeping Frondose's product model distinct:
 
 - A local daemon/server, not the browser tab, owns agent lifecycle and authoritative state: [Paseo architecture](https://github.com/getpaseo/paseo/blob/main/docs/architecture.md).
 - Provider adapters wrap installed, provider-authenticated runtimes; capabilities and native settings differ: [Paseo providers](https://github.com/getpaseo/paseo/blob/main/docs/providers.md).
 - Live streams provide immediacy, but bounded paged history is authoritative after reconnect: [Paseo timeline synchronization](https://github.com/getpaseo/paseo/blob/main/docs/timeline-sync.md).
-- Worktrees are an execution isolation option, not Talvori's organizational workspace: [Paseo workspaces](https://github.com/getpaseo/paseo/blob/main/public-docs/workspaces.md).
+- Worktrees are an execution isolation option, not Frondose's organizational workspace: [Paseo workspaces](https://github.com/getpaseo/paseo/blob/main/public-docs/workspaces.md).
 - Provider credentials remain provider-managed and the local server must defend even a localhost boundary: [Paseo security](https://paseo.sh/docs/security).
 - Fallible actions require visible pending, success, and recovery behavior; real UI flows need browser-level evidence: [Paseo testing](https://github.com/getpaseo/paseo/blob/main/docs/testing.md).
-- Paseo is intentionally workspace-centric and removed its former shared chat-room feature; Talvori intentionally keeps durable linked chats as a first-class differentiator: [legacy compatibility schema](https://github.com/getpaseo/paseo/blob/main/packages/protocol/src/chat/types.ts).
+- Paseo is intentionally workspace-centric and removed its former shared chat-room feature; Frondose intentionally keeps durable linked chats as a first-class differentiator: [legacy compatibility schema](https://github.com/getpaseo/paseo/blob/main/packages/protocol/src/chat/types.ts).
 
 ## 15. Completion gate
 

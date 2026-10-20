@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { talvoriActions } from '../data/useTalvori.js';
+import { frondoseActions } from '../data/useFrondose.js';
 import { Button, ErrorMessage, Field, useApp } from '../ui.jsx';
 import { useUnsavedUpdate, requestUpdateNavigation } from './UnsavedUpdates.jsx';
 import { AREA_READ_TOOLS, areaSettingsFields, areaSettingsPatch } from '../lib/areas.js';
@@ -47,7 +47,7 @@ function AreaSettingsForm({ area, settings, onSaved, onReload }) {
     try {
       const { result } = await apiRequest(`/api/areas/${encodeURIComponent(area.id)}/settings`, { method: 'PATCH', body: areaSettingsPatch(settings, form) });
       onSaved(result);
-      await talvoriActions.refresh();
+      await frondoseActions.refresh();
       notify('Area defaults saved. No agent work was started.');
     } catch (problem) { setError(problem); } finally { setBusy(false); }
   }
@@ -61,7 +61,7 @@ function AreaSettingsForm({ area, settings, onSaved, onReload }) {
     })}{unavailableAgents.map(id => <label className="area-choice" key={id}><input type="checkbox" disabled={settings.references_redacted} checked onChange={() => toggle('default_agent_ids', id)} /><span>Unavailable profile · remove reference</span></label>)}{!agents.length ? <p>No accessible agent profiles in this workspace.</p> : null}<Button onClick={() => navigate('agents')}>Manage agents</Button></fieldset>
     <fieldset><legend>Reusable Context Packs</legend><p>Suggested references only. Contents must still be selected and approved for each run.</p>{packs.map(pack => <label className="area-choice" key={pack.id}><input type="checkbox" disabled={settings.references_redacted} checked={form.context_pack_ids.includes(pack.id)} onChange={() => toggle('context_pack_ids', pack.id)} /><span>{pack.name}</span></label>)}{unavailablePacks.map(id => <label className="area-choice" key={id}><input type="checkbox" disabled={settings.references_redacted} checked onChange={() => toggle('context_pack_ids', id)} /><span>Unavailable Context Pack · remove reference</span></label>)}{!packs.length ? <p>No accessible Context Packs in this workspace.</p> : null}<Button onClick={() => navigate('settings', 'context')}>Manage Context Packs</Button></fieldset>
     <fieldset><legend>Tool preferences</legend><p>Saved read-tool preferences for the future native tool surface, not executable grants. Every run still requires approved scope and server permission checks.</p>{AREA_READ_TOOLS.map(tool => <label className="area-choice" key={tool}><input type="checkbox" checked={form.allowed_tools.includes(tool)} onChange={() => toggle('allowed_tools', tool)} /><code>{tool}</code></label>)}<p>Permission policy: <strong>Review required</strong>. Area text cannot override this policy.</p></fieldset>
-    <fieldset><legend>Optional Contacts</legend><label className="area-choice"><input type="checkbox" checked={form.contacts_enabled} onChange={event => change('contacts_enabled', event.target.checked)} /><span>Show Contacts in this Area</span></label><p>Talvori works without a human team. Existing contacts remain accessible, including archived records. Contacts never grant account access.</p></fieldset>
+    <fieldset><legend>Optional Contacts</legend><label className="area-choice"><input type="checkbox" checked={form.contacts_enabled} onChange={event => change('contacts_enabled', event.target.checked)} /><span>Show Contacts in this Area</span></label><p>Frondose works without a human team. Existing contacts remain accessible, including archived records. Contacts never grant account access.</p></fieldset>
     <ErrorMessage error={error} />{error?.status === 409 ? <Button onClick={() => requestUpdateNavigation(onReload)}>Load latest Area defaults</Button> : null}<footer><Button disabled={!dirty || busy} onClick={() => { setForm(initial); setError(null); }}>Reset changes</Button><Button type="submit" variant="primary" busy={busy} disabled={!dirty}>Save Area defaults</Button></footer>
   </form>;
 }

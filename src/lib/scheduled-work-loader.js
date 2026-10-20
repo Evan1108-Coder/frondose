@@ -22,7 +22,7 @@ export function createScheduledWorkLoader(read) {
     flight = request;
     request.promise = Promise.resolve().then(() => read(controller.signal)).then(items => {
       if (!active || current !== generation || controller.signal.aborted) return null;
-      if (!Array.isArray(items)) throw new Error('Talvori received an unreadable schedule list.');
+      if (!Array.isArray(items)) throw new Error('Frondose received an unreadable schedule list.');
       publish({ items, error: null, loading: false });
       return items;
     }).catch(error => {

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { analyzeFieldSource, instrumentFieldSource, fieldDefaultsSourcePlugin } from './field-defaults-transform.mjs';
-const { chromium } = await import(process.env.TALVORI_PLAYWRIGHT_MODULE || 'playwright');
+const { chromium } = await import(process.env.FRONDOSE_PLAYWRIGHT_MODULE || 'playwright');
 const root = new URL('../', import.meta.url).pathname;
 const directory = await mkdtemp(join(tmpdir(), 'rumbo-field-defaults-'));
 const fixture = `
@@ -61,7 +61,7 @@ const preferences = {enabled:true,shortcutsEnabled:true,fields:{
  'qa.dynamic.first':entry('First primary'), 'qa.dynamic.second':entry('Second primary'),
 }};
 const server = await createServer({root,cacheDir:join(directory,'vite-cache'),configFile:false,server:{host:'127.0.0.1',port:4194,strictPort:true},plugins:[
-{name:'field-fixture',enforce:'pre',resolveId(id){if(id==='/__fixture.jsx')return id;},load(id){if(id==='/__fixture.jsx')return instrumentFieldSource(fixture,sourcePath);},configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(req.url!=='/')return next();res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml('/', '<!doctype html><title>Talvori defaults QA</title><div id="root"></div><script type="module" src="/@vite/client"></script><script type="module" src="/__fixture.jsx"></script>'));});}},
+{name:'field-fixture',enforce:'pre',resolveId(id){if(id==='/__fixture.jsx')return id;},load(id){if(id==='/__fixture.jsx')return instrumentFieldSource(fixture,sourcePath);},configureServer(vite){vite.middlewares.use(async(req,res,next)=>{if(req.url!=='/')return next();res.setHeader('Content-Type','text/html');res.end(await vite.transformIndexHtml('/', '<!doctype html><title>Frondose defaults QA</title><div id="root"></div><script type="module" src="/@vite/client"></script><script type="module" src="/__fixture.jsx"></script>'));});}},
  fieldDefaultsSourcePlugin(root),react({include:/\/src\/.*\.jsx$/}),
 ]});
 await server.listen();
@@ -74,7 +74,7 @@ try {
  await page.addInitScript(prefs=>localStorage.setItem('rumbo:field-defaults:v1:qa',JSON.stringify(prefs)),preferences);
  await page.goto('http://127.0.0.1:4194');
  await page.getByRole('heading',{name:'Field defaults test'}).waitFor();
- assert.equal(await page.title(),'Talvori defaults QA');
+ assert.equal(await page.title(),'Frondose defaults QA');
  assert.equal(await page.locator('vite-error-overlay').count(),0);
  const input=label=>page.getByLabel(label,{exact:true});
  const replace=async(label)=>{await input(label).focus();await page.keyboard.press('Alt+Shift+1');};

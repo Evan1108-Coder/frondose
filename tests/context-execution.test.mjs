@@ -28,7 +28,7 @@ function childFor(launch, fake) {
 }
 
 async function fixture(callback) {
-  const dataDir = await mkdtemp(join(tmpdir(), 'talvori-context-execution-'));
+  const dataDir = await mkdtemp(join(tmpdir(), 'frondose-context-execution-'));
   const fake = { launches: [], commands: [], networkCalls: 0, mode: 'success' };
   const integrationOptions = {
     env: {},
@@ -122,7 +122,7 @@ test('explicit past-message search and selection enters the exact captured provi
     assert.equal(retrieved.results[0].id, message.id);
     const selected = (await call(`/chat-collaboration/${chat.id}`, { workspace_id: workspace.id, version: 0, action: 'context', sources: [{ kind: 'message', id: message.id }] }, 'POST', 200)).result;
     assert.equal(fake.launches.length, 0); assert.equal(fake.networkCalls, 0); assert.equal(api.snapshot().runs.length, 0);
-    const attachment = { name: `talvori-context-${selected.id}.md`, type: 'text/markdown', content: selected.content, rumbo_context_snapshot: selected.id };
+    const attachment = { name: `frondose-context-${selected.id}.md`, type: 'text/markdown', content: selected.content, rumbo_context_snapshot: selected.id };
     await connectFixture(call, fake);
     const input = inspectInput({ attachments: [attachment], context_pack_ids: [], include_memory: false, include_chat: false });
     const preview = (await call('/context/inspect', input)).result;
@@ -160,7 +160,7 @@ test('reviewed actor opt-in applies fake provider low-risk replies while preserv
     assert.match(preview.finalPrompt,/No project directory is available/);
     fake.reply=prompt=>{
       const nonce=prompt.match(/"nonce":"([^"]+)"/)[1];
-      return `Requested.\n\`\`\`talvori-actions\n${JSON.stringify({nonce,actions:[{type:'record.create',resource:'tasks',fields:{title:'Actual direct creation',project_id:project.id}},{type:'agent.self_link',resource:'projects',id:project.id},{type:'record.update',resource:'tasks',id:route.id,patch:{title:'Still pending'}}]})}\n\`\`\``;
+      return `Requested.\n\`\`\`frondose-actions\n${JSON.stringify({nonce,actions:[{type:'record.create',resource:'tasks',fields:{title:'Actual direct creation',project_id:project.id}},{type:'agent.self_link',resource:'projects',id:project.id},{type:'record.update',resource:'tasks',id:route.id,patch:{title:'Still pending'}}]})}\n\`\`\``;
     };
     const {run}=await call('/runs',inspectedLaunch(input,preview.id));
     const db=new DatabaseSync(api.dbPath);
@@ -220,7 +220,7 @@ test('schedule proposals cannot launch or approve; explicit new reviewed message
     const preview=(await call('/context/inspect',input)).result;
     const future=new Date(Date.now()+86400000); future.setMilliseconds(0);
     const proposal={type:'schedule.create',chat_id:chat.id,content:'Explicitly scheduled follow-up prompt.',model:'gpt-5.4',run_at:future.toISOString(),timezone:'UTC'};
-    fake.reply=prompt=>`Draft only.\n\`\`\`talvori-actions\n${JSON.stringify({nonce:prompt.match(/"nonce":"([^"]+)"/)[1],actions:[proposal]})}\n\`\`\``;
+    fake.reply=prompt=>`Draft only.\n\`\`\`frondose-actions\n${JSON.stringify({nonce:prompt.match(/"nonce":"([^"]+)"/)[1],actions:[proposal]})}\n\`\`\``;
     const {run}=await call('/runs',inspectedLaunch(input,preview.id));
     const actions=(await call(`/agent-actions?run_id=${run.id}`)).actions;
     assert.equal(actions.length,1); assert.equal(actions[0].status,'pending');

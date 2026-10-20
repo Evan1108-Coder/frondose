@@ -32,7 +32,7 @@ test('Input validation rejects ambiguous names, enum values and non-object test 
   form.inputs = [{ name: 'choice', type: 'enum', description: '', options_text: 'a\na' }];
   assert.throws(() => skillEditorPayload(form), /unique options/);
   for (const text of ['[]', 'null', 'true', 'not json']) assert.throws(() => parseSkillInputs(text), /JSON/);
-  assert.deepEqual(parseSkillInputs('{"topic":"Talvori"}'), { topic: 'Talvori' });
+  assert.deepEqual(parseSkillInputs('{"topic":"Frondose"}'), { topic: 'Frondose' });
   assert.deepEqual(skillTestDefaults({ inputs: [{ name: 'count', type: 'number' }, { name: 'flag', type: 'boolean' }, { name: 'mode', type: 'enum', options: ['brief'] }] }), { count: 0, flag: false, mode: 'brief' });
 });
 

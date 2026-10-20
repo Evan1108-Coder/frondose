@@ -14,7 +14,7 @@ const slug = value => value.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase().re
 const words = value => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 const digest = value => createHash('sha256').update(value).digest('hex').slice(0, 12);
 // Product-facing labels change; semantic IDs must still find existing defaults.
-const legacyFieldIdentity = value => value.replaceAll('Talvori', 'Rumbo').replaceAll('talvori', 'rumbo');
+const legacyFieldIdentity = value => value.replaceAll('Frondose', 'Rumbo').replaceAll('frondose', 'rumbo').replaceAll('Talvori', 'Rumbo').replaceAll('talvori', 'rumbo');
 const LEGACY_REBRAND_KEYS = Object.freeze({
   // Explicit accessible labels must not discard saved personal-agent defaults.
   'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.agent-name.dd98317cae38': 'source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.agent-name.b83e499d6b30',
@@ -60,7 +60,7 @@ const SHARED_PRODUCT_SCOPES = {
   ActionDialog: 'Plugins · Review connection action',
   MilestoneCriteriaEditor: 'Project milestones · Acceptance criteria',
   SkillEvaluationPrepare: 'Skill evaluations · Evaluate Skill',
-  AgentOnboarding: 'Talvori setup · Make it yours',
+  AgentOnboarding: 'Frondose setup · Make it yours',
   CommandLibrary: 'Slash commands · Command library',
   HierarchyDialog: 'Routes · Create sub-route / Move Route',
   UpdateWorkChanges: 'Updates · Report work changes',

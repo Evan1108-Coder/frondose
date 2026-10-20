@@ -1,6 +1,6 @@
 @import "./motion.css";
 
-/* Workspace-first navigation. All colors inherit Talvori's shared theme. */
+/* Workspace-first navigation. All colors inherit Frondose's shared theme. */
 .rumbo-app { --sidebar: 280px; gap: 24px; }
 .sidebar.sidebar-v2 { padding: 12px 10px 10px; border-radius: 12px; background: linear-gradient(160deg, color-mix(in srgb, var(--nav) 99%, var(--accent) 1%) 0%, var(--nav) 56%, color-mix(in srgb, var(--nav) 99%, var(--surface) 1%) 100%); }
 .sidebar-v2 .sidebar-workspace-row { display: flex; align-items: center; gap: 2px; padding: 1px 0 20px; }

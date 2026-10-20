@@ -4,18 +4,18 @@ import { realpathSync } from 'node:fs';
 import { resolve, relative, isAbsolute, extname, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createLocalApi } from './local-api.mjs';
-import { talvoriEnvironment, talvoriDataDirectory } from './brand-config.mjs';
+import { frondoseEnvironment, frondoseDataDirectory } from './brand-config.mjs';
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
-export function createTalvoriServer({ env = process.env, apiOptions = {}, clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url)) } = {}) {
-  env = talvoriEnvironment(env);
+export function createFrondoseServer({ env = process.env, apiOptions = {}, clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url)) } = {}) {
+  env = frondoseEnvironment(env);
   const root = realpathSync(clientDirectory);
-  const dataDirectory = talvoriDataDirectory(apiOptions.dataDir || env.TALVORI_DATA_DIR);
+  const dataDirectory = frondoseDataDirectory(apiOptions.dataDir || env.FRONDOSE_DATA_DIR);
   const dataRelative = relative(root, dataDirectory);
-  if (!dataRelative || dataRelative !== '..' && !dataRelative.startsWith('../') && !isAbsolute(dataRelative)) throw Error('Private Talvori data must not be stored in the public client directory.');
+  if (!dataRelative || dataRelative !== '..' && !dataRelative.startsWith('../') && !isAbsolute(dataRelative)) throw Error('Private Frondose data must not be stored in the public client directory.');
   const api = createLocalApi({ ...apiOptions, dataDir: dataDirectory, integrationOptions: { ...apiOptions.integrationOptions, env } });
   const actualRelative = relative(root, realpathSync(dirname(api.dbPath)));
-  if (!actualRelative || actualRelative !== '..' && !actualRelative.startsWith('../') && !isAbsolute(actualRelative)) { api.close(); throw Error('Private Talvori data cannot resolve inside public client assets.'); }
+  if (!actualRelative || actualRelative !== '..' && !actualRelative.startsWith('../') && !isAbsolute(actualRelative)) { api.close(); throw Error('Private Frondose data cannot resolve inside public client assets.'); }
   const server = createServer((req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -36,7 +36,7 @@ export function createTalvoriServer({ env = process.env, apiOptions = {}, client
       res.setHeader('Cache-Control', extname(candidate) === '.html' ? 'no-store' : 'public, max-age=3600');
       if (req.method === 'HEAD') { res.end(); return; }
       res.end(await readFile(candidate));
-    })().catch(() => { res.statusCode = 500; res.end('Talvori could not serve this file. Build the client before starting.'); }); });
+    })().catch(() => { res.statusCode = 500; res.end('Frondose could not serve this file. Build the client before starting.'); }); });
   });
   server.once('close', () => api.close());
   return { server, api };
@@ -44,8 +44,8 @@ export function createTalvoriServer({ env = process.env, apiOptions = {}, client
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const port = Number(process.env.PORT || 4174);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw Error('PORT must be between 1 and 65535.');
-  const { server } = createTalvoriServer();
-  server.listen(port, '127.0.0.1', () => console.log(`Talvori backend listening on 127.0.0.1:${port}. Public mode requires an HTTPS reverse proxy.`));
+  const { server } = createFrondoseServer();
+  server.listen(port, '127.0.0.1', () => console.log(`Frondose backend listening on 127.0.0.1:${port}. Public mode requires an HTTPS reverse proxy.`));
   const close = () => { server.close(); setTimeout(() => process.exit(1), 5000).unref(); };
   process.once('SIGTERM', close); process.once('SIGINT', close);
 }

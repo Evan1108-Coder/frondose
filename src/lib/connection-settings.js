@@ -107,7 +107,7 @@ const PROVIDER_COMMANDS = Object.freeze({
     ['/jira conflicts', 'read', 'List unresolved synchronization conflicts.'],
   ], { resourceScope: 'selected_sites_and_projects' }),
   slack: commands('slack', [
-    ['/slack capture', 'write', 'Prepare Talvori work from a selected Slack message or thread.'], ['/slack reply', 'publish', 'Prepare a reply to a linked Slack thread.'],
+    ['/slack capture', 'write', 'Prepare Frondose work from a selected Slack message or thread.'], ['/slack reply', 'publish', 'Prepare a reply to a linked Slack thread.'],
     ['/slack update', 'publish', 'Prepare a progress update for a linked thread.'], ['/slack notify', 'publish', 'Prepare a message for an allowed channel.'],
     ['/slack digest', 'publish', 'Prepare a digest for an allowed channel.'], ['/slack link', 'draft', 'Link a selected Slack thread.'],
     ['/slack open', 'read', 'Open a linked Slack object.'],

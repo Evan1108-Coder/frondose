@@ -23,7 +23,7 @@ export const DOC_WORKFLOWS = [
     ['projects', 'route-agreements', 'outputs', 'output-review'], { view: 'projects', label: 'Open projects' }, 'projects'),
 
   recipe('bug-investigation', 'Investigate a reproducible bug', 'Separate reproduction, explanation, repair, and verification.',
-    'Use this when something behaves incorrectly and the cause is still uncertain. Starting with a precise reproduction protects the investigation from drifting into unrelated cleanup. Talvori can keep the observed behavior, suspected causes, and eventual verification connected without treating the first explanation as a proven diagnosis.',
+    'Use this when something behaves incorrectly and the cause is still uncertain. Starting with a precise reproduction protects the investigation from drifting into unrelated cleanup. Frondose can keep the observed behavior, suspected causes, and eventual verification connected without treating the first explanation as a proven diagnosis.',
     ['Create a Route whose title describes the observed failure rather than your preferred explanation.',
       'Record the expected result, actual result, exact reproduction steps, environment, and whether the failure is consistent or intermittent.',
       'Keep relevant screenshots or files in Area Resources and copy necessary text into reviewed context. A resource link alone does not supply its contents to an agent.',
@@ -71,7 +71,7 @@ export const DOC_WORKFLOWS = [
     ['documents', 'team-resources', 'context-snapshots', 'knowledge-decisions'], { view: 'documents', label: 'Open documents' }),
 
   recipe('weekly-planning', 'Run a practical weekly planning review', 'Review priorities and dependencies before adding more work.',
-    'Use this when you need a short, repeatable review of the week ahead. The purpose is to make existing work understandable and choose a realistic next set of outcomes. Talvori can present the relevant objects, but it does not know a person’s true availability or turn a timeline into a capacity forecast.',
+    'Use this when you need a short, repeatable review of the week ahead. The purpose is to make existing work understandable and choose a realistic next set of outcomes. Frondose can present the relevant objects, but it does not know a person’s true availability or turn a timeline into a capacity forecast.',
     ['Start in Home or Focus and inspect work needing attention, blocked Routes, and failed sessions before creating new tasks.',
       'Review each active project’s brief and important dates. Keep undated work visible instead of assigning dates merely to fill the timeline.',
       'Open likely next Routes and check their briefs, owners, dependencies, and acceptance criteria.',
@@ -127,7 +127,7 @@ export const DOC_WORKFLOWS = [
       'Send to the selected agent with the intended access mode. Observe real progress, errors, and the final response.',
       'Review the result, then edit the profile to address a demonstrated gap. Keep durable reviewed preferences in appropriately scoped memory.'],
     'Compare what the instructions asked for with what the agent actually produced. Separate instruction problems from missing context, insufficient access, or provider failures. Repeat a focused evaluation after meaningful changes rather than assuming the new wording fixed every issue.',
-    'Instructions do not enforce permissions or authenticate a provider. Memory and workspace information are reference data; an agent cannot use them to approve its own proposed Talvori actions.',
+    'Instructions do not enforce permissions or authenticate a provider. Memory and workspace information are reference data; an agent cannot use them to approve its own proposed Frondose actions.',
     ['agent-profiles', 'provider-connections', 'agent-memory', 'agent-actions'], { view: 'agents', label: 'Open agents' }),
 
   recipe('context-curation', 'Curate context for a consequential reply', 'Supply enough evidence to answer the question without overwhelming it.',
@@ -143,7 +143,7 @@ export const DOC_WORKFLOWS = [
     ['chat-context', 'context-snapshots', 'agent-awareness', 'agent-memory'], { view: 'library', label: 'Open Library' }),
 
   recipe('release-checklist', 'Run a manual release readiness review', 'Make the release decision explicit and separate it from tool execution.',
-    'Use this when a project is approaching a release or internal handoff. Talvori can organize the checklist, evidence, and decision, but it does not automatically deploy the product. Keep “implementation complete,” “review accepted,” and “release authorized” distinct so that a successful agent run cannot be mistaken for permission to publish.',
+    'Use this when a project is approaching a release or internal handoff. Frondose can organize the checklist, evidence, and decision, but it does not automatically deploy the product. Keep “implementation complete,” “review accepted,” and “release authorized” distinct so that a successful agent run cannot be mistaken for permission to publish.',
     ['Create a release-readiness Route in the relevant project and name the milestone in its brief.',
       'Write criteria for the actual release: required behavior, regression checks, known limitations, recovery preparation, and any documentation updates.',
       'Link the outputs and project documents that provide evidence for those criteria.',
@@ -175,7 +175,7 @@ export const DOC_WORKFLOWS = [
       'Return to the conversation and verify its recipient, context, and access mode before a deliberate retry.',
       'Inspect the new session result. If it still fails, preserve the new evidence rather than claiming the earlier setup change succeeded.'],
     'A successful setup check is useful but not a guarantee that a later request will work. Distinguish an application error from a provider rejection, and keep the original request intact so a retry still answers the same question. Report remaining uncertainty honestly.',
-    'A 403 response requires the underlying provider access problem to be resolved. Talvori does not silently substitute simulated content, and UI tests with injected providers do not validate a real account.',
+    'A 403 response requires the underlying provider access problem to be resolved. Frondose does not silently substitute simulated content, and UI tests with injected providers do not validate a real account.',
     ['troubleshoot-provider', 'provider-connections', 'session-progress'], { view: 'connections', label: 'Open connections' }),
 
   recipe('feedback-intake', 'Turn user feedback into reviewable work', 'Use a manual intake process while external collection remains separate.',
@@ -187,7 +187,7 @@ export const DOC_WORKFLOWS = [
       'When a change is accepted, create the linked Route with a scoped outcome and acceptance criteria.',
       'After reviewing the result, record how it addresses the original problem and what remains unresolved.'],
     'Check that a reader can follow the path from the original report to the chosen work. Several similar requests do not automatically prove the same underlying cause, and an accepted request should not become an unlimited commitment. Keep uncertainty and rejected alternatives visible in the rationale.',
-    'Talvori does not currently provide a complete external feedback-delivery service or automatically notify the original reporter. Any external response must be separately authorized and sent through an appropriate channel.',
+    'Frondose does not currently provide a complete external feedback-delivery service or automatically notify the original reporter. Any external response must be separately authorized and sent through an appropriate channel.',
     ['requests-intake', 'documents', 'route-agreements', 'help-feedback'], { view: 'operations', id: 'requests', label: 'Open requests' }),
 
   recipe('repository-inspection', 'Inspect a repository before changing it', 'Establish the current state without launching unnecessary commands.',
@@ -215,7 +215,7 @@ export const DOC_WORKFLOWS = [
     ['git-worktrees', 'terminals', 'route-agreements', 'workbench-safety'], { view: 'workbench', label: 'Open Workbench' }),
 
   recipe('meeting-decisions', 'Turn meeting notes into decisions and next steps', 'Keep discussion, agreed direction, and assigned work distinct.',
-    'Use this after a meeting or planning conversation has produced a mix of observations, ideas, and commitments. A transcript is not automatically a decision record. Talvori can hold the original notes while you extract the few conclusions that should guide later work and the specific outcomes that need follow-through.',
+    'Use this after a meeting or planning conversation has produced a mix of observations, ideas, and commitments. A transcript is not automatically a decision record. Frondose can hold the original notes while you extract the few conclusions that should guide later work and the specific outcomes that need follow-through.',
     ['Save the notes in a project or Area document with a recognizable title and the meeting context.',
       'Separate confirmed decisions, unresolved questions, proposed ideas, and actual commitments in the text.',
       'Create reviewed knowledge entries for durable decisions, including their rationale, scope, and relevant source.',
@@ -223,14 +223,14 @@ export const DOC_WORKFLOWS = [
       'If an agent helps summarize, supply reviewed context and ask it to flag ambiguity instead of inventing agreement.',
       'Review the extracted objects against the original notes and keep links back to their source.'],
     'Check every assigned outcome and consequential decision. A suggestion voiced in discussion should not become an approved instruction merely because a summary sounds definitive. If the meeting did not resolve something, keep it as a question and record what information would settle it.',
-    'Talvori does not authenticate that every named participant agreed or automatically distribute the notes. Recorded owner and reviewer names are attribution, not a notification or permission mechanism.',
+    'Frondose does not authenticate that every named participant agreed or automatically distribute the notes. Recorded owner and reviewer names are attribution, not a notification or permission mechanism.',
     ['documents', 'knowledge-decisions', 'route-agreements', 'chat-context'], { view: 'documents', label: 'Open documents' }),
 
   recipe('team-resource-hub', 'Build a useful Area Resources hub', 'Collect durable references without turning the page into an unsearchable dump.',
-    'Use this when a domain of your work repeatedly needs the same files, websites, repository references, or Talvori objects. A resource hub works best when each item has an obvious purpose. Prefer a small, maintained collection over uploading every available artifact and expecting future readers to determine which versions still matter.',
+    'Use this when a domain of your work repeatedly needs the same files, websites, repository references, or Frondose objects. A resource hub works best when each item has an obvious purpose. Prefer a small, maintained collection over uploading every available artifact and expecting future readers to determine which versions still matter.',
     ['Open the Area’s Resources tab and identify the references needed for recurring work.',
       'Add files or safe website links with names that explain their purpose. Use the GitHub branch resource type for an appropriate branch reference.',
-      'Add Talvori references for relevant work already represented in the workspace instead of duplicating its content unnecessarily.',
+      'Add Frondose references for relevant work already represented in the workspace instead of duplicating its content unnecessarily.',
       'Write descriptions that explain when each resource is useful and which source or version should take precedence.',
       'Keep longer process explanations in Area documents and link the necessary supporting resources.',
       'Periodically search the hub, update descriptions, and archive obsolete items that should no longer appear as current guidance.'],
@@ -251,7 +251,7 @@ export const DOC_WORKFLOWS = [
     ['handoffs', 'coordination', 'route-agreements', 'context-snapshots'], { view: 'operations', id: 'handoffs', label: 'Open handoffs' }),
 
   recipe('repeat-manual-tasks', 'Set up a supervised repeating task', 'Reuse a proven brief while keeping each occurrence deliberate.',
-    'Use this for recurring work whose purpose and review criteria stay mostly stable, such as a periodic content audit or project check-in. Repetition should reduce setup effort without hiding changes in context. Talvori’s current recurrence is supervised: a schedule records when an occurrence is due, but a person still generates it.',
+    'Use this for recurring work whose purpose and review criteria stay mostly stable, such as a periodic content audit or project check-in. Repetition should reduce setup effort without hiding changes in context. Frondose’s current recurrence is supervised: a schedule records when an occurrence is due, but a person still generates it.',
     ['Start with a Route whose brief and acceptance checklist already produced a useful result.',
       'Remove date-specific assumptions from the reusable instructions and identify what must be reviewed for each occurrence.',
       'Create its repeat schedule with the intended interval and next date.',
@@ -275,7 +275,7 @@ export const DOC_WORKFLOWS = [
     ['chat-access', 'tool-permissions', 'agent-actions', 'workbench-safety'], { view: 'chats', label: 'Open chats' }),
 
   recipe('output-acceptance', 'Accept a result without losing the review trail', 'Review one exact version and record the decision separately from completion.',
-    'Use this when a deliverable exists and you need to decide whether it satisfies the original request. Acceptance is a judgment about content and evidence, not merely a status change. Talvori’s versioned outputs let you preserve the reviewed text while later changes become new review targets rather than silently inheriting an old decision.',
+    'Use this when a deliverable exists and you need to decide whether it satisfies the original request. Acceptance is a judgment about content and evidence, not merely a status change. Frondose’s versioned outputs let you preserve the reviewed text while later changes become new review targets rather than silently inheriting an old decision.',
     ['Open the output and confirm which version is intended for review.',
       'Read the linked Route’s acceptance checklist and inspect the evidence supporting each consequential criterion.',
       'Add comments with quoted passages when feedback concerns a specific part of the selected version.',
@@ -286,7 +286,7 @@ export const DOC_WORKFLOWS = [
     'Approval applies only to the selected output version. It does not authorize tool access, merge a branch, publish a release, authenticate the reviewer, or automatically complete the linked Route.',
     ['outputs', 'output-review', 'route-agreements'], { view: 'library', label: 'Open outputs' }),
 
-  recipe('cost-discipline', 'Keep agent execution deliberate', 'Use scope and supervision without pretending Talvori enforces a spending cap.',
+  recipe('cost-discipline', 'Keep agent execution deliberate', 'Use scope and supervision without pretending Frondose enforces a spending cap.',
     'Use this when you want to avoid unnecessary execution while still using agents effectively. The current usage page shows recorded activity, not a fully reconciled financial account. Practical discipline comes from clear tasks, selected context, explicit launches, and timely review rather than assuming an unimplemented budget field will stop provider charges.',
     ['Plan the outcome and acceptance criteria before launching a session. Combine necessary context into a focused brief.',
       'Inspect connection failures before retrying so the same unresolved error does not produce repeated attempts.',
@@ -295,7 +295,7 @@ export const DOC_WORKFLOWS = [
       'Inspect Usage & limits for recorded runs and check the provider’s own usage information for actual billing.',
       'Review completed outputs before requesting another pass, and state the specific gap the new execution should address.'],
     'Distinguish incomplete work from work that merely needs human review. An extra run is useful only if it has a clear purpose and appropriate context. Record what the application cannot measure instead of converting missing cost information into a misleading zero.',
-    'Talvori does not currently enforce provider spend caps or reconcile token charges. A concurrency limit controls simultaneous sessions, not total expense, and provider pricing or account limits remain external to this workflow.',
+    'Frondose does not currently enforce provider spend caps or reconcile token charges. A concurrency limit controls simultaneous sessions, not total expense, and provider pricing or account limits remain external to this workflow.',
     ['usage-limits', 'tool-permissions', 'session-progress', 'output-review'], { view: 'settings', id: 'usage', label: 'Open usage & limits' }),
 
   recipe('project-retrospective', 'Close a project with a useful retrospective', 'Preserve decisions and reusable lessons without rewriting the history.',
@@ -311,7 +311,7 @@ export const DOC_WORKFLOWS = [
     ['projects', 'knowledge-decisions', 'outputs', 'archive-retention'], { view: 'projects', label: 'Open projects' }),
 
   recipe('planning-without-ai', 'Run a lightweight project without AI', 'Use connected planning and notes before adding execution capability.',
-    'Use this when you want Talvori’s organization but do not need an agent yet. Provider setup is not a prerequisite for writing useful briefs, tracking scoped work, or keeping project knowledge together. Start with the smallest structure that helps decisions and add more only when it answers a real need.',
+    'Use this when you want Frondose’s organization but do not need an agent yet. Provider setup is not a prerequisite for writing useful briefs, tracking scoped work, or keeping project knowledge together. Start with the smallest structure that helps decisions and add more only when it answers a real need.',
     ['Create a project with a brief goal and one or two clear outcomes instead of building a large taxonomy first.',
       'Add Routes for those outcomes, with simple stages and acceptance criteria that you can review yourself.',
       'Write living context in project documents and keep short planning discussion as chat notes.',

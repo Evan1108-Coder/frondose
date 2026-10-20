@@ -467,7 +467,7 @@ function removeOrphans(state) {
  * In-memory/localStorage implementation of the same-origin API contract.
  * Mutations return both `result` (the changed entity) and `bootstrap` (the
  * canonical flat client snapshot). A future server may return only `result`;
- * useTalvori will then refresh `/api/bootstrap`.
+ * useFrondose will then refresh `/api/bootstrap`.
  */
 export async function demoRequest(path, { method = "GET", body } = {}) {
   let state = advanceDemoRuns(loadDemoState());

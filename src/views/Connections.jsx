@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Form } from "../components/Form.jsx";
 import { ExternalLink, ArrowRight, Plug, CircleCheck, Copy, Folder, Search, RotateCcw, Link, ShieldCheck, X } from "../components/icons.jsx";
-import { talvoriApi } from "../data/api.js";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseApi } from "../data/api.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import {
   Button,
   Dialog,
@@ -44,7 +44,7 @@ export function ConnectionsView() {
     [error, setError] = useState(null);
   useEffect(() => {
     let active = true;
-    talvoriApi
+    frondoseApi
       .connectionSetups()
       .then((response) => {
         if (active) setSetups(response.result.setups ?? []);
@@ -222,8 +222,8 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
     setCurrent(null); setAuthUrl(null); setMessage('');
     let active = true;
     Promise.all([
-      talvoriApi.connectionSetup(provider),
-      talvoriApi.connectionStatus(provider, { workspaceId: workspace.id }),
+      frondoseApi.connectionSetup(provider),
+      frondoseApi.connectionStatus(provider, { workspaceId: workspace.id }),
     ])
       .then(([s, c]) => {
         if (active) {
@@ -241,8 +241,8 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const reloadSetup = () =>
     execute(async () => {
       const [s, c] = await Promise.all([
-        talvoriApi.connectionSetup(provider),
-        talvoriApi.connectionStatus(provider, { workspaceId: workspace.id }),
+        frondoseApi.connectionSetup(provider),
+        frondoseApi.connectionStatus(provider, { workspaceId: workspace.id }),
       ]);
       setSetup(s.result.setup);
       setCurrent(c.result.connection);
@@ -257,7 +257,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
       return;
     let active = true;
     const timer = setInterval(() => {
-      talvoriApi
+      frondoseApi
         .connectionStatus(provider, { workspaceId: workspace.id })
         .then((response) => {
           if (!active) return;
@@ -265,7 +265,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
           if (response.result.connection?.state === "connected") {
             setAuthUrl(null);
             setMessage("Connected successfully.");
-            talvoriActions.refresh({ quiet: true }).catch(() => {});
+            frondoseActions.refresh({ quiet: true }).catch(() => {});
           }
         })
         .catch(() => {});
@@ -277,7 +277,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
   }, [provider, connection?.state, authUrl, workspace.id]);
   const connect = (method) =>
     execute(async () => {
-      const result = await talvoriActions.connectConnection(provider, {
+      const result = await frondoseActions.connectConnection(provider, {
         method,
         workspace_id: workspace.id,
         ...(method === "token" ? { token } : {}),
@@ -290,7 +290,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
     });
   const check = () =>
     execute(async () => {
-      const result = await talvoriActions.checkConnection(provider, { workspaceId: workspace.id });
+      const result = await frondoseActions.checkConnection(provider, { workspaceId: workspace.id });
       setCurrent(result.connection);
       setMessage(
         result.message ??
@@ -301,7 +301,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
     });
   const browse = (more = false) =>
     execute(async () => {
-      const response = await talvoriApi.connectionResources(
+      const response = await frondoseApi.connectionResources(
         provider,
         more && nextPage ? { pageToken: nextPage } : {},
       );
@@ -317,7 +317,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
   const tabs = connectionSettingsTabs(provider, {
     connectionState: connection?.state ?? "not_connected",
   });
-  if (comingSoon) return <Dialog title={setup?.displayName ?? descriptor?.displayName ?? provider} subtitle="Coming soon" onClose={onClose} wide><div className="connection-setup"><div className="connection-detail-state"><ProviderIcon large provider={provider} /><span className="connection-preview-badge">Coming soon</span></div><div className="connection-boundary is-preview"><strong>External service connection paused</strong><p>Talvori is focusing on AI-agent connections. Authorization, resource sync, and provider actions are unavailable for now. Existing records are preserved.</p></div></div></Dialog>;
+  if (comingSoon) return <Dialog title={setup?.displayName ?? descriptor?.displayName ?? provider} subtitle="Coming soon" onClose={onClose} wide><div className="connection-setup"><div className="connection-detail-state"><ProviderIcon large provider={provider} /><span className="connection-preview-badge">Coming soon</span></div><div className="connection-boundary is-preview"><strong>External service connection paused</strong><p>Frondose is focusing on AI-agent connections. Authorization, resource sync, and provider actions are unavailable for now. Existing records are preserved.</p></div></div></Dialog>;
   return (
     <Dialog
       title={setup?.displayName ?? descriptor?.displayName ?? provider}
@@ -393,7 +393,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
           <div className="setup-instructions">
             <h3>One-time Google setup</h3>
             <p>
-              Google requires a registered OAuth application before Talvori can
+              Google requires a registered OAuth application before Frondose can
               open its sign-in page.
             </p>
             <ol>
@@ -406,7 +406,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
                 <code>{setup.callbackUrl}</code>
               </li>
               <li>
-                Set these server environment variables and restart Talvori:
+                Set these server environment variables and restart Frondose:
                 <code>{setup.missing?.join("\n")}</code>
               </li>
             </ol>
@@ -546,7 +546,7 @@ function WorkspaceConnectionDialog({ provider, setup: initialSetup, onClose }) {
               onClick={() =>
                 execute(async () => {
                   const result =
-                    await talvoriActions.disconnectConnection(provider, { workspaceId: workspace.id });
+                    await frondoseActions.disconnectConnection(provider, { workspaceId: workspace.id });
                   setCurrent(result.connection);
                   setResources(null);
                   setConfirmDisconnect(false);
@@ -694,8 +694,8 @@ function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection })
       ],
     },
     mappings: {
-      title: "Talvori destinations and mappings",
-      description: "Choose how reviewed external objects would map into Talvori without treating synchronization as active.",
+      title: "Frondose destinations and mappings",
+      description: "Choose how reviewed external objects would map into Frondose without treating synchronization as active.",
       rows: [
         ["Default intake", settings.mappings.intakeType],
         ["Sync direction", settings.mappings.syncDirection],
@@ -704,7 +704,7 @@ function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection })
     },
     rules: {
       title: "Connection rules",
-      description: "Rules would match provider events and prepare reviewed Talvori work. External event ingestion is not active.",
+      description: "Rules would match provider events and prepare reviewed Frondose work. External event ingestion is not active.",
       rows: [["Rule execution", "Disabled"], ["Configured rules", String(settings.rules.items.length)], ["Agent launches", "Never automatic"]],
     },
     agents: {
@@ -719,8 +719,8 @@ function ConnectionSettingsPanel({ provider, tab, tabState, setup, connection })
     },
     notifications: {
       title: "Notifications",
-      description: "Talvori can describe notification preferences, but external delivery is not configured.",
-      rows: [["Talvori Inbox", settings.notifications.inbox ? "Enabled" : "Disabled"], ["External delivery", "Unavailable"], ["Digest", settings.notifications.digest]],
+      description: "Frondose can describe notification preferences, but external delivery is not configured.",
+      rows: [["Frondose Inbox", settings.notifications.inbox ? "Enabled" : "Disabled"], ["External delivery", "Unavailable"], ["Digest", settings.notifications.digest]],
     },
     security: {
       title: "Security and scopes",

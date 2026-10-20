@@ -1,4 +1,4 @@
-# Talvori empty-state visual style
+# Frondose empty-state visual style
 
 ## Purpose
 
@@ -19,11 +19,11 @@ The four user-supplied September 26 references showed monochrome isolated object
 
 ## Maintenance
 
-When adding an empty-state kind, generate a new image in this same visual family, add its canonical key and asset test, then inspect dark/light and compact layouts. After artwork changes, refresh screenshots from the real frontend, including the Talvori Landing embedded product demo where affected. Do not hand-paint artwork into screenshots.
+When adding an empty-state kind, generate a new image in this same visual family, add its canonical key and asset test, then inspect dark/light and compact layouts. After artwork changes, refresh screenshots from the real frontend, including the Frondose Landing embedded product demo where affected. Do not hand-paint artwork into screenshots.
 
-## Personal Talvori welcome illustration · October 20
+## Personal Frondose welcome illustration · October 20
 
-`public/empty-art/talvori-welcome.webp` is a separate first-use illustration,
+`public/empty-art/frondose-welcome.webp` is a separate first-use illustration,
 not a replacement for the 57 canonical empty-state kinds. Generated with the
 built-in image-generation tool, then encoded as a 640 × 585 transparent WebP
 (41,032 bytes). Original output is preserved at
@@ -33,4 +33,4 @@ asset copied into the app. The illustration is static and decorative.
 
 Generation prompt:
 
-> Use case: stylized-concept. Asset type: Talvori personal assistant welcome-screen illustration, a single isolated object with genuine transparent background. Primary request: a beautifully rendered small metallic desktop assistant device inspired by a silver desktop monitor on a sculptural stand, black inactive rounded-rectangle screen, brushed aluminum frame, subtle side hinge, softly rounded broad base with one circular triangular play button. Three-quarter front view, object centered, entire base visible, no text, no lettering, no logo, no scenery, no additional objects. Premium 3D industrial product illustration, precise silver machining, soft studio reflections and restrained dark glass. The device should be immediately legible at 280px wide in a dark productivity app; strong silver edge highlights, calm quiet mood. Reference is conceptual only; produce a new original object rather than reproducing the screenshot. Transparent background, no checkerboard, no background panel, no drop shadow rectangle.
+> Use case: stylized-concept. Asset type: Frondose personal assistant welcome-screen illustration, a single isolated object with genuine transparent background. Primary request: a beautifully rendered small metallic desktop assistant device inspired by a silver desktop monitor on a sculptural stand, black inactive rounded-rectangle screen, brushed aluminum frame, subtle side hinge, softly rounded broad base with one circular triangular play button. Three-quarter front view, object centered, entire base visible, no text, no lettering, no logo, no scenery, no additional objects. Premium 3D industrial product illustration, precise silver machining, soft studio reflections and restrained dark glass. The device should be immediately legible at 280px wide in a dark productivity app; strong silver edge highlights, calm quiet mood. Reference is conceptual only; produce a new original object rather than reproducing the screenshot. Transparent background, no checkerboard, no background panel, no drop shadow rectangle.

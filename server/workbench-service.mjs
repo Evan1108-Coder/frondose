@@ -11,7 +11,7 @@ import { localComparison } from './local-comparison.mjs';
 const exec = promisify(execFile);
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
-const blocked = /^(?:\.git|\.env(?:\..*)?|\.ssh|\.aws|\.config|\.codex|\.claude|\.rumbo|node_modules|\.next|\.cache|\.DS_Store|id_rsa(?:\..*)?|id_ed25519(?:\..*)?|credentials(?:\..*)?|secrets?(?:\..*)?|.*\.(?:pem|key|p12|pfx|sqlite|sqlite3|db))$/i;
+const blocked = /^(?:\.git|\.env(?:\..*)?|\.ssh|\.aws|\.config|\.codex|\.claude|\.rumbo|\.talvori|\.frondose|node_modules|\.next|\.cache|\.DS_Store|id_rsa(?:\..*)?|id_ed25519(?:\..*)?|credentials(?:\..*)?|secrets?(?:\..*)?|.*\.(?:pem|key|p12|pfx|sqlite|sqlite3|db))$/i;
 const MAX_FILE = 512_000;
 const MAX_OUTPUT = 250_000;
 const DEFAULT_SETTINGS = { showFiles: true, wrapFiles: false, terminalFontSize: 14, showHiddenFiles: false, maxTerminals: 4 };
@@ -58,7 +58,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
   let pendingPty;
   async function pty() {
     if (ptyFactory) return ptyFactory;
-    pendingPty ??= import('node-pty').then(module => module.default ?? module).catch(() => { pendingPty = null; throw validationError('Interactive terminal support is unavailable. Install the project’s node-pty dependency and restart Talvori.'); });
+    pendingPty ??= import('node-pty').then(module => module.default ?? module).catch(() => { pendingPty = null; throw validationError('Interactive terminal support is unavailable. Install the project’s node-pty dependency and restart Frondose.'); });
     return pendingPty;
   }
   function scope(workspaceId, projectId) {
@@ -81,7 +81,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     if (!environmentId && root.split(sep).some(part => blocked.test(part))) throw validationError('Credential, dependency, and private application folders cannot be linked to Workbench.');
     const privateRoot = resolve(dataDir);
     // Managed worktrees are intentionally under storage; the database and credentials are not.
-    if (!environmentId && (inside(root, privateRoot) || inside(privateRoot, root))) throw validationError('Talvori’s private storage cannot be used as a project folder.');
+    if (!environmentId && (inside(root, privateRoot) || inside(privateRoot, root))) throw validationError('Frondose’s private storage cannot be used as a project folder.');
     return root;
   }
   async function fileFor(root, path) {

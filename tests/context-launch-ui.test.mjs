@@ -10,7 +10,7 @@ test('context integration compiles without changing simulation or note execution
   assert.doesNotThrow(() => transformSync(work, { loader: 'jsx', format: 'esm' }));
   assert.doesNotThrow(() => transformSync(chats, { loader: 'jsx', format: 'esm' }));
   assert.match(work, /mode === "live" \? \{ context_inspection_id:/);
-  assert.match(chats, /recipient === 'note' \? await talvoriActions\.createMessage/);
+  assert.match(chats, /recipient === 'note' \? await frondoseActions\.createMessage/);
   assert.match(chats, /metadata: \{ delivery: 'note'/);
 });
 

@@ -73,7 +73,7 @@ function fields(db, input, workspaceId, current) {
   if (kind === 'url' || kind === 'branch') url = safeUrl(input.url ?? current?.url, kind);
   if (REFERENCES[kind]) {
     refId = clean(input.ref_id ?? current?.ref_id, 'Reference', 100);
-    if (!db.prepare(`SELECT 1 FROM ${REFERENCES[kind]} WHERE id=? AND workspace_id=? AND archived_at IS NULL`).get(refId, workspaceId)) throw invalid('Choose an active Talvori item in this workspace.');
+    if (!db.prepare(`SELECT 1 FROM ${REFERENCES[kind]} WHERE id=? AND workspace_id=? AND archived_at IS NULL`).get(refId, workspaceId)) throw invalid('Choose an active Frondose item in this workspace.');
   }
   return { kind, name, description, url, ref_id: refId };
 }

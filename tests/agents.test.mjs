@@ -38,13 +38,13 @@ test('paused, archived, and unsupported agents cannot launch either type of sess
   assert.deepEqual(AGENT_PROVIDERS.claude.capabilities, ['Read and search']);
 });
 
-test('Your Agents sidebar excludes personal Talvori and shows connected working profiles', () => {
+test('Your Agents sidebar excludes personal Frondose and shows connected working profiles', () => {
   const connected = { id: 'conn_codex', provider: 'codex', state: 'connected', metadata: { liveAccountChecked: true } };
   assert.equal(agentVisibleInSidebar({ ...agent, provider_connection_id: connected.id }, [connected]), true);
   assert.equal(agentVisibleInSidebar({ ...agent, provider_connection_id: connected.id }, []), false);
   assert.equal(agentVisibleInSidebar({ ...agent, status: 'paused', provider_connection_id: connected.id }, [connected]), false);
   assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', personal_agent: true, provider_connection_id: connected.id }, [connected]), false);
-  assert.equal(agentVisibleInSidebar({ ...agent, name: 'Talvori', provider_connection_id: connected.id }, [connected]), true, 'A user-chosen name is not personal-agent identity');
+  assert.equal(agentVisibleInSidebar({ ...agent, name: 'Frondose', provider_connection_id: connected.id }, [connected]), true, 'A user-chosen name is not personal-agent identity');
   assert.equal(agentVisibleInSidebar({ ...agent, id: 'rumbo_agent_a', archived_at: 'now' }, [connected]), false);
 });
 
@@ -191,7 +191,7 @@ test('existing databases gain nullable agent IDs without attributing historical 
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-agent-migration-'));
   let api;
   try {
-    const db = new DatabaseSync(join(dataDir, 'talvori.sqlite'));
+    const db = new DatabaseSync(join(dataDir, 'frondose.sqlite'));
     db.exec(await readFile(new URL('../server/schema.sql', import.meta.url), 'utf8'));
     const stamp = '2026-09-18T00:00:00.000Z';
     db.prepare('INSERT INTO workspaces (id,name,slug,created_at,updated_at) VALUES (?,?,?,?,?)').run('legacy_ws', 'Legacy', 'legacy', stamp, stamp);

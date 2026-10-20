@@ -3,7 +3,7 @@ import { Globe } from './icons.jsx';
 import { safeWebsiteUrl, serviceBrand } from '../lib/service-brands.js';
 import { websiteFavicon } from '../lib/document-markdown.js';
 
-/** Brand identity, separate from Talvori's animated interface glyphs. */
+/** Brand identity, separate from Frondose's animated interface glyphs. */
 export function ServiceLogo({ name, url, className = '' }) {
   const [failedSource, setFailedSource] = useState(null);
   const brand = serviceBrand(name, url);

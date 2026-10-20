@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { talvoriApi } from "./api.js";
-import { createTalvoriStore } from "./talvoriStore.js";
+import { frondoseApi } from "./api.js";
+import { createFrondoseStore } from "./frondoseStore.js";
 
-const store = createTalvoriStore(talvoriApi);
+const store = createFrondoseStore(frondoseApi);
 
-export const talvoriActions = store.actions;
-export const refreshTalvori = talvoriActions.refresh;
-export const refreshEvents = talvoriActions.refreshEvents;
+export const frondoseActions = store.actions;
+export const refreshFrondose = frondoseActions.refresh;
+export const refreshEvents = frondoseActions.refreshEvents;
 
 const identitySelector = (state) => state;
 const dataSelector = (state) => state.data;
@@ -22,7 +22,7 @@ function shallowEqual(left, right) {
 }
 
 /** Subscribe to the complete store or a stable selected slice. */
-export function useTalvori(selector = identitySelector, isEqual = Object.is) {
+export function useFrondose(selector = identitySelector, isEqual = Object.is) {
   const selectorRef = useRef(selector);
   const equalityRef = useRef(isEqual);
   const cacheRef = useRef({ hasValue: false, storeSnapshot: null, selector: null, selected: null });
@@ -46,10 +46,10 @@ export function useTalvori(selector = identitySelector, isEqual = Object.is) {
 
   const selected = useSyncExternalStore(store.subscribe, getSelectedSnapshot, getSelectedSnapshot);
   useEffect(() => {
-    if (!store.getSnapshot().data) void refreshTalvori().catch(() => {});
+    if (!store.getSnapshot().data) void refreshFrondose().catch(() => {});
   }, []);
   return selected;
 }
 
-export function useTalvoriData() { return useTalvori(dataSelector); }
-export function useTalvoriStatus() { return useTalvori(statusSelector, shallowEqual); }
+export function useFrondoseData() { return useFrondose(dataSelector); }
+export function useFrondoseStatus() { return useFrondose(statusSelector, shallowEqual); }

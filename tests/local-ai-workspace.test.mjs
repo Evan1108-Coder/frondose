@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { installLocalAiWorkspaces, enableLocalAi, localAiEnabled } from '../server/local-ai-workspace.mjs';
-import { isPersonalTalvoriProfile } from '../server/talvori-agent-service.mjs';
+import { isPersonalFrondoseProfile } from '../server/frondose-agent-service.mjs';
 
 test('local AI migration preserves real bindings, not empty workspaces, and never reactivates on restart', () => {
   const db = new DatabaseSync(':memory:');
@@ -27,6 +27,6 @@ test('local AI migration preserves real bindings, not empty workspaces, and neve
 });
 
 test('personal profile identity is not inferred from a name or an ID prefix', () => {
-  assert.equal(isPersonalTalvoriProfile({ id: 'rumbo_agent_manual', workspace_id: 'ws', provider: 'codex', name: 'Talvori' }), false);
-  assert.equal(isPersonalTalvoriProfile({ id: 'ordinary', name: 'Talvori' }), false);
+  assert.equal(isPersonalFrondoseProfile({ id: 'rumbo_agent_manual', workspace_id: 'ws', provider: 'codex', name: 'Frondose' }), false);
+  assert.equal(isPersonalFrondoseProfile({ id: 'ordinary', name: 'Frondose' }), false);
 });

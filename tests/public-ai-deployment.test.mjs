@@ -6,14 +6,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDeploymentPolicy } from '../server/deployment-policy.mjs';
 import { createLocalApi } from '../server/local-api.mjs';
-import { createTalvoriServer } from '../server/start.mjs';
+import { createFrondoseServer } from '../server/start.mjs';
 import { DatabaseSync } from 'node:sqlite';
 
-const env = { TALVORI_DEPLOYMENT_MODE: 'public', TALVORI_PUBLIC_BASE_URL: 'https://rumbo.example', TALVORI_TRUST_LOOPBACK_PROXY: '1', TALVORI_CONNECTION_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'), TALVORI_GITHUB_CLIENT_ID: 'fixture_client', TALVORI_GITHUB_CLIENT_SECRET: 'fixture_secret' };
+const env = { FRONDOSE_DEPLOYMENT_MODE: 'public', FRONDOSE_PUBLIC_BASE_URL: 'https://rumbo.example', FRONDOSE_TRUST_LOOPBACK_PROXY: '1', FRONDOSE_CONNECTION_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'), FRONDOSE_GITHUB_CLIENT_ID: 'fixture_client', FRONDOSE_GITHUB_CLIENT_SECRET: 'fixture_secret' };
 const request = (overrides = {}) => ({ method: 'POST', headers: { host: 'rumbo.example', origin: 'https://rumbo.example', 'x-forwarded-proto': 'https' }, socket: { remoteAddress: '127.0.0.1' }, ...overrides });
 
 test('public deployment fails closed without HTTPS origin, stable encryption and provisioned identity', () => {
-  for (const change of [{ TALVORI_PUBLIC_BASE_URL: '' }, { TALVORI_PUBLIC_BASE_URL: 'http://rumbo.example' }, { TALVORI_PUBLIC_BASE_URL: 'https://rumbo.example/path' }, { TALVORI_PUBLIC_BASE_URL: 'https://localhost' }, { TALVORI_CONNECTION_ENCRYPTION_KEY: '' }]) assert.throws(() => createDeploymentPolicy({ ...env, ...change }));
+  for (const change of [{ FRONDOSE_PUBLIC_BASE_URL: '' }, { FRONDOSE_PUBLIC_BASE_URL: 'http://rumbo.example' }, { FRONDOSE_PUBLIC_BASE_URL: 'https://rumbo.example/path' }, { FRONDOSE_PUBLIC_BASE_URL: 'https://localhost' }, { FRONDOSE_CONNECTION_ENCRYPTION_KEY: '' }]) assert.throws(() => createDeploymentPolicy({ ...env, ...change }));
   const policy = createDeploymentPolicy(env);
   assert.throws(() => policy.assertConfigured({ configured: () => false }, 'clean'), /provision the owner/);
   assert.throws(() => policy.assertConfigured({ configured: () => true }, 'demo'), /invite-only/);
@@ -30,7 +30,7 @@ test('public host, HTTPS, exact Origin, trusted proxy and identity throttles are
 
 async function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'rumbo-public-ai-test-'));
-  let api = createLocalApi({ dataDir: directory, integrationOptions: { env: { TALVORI_CONNECTION_ENCRYPTION_KEY: env.TALVORI_CONNECTION_ENCRYPTION_KEY } } });
+  let api = createLocalApi({ dataDir: directory, integrationOptions: { env: { FRONDOSE_CONNECTION_ENCRYPTION_KEY: env.FRONDOSE_CONNECTION_ENCRYPTION_KEY } } });
   let server = createServer((req, res) => api.middleware(req, res));
   const listen = async () => { await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); return `http://127.0.0.1:${server.address().port}/api`; };
   let base = await listen();
@@ -58,7 +58,7 @@ async function fixture(t) {
   t.after(async () => { await new Promise(resolve => server.close(resolve)); api.close(); rmSync(directory, { recursive: true, force: true }); });
   const call = async (path, method = 'GET', body, cookie, extra = {}) => {
     return new Promise((resolve, reject) => {
-      const req = httpRequest(`${base}${path}`, { method, headers: { host: 'rumbo.example', 'x-forwarded-proto': 'https', ...(method !== 'GET' ? { origin: env.TALVORI_PUBLIC_BASE_URL } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}), ...extra } }, response => {
+      const req = httpRequest(`${base}${path}`, { method, headers: { host: 'rumbo.example', 'x-forwarded-proto': 'https', ...(method !== 'GET' ? { origin: env.FRONDOSE_PUBLIC_BASE_URL } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}), ...extra } }, response => {
         let text = ''; response.on('data', chunk => { text += chunk; }); response.on('end', () => { const headers = new Headers(Object.fromEntries(Object.entries(response.headers).map(([key, value]) => [key, Array.isArray(value) ? value.join(', ') : value]))); resolve({ status: response.statusCode, headers, body: text ? JSON.parse(text) : null }); });
       });
       req.on('error', reject); req.end(body ? JSON.stringify(body) : undefined);
@@ -117,15 +117,15 @@ test('public HTTP: secure sessions, unauthenticated denial, no shared runners/ho
 
 test('production server serves built assets and SPA routes but not secrets, API fallbacks or external symlinks', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'rumbo-production-static-')), dataDir = mkdtempSync(join(tmpdir(), 'rumbo-production-data-'));
-  writeFileSync(join(directory, 'index.html'), '<!doctype html><title>Talvori fixture</title>');
+  writeFileSync(join(directory, 'index.html'), '<!doctype html><title>Frondose fixture</title>');
   writeFileSync(join(directory, 'app.js'), 'export default "fixture"'); writeFileSync(join(directory, '.env'), 'PRIVATE_SECRET');
   symlinkSync('/etc/hosts', join(directory, 'escape.txt'));
-  assert.throws(() => createTalvoriServer({ env: {}, apiOptions: { dataDir: join(directory, 'private-data') }, clientDirectory: directory }), /Private Talvori data/);
-  const { server } = createTalvoriServer({ env: {}, apiOptions: { dataDir }, clientDirectory: directory });
+  assert.throws(() => createFrondoseServer({ env: {}, apiOptions: { dataDir: join(directory, 'private-data') }, clientDirectory: directory }), /Private Frondose data/);
+  const { server } = createFrondoseServer({ env: {}, apiOptions: { dataDir }, clientDirectory: directory });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); rmSync(dataDir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  for (const path of ['/', '/connections/copilot']) { const response = await fetch(`${base}${path}`); assert.equal(response.status, 200, path); assert.match(await response.text(), /Talvori fixture/); assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/); }
+  for (const path of ['/', '/connections/copilot']) { const response = await fetch(`${base}${path}`); assert.equal(response.status, 200, path); assert.match(await response.text(), /Frondose fixture/); assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/); }
   assert.equal((await fetch(`${base}/app.js`)).status, 200);
   for (const path of ['/.env', '/escape.txt', '/missing.js', '/api/not-a-real-route']) assert.equal((await fetch(`${base}${path}`)).status, 404, path);
 });

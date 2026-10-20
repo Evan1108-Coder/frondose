@@ -8,8 +8,8 @@
 .rumbo-agent-orb.agent-orb-small { width: 22px; }
 .rumbo-agent-orb-compact::before, .rumbo-agent-orb-compact::after { display: none; }
 .rumbo-agent-orb-compact img { filter: none; }
-.talvori-agent-monogram { position: absolute; inset: 24%; background: #fff; opacity: .92; mask: url('/brand/talvori-symbol.webp') center / contain no-repeat; -webkit-mask: url('/brand/talvori-symbol.webp') center / contain no-repeat; pointer-events: none; }
-.rumbo-agent-orb-compact .talvori-agent-monogram { inset: 13%; }
+.frondose-agent-monogram { position: absolute; inset: 24%; background: #fff; opacity: .92; mask: url('/brand/frondose-symbol.webp') center / contain no-repeat; -webkit-mask: url('/brand/frondose-symbol.webp') center / contain no-repeat; pointer-events: none; }
+.rumbo-agent-orb-compact .frondose-agent-monogram { inset: 13%; }
 .rumbo-agent-color-choice { margin: 0; padding: 0; border: 0; }
 .rumbo-agent-color-choice legend { margin-bottom: 12px; color: var(--secondary); font-size: 12px; letter-spacing: .025em; }
 .rumbo-agent-color-choice > div { display: flex; flex-wrap: wrap; gap: 12px; }

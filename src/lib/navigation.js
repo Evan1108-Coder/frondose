@@ -6,7 +6,7 @@ const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library"
 const home = () => ({ view: "overview", id: null, projectId: null });
 const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
 const ASSISTANT_SECTIONS = new Set(['conversation', 'activity', 'scheduled']);
-const VIEW_ALIASES = { 'talvori-agent': 'rumbo-agent', areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
+const VIEW_ALIASES = { 'frondose-agent': 'rumbo-agent', 'talvori-agent': 'rumbo-agent', areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 
 function validId(value) {
   return typeof value === "string" && value.length > 0 &&
@@ -14,7 +14,7 @@ function validId(value) {
     value !== "." && value !== "..";
 }
 
-/** Parse only Talvori's hash routes, not arbitrary URLs or nested paths. */
+/** Parse only Frondose's hash routes, not arbitrary URLs or nested paths. */
 export function parsePage(hash = "") {
   if (typeof hash !== "string") return home();
   try {
@@ -27,7 +27,7 @@ export function parsePage(hash = "") {
     const view = VIEW_ALIASES[parts[0]] || parts[0];
     if (parts.length > 2 || !VIEWS.has(view) && view !== 'playbooks') return home();
     let id = parts.length === 2 ? decodeURIComponent(parts[1]) : null;
-    if (view === 'settings' && id === 'talvori-agent') id = 'rumbo-agent';
+    if (view === 'settings' && ['frondose-agent', 'talvori-agent'].includes(id)) id = 'rumbo-agent';
     if (id !== null && !validId(id)) return home();
     // URLSearchParams repairs malformed encoding; reject it instead.
     decodeURIComponent(query.replace(/\+/g, " "));
@@ -66,8 +66,8 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
   if (id !== null && !validId(id)) throw new TypeError("Invalid page identifier");
   if (projectId !== null && !validId(projectId))
     throw new TypeError("Invalid project identifier");
-  const publicView = view === 'teams' ? 'areas' : view === 'rumbo-agent' ? 'talvori-agent' : view;
-  const publicId = view === 'settings' && id === 'rumbo-agent' ? 'talvori-agent' : id;
+  const publicView = view === 'teams' ? 'areas' : view === 'rumbo-agent' ? 'frondose-agent' : view;
+  const publicId = view === 'settings' && id === 'rumbo-agent' ? 'frondose-agent' : id;
   const path = `#/${publicView}${publicId === null ? "" : `/${encodeURIComponent(publicId)}`}`;
   if (messageId !== null && !validId(messageId)) throw new TypeError('Invalid message identifier');
   const query = new URLSearchParams();
@@ -98,5 +98,6 @@ function validReturn(hash) {
   const query = new URLSearchParams(hash.split('?')[1] || '');
   if (query.has('from')) return false;
   const page = parsePage(hash);
-  return page.view !== 'reader' && pageHash(page.view,page.id,page) === hash;
+  const canonical = hash.replace(/^#\/talvori-agent(?=\/|\?|$)/, '#/frondose-agent').replace(/^#\/settings\/talvori-agent(?=\?|$)/, '#/settings/frondose-agent');
+  return page.view !== 'reader' && pageHash(page.view,page.id,page) === canonical;
 }

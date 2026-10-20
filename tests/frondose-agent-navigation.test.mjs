@@ -5,18 +5,18 @@ import { normalizeOrganization, NAV_ITEMS } from '../src/lib/organization.js';
 import { describePage } from '../src/lib/workspace-experience.js';
 import { persistComposer, restoreComposer } from '../src/lib/chats.js';
 
-test('Talvori is a persistent first-class tab independent of connections', () => {
-  assert.equal(NAV_ITEMS.find(item => item.id === 'rumbo-agent').label, 'Talvori');
+test('Frondose is a persistent first-class tab independent of connections', () => {
+  assert.equal(NAV_ITEMS.find(item => item.id === 'rumbo-agent').label, 'Frondose');
   const preferences = normalizeOrganization({});
   assert.ok(preferences.layout.root.includes('rumbo-agent'));
-  assert.equal(pageHash('rumbo-agent', 'chat-1'), '#/talvori-agent/chat-1');
-  assert.equal(parsePage('#/talvori-agent/chat-1').id, 'chat-1');
+  assert.equal(pageHash('rumbo-agent', 'chat-1'), '#/frondose-agent/chat-1');
+  assert.equal(parsePage('#/frondose-agent/chat-1').id, 'chat-1');
   assert.equal(parsePage(pageHash('rumbo-agent','chat-1',{messageId:'message-1'})).messageId,'message-1');
-  assert.equal(describePage({}, { view: 'rumbo-agent' }), 'Talvori');
+  assert.equal(describePage({}, { view: 'rumbo-agent' }), 'Frondose');
   assert.equal(describePage({chats:[{id:'chat-1',title:'Release plan'}]}, {view:'rumbo-agent',id:'chat-1'}), 'Release plan');
 });
 
-test('model and context choices survive uncertain Talvori delivery without granting native tools', () => {
+test('model and context choices survive uncertain Frondose delivery without granting native tools', () => {
   const map = new Map();
   const storage = {getItem:key=>map.get(key),setItem:(key,value)=>map.set(key,value)};
   const chat = {id:'chat-1',participant_agent_ids:['agent-1']};

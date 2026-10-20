@@ -1,15 +1,15 @@
 import "./brand.css";
 
 const brandAssets = {
-  symbol: "/brand/talvori-symbol.webp",
-  appIcon: "/brand/talvori-app-icon.png",
+  symbol: "/brand/frondose-symbol.webp",
+  appIcon: "/brand/frondose-app-icon.png",
 };
 
 function BrandIcon({
   asset,
   size = 32,
   decorative = false,
-  label = "Talvori",
+  label = "Frondose",
   className = "",
   style,
   ...props
@@ -32,20 +32,20 @@ function BrandIcon({
 }
 
 /** Use the approved standalone mark beside workspace names and product copy. */
-export function TalvoriSymbol(props) {
+export function FrondoseSymbol(props) {
   return <BrandIcon {...props} asset="symbol" />;
 }
 
 /** Use the approved rounded badge for browser, app, and shortcut identities. */
-export function TalvoriAppIcon(props) {
+export function FrondoseAppIcon(props) {
   return <BrandIcon {...props} asset="appIcon" />;
 }
 
 /** Live type keeps the wordmark sharp and readable in every theme. */
-export function TalvoriWordmark({
-  width = 244,
+export function FrondoseWordmark({
+  width = 300,
   decorative = false,
-  label = "Talvori",
+  label = "Frondose",
   className = "",
   style,
   ...props
@@ -68,7 +68,7 @@ export function TalvoriWordmark({
         decoding="async"
         draggable={false}
       />
-      <span aria-hidden="true">Talvori</span>
+      <span aria-hidden="true">Frondose</span>
     </span>
   );
 }

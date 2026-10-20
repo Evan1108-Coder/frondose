@@ -36,18 +36,18 @@ test('private bridge authenticates bounded list and call requests and cleans up 
     expiresAt: Date.now() + 30_000,
   });
   t.after(() => bridge.close());
-  const { descriptor } = bridge, directory = dirname(descriptor.env.TALVORI_NATIVE_TOOL_SOCKET);
+  const { descriptor } = bridge, directory = dirname(descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET);
   assert.equal(statSync(directory).mode & 0o777, 0o700);
-  assert.equal(statSync(descriptor.env.TALVORI_NATIVE_TOOL_SOCKET).mode & 0o777, 0o600);
-  assert.equal(JSON.stringify(descriptor.args).includes(descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY), false);
+  assert.equal(statSync(descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET).mode & 0o777, 0o600);
+  assert.equal(JSON.stringify(descriptor.args).includes(descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY), false);
 
-  const client = socketClient(descriptor.env.TALVORI_NATIVE_TOOL_SOCKET); t.after(() => client.socket.destroy());
+  const client = socketClient(descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET); t.after(() => client.socket.destroy());
   const denied = await client.request({ id: 1, capability: 'x'.repeat(43), method: 'tools/list', params: {} });
   assert.equal(denied.error.code, 'unauthorized');
-  assert.equal(JSON.stringify(denied).includes(descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY), false);
-  const listed = await client.request({ id: 2, capability: descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY, method: 'tools/list', params: {} });
+  assert.equal(JSON.stringify(denied).includes(descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY), false);
+  const listed = await client.request({ id: 2, capability: descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY, method: 'tools/list', params: {} });
   assert.deepEqual(listed.result.tools.map(tool => tool.name), ['documents.read']);
-  const called = await client.request({ id: 3, capability: descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY, method: 'tools/call', params: { name: 'documents.read', arguments: { id: 'doc-1' } } });
+  const called = await client.request({ id: 3, capability: descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY, method: 'tools/call', params: { name: 'documents.read', arguments: { id: 'doc-1' } } });
   assert.equal(called.result.content[0].text, 'document:doc-1');
   assert.deepEqual(calls, [{ name: 'documents.read', args: { id: 'doc-1' } }]);
   await bridge.close();
@@ -66,7 +66,7 @@ test('stdio adapter exposes only the bounded MCP surface and forwards through en
   const next = lineReader(child.stdout);
   const send = (value) => child.stdin.write(`${JSON.stringify(value)}\n`);
   send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05' } });
-  assert.equal((await next()).result.serverInfo.name, 'talvori');
+  assert.equal((await next()).result.serverInfo.name, 'frondose');
   send({ jsonrpc: '2.0', id: 2, method: 'ping' });
   assert.deepEqual((await next()).result, {});
   send({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} });
@@ -86,8 +86,8 @@ test('bridge enforces concurrency and call deadlines without exposing handler fa
     expiresAt: Date.now() + 30_000, maxConcurrent: 1, callTimeoutMs: 100,
   });
   t.after(() => bridge.close());
-  const client = socketClient(bridge.descriptor.env.TALVORI_NATIVE_TOOL_SOCKET); t.after(() => client.socket.destroy());
-  const auth = bridge.descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY;
+  const client = socketClient(bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET); t.after(() => client.socket.destroy());
+  const auth = bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY;
   const held = client.request({ id: 1, capability: auth, method: 'tools/call', params: { name: 'bounded.wait', arguments: { hold: true } } });
   await new Promise(resolve => setImmediate(resolve));
   const busy = await client.request({ id: 2, capability: auth, method: 'tools/call', params: { name: 'bounded.wait', arguments: {} } });
@@ -104,7 +104,7 @@ test('invalid definitions, expiry, and pre-aborted signals fail before opening t
   await assert.rejects(createNativeAgentToolBridge({ listTools: () => [], callTool: () => {}, expiresAt: Date.now() + 1000, signal: controller.signal }), { code: 'bridge_revoked' });
   const liveController = new AbortController();
   const bridge = await createNativeAgentToolBridge({ listTools: () => [], callTool: () => {}, expiresAt: Date.now() + 10_000, signal: liveController.signal });
-  const directory = dirname(bridge.descriptor.env.TALVORI_NATIVE_TOOL_SOCKET);
+  const directory = dirname(bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET);
   liveController.abort(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(existsSync(directory), false);
 });

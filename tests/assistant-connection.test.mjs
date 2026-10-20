@@ -11,12 +11,12 @@ test('assistant requires explicit current readiness, not a catalog or saved conf
   assert.equal(hasConnectedAssistantAI({providers,preferences:{provider:'claude',provider_selected:true}}),true);
   assert.equal(selectedAssistantConnection({providers,preferences:{provider:'missing',provider_selected:true}}),null);
 });
-test('Talvori is a setup hub, opens canonical Conversations only on explicit click and preserves readable work', () => {
-  const source = readFileSync(new URL('../src/views/TalvoriAgent.jsx',import.meta.url),'utf8');
+test('Frondose is a setup hub, opens canonical Conversations only on explicit click and preserves readable work', () => {
+  const source = readFileSync(new URL('../src/views/FrondoseAgent.jsx',import.meta.url),'utf8');
   assert.doesNotMatch(source,/import \{ Conversation \}|<Conversation\b|<textarea\b/);
   assert.match(source,/navigate\('chats', chat\.id\)/);
   assert.match(source,/if \(page\.id\) navigate\('chats', page\.id/);
-  assert.match(source,/<TalvoriAgentPreferences embedded/);
+  assert.match(source,/<FrondoseAgentPreferences embedded/);
   assert.match(source,/section === 'activity' \|\| section === 'scheduled'/);
   assert.match(source,/provider_selected/);
 });

@@ -21,7 +21,7 @@ function fixture(t) {
     INSERT INTO teams VALUES('area-before','ws','Area','Accessible organization','2026-10-20',NULL);
     INSERT INTO projects VALUES('project','ws','Project','Brief','area-before','2026-10-20',NULL);
     INSERT INTO chats VALUES('chat','ws','Current chat',NULL,NULL,NULL,'2026-10-20',NULL),('other','ws','Selected past chat','project',NULL,NULL,'2026-10-19',NULL);
-    INSERT INTO messages VALUES('m1','chat','You','user','Yes, helpful 👍','{}','[]','2026-10-20','2026-10-20'),('m2','chat','Talvori','agent','🙂 :ship-it:','{}','[]','2026-10-19','2026-10-19'),('hidden','other','Other','user','SECRET OTHER CHAT','{}','[]','2026-10-19','2026-10-19');`);
+    INSERT INTO messages VALUES('m1','chat','You','user','Yes, helpful 👍','{}','[]','2026-10-20','2026-10-20'),('m2','chat','Frondose','agent','🙂 :ship-it:','{}','[]','2026-10-19','2026-10-19'),('hidden','other','Other','user','SECRET OTHER CHAT','{}','[]','2026-10-19','2026-10-19');`);
   installChatCollaboration(db);
   const setting = (key,value)=>db.prepare('INSERT OR REPLACE INTO settings VALUES(?,?)').run(key,JSON.stringify(value));
   setting('appearance',{theme:'dark',density:'compact',reduceMotion:false,password:'SECRET PASSWORD',nested:{token:'SECRET NESTED'}});
@@ -29,7 +29,7 @@ function fixture(t) {
   setting('personalization',{instructions:'Use exact technical wording.'});
   setting('agentDefaults',{concurrentRuns:2,preserveRawEvents:true,approvalMode:'ask',capability:'SECRET CAPABILITY'});
   setting('inbox',{readIds:['SECRET READ RECEIPT']}); setting('connectionToken',{access_token:'SECRET TOKEN'});
-  setting('rumboAgent:ws',{display_name:'Talvori',orb_color:'cyan',include_memory:true,guidelines:'Be direct.',native_tools:true});
+  setting('rumboAgent:ws',{display_name:'Frondose',orb_color:'cyan',include_memory:true,guidelines:'Be direct.',native_tools:true});
   setting('rumboAgent:foreign',{display_name:'SECRET OTHER AGENT'});
   const item = (id,kind,name,payload,workspace='ws',archived=null)=>db.prepare('INSERT INTO workspace_items VALUES(?,?,?,?,?,0,1,?,?)').run(id,workspace,kind,name,JSON.stringify(payload),'2026-10-20',archived);
   item('ship','emoji','Ship it',{shortcode:'ship-it',symbol:'data:image/png;base64,SECRET IMAGE'});
@@ -46,7 +46,7 @@ function fixture(t) {
 test('safe settings use exact typed fields and honor actor-filter redaction',t=>{
   const {db} = fixture(t), snapshot = safeAgentSettings(db,{workspaceId:'ws',filter:value=>value});
   assert.equal(snapshot.values.appearance.theme,'dark'); assert.equal(snapshot.values.notifications.runCompleted,false);
-  assert.equal(snapshot.values['rumboAgent:ws'].display_name,'Talvori');
+  assert.equal(snapshot.values['rumboAgent:ws'].display_name,'Frondose');
   assert.ok(!JSON.stringify(snapshot).includes('SECRET'));
   assert.equal(snapshot.values.agentDefaults.approvalMode,undefined); assert.equal(snapshot.values['rumboAgent:ws'].native_tools,undefined);
   assert.deepEqual(safeAgentSettings(db,{workspaceId:'ws',filter:value=>({...value,settings:{}})}).values,{});

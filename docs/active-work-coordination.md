@@ -4,7 +4,7 @@ Conversations remain the place to talk. **Active work** (the existing Runs
 destination) shows canonical run status, public progress messages, observed
 commands/output, file activity, native-tool records and review requests.
 Tool activity appears only when the connected runtime actually reports it.
-Talvori does not invent a transcript for providers that return only a final
+Frondose does not invent a transcript for providers that return only a final
 answer, and it does not expose private model reasoning as a “thinking” log.
 
 ## Steering without blocking a conversation
@@ -18,7 +18,7 @@ ready. Recording or preparing a message does not call an AI provider.
 The current Codex app-server adapter uses a fresh ephemeral thread for every
 reviewed turn. It supports Stop but does not expose live mid-turn steering.
 The CLI, API and Copilot paths likewise do not expose a reviewed steering
-capability in Talvori. The interface therefore says **queued next turn**, not
+capability in Frondose. The interface therefore says **queued next turn**, not
 “steering delivered” or “agent is following the new instruction.” Stopping
 and sending a new turn are distinct actions; Stop does not undo prior effects.
 
@@ -53,7 +53,7 @@ recorded handoff needs a fresh reviewed next turn before provider dispatch.
 It cannot create a delegation loop, silently resume a native history, change
 tools or bypass destructive/external/paid-work approval.
 
-Personal Talvori conversations retain their bound participant identity.
+Personal Frondose conversations retain their bound participant identity.
 Ordinary multi-agent conversations require an explicit recipient; there is
 no assumption that the first agent in a list is the intended one.
 

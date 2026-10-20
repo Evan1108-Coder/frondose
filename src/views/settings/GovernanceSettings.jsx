@@ -78,7 +78,7 @@ function GovernanceEditor({ editor, snapshot, data, workspace, command, busy, er
     else { action = 'create_member'; input = { name: value.name, email: value.email, rank: value.rank }; }
     if (await command(action, input)) onClose();
   }
-  return <Dialog wide={editor.kind === 'role'} title={title} subtitle={editor.kind === 'role' ? 'Permissions are enforced by Talvori. A role cannot grant ownership or bypass protected decisions.' : undefined} onClose={onClose}><Form className="gov-editor" onSubmit={save}><ErrorMessage error={error} />
+  return <Dialog wide={editor.kind === 'role'} title={title} subtitle={editor.kind === 'role' ? 'Permissions are enforced by Frondose. A role cannot grant ownership or bypass protected decisions.' : undefined} onClose={onClose}><Form className="gov-editor" onSubmit={save}><ErrorMessage error={error} />
     {editor.kind === 'member' ? <>
       {!original ? <><Field label="Name"><input required maxLength={120} value={value.name} onChange={event => update('name', event.target.value)} /></Field><Field label="Email" hint="Adding a directory person does not send an invitation."><input type="email" value={value.email} onChange={event => update('email', event.target.value)} /></Field></> : null}
       <Select label="Rank" value={value.rank} onChange={item => update('rank', item)}>{RANKS.filter(item => item !== 'Owner' || original).map(item => <option key={item} value={item}>{item}</option>)}</Select>

@@ -8,7 +8,7 @@ import { validateAgentProfile, snapshotAgentProfile } from './agent-profiles.mjs
 // Content-only restore. Never restore credentials, run processes, permissions,
 // provider state, personal preferences, or claims about public account access.
 export function importWorkspace(db, archive, config, normalize, dbValue, validateCustomFields) {
-  if (!['talvori.workspace', 'rumbo.workspace'].includes(archive.format) || archive.version !== 1 || !isRecord(archive.data)) throw validationError('Choose a version 1 Talvori archive.');
+  if (!['frondose.workspace', 'talvori.workspace', 'rumbo.workspace'].includes(archive.format) || archive.version !== 1 || !isRecord(archive.data)) throw validationError('Choose a version 1 Frondose archive.');
   const originalActivity = archive.data.activity_entries;
   if (originalActivity !== undefined && !Array.isArray(originalActivity)) throw validationError('Invalid activity list.');
   for (const entry of originalActivity || []) if (!isRecord(entry) || !['draft', 'published'].includes(entry.publication_state || 'published')) throw validationError('Invalid activity publication state.');

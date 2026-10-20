@@ -78,7 +78,7 @@ export function createEventWorkPolicy({ db, allowed, filter }) {
     // Only a recorded ordinary human API change can start this vertical slice.
     // Agent actions, confirmed agent proposals, schedules, imports without an
     // attributed actor and event receipts cannot form feedback loops.
-    if (event.source !== 'Talvori' || !event.actor_id || !eventReadable(event, actor)) return null;
+    if (event.source !== 'Frondose' || !event.actor_id || !eventReadable(event, actor)) return null;
     const before = parse(event.before_json), after = parse(event.after_json);
     let type;
     if (event.entity_type === 'tasks' && after && !after.archived_at) {

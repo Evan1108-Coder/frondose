@@ -77,7 +77,7 @@ test('general chat sends and retries without a folder while project work still r
     const first = await call(`/chats/${chat.id}/turns`, turn({ work_mode: undefined }));
     assert.equal(first.run.work_mode, 'conversation');
     assert.equal(first.message.metadata.work_mode, 'conversation');
-    assert.match(fake.prompts[0], /Talvori general conversation/);
+    assert.match(fake.prompts[0], /Frondose general conversation/);
     assert.ok(fake.lastLaunch.args.includes('features.shell_tool=false'));
     assert.notEqual(fake.lastLaunch.options.cwd, process.cwd());
     fake.mode = 'success';

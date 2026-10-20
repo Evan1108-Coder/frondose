@@ -43,7 +43,7 @@ function makeVersion(db, patch, at) {
 
 function restore(db, allowed, overrides = {}) {
   const source = history(db, allowed, '?version=1').versions[0];
-  return changeContext.run({ actor, source: 'Talvori' }, () => restoreAgentContent({
+  return changeContext.run({ actor, source: 'Frondose' }, () => restoreAgentContent({
     db, agentId: 'agent', actor, allowed,
     body: {
       current_version: db.prepare("SELECT version FROM agents WHERE id='agent'").get().version,

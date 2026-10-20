@@ -14,7 +14,7 @@ The user explicitly requests Lucide interface icons and Morphicons transitions, 
 
 Use tree-shaken Lucide IconNode data and the actual `morphicons/react` package behind a shared renderer. Preserve stable SVG identity for state changes. Keep existing 16–24px CSS sizing, currentColor strokes (1.75 default), and authored accessible button names. All interface glyphs use the shared renderer; noninteractive labels stay still. Morph only user-triggered state/feedback: disclosure orientation, folder open/closed, sidebar collapse/expand, pin, copy success, loading and completion. Do not imply success before an operation actually succeeds.
 
-Use interruptible custom springs (state: stiffness 2400 / damping 96; hover: 4400 / 130), verified against a sub-300ms visual budget. Controls receive a tiny 3.4% geometric hover expansion; static labels remain still. Read OS reduced motion and Talvori's `data-motion="reduced"`; instantly set the final geometry for reduced motion or keyboard input, including interruption of an already-running morph. No per-frame React state. Vector path morphing is a narrowly scoped exception to GPU-only guidance explicitly required by the user; use the library's shared rAF scheduler and keep labels, backgrounds and layout unanimated.
+Use interruptible custom springs (state: stiffness 2400 / damping 96; hover: 4400 / 130), verified against a sub-300ms visual budget. Controls receive a tiny 3.4% geometric hover expansion; static labels remain still. Read OS reduced motion and Frondose's `data-motion="reduced"`; instantly set the final geometry for reduced motion or keyboard input, including interruption of an already-running morph. No per-frame React state. Vector path morphing is a narrowly scoped exception to GPU-only guidance explicitly required by the user; use the library's shared rAF scheduler and keep labels, backgrounds and layout unanimated.
 
 ## Steps
 
@@ -30,7 +30,7 @@ Use interruptible custom springs (state: stiffness 2400 / damping 96; hover: 440
 - `npm test`, `npm run build`, `git diff --check`.
 - Browser: inspect all sections, desktop and mobile, dark/light; check no console errors, clipping or blank glyphs.
 - Record actual SVG path changes during disclosure/copy/loading transitions, rapid reversal, and exact settled geometry.
-- Keyboard and both reduced-motion preferences must swap instantly, not merely hide a running animation with CSS. Retain Talvori's existing gentle surface feedback.
+- Keyboard and both reduced-motion preferences must swap instantly, not merely hide a running animation with CSS. Retain Frondose's existing gentle surface feedback.
 - Verify logos and complex empty-state illustrations are unchanged.
 
 ## Boundaries

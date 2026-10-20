@@ -21,7 +21,7 @@ test('search wrappers own one border and their input has no nested border', () =
   assert.match(source('src/views/workbench.css'), /\.wb-slash-launcher:focus-within\s*\{[^}]*border-color:var\(--focus\);outline:none/);
 });
 test('specialized text settings and onboarding do not reintroduce a second outline or spread ring', () => {
-  const agent = source('src/views/talvori-agent.css'), fields = source('src/views/settings/field-defaults-settings.css');
+  const agent = source('src/views/frondose-agent.css'), fields = source('src/views/settings/field-defaults-settings.css');
   assert.match(agent, /\.rumbo-agent-onboarding-form textarea:focus\s*\{[^}]*border-color: var\(--focus\); outline: none; box-shadow: none/);
   assert.match(agent, /\.rumbo-agent-identity-fields textarea:focus-visible\s*\{[^}]*border-color: var\(--focus\); outline: none; box-shadow: none/);
   assert.match(fields, /\.field-default-search input:focus,[^}]*border-color: var\(--focus\); outline: none; box-shadow: none/);

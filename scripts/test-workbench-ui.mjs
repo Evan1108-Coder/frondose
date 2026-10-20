@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-const { chromium } = await import(process.env.TALVORI_PLAYWRIGHT_MODULE || 'playwright');
+const { chromium } = await import(process.env.FRONDOSE_PLAYWRIGHT_MODULE || 'playwright');
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { createLocalApi } from '../server/local-api.mjs';
@@ -14,7 +14,7 @@ await writeFile(join(root, 'README.md'), '# Workbench fixture\nA real isolated p
 await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'fixture', scripts: { test: 'printf fixture-tests-ok' } }));
 execFileSync('git', ['init', '-b', 'main'], { cwd: root });
 execFileSync('git', ['add', '.'], { cwd: root });
-execFileSync('git', ['-c', 'user.name=Talvori QA', '-c', 'user.email=qa@example.invalid', 'commit', '-m', 'Fixture'], { cwd: root });
+execFileSync('git', ['-c', 'user.name=Frondose QA', '-c', 'user.email=qa@example.invalid', 'commit', '-m', 'Fixture'], { cwd: root });
 await writeFile(join(root, 'README.md'), '# Workbench fixture\nA changed isolated project.\n');
 const prohibited = () => { throw new Error('No AI/provider calls allowed in QA'); };
 const api = createLocalApi({ dataDir: join(dir, 'data'), integrationOptions: { env: {}, execute: prohibited, spawnProcess: prohibited, fetchImpl: prohibited } });
@@ -34,7 +34,7 @@ try {
   await page.getByRole('heading', { name: 'Workbench', exact: true }).waitFor();
   await page.getByText('Keep the purpose close').waitFor();
   await page.locator('.wb-branch').filter({ hasText: /^main$/ }).waitFor();
-  assert.match(await page.title(), /Talvori/);
+  assert.match(await page.title(), /Frondose/);
   assert.equal(await page.locator('vite-error-overlay').count(), 0);
   await page.screenshot({ path: '/tmp/rumbo-workbench-overview.png' });
   await page.getByRole('tab', { name: 'Files', exact: true }).click();

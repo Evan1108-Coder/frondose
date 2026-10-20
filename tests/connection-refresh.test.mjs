@@ -19,7 +19,7 @@ async function fixture(run) {
   const dataDir = mkdtempSync(join(tmpdir(), 'rumbo-refresh-')), db = new DatabaseSync(':memory:'), key = randomBytes(32);
   db.exec(readFileSync(new URL('../server/schema.sql', import.meta.url), 'utf8'));
   for (const id of ['ws', 'other']) db.prepare('INSERT INTO workspaces(id,name,slug,created_at,updated_at) VALUES(?,?,?,?,?)').run(id, id, id, 'now', 'now');
-  const env = { TALVORI_CONNECTION_ENCRYPTION_KEY: key.toString('base64'), TALVORI_SLACK_CALLBACK_URL: 'https://example.test/callback', ...Object.fromEntries(Object.keys(OAUTH_PROVIDERS).flatMap(family => [[`TALVORI_${family.toUpperCase()}_CLIENT_ID`, 'app'], [`TALVORI_${family.toUpperCase()}_CLIENT_SECRET`, 'secret']])) };
+  const env = { FRONDOSE_CONNECTION_ENCRYPTION_KEY: key.toString('base64'), FRONDOSE_SLACK_CALLBACK_URL: 'https://example.test/callback', ...Object.fromEntries(Object.keys(OAUTH_PROVIDERS).flatMap(family => [[`FRONDOSE_${family.toUpperCase()}_CLIENT_ID`, 'app'], [`FRONDOSE_${family.toUpperCase()}_CLIENT_SECRET`, 'secret']])) };
   const calls = [], control = { hook: null, allowed: true }; let serial = 0;
   const platform = createConnectionPlatform({ db, dataDir, env, workerIntervalMs: 0, authorize: () => control.authorizeHook?.() ?? control.allowed, fetchImpl: async (url, options) => {
     const family = Object.entries(OAUTH_PROVIDERS).find(([, definition]) => definition.token === url)?.[0] || (url === 'https://api.figma.com/v1/oauth/refresh' ? 'figma' : null);
@@ -116,7 +116,7 @@ test('Figma app and scope provenance prevent credential sharing into different g
   const first = await connect('figma'), prior = read(first.id);
   write(first.id, { ...prior, rumbo_oauth_binding: { ...prior.rumbo_oauth_binding, scopes: 'current_user:read' } });
   await connect('figjam'); assert.equal(read(first.id).access_token, prior.access_token);
-  env.TALVORI_FIGMA_CLIENT_ID = 'different-app'; await connect('figjam'); assert.equal(read(first.id).access_token, prior.access_token);
+  env.FRONDOSE_FIGMA_CLIENT_ID = 'different-app'; await connect('figjam'); assert.equal(read(first.id).access_token, prior.access_token);
   await assert.rejects(platform.verify(first.id, actor), error => error.code === 'reconnect_required');
 }));
 

@@ -1,6 +1,6 @@
 # Bounded direct workspace actions
 
-Talvori supports an explicit, actor/workspace-specific low-risk action policy.
+Frondose supports an explicit, actor/workspace-specific low-risk action policy.
 This is not provider tool access, a general auto-approval switch, or permission
 to spend money. Existing historical runs default to review-only.
 

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
-import { captureSourceAccess, assertSourceAccess, chatHasTalvoriSourceHistory } from './context-source-access.mjs';
+import { captureSourceAccess, assertSourceAccess, chatHasFrondoseSourceHistory } from './context-source-access.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
 import { readConversationSource, searchConversationSources } from './conversation-retrieval.mjs';
 
@@ -76,7 +76,7 @@ export function validateChatContextAttachments(db, chatId, input = {}) {
   }
   if (marked.length !== 1 || files[0] !== marked[0]) throw validationError('Attach the selected context snapshot once, before other files.');
   const snapshot = contextSnapshot(db, metadata.context_snapshot_id, chatId), file = marked[0];
-  if (file.rumbo_context_snapshot !== snapshot.id || file.content !== snapshot.content || file.type !== 'text/markdown' || file.name !== `talvori-context-${snapshot.id}.md`) throw validationError('Context contents changed. Remove and reselect the context snapshot before sending.');
+  if (file.rumbo_context_snapshot !== snapshot.id || file.content !== snapshot.content || file.type !== 'text/markdown' || !['frondose', 'talvori'].some(brand => file.name === `${brand}-context-${snapshot.id}.md`)) throw validationError('Context contents changed. Remove and reselect the context snapshot before sending.');
   return metadata;
 }
 
@@ -130,7 +130,7 @@ function assembleContext(db, chat, selections, authorization) {
     } else sources.push({ kind, id, title: item.title, updated_at: item.updated_at, content: item.content || '' });
     if (sources.length > 50) throw validationError('This selection expands to more than 50 sources. Use a smaller context pack.');
   }
-  for (const selection of selections) { if (!isRecord(selection) || Object.keys(selection).some(key => !['kind', 'id'].includes(key))) throw validationError('Choose source IDs only; context text is resolved by Talvori.'); add(selection.kind, selection.id); }
+  for (const selection of selections) { if (!isRecord(selection) || Object.keys(selection).some(key => !['kind', 'id'].includes(key))) throw validationError('Choose source IDs only; context text is resolved by Frondose.'); add(selection.kind, selection.id); }
   const content = sources.map(source => `## ${source.title}\nSource: ${source.kind}:${source.id}\nSnapshot of: ${source.updated_at}${source.version ? ` · version ${source.version}` : ''}\n\n${source.content}`).join('\n\n---\n\n');
   // The existing provider attachment path has a 16 KB per-file limit. Reject,
   // rather than silently claiming a larger snapshot was completely delivered.
@@ -160,13 +160,13 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
   if (req.method === 'GET') {
     if (match[2]) {
       const selected = contextSnapshot(db, match[2], chat.id);
-      chatContextSnapshotAccess(db, { chatId: chat.id, workspaceId: chat.workspace_id, actor, allowed, attachments: [{ name: `talvori-context-${selected.id}.md`, type: 'text/markdown', content: selected.content, rumbo_context_snapshot: selected.id }] });
+      chatContextSnapshotAccess(db, { chatId: chat.id, workspaceId: chat.workspace_id, actor, allowed, attachments: [{ name: `frondose-context-${selected.id}.md`, type: 'text/markdown', content: selected.content, rumbo_context_snapshot: selected.id }] });
       send(res, 200, { result: selected });
     } else send(res, 200, { result: current });
     return true;
   }
   if (req.method !== 'POST' || match[2]) return false;
-  if (chatHasTalvoriSourceHistory(db, chat.id) && ['branch', 'document'].includes(body.action)) throw validationError('Source-bound Talvori Agent chats cannot be branched or converted to documents yet. Keep this conversation linked to its reviewed source.');
+  if (chatHasFrondoseSourceHistory(db, chat.id) && ['branch', 'document'].includes(body.action)) throw validationError('Source-bound Frondose Agent chats cannot be branched or converted to documents yet. Keep this conversation linked to its reviewed source.');
   if (body.version !== current.version) throw Object.assign(validationError('This conversation changed elsewhere. Refresh before trying again.'), { statusCode: 409 });
   const payload = { bookmarks: current.bookmarks, drafts: current.drafts, branch: current.branch, reactions: current.reactions, ...(current.rumbo_source ? { rumbo_source: current.rumbo_source } : {}), ...(current.rumbo_creation ? { rumbo_creation: current.rumbo_creation } : {}) };
   let result;

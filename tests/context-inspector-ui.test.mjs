@@ -47,13 +47,13 @@ test('Context Inspector has explicit inspect/use actions, aborts stale requests,
   assert.match(source, /latest\.current\.onInvalidated\?\.\(\)/);
   assert.match(source, /latest\.current\.onReviewed\?\.\(inspection\)/);
   assert.match(source, /disabled=\{!usable \|\| state.reviewed \|\| !onReviewed\}/);
-  assert.doesNotMatch(source, /startRun|startSession|spawnProcess|talvoriActions/);
+  assert.doesNotMatch(source, /startRun|startSession|spawnProcess|frondoseActions/);
   assert.doesNotMatch(source.slice(source.indexOf('useEffect(()'), source.indexOf('async function inspect')), /apiRequest/); // Network work remains in the explicit inspect handler.
 });
 
 test('source and provider boundaries remain visible with keyboard-readable raw text', () => {
   const source = readFileSync(new URL('../src/components/ContextInspector.jsx', import.meta.url), 'utf8');
-  assert.match(source, /Exact Talvori-supplied prompt/);
+  assert.match(source, /Exact Frondose-supplied prompt/);
   assert.match(source, /Provider-owned system instructions are not visible here/);
   assert.match(source, /project tools may read additional files within the access you explicitly grant/);
   assert.match(source, /Token count is not estimated/);

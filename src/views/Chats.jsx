@@ -4,7 +4,7 @@ import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolA
 import { useChatFollow } from '../lib/use-chat-follow.js';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, X, Link, FileText, GitFork, Clock, Smile, SlidersHorizontal } from "../components/icons.jsx";
-import { talvoriActions, refreshTalvori } from '../data/useTalvori.js';
+import { frondoseActions, refreshFrondose } from '../data/useFrondose.js';
 import { apiRequest } from '../data/api.js';
 import { Button, Dialog, Empty, ErrorMessage, Field, IconButton, ProviderIcon, SearchField, Select, Toggle, useApp } from '../ui.jsx';
 import { UiIcon, PinOff, Check, Copy } from '../components/icons.jsx';
@@ -22,7 +22,7 @@ import { byUpdated, download, relative, val, visible } from '../lib/model.js';
 import { agentReadiness } from '../lib/agents.js';
 import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnBlocker, restoreComposer, persistComposer, messageLink, quotedMessage, threadMessages } from '../lib/chats.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
-import { prepareTalvoriAgentEntry } from '../lib/talvori-agent-entry.js';
+import { prepareFrondoseAgentEntry } from '../lib/frondose-agent-entry.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.js';
 import { prepareExplicitChatSend } from '../lib/chat-send-context.js';
@@ -134,7 +134,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const replies = useMemo(() => { const map = new Map(); for (const message of messages) if (message.metadata?.reply_to) map.set(message.metadata.reply_to, (map.get(message.metadata.reply_to) || 0) + 1); return map; }, [messages]);
   const contextChoices = [...visible(data.documents).map(item => ({ kind: 'document', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.memory_notes).map(item => ({ kind: 'memory', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.workspace_items || []).filter(item => item.kind === 'context_pack').map(item => ({ kind: 'pack', id: item.id, title: item.name }))];
   const contextPending = Boolean(composer.context && typeof composer.context.content !== 'string');
-  const blocker = personalPending ? 'Loading Talvori’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) });
+  const blocker = personalPending ? 'Loading Frondose’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) });
   const queueOnly = Boolean(activeRecipient && !composer.turn);
   const queueBlocker = queueOnly && (composer.files.length || composer.context || composer.replyTo || composer.text.length > 10000) ? 'Queued follow-ups support plain text up to 10,000 characters. Send attachments or a reply after this run finishes.' : null;
   const inThread = threadMessages(messages, threadId);
@@ -147,7 +147,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const readOnlyProfile = agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
   const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
   const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
-  const sentAttachments = composer.context && !contextPending ? [{ name: `talvori-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
+  const sentAttachments = composer.context && !contextPending ? [{ name: `frondose-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
   // New turns use the selected identity's model. Recovery alone retains the exact
   // old override, so changing this UI cannot mutate an uncertain delivered turn.
   const assistantOptions = assistant || chat.kind === 'rumbo-agent' ? { ...(composer.turn && composer.model ? { model: composer.model, reasoning_effort: composer.reasoning || '' } : {}), include_chat: composer.includeChat !== false, include_workspace: composer.includeWorkspace !== false, context_pack_ids: composer.contextPackIds || [] } : {};
@@ -180,12 +180,12 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   useEffect(()=>{
     if(!personalMode || composer.turn) return;
     const controller=new AbortController();setPersonalSettings({key:personalKey,loading:true,error:null});
-    apiRequest(`/api/talvori-agent?workspace_id=${encodeURIComponent(val(chat,'workspace_id'))}`,{signal:controller.signal}).then(({result})=>{
+    apiRequest(`/api/frondose-agent?workspace_id=${encodeURIComponent(val(chat,'workspace_id'))}`,{signal:controller.signal}).then(({result})=>{
       if(controller.signal.aborted) return;
       const preferences=result?.preferences;
-      if(!preferences || typeof preferences!=='object') throw new Error('Talvori’s saved context preferences are unavailable. Open Talvori Setup before sending.');
+      if(!preferences || typeof preferences!=='object') throw new Error('Frondose’s saved context preferences are unavailable. Open Frondose Setup before sending.');
       if(!result.providers?.some(row=>row.agent?.id===agent.id)){setPersonalSettings({key:personalKey,loading:false,error:null});return;}
-      if(!preferences.provider_selected || preferences.provider!==agent.provider || !preferences.onboarding_complete) throw new Error('Choose and save Talvori’s AI connection and setup before sending.');
+      if(!preferences.provider_selected || preferences.provider!==agent.provider || !preferences.onboarding_complete) throw new Error('Choose and save Frondose’s AI connection and setup before sending.');
       const patch=personalComposerDefaults(preferences,composer);
       if(patch){Object.assign(composer,patch,{version:composer.version+1});persistComposer(chat.id,composer,draftStorage());render(value=>value+1);}
       setPersonalSettings({key:personalKey,loading:false,error:null});
@@ -259,9 +259,9 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     setActionBusy(true); setCollaborationError(null);
     try {
       const response = await apiRequest(`/api/chat-collaboration/${encodeURIComponent(chat.id)}`, { method: 'POST', body: { workspace_id: val(chat, 'workspace_id'), version: collaboration.version, action, ...body } });
-      await refreshTalvori();
+      await refreshFrondose();
       return response.result;
-    } catch (cause) { setCollaborationError(cause); if (cause.status === 409) await refreshTalvori(); throw cause; }
+    } catch (cause) { setCollaborationError(cause); if (cause.status === 409) await refreshFrondose(); throw cause; }
     finally { if (mounted.current) setActionBusy(false); }
   }
   function messageReactions(id) { return reactionPending?.messageId === id ? reactionPending.values : collaboration.reactions?.[id] || []; }
@@ -343,7 +343,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     if (sending.current || composer.sending || (!composer.text.trim() && !composer.files.length)) return;
     const slash = parseSlashCommand(composer.text);
     if (slash) {
-      if (slash.type === 'unknown') { setError(new Error(`Unknown command /${slash.name}. Use /help to search Talvori commands.`)); return; }
+      if (slash.type === 'unknown') { setError(new Error(`Unknown command /${slash.name}. Use /help to search Frondose commands.`)); return; }
       if (slash.error) { setError(new Error(slash.error)); return; }
       await executeSlashCommand(slash.command, slash.argv, { submitted: true });
       return;
@@ -383,9 +383,9 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       if (recipient !== 'note' && !recoveringTurn) { composer.model = ''; composer.reasoning = ''; }
       if (recipient !== 'note' && !composer.turn) composer.turn = crypto.randomUUID();
       persistComposer(chat.id, composer, draftStorage());
-      const response = recipient === 'note' ? await talvoriActions.createMessage(chat.id, {
+      const response = recipient === 'note' ? await frondoseActions.createMessage(chat.id, {
         content: text, sender_type: 'user', sender_id: 'local', sender_name: data.profile?.name || 'You', attachments: sentFiles, metadata: { delivery: 'note', ...metadata },
-      }) : await talvoriActions.sendChatTurn(chat.id, {
+      }) : await frondoseActions.sendChatTurn(chat.id, {
         content: text, attachments: sentFiles, agent_id: recipient, client_turn_id: composer.turn, ...metadata,
         work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission, include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true,
         ...(captured ? { context_inspection_id: captured.id } : {}), context_pack_ids: [], area_id: inspectionRequest?.area_id ?? null,
@@ -424,7 +424,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     const findAgent = value => agents.find(item => [item.name, item.provider, item.id].some(candidate => String(candidate || '').toLowerCase() === value.toLowerCase()));
     setError(null);
     if (command.id === 'rumbo') {
-      prepareTalvoriAgentEntry({ workspaceId: val(chat, 'workspace_id'), source: task ? { type: 'task', id: task.id } : project ? { type: 'project', id: project.id } : null, instruction: args });
+      prepareFrondoseAgentEntry({ workspaceId: val(chat, 'workspace_id'), source: task ? { type: 'task', id: task.id } : project ? { type: 'project', id: project.id } : null, instruction: args });
       navigate('rumbo-agent');
       return;
     }
@@ -447,7 +447,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       if (command.connection) {
         notify(`${command.command} is registered for ${command.connection}, but its external executor is not available yet.`, 'error');
         navigate('connections');
-      } else if (submitted) setError(new Error(`${command.command} is in Talvori’s command catalog, but it is not executable in chat yet.`));
+      } else if (submitted) setError(new Error(`${command.command} is in Frondose’s command catalog, but it is not executable in chat yet.`));
       else change({ text: `${command.command} ` });
       return;
     }
@@ -493,7 +493,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       if (!task) { setError(new Error(`${command.command} needs a Route-linked conversation.`)); return; }
       const patch = command.id === 'route.block' ? { status: 'blocked' } : command.id === 'status' ? { status: args } : command.id === 'priority' ? { priority: args } : { due_at: args || null };
       if (command.id !== 'route.block' && !args) { setError(new Error(`Add a value after ${command.command}.`)); return; }
-      await perform(() => talvoriActions.updateTask(task.id, patch), `${task.title} updated.`);
+      await perform(() => frondoseActions.updateTask(task.id, patch), `${task.title} updated.`);
       change({ text: '' }); return;
     }
   }
@@ -517,7 +517,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     composer.retryNativeTools ||= {}; composer.retryNativeTools[message.id] = retryRequest.native_tools;
     persistComposer(chat.id, composer, draftStorage());
     try {
-const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
+const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
       delete composer.retryKeys[message.id];
       delete composer.retryNativeTools[message.id];
       persistComposer(chat.id, composer, draftStorage());
@@ -537,7 +537,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
       } else if (composeDialog.type === 'output') {
         setActionBusy(true);
         await apiRequest('/api/workflow/outputs', { method: 'POST', body: { workspace_id: val(chat, 'workspace_id'), project_id: destination || null, chat_id: chat.id, source_message_id: composeDialog.message.id, title: actionTitle, content: composeDialog.message.content, kind: 'document', author_name: val(composeDialog.message, 'sender_name') || 'You' } });
-        await refreshTalvori(); notify('Output created in Library. Review its exact version there.');
+        await refreshFrondose(); notify('Output created in Library. Review its exact version there.');
       } else {
         const result = await collaborationAction(composeDialog.type, { message_id: composeDialog.message.id, title: actionTitle, project_id: destination || undefined });
         if (composeDialog.type === 'branch') { navigate('chats', result.chat_id); notify('Branch created from reference messages. No agent was started.'); }
@@ -602,7 +602,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
           {agent ? <IconButton label="Access and context" disabled={personalPending || Boolean(personalError)} onClick={() => setAccessOpen(true)}><SlidersHorizontal /></IconButton> : null}
         </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker || queueBlocker)} aria-label={queueOnly ? `Queue follow-up for ${agent.name}` : agent ? `Send to ${agent.name}` : 'Save note'}><span className="chat-send-label">{queueOnly ? 'Queue follow-up' : agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</span></Button></div>
       </Form>
-      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{personalMode ? <button onClick={()=>navigate('rumbo-agent')}>Talvori setup</button> : agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : queueOnly ? queueBlocker ? <p className="chat-compose-notice" role="status">{queueBlocker}</p> : <details className="chat-queue-explanation"><summary>Working · follow-ups queue for the next turn</summary><p>Queued instructions do not enter the current provider run. Load the draft and send it when ready, or keep chatting with another agent.</p></details> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
+      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{personalMode ? <button onClick={()=>navigate('rumbo-agent')}>Frondose setup</button> : agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : queueOnly ? queueBlocker ? <p className="chat-compose-notice" role="status">{queueBlocker}</p> : <details className="chat-queue-explanation"><summary>Working · follow-ups queue for the next turn</summary><p>Queued instructions do not enter the current provider run. Load the draft and send it when ready, or keep chatting with another agent.</p></details> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
     </div>
     {accessOpen && agent ? <Dialog title="Access and context" subtitle="Chat prepares bounded context when you send. Project access and native tools still require explicit review." wide onClose={() => setAccessOpen(false)}><div className="dialog-body chat-context-content">{!isBrowserAiProvider(agent.provider) ? <><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><Toggle label="Read project files for this message" description="Requires a linked working folder. Turning this on does not grant write access." checked={composer.permission !== 'conversation'} disabled={busy || composer.sending || recoveringTurn || composer.permission === 'workspace-write'} onChange={value => { change({ permission: value ? 'read-only' : 'conversation' }); setReviewedContext(null); }} /></> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} /></div><footer className="dialog-footer"><Button onClick={() => setAccessOpen(false)}>Done</Button></footer></Dialog> : null}
     {scheduleDraft ? <ScheduleWorkDialog workspaceId={val(chat, 'workspace_id')} kind="message" payload={scheduleDraft.payload} contextInspectionId={scheduleDraft.contextInspectionId} onClose={() => setScheduleDraft(null)} onScheduled={() => { if (composer.version === scheduleDraft.version) { change({ text: '', files: [], turn: null, replyTo: null, context: null }); setReviewedContext(null); } }} /> : null}
@@ -614,7 +614,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
       <ErrorMessage error={collaborationError} />
       <AgentMemoryPanel workspaceId={val(chat, 'workspace_id')} agentId={agent?.id} projectId={project?.id} />
       <ConversationSources workspaceId={val(chat, 'workspace_id')} chatId={chat.id} selected={contextSources} disabled={actionBusy || recoveringTurn} onToggle={source => setContextSources(values => values.some(item => item.kind === source.kind && item.id === source.id) ? values.filter(item => item.kind !== source.kind || item.id !== source.id) : values.length < 20 ? [...values, source] : values)} />
-      <section><h3>Selected sources</h3><p>Combine selected past messages with documents, memory, or a context pack. Talvori saves the exact selected text as an immutable snapshot, up to 15 KB. Only explicit Send passes it to the agent; search and selection never do.</p><SearchField label="Filter context sources" placeholder="Find documents, memory, or packs…" value={contextQuery} onChange={setContextQuery} /><div className="chat-source-list">{contextChoices.filter(item => item.title.toLowerCase().includes(contextQuery.toLowerCase())).map(item => {
+      <section><h3>Selected sources</h3><p>Combine selected past messages with documents, memory, or a context pack. Frondose saves the exact selected text as an immutable snapshot, up to 15 KB. Only explicit Send passes it to the agent; search and selection never do.</p><SearchField label="Filter context sources" placeholder="Find documents, memory, or packs…" value={contextQuery} onChange={setContextQuery} /><div className="chat-source-list">{contextChoices.filter(item => item.title.toLowerCase().includes(contextQuery.toLowerCase())).map(item => {
         const key = `${item.kind}:${item.id}`, selected = contextSources.some(source => `${source.kind}:${source.id}` === key);
         return <label key={key}><input type="checkbox" checked={selected} disabled={actionBusy || recoveringTurn || !selected && contextSources.length >= 20} onChange={() => setContextSources(values => selected ? values.filter(source => `${source.kind}:${source.id}` !== key) : [...values, { kind: item.kind, id: item.id }])} /><span>{item.title}<small>{item.kind === 'pack' ? 'Context pack' : item.kind === 'memory' ? 'Memory note' : 'Document'}{item.project_id && item.project_id !== project?.id ? ' · another project in this workspace' : ''}</small></span></label>;
       })}{!contextChoices.length ? <p>No documents, memory notes, or context packs yet. Past messages can still be selected above.</p> : null}</div><Button disabled={!contextSources.length || recoveringTurn} busy={actionBusy} onClick={async () => { try { const context = await collaborationAction('context', { sources: contextSources }); change({ context }); setContextOpen(false); notify('Context snapshot attached to the composer. Review it before sending.'); } catch {} }}>Snapshot {contextSources.length || 'selected'} sources</Button></section>
@@ -625,7 +625,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
       <section><Toggle label="Include saved memory" description={val(agent, 'memory_policy') === 'none' ? 'This profile excludes saved memory.' : 'Eligible notes can be included; inspect the exact selection and any limits before sending.'} checked={includeMemory} disabled={val(agent, 'memory_policy') === 'none'} onChange={value => change({ memory: value })} />{notes.map(note => <button className="chat-context-link" key={note.id} onClick={() => { setContextOpen(false); edit('memory', note); }}><BookOpen />{note.title}</button>)}</section>
       <section><h3>Attachments</h3><p>Text and code files can be sent to agents: up to 20 files, 100,000 characters each. Agent context uses at most 16 KB per file and 32 KB total. Full files remain saved here. Images are stored in notes only; they are not sent to CLI providers.</p></section>
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}
-    {commandLibraryOpen ? <Dialog title="Talvori commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
+    {commandLibraryOpen ? <Dialog title="Frondose commands" subtitle="Search the full command language. Catalog-only commands are visible without pretending their executor exists." wide onClose={() => setCommandLibraryOpen(false)}><CommandLibrary context="chat" query={commandQuery} onQueryChange={setCommandQuery} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} onChoose={command => { setCommandLibraryOpen(false); selectSlash(command); }} /></Dialog> : null}
     {optionsOpen ? <Dialog title="Conversation options" onClose={() => setOptionsOpen(false)}><div className="dialog-body chat-options">
       {collaboration.branch ? <p className="chat-reference-label"><GitFork />Branched reference</p> : null}
       <Button onClick={()=>{setOptionsOpen(false);setNativeRunId(active?.id || runs.filter(run=>run.mode==='live').at(-1)?.id || '');setNativeActivityOpen(true);}}>Recorded native tools</Button>
@@ -635,7 +635,7 @@ const response = await talvoriActions.sendChatTurn(chat.id, { agent_id: val(run,
       <Button icon={MessageCircle} disabled={!composer.text.trim() || busy || actionBusy || Boolean(composer.turn)} onClick={() => { setOptionsOpen(false); void queueDraft(); }}>Save follow-up draft</Button>
       <Button icon={Pencil} onClick={() => { setOptionsOpen(false); edit('chat', chat); }}>Edit conversation details</Button>
       <Button icon={Folder} onClick={() => openAction('move')}>Move to another project</Button>
-      <Button icon={chat.pinned ? PinOff : Pin} onClick={() => perform(async () => { await talvoriActions.updateChat(chat.id, { pinned: !chat.pinned }); setOptionsOpen(false); }, chat.pinned ? 'Chat unpinned' : 'Chat pinned')}>{chat.pinned ? 'Unpin conversation' : 'Pin conversation'}</Button>
+      <Button icon={chat.pinned ? PinOff : Pin} onClick={() => perform(async () => { await frondoseActions.updateChat(chat.id, { pinned: !chat.pinned }); setOptionsOpen(false); }, chat.pinned ? 'Chat unpinned' : 'Chat pinned')}>{chat.pinned ? 'Unpin conversation' : 'Pin conversation'}</Button>
       <Button icon={Download} onClick={exportChat}>Export as Markdown</Button>
       <Button icon={Archive} onClick={() => { setOptionsOpen(false); archive('chat', chat); }}>Archive conversation</Button>
     </div></Dialog> : null}

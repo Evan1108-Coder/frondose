@@ -1,7 +1,7 @@
-# What Talvori can know about your workspace
+# What Frondose can know about your workspace
 
-Talvori uses the connected AI you choose. It is not a separate model, an
-omniscient observer, or a person. On an explicit send, Talvori compiles a bounded,
+Frondose uses the connected AI you choose. It is not a separate model, an
+omniscient observer, or a person. On an explicit send, Frondose compiles a bounded,
 permission-checked snapshot. The exact supplied text and its source limits remain
 visible in the run's captured context. Opening a tab or adding a reaction does not
 silently send your workspace to an AI.
@@ -64,7 +64,7 @@ rewritten to obtain this behavior.
 
 ## Privacy and authorization boundaries
 
-- Server settings currently belong to the local owner under Talvori's existing
+- Server settings currently belong to the local owner under Frondose's existing
   settings access model. Other accounts do not receive that owner's settings or
   personal communication instructions. Settings-derived replies preserve the
   same private boundary when reused as history, memory or retrieved context.

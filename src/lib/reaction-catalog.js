@@ -1,6 +1,6 @@
 // Stable IDs are shared by the picker and API validation. No user-provided SVG
 // or HTML is ever rendered. Lucide glyphs keep the interface's visual language;
-// the Talvori collection below is authored specifically for connected agent work.
+// the Frondose collection below is authored specifically for connected agent work.
 const GROUPS = {
   "Feelings": "Smile SmilePlus Laugh Frown Meh Angry Annoyed Heart HeartCrack HeartHandshake HeartPulse ThumbsUp ThumbsDown HandHeart Handshake PartyPopper Sparkles Star Flame Zap CircleHelp",
   "Work": "Check CheckCheck CircleCheck BadgeCheck CircleAlert TriangleAlert CircleX CirclePause CirclePlay Clock AlarmClock Hourglass Calendar CalendarCheck CalendarClock ListChecks ListTodo ClipboardCheck Target Flag Goal",
@@ -50,7 +50,7 @@ const originals = [
   ['Activity message', 'M3 4h18v13H9l-6 4z M8 9h8 M8 13h5'],
 ];
 export const ICON_REACTIONS = Object.freeze([
-  ...originals.map(([name, path]) => ({ id: `icon:rumbo-${name.toLowerCase().replaceAll(' ', '-')}`, type: 'icon', name, category: 'Talvori', path })),
+  ...originals.map(([name, path]) => ({ id: `icon:rumbo-${name.toLowerCase().replaceAll(' ', '-')}`, type: 'icon', name, category: 'Frondose', path })),
   ...Object.entries(GROUPS).flatMap(([category, names]) => names.split(' ').map(icon => ({ id: `icon:${slug(icon)}`, type: 'icon', name: label(icon).replace(/^./, c => c.toUpperCase()), category, icon }))),
 ]);
 const EMOJI_GROUPS = {

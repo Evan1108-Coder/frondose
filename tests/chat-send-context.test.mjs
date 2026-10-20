@@ -27,11 +27,11 @@ test('malformed, expired, and changed drafts never proceed to send', async () =>
 });
 test('composer keeps a profile recipient selector and no inline review, model, or schedule control', async () => {
   const chat = await readFile(new URL('../src/views/Chats.jsx', import.meta.url), 'utf8');
-  const agent = await readFile(new URL('../src/views/TalvoriAgent.jsx', import.meta.url), 'utf8');
+  const agent = await readFile(new URL('../src/views/FrondoseAgent.jsx', import.meta.url), 'utf8');
   const composer = chat.slice(chat.indexOf('<div className="chat-compose-controls">'), chat.indexOf('</Form>', chat.indexOf('<div className="chat-compose-controls">')));
   assert.doesNotMatch(composer, />Discuss<|>Inspect<|>Schedule<|Save follow-up draft|ModelChoice|☺/);
   assert.match(composer, />Chat</); assert.match(composer, /<Smile/);
-  assert.doesNotMatch(agent, /ModelChoice|aria-label="AI model provider"|aria-label="Talvori Agent provider"/);
+  assert.doesNotMatch(agent, /ModelChoice|aria-label="AI model provider"|aria-label="Frondose Agent provider"/);
   assert.match(agent, /agent_id: requestedAgent.id/);
   assert.doesNotMatch(agent, /<Conversation|sendChatTurn/);
   assert.match(chat, /Schedule current message/);

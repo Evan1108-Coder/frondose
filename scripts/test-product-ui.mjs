@@ -6,7 +6,7 @@ import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import { createLocalApi } from '../server/local-api.mjs';
 import { SETTINGS_GROUPS } from '../src/lib/settings-catalog.js';
-const { chromium } = await import(process.env.TALVORI_PLAYWRIGHT_MODULE || 'playwright');
+const { chromium } = await import(process.env.FRONDOSE_PLAYWRIGHT_MODULE || 'playwright');
 const directory = await mkdtemp(join(tmpdir(),'rumbo-product-qa-'));
 const forbid = () => { throw Error('AI and external connections prohibited during QA'); };
 const api = createLocalApi({dataDir:directory,integrationOptions:{env:{},execute:forbid,spawnProcess:forbid,fetchImpl:forbid}});
@@ -77,7 +77,7 @@ try {
   await page.locator('.favorites-navigation').getByRole('button',{name:'Evidence brief',exact:true}).waitFor();
   await page.locator('.saved-view-navigation').getByRole('button',{name:'Evidence routes',exact:true}).click();
   await page.getByRole('heading',{name:'Evidence routes',exact:true}).waitFor();assert.match(await page.locator('#main-content').innerText(),/Map the evidence/);
-  await page.getByRole('button',{name:/Go back in Talvori/}).click();await page.getByRole('heading',{name:'Evidence brief',exact:true}).waitFor();
+  await page.getByRole('button',{name:/Go back in Frondose/}).click();await page.getByRole('heading',{name:'Evidence brief',exact:true}).waitFor();
   await page.keyboard.press('Control+]');await page.getByRole('heading',{name:'Evidence routes',exact:true}).waitFor();
   await page.getByRole('button',{name:'Edit view',exact:true}).click();await select('Stage','Done');await page.getByRole('button',{name:'Save view',exact:true}).click();await page.getByRole('heading',{name:'No work matches this view yet',exact:true}).waitFor();
   await page.reload();await page.getByRole('heading',{name:'No work matches this view yet',exact:true}).waitFor();

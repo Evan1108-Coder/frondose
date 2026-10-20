@@ -26,5 +26,5 @@ export function NavigationHistory() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [navigate]);
-  return <div className="navigation-history" aria-label="Workspace history"><IconButton label="Go back in Talvori · ⌘ / Ctrl [" disabled={history.index === 0} onClick={() => travel(-1)}><ArrowLeft /></IconButton><IconButton label="Go forward in Talvori · ⌘ / Ctrl ]" disabled={history.index === history.entries.length - 1} onClick={() => travel(1)}><ArrowRight /></IconButton></div>;
+  return <div className="navigation-history" aria-label="Workspace history"><IconButton label="Go back in Frondose · ⌘ / Ctrl [" disabled={history.index === 0} onClick={() => travel(-1)}><ArrowLeft /></IconButton><IconButton label="Go forward in Frondose · ⌘ / Ctrl ]" disabled={history.index === history.entries.length - 1} onClick={() => travel(1)}><ArrowRight /></IconButton></div>;
 }

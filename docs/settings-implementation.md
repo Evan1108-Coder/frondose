@@ -46,7 +46,7 @@ This is the implementation record, not a claim that the whole public service is 
 
 - `npm test`: 155 passing tests, including 12 settings/resource tests.
 - `npm run build`: successful production build and Sites packaging.
-- `scripts/test-settings-ui.mjs`: isolated Playwright suite with a temporary database and forbidden provider calls. Set `TALVORI_PLAYWRIGHT_MODULE` to an installed Playwright module if it is not a project dependency.
+- `scripts/test-settings-ui.mjs`: isolated Playwright suite with a temporary database and forbidden provider calls. Set `FRONDOSE_PLAYWRIGHT_MODULE` to an installed Playwright module if it is not a project dependency.
 - Browser round 1: all 43 pages render; labels, custom workflow, template use, request conversion, unsaved changes, reload persistence, 320/390px widths and light mode.
 - Browser round 2: all 19 resource editors, archive/restore, label merge, rule preview/application, real downloaded export and content import.
 - Browser checks assert no console errors and zero agent sessions. They do not prove live-provider behavior or production multi-user security.

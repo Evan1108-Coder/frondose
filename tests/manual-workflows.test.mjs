@@ -83,12 +83,12 @@ test('manual Workflow definitions are immutable, typed, bounded and reject unsup
     assert.match(rejected.error.message, /unsupported/i); assert.equal(fake.launches.length, 0);
     const created = (await call('/coordination/workflows', { workspace_id: workspace.id, project_id: project.id, title: 'Bounded manual workflow', definition, idempotency_key: 'create-workflow-1' })).result;
     assert.equal(created.current_definition.number, 1);
-    const dry = (await call(`/coordination/workflows/${created.id}/preview`, { inputs: { topic: 'Talvori' } }, 'POST', 200)).result;
+    const dry = (await call(`/coordination/workflows/${created.id}/preview`, { inputs: { topic: 'Frondose' } }, 'POST', 200)).result;
     assert.equal(dry.provider_calls, 0); assert.equal(dry.background_jobs, 0); assert.equal(fake.launches.length, 0);
-    const branched = (await call(`/coordination/workflows/${created.id}/preview`, { inputs: { topic: 'Talvori', build: false } }, 'POST', 200)).result;
+    const branched = (await call(`/coordination/workflows/${created.id}/preview`, { inputs: { topic: 'Frondose', build: false } }, 'POST', 200)).result;
     assert.equal(branched.steps.find(item => item.id === 'builder').status, 'skipped_by_condition');
     assert.equal(branched.steps.find(item => item.id === 'reviewer').status, 'blocked_by_branch');
-    const run = (await call(`/coordination/workflows/${created.id}/runs`, { inputs: { topic: 'Talvori' }, definition_version: 1, idempotency_key: 'create-run-1' })).result;
+    const run = (await call(`/coordination/workflows/${created.id}/runs`, { inputs: { topic: 'Frondose' }, definition_version: 1, idempotency_key: 'create-run-1' })).result;
     assert.equal(run.plan_version_id, created.current_definition.id);
     const changed = structuredClone(definition); changed.description = 'Version two';
     const next = (await call(`/coordination/workflows/${created.id}/versions`, { version: created.version, definition: changed, idempotency_key: 'version-2' })).result;

@@ -1,6 +1,6 @@
 # Service logo assets
 
-Talvori imports individual SVG assets from `@iconify-icons/logos` (SVG Logos via Iconify, CC0-1.0). Source: https://github.com/gilbarbara/logos and https://iconify.design/ . Brand names and marks remain their respective owners' trademarks; their presence identifies a service and does not indicate endorsement or a working connection.
+Frondose imports individual SVG assets from `@iconify-icons/logos` (SVG Logos via Iconify, CC0-1.0). Source: https://github.com/gilbarbara/logos and https://iconify.design/ . Brand names and marks remain their respective owners' trademarks; their presence identifies a service and does not indicate endorsement or a working connection.
 
 Only the selected assets are included in the client build. Codex uses the OpenAI company mark. Monochrome marks retain a white backing for contrast in either theme. Assets are not AI-generated approximations.
 

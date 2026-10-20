@@ -146,7 +146,7 @@ export function createScheduledWorkService({ db, allowed, actorFor, prepareMessa
         try {
           if (!actor) throw error('The person who scheduled this work is unavailable.', 'schedule_actor_unavailable', 403);
           authorize(row, actor);
-          if (Date.parse(current) - Date.parse(occurrence.due_at) > graceMs) throw error('Talvori was not running at the scheduled time. This occurrence was missed.', 'missed_schedule', 409);
+          if (Date.parse(current) - Date.parse(occurrence.due_at) > graceMs) throw error('Frondose was not running at the scheduled time. This occurrence was missed.', 'missed_schedule', 409);
           await changeContext.run({ actor, source: 'Scheduled work' }, async () => {
             if (row.kind === 'action') transaction(() => { const result = dispatchAction(job, occurrence, actor); finish(job, occurrence, actor, 'completed', result); });
             else {

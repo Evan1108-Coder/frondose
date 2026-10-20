@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../data/api.js';
 import { Button, ErrorMessage, Field } from '../ui.jsx';
-import { TalvoriSymbol } from './Brand.jsx';
+import { FrondoseSymbol } from './Brand.jsx';
 
 export function IdentityGate({ children }) {
   const [identity, setIdentity] = useState(null), [error, setError] = useState(null), [busy, setBusy] = useState(false);
@@ -16,8 +16,8 @@ export function IdentityGate({ children }) {
       location.replace(`${location.pathname}#/overview`); location.reload();
     } catch (failure) { setError(failure); } finally { setBusy(false); }
   }
-  return <main className="identity-screen"><div className="identity-card"><TalvoriSymbol size={40} decorative />
-    <h1>{invitation ? 'Join your Talvori workspace' : identity ? 'Sign in to Talvori' : 'Opening Talvori'}</h1>
+  return <main className="identity-screen"><div className="identity-card"><FrondoseSymbol size={40} decorative />
+    <h1>{invitation ? 'Join your Frondose workspace' : identity ? 'Sign in to Frondose' : 'Opening Frondose'}</h1>
     <ErrorMessage error={error} />
     {identity || invitation ? <form onSubmit={submit}>
       {!invitation ? <Field label="Email"><input type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></Field> : <p>Create a password to activate the account assigned to this invitation.</p>}

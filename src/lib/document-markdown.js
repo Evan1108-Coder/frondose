@@ -2,7 +2,7 @@ import { parsePage, pageHash } from './navigation.js';
 import { safeWebsiteUrl } from './service-brands.js';
 import { isEmojiImage } from './custom-emojis.js';
 
-const ROUTE_ALIASES = { teams: 'areas', 'rumbo-agent': 'talvori-agent', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
+const ROUTE_ALIASES = { teams: 'areas', 'rumbo-agent': 'frondose-agent', 'talvori-agent': 'frondose-agent', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 
 /** Links never inherit a browser-relative protocol or carry credentials. */
 export function documentLink(value) {
@@ -10,7 +10,7 @@ export function documentLink(value) {
   if (!href || href.length > 8192 || /[\u0000-\u0020\u007f]/.test(href)) return null;
   if (href.startsWith('#/')) {
     const page = parsePage(href);
-    const original = href.split('?')[0].replace(/^#\/([^/]+)/, (_, view) => `#/${ROUTE_ALIASES[view] || view}`);
+    const original = href.split('?')[0].replace(/^#\/([^/]+)/, (_, view) => `#/${ROUTE_ALIASES[view] || view}`).replace(/^#\/settings\/(?:talvori|rumbo)-agent$/, '#/settings/frondose-agent');
     if (pageHash(page.view, page.id).split('?')[0] !== original) return null;
     return { kind: 'internal', href, page };
   }

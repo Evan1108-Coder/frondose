@@ -10,7 +10,7 @@ import { getInspection, captureRunContext } from '../server/run-context-store.mj
 import { captureSourceAccess, assertSourceAccess } from '../server/context-source-access.mjs';
 
 async function fixture(t) {
-  const dir = await mkdtemp(join(tmpdir(), 'talvori-context-security-'));
+  const dir = await mkdtemp(join(tmpdir(), 'frondose-context-security-'));
   const forbidden = () => { throw new Error('Provider calls are forbidden in context security fixtures.'); };
   const api = createLocalApi({ dataDir: dir, seedMode: 'clean', integrationOptions: { externalConnectionsPaused: false, env: {}, execute: forbidden, fetchImpl: forbidden, spawnProcess: forbidden } });
   const db = new DatabaseSync(api.dbPath);

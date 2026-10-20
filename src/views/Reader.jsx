@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Download, FileText, RotateCcw } from '../components/icons.jsx';
-import { TalvoriSymbol } from '../components/Brand.jsx';
+import { FrondoseSymbol } from '../components/Brand.jsx';
 import { DocumentContent } from '../components/DocumentContent.jsx';
 import { Button, useApp } from '../ui.jsx';
 import { apiRequest } from '../data/api.js';
@@ -10,7 +10,7 @@ import { customEmojis } from '../lib/custom-emojis.js';
 import { decodeReaderText, readableResource, readerBackPage, readerRecord, readerResourceTarget, READER_TEXT_LIMIT } from '../lib/reader-content.js';
 import './reader.css';
 
-const PAGE_NAMES = { chats: 'Conversations', teams: 'Areas', projects: 'Projects', documents: 'Documents', library: 'Knowledge', work: 'Active work', 'rumbo-agent': 'Talvori', overview: 'Today' };
+const PAGE_NAMES = { chats: 'Conversations', teams: 'Areas', projects: 'Projects', documents: 'Documents', library: 'Knowledge', work: 'Active work', 'rumbo-agent': 'Frondose', overview: 'Today' };
 
 async function readResource(target, workspaceId, signal) {
   const ids = readerResourceTarget(target.id);
@@ -54,7 +54,7 @@ async function loadReader(target, workspaceId, signal) {
   if (target.kind === 'guide') {
     const [{ DOC_ARTICLES }, { articleMarkdown }] = await Promise.all([import('../lib/docs-content.js'), import('../lib/docs-utils.js')]);
     const article = DOC_ARTICLES.find(item => item.id === target.id);
-    if (!article) throw new Error('This guide was not found. Browse Talvori Docs for the current articles.');
+    if (!article) throw new Error('This guide was not found. Browse Frondose Docs for the current articles.');
     return { title: article.title, content: articleMarkdown(article).replace(/^# [^\n]*\n\n/, ''), source: { view: 'docs', id: article.id } };
   }
   if (target.kind === 'resource') return readResource(target, workspaceId, signal);
@@ -97,9 +97,9 @@ export function Reader() {
 
   useEffect(() => {
     if (current.loading) return;
-    document.title = `${current.record?.title || 'Document unavailable'} · Talvori`;
+    document.title = `${current.record?.title || 'Document unavailable'} · Frondose`;
     heading.current?.focus({ preventScroll: true });
-    return () => { document.title = 'Talvori'; };
+    return () => { document.title = 'Frondose'; };
   }, [current.loading, current.record?.title]);
 
   function internalLink(next) {
@@ -111,14 +111,14 @@ export function Reader() {
   return <div className="reader-shell">
     <header className="reader-topbar">
       <button className="reader-back" type="button" onClick={() => navigate(back.view, back.id, back)}><ArrowLeft aria-hidden="true" /><span>Back to {backLabel}</span></button>
-      <nav className="reader-breadcrumb" aria-label="Breadcrumb"><button type="button" onClick={() => navigate('overview')}><TalvoriSymbol size={22} decorative /><span>{workspace.name}</span></button><span aria-hidden="true">/</span><strong aria-current="page">Docs</strong></nav>
+      <nav className="reader-breadcrumb" aria-label="Breadcrumb"><button type="button" onClick={() => navigate('overview')}><FrondoseSymbol size={22} decorative /><span>{workspace.name}</span></button><span aria-hidden="true">/</span><strong aria-current="page">Docs</strong></nav>
     </header>
     <main id="main-content" className="reader-scroll" tabIndex={-1} ref={scroll}>
       <article className="reader-document">
         {current.loading ? <p role="status" className="reader-loading">Opening document…</p> : current.error ? <div className="reader-unavailable" role="alert"><h1 ref={heading} tabIndex={-1}>Document unavailable</h1><p>{current.error.message}</p><Button icon={RotateCcw} onClick={() => setAttempt(value => value + 1)}>Try again</Button></div> : <>
           <div className="reader-document-heading"><FileText aria-hidden="true" /><h1 ref={heading} tabIndex={-1}>{current.record.title || 'Untitled document'}</h1></div>
           {current.record.version ? <p className="reader-version">Version {current.record.version}</p> : null}
-          {current.record.unsupported ? <div className="reader-unavailable"><p>This file does not have a document preview. Download the original to open it in an appropriate app.</p><p>Talvori can read UTF-8 .txt and Markdown files up to 512 KB here.</p></div> : current.record.plain ? <div className="reader-plain">{current.record.content}</div> : <DocumentContent content={current.record.content} emojis={customEmojis(data.workspace_items, workspace.id, true)} onInternalLink={internalLink} />}
+          {current.record.unsupported ? <div className="reader-unavailable"><p>This file does not have a document preview. Download the original to open it in an appropriate app.</p><p>Frondose can read UTF-8 .txt and Markdown files up to 512 KB here.</p></div> : current.record.plain ? <div className="reader-plain">{current.record.content}</div> : <DocumentContent content={current.record.content} emojis={customEmojis(data.workspace_items, workspace.id, true)} onInternalLink={internalLink} />}
           <footer className="reader-document-footer"><Button icon={ArrowRight} onClick={() => navigate(current.record.source.view, current.record.source.id, current.record.source)}>Open {current.record.source.view === 'docs' ? 'in handbook' : current.record.source.view === 'teams' ? 'Area resources' : 'original'}</Button>{current.record.download ? <a className="button" href={current.record.download} download={current.record.item.file_name}><Download aria-hidden="true" />Download original</a> : null}</footer>
         </>}
       </article>

@@ -1,6 +1,6 @@
 # Event-triggered work
 
-Event triggers run a reviewed agent request when Talvori records one of three
+Event triggers run a reviewed agent request when Frondose records one of three
 supported local events: a Route is created, a Route is updated, or an update or
 reply is published. They are not external Plugin watchers, browser-page-open
 triggers, or a general-purpose workflow builder.
@@ -9,7 +9,7 @@ triggers, or a general-purpose workflow builder.
 
 1. Connect an AI account, verify it using the connection's explicit test, and
    create a conversation with a profile bound to that account.
-2. Open **Talvori → Scheduled** or **Settings → Scheduled messages & actions**.
+2. Open **Frondose → Scheduled** or **Settings → Scheduled messages & actions**.
    Choose **New event trigger** in Event-triggered work.
 3. Name the trigger and select an existing connected agent conversation.
 4. Choose a supported event and scope: this workspace, one Area, one project,
@@ -17,7 +17,7 @@ triggers, or a general-purpose workflow builder.
 5. Write the exact request and choose a minimum time between runs, from 5 to
    1,440 minutes. Events arriving during the cooldown are skipped, not queued.
 6. Choose **Review context**, then **Inspect context**. Read the exact captured
-   Talvori prompt and choose **Use this context**.
+   Frondose prompt and choose **Use this context**.
 7. Confirm recurring provider usage and the bounded future event metadata.
    Choose **Enable event trigger**. Opening the editor, typing, and inspecting
    context do not contact an AI or enable a trigger.
@@ -34,7 +34,7 @@ prompt. This is not fresh-state workspace monitoring.
 - At most five active triggers per account in a workspace.
 - At most 12 dispatches in a rolling 24-hour window per trigger.
 - At least five minutes between dispatches, and at most one in-flight run per
-  Talvori server across all event triggers. Matching events received while that
+  Frondose server across all event triggers. Matching events received while that
   worker is busy are skipped, not queued. These are dispatch limits, not a
   monetary spending cap.
 - Recorded matching events, skips, failures, and run links appear in **Event
@@ -50,7 +50,7 @@ An unavailable connection cannot be selected to enable new work. A profile,
 model, account, or source-access change can prevent future execution; reconnect
 and create freshly reviewed work rather than silently changing its authority.
 
-Talvori's persistent server must remain running and online. It can operate
+Frondose's persistent server must remain running and online. It can operate
 continuously on suitable hosting, but the browser tab itself is not a server.
 Missed events are not backfilled, interrupted or uncertain executions are not
 blindly retried, and no off-app notification delivery is implied.

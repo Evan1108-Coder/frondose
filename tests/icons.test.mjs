@@ -30,7 +30,7 @@ test('empty states use photographic assets with a theme-aware tint overlay', () 
   assert.match(art, /empty-illustration-tint/);
   assert.match(css, /mask: var\(--empty-art-source\)/);
   assert.match(css, /mix-blend-mode: color/);
-  const agentCss = readFileSync(new URL('../src/views/talvori-agent.css', import.meta.url), 'utf8');
+  const agentCss = readFileSync(new URL('../src/views/frondose-agent.css', import.meta.url), 'utf8');
   assert.match(agentCss, /\.rumbo-agent-disconnected > \.empty-illustration \{[^}]*width: 220px/);
 });
 

@@ -40,10 +40,10 @@ async function fixture(callback) {
 
 function tool(launch, name, args, capabilityOverride) {
   return new Promise((resolve, reject) => {
-    const socket = createConnection(launch.options.env.TALVORI_NATIVE_TOOL_SOCKET); let text = '';
+    const socket = createConnection(launch.options.env.FRONDOSE_NATIVE_TOOL_SOCKET); let text = '';
     socket.setEncoding('utf8'); socket.setTimeout(2000, () => socket.destroy(new Error('Bridge timeout')));
     socket.on('error', reject);
-    socket.on('connect', () => socket.write(JSON.stringify({ id: 'call', capability: capabilityOverride ?? launch.options.env.TALVORI_NATIVE_TOOL_CAPABILITY, method: 'tools/call', params: { name, arguments: args } }) + '\n'));
+    socket.on('connect', () => socket.write(JSON.stringify({ id: 'call', capability: capabilityOverride ?? launch.options.env.FRONDOSE_NATIVE_TOOL_CAPABILITY, method: 'tools/call', params: { name, arguments: args } }) + '\n'));
     socket.on('data', chunk => { text += chunk; if (text.includes('\n')) { socket.end(); resolve(JSON.parse(text.split('\n')[0])); } });
   });
 }
@@ -54,7 +54,7 @@ test('native provider bridge exposes reviewed context, queues writes and applies
   const run = (await call('/runs', { ...input, mode: 'live', context_inspection_id: preview.id })).run;
   assert.equal(launches.length, 1); const launch = launches[0];
   assert.equal(launch.child.prompt, preview.finalPrompt);
-  assert.ok(launch.options.env.TALVORI_NATIVE_TOOL_SOCKET);
+  assert.ok(launch.options.env.FRONDOSE_NATIVE_TOOL_SOCKET);
   assert.equal((await tool(launch, 'get_project_context', { project_id: project.id })).result.ok, true);
   const notReviewed = (await tool(launch, 'read_document', { document_id: document.id })).result;
   assert.equal(notReviewed.ok, false, 'An unselected document must not be read through a loose attachment reference');
@@ -76,7 +76,7 @@ test('native provider bridge exposes reviewed context, queues writes and applies
   assert.equal(snapshot.agent_tool_calls, undefined); assert.equal(snapshot.agent_tool_requests, undefined);
   await call(`/runs/${run.id}/stop`, {}, 'POST', 200);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(existsSync(launch.options.env.TALVORI_NATIVE_TOOL_SOCKET), false);
+  assert.equal(existsSync(launch.options.env.FRONDOSE_NATIVE_TOOL_SOCKET), false);
   assert.equal((await call(`/runs/${run.id}/native-tools`)).result.requests[0].status, 'applied');
 }));
 
@@ -87,6 +87,6 @@ test('native access is off by default, needs a consumed preview and cannot chang
   assert.equal((await request('/runs', { ...input, mode: 'live', context_inspection_id: preview.id })).status, 409);
   assert.equal(launches.length, 0);
   const run = (await call('/runs', { ...input, native_tools: false, mode: 'live', context_inspection_id: preview.id })).run;
-  assert.equal(launches[0].options.env.TALVORI_NATIVE_TOOL_SOCKET, undefined);
+  assert.equal(launches[0].options.env.FRONDOSE_NATIVE_TOOL_SOCKET, undefined);
   await call(`/runs/${run.id}/stop`, {}, 'POST', 200);
 }));

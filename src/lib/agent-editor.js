@@ -104,14 +104,14 @@ export function agentFormPayload(form, item, workspaceId) {
 /** Portable definitions intentionally exclude accounts, folders, scopes and permission grants. */
 export function exportAgentDefinition(agent) {
   const form = initialAgentForm(agent);
-  return { format: "talvori-agent", format_version: 1, definition: Object.fromEntries(DEFINITION_FIELDS.map(key => [key, form[key]])) };
+  return { format: "frondose-agent", format_version: 1, definition: Object.fromEntries(DEFINITION_FIELDS.map(key => [key, form[key]])) };
 }
 
 export function parseAgentDefinition(text) {
-  if (typeof text !== "string" || text.length > 250000) throw new Error("Choose a Talvori agent definition smaller than 250 KB.");
+  if (typeof text !== "string" || text.length > 250000) throw new Error("Choose a Frondose agent definition smaller than 250 KB.");
   let value;
   try { value = JSON.parse(text); } catch { throw new Error("Choose a valid JSON agent definition."); }
-  if (!value || !["talvori-agent", "rumbo-agent"].includes(value.format) || value.format_version !== 1 || !value.definition || Array.isArray(value.definition) || typeof value.definition !== "object") throw new Error("This file is not a supported Talvori agent definition (version 1).");
+  if (!value || !["frondose-agent", "talvori-agent", "rumbo-agent"].includes(value.format) || value.format_version !== 1 || !value.definition || Array.isArray(value.definition) || typeof value.definition !== "object") throw new Error("This file is not a supported Frondose agent definition (version 1).");
   const safe = Object.fromEntries(DEFINITION_FIELDS.filter(key => Object.hasOwn(value.definition, key)).map(key => [key, value.definition[key]]));
   if (Object.values(safe).some(value => typeof value !== "string")) throw new Error("Agent definition fields must be text.");
   const form = initialAgentForm(null, safe);

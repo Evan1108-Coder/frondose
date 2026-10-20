@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, FileText, Hammer, Info, Search } from "./icons.jsx";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import { apiRequest } from '../data/api.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { API_PROVIDERS, validApiModel } from '../lib/ai-provider-catalog.js';
@@ -91,8 +91,8 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
     await execute(async () => {
       const input = agentFormPayload(form, item, workspace?.id);
       const result = item
-        ? await talvoriActions.updateAgent(item.id, input)
-        : await talvoriActions.createAgent(input);
+        ? await frondoseActions.updateAgent(item.id, input)
+        : await frondoseActions.createAgent(input);
       notify(`${input.name} ${item ? "saved" : "created"}`);
       onClose();
       navigate("agents", result?.id ?? item?.id);
@@ -150,7 +150,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
                   </label>
                 ))}
               </div>
-              <p className="agent-provider-help">{form.provider === "claude" ? "Claude Code can read and search in this release. Project editing is not supported yet." : form.provider === "codex" ? "Codex supports read-only or project-edit access. Choose permissions before each session." : form.provider === 'copilot' ? 'Copilot uses your private local ACP account. General chat and reviewed Talvori actions are supported; native/file tools are disabled.' : "Browser AI connections support conversations and reviewed Talvori actions. Select an explicit chat model; your connected account’s credits apply."}</p>
+              <p className="agent-provider-help">{form.provider === "claude" ? "Claude Code can read and search in this release. Project editing is not supported yet." : form.provider === "codex" ? "Codex supports read-only or project-edit access. Choose permissions before each session." : form.provider === 'copilot' ? 'Copilot uses your private local ACP account. General chat and reviewed Frondose actions are supported; native/file tools are disabled.' : "Browser AI connections support conversations and reviewed Frondose actions. Select an explicit chat model; your connected account’s credits apply."}</p>
             </fieldset>
 
             <Select label="Shared provider connection" name="provider_connection_id" value={form.provider_connection_id} disabled={busy} onChange={value => change("provider_connection_id", value)}>
@@ -158,7 +158,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
               {form.provider_connection_id && !connections.some(connection => connection.id === form.provider_connection_id) ? <option value={form.provider_connection_id}>Unavailable connection — replace before running</option> : null}
               {connections.map(connection => <option key={connection.id} value={connection.id}>{val(connection, "account_label") || PROVIDERS.find(provider => provider.id === form.provider)?.label} · {(connection.workspace_states?.[scopedWorkspace] || connection.state)?.replaceAll("_", " ") || "state unknown"}</option>)}
             </Select>
-            <p className="agent-editor-future-note">Profiles share their connected account’s credentials and usage limits. Talvori does not import ordinary ChatGPT or Claude chat history.</p>
+            <p className="agent-editor-future-note">Profiles share their connected account’s credentials and usage limits. Frondose does not import ordinary ChatGPT or Claude chat history.</p>
 
             <Field label="Name">
               <input {...defaultField('name', 'Name')} autoFocus name="name" required maxLength={200} value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="e.g. Code reviewer" disabled={busy} aria-invalid={validation?.field === "name" || undefined} />
@@ -171,12 +171,12 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
             <Field label="Instructions" hint="Applied to this agent's sessions. Permissions are chosen before each run.">
               <textarea {...defaultField('instructions', 'Instructions')} name="instructions" rows={4} maxLength={100000} value={form.instructions} onChange={(event) => change("instructions", event.target.value)} placeholder="Describe how this agent should work, what to focus on, and how to report results." disabled={busy} />
             </Field>
-            <Field label="Default working folder" hint="Optional. A linked project folder takes precedence. Talvori checks the folder when a session starts.">
+            <Field label="Default working folder" hint="Optional. A linked project folder takes precedence. Frondose checks the folder when a session starts.">
               <input {...defaultField('folder', 'Default working folder')} name="working_directory" value={form.working_directory} maxLength={2000} spellCheck={false} onChange={(event) => change("working_directory", event.target.value)} placeholder="/Users/you/Projects/example" disabled={busy} aria-invalid={validation?.field === "working_directory" || undefined} />
             </Field>
             <section className="agent-editor-section" aria-label="Execution defaults"><h3>Execution defaults</h3>
-              {isBrowserAiProvider(form.provider) ? <div className="agent-api-model"><Field label="Chat model"><Select aria-label="Chat model" value={form.model} disabled={busy || modelsLoading} onChange={value => change('model', value)}><option value="">Choose a model</option>{(apiModels[form.provider] || []).map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}{form.model && !(apiModels[form.provider] || []).some(model => model.id === form.model) ? <option value={form.model}>{form.model} · configured</option> : null}</Select></Field><Button variant="ghost" busy={modelsLoading} disabled={busy || modelsLoading} onClick={async () => { setModelsLoading(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${form.provider}/models?workspace_id=${encodeURIComponent(scopedWorkspace)}`); setApiModels(current => ({ ...current, [form.provider]: response.result.filter(model => validApiModel(model.id) && (!model.output_modalities?.length || model.output_modalities.includes('text'))) })); } catch (cause) { setError(cause); } finally { setModelsLoading(false); } }}>Load models from account</Button></div> : <Field label="Model identifier" hint="Optional provider identifier. Talvori does not verify model availability here; the connected provider can reject an unsupported model."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>}
-              {form.provider === "codex" ? <Select label="Reasoning effort" name="reasoning_effort" value={form.reasoning_effort} disabled={busy} onChange={value => change("reasoning_effort", value)}><option value="">Provider default</option>{AGENT_REASONING_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : <p>Reasoning-effort selection is only available for Codex in Talvori.</p>}
+              {isBrowserAiProvider(form.provider) ? <div className="agent-api-model"><Field label="Chat model"><Select aria-label="Chat model" value={form.model} disabled={busy || modelsLoading} onChange={value => change('model', value)}><option value="">Choose a model</option>{(apiModels[form.provider] || []).map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}{form.model && !(apiModels[form.provider] || []).some(model => model.id === form.model) ? <option value={form.model}>{form.model} · configured</option> : null}</Select></Field><Button variant="ghost" busy={modelsLoading} disabled={busy || modelsLoading} onClick={async () => { setModelsLoading(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${form.provider}/models?workspace_id=${encodeURIComponent(scopedWorkspace)}`); setApiModels(current => ({ ...current, [form.provider]: response.result.filter(model => validApiModel(model.id) && (!model.output_modalities?.length || model.output_modalities.includes('text'))) })); } catch (cause) { setError(cause); } finally { setModelsLoading(false); } }}>Load models from account</Button></div> : <Field label="Model identifier" hint="Optional provider identifier. Frondose does not verify model availability here; the connected provider can reject an unsupported model."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>}
+              {form.provider === "codex" ? <Select label="Reasoning effort" name="reasoning_effort" value={form.reasoning_effort} disabled={busy} onChange={value => change("reasoning_effort", value)}><option value="">Provider default</option>{AGENT_REASONING_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : <p>Reasoning-effort selection is only available for Codex in Frondose.</p>}
               <p>Model and reasoning support depend on your installed provider client and selected model. Saving does not test your account.</p>
               <Select label="Permission policy" name="permission_policy" value={form.permission_policy} disabled={busy} onChange={value => change("permission_policy", value)}><option value="review">Review required — no automatic write approval</option><option value="read-only">Read-only — do not request project edits</option></Select>
               <Field label="Expected output behavior" hint="Describe the format, evidence, stopping condition, and what must be reviewed. Instructions never grant permissions."><textarea {...defaultField('output-behavior', 'Expected output behavior')} name="output_behavior" rows={3} maxLength={10000} value={form.output_behavior} disabled={busy} onChange={event => change("output_behavior", event.target.value)} placeholder="Return findings with evidence, unresolved questions, and a reviewable output." /></Field>

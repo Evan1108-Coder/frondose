@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { refreshTalvori } from '../data/useTalvori.js';
+import { refreshFrondose } from '../data/useFrondose.js';
 import { Button, Dialog, ErrorMessage, Select, useApp } from '../ui.jsx';
 import { ChangeReview } from './ChangeReview.jsx';
 import { requestUpdateNavigation, useUnsavedUpdate } from './UnsavedUpdates.jsx';
@@ -77,7 +77,7 @@ export function AgentProfileHistory({ agent, onClose }) {
   useEffect(() => {
     if (saved && !busy && !delivered.current) {
       delivered.current = true;
-      void refreshTalvori().catch(() => {});
+      void refreshFrondose().catch(() => {});
       notify(`Selected content saved as profile version ${saved.restored_version?.version ?? saved.current_version}. No work was started.`); onClose();
     }
   }, [saved, busy, notify, onClose]);

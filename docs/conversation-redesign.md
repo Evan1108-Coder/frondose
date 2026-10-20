@@ -1,6 +1,6 @@
 # Conversation and reader extension
 
-October 20, 2026. This is an Operate / Read extension of the established Talvori interface, not a replacement visual world. The system snapshot is in `DESIGN.md`; the surface contract is in `.impeccable/surfaces/src-views-chats-jsx.md`.
+October 20, 2026. This is an Operate / Read extension of the established Frondose interface, not a replacement visual world. The system snapshot is in `DESIGN.md`; the surface contract is in `.impeccable/surfaces/src-views-chats-jsx.md`.
 
 ## What stayed, what changed
 
@@ -12,7 +12,7 @@ October 20, 2026. This is an Operate / Read extension of the established Talvori
 | Explicit connection identity, setup/readiness, permissions, and approvals | A full-viewport temporary Docs reader returns to its origin without adding a permanent sidebar/recent item |
 | Existing keyboard and reduced-motion implementation | Narrow conversation controls wrap while code/tables keep local horizontal scrollers |
 
-Talvori's own tab remains the place for its identity, explicit AI binding, setup, Activity, and Scheduled work. Conversations is the chat surface. The reader and message alignment do not establish a global prohibition on other valid Talvori screen compositions.
+Frondose's own tab remains the place for its identity, explicit AI binding, setup, Activity, and Scheduled work. Conversations is the chat surface. The reader and message alignment do not establish a global prohibition on other valid Frondose screen compositions.
 
 ## Evidence and finish decision
 
@@ -26,18 +26,18 @@ The refreshed finish verdict is **ship for those three fixes only**. The (390px)
 
 Local evidence:
 
-- `/tmp/talvori-conversation-desktop.png`
-- `/tmp/talvori-conversation-mobile.png`
-- `/tmp/talvori-conversation-320.png`
-- `/tmp/talvori-conversation-768.png`
-- `/tmp/talvori-reader-mobile.png`
-- `/tmp/talvori-conversation-redesign-qa.json`
+- `/tmp/frondose-conversation-desktop.png`
+- `/tmp/frondose-conversation-mobile.png`
+- `/tmp/frondose-conversation-320.png`
+- `/tmp/frondose-conversation-768.png`
+- `/tmp/frondose-reader-mobile.png`
+- `/tmp/frondose-conversation-redesign-qa.json`
 
 The browser fixture reports checks for neutral user bubbles, rich text/math/table/code, compact work status, observed code comparisons, no full execution logs, queued follow-ups without a provider call, protected handoff drafts, reader return preserving the draft, overflow, and single focus treatment. These fixture checks and screenshots are not evidence that every public provider was live-account verified. Native software-keyboard behavior was not tested. Automated regression, production-build, and Sites checks are separate validation evidence; this document intentionally does not freeze their changing test totals.
 
 ## Asset boundary
 
-No new shipping raster was introduced by this extension. The generated concept stayed outside the repository and was used only to critique structure. Its invented domain, demonstration content, layout branding, and imagery were not shipped. Existing Talvori identity assets, provider marks, and the existing empty-art system remain the product assets; this task does not re-author their provenance.
+No new shipping raster was introduced by this extension. The generated concept stayed outside the repository and was used only to critique structure. Its invented domain, demonstration content, layout branding, and imagery were not shipped. Existing Frondose identity assets, provider marks, and the existing empty-art system remain the product assets; this task does not re-author their provenance.
 
 ## Documentation source and known drift
 

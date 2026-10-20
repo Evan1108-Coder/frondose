@@ -15,7 +15,7 @@ async function fixture(run, fetchImpl, overrides = {}) {
   const dataDir = mkdtempSync(join(tmpdir(), 'rumbo-readiness-')), db = new DatabaseSync(':memory:');
   db.exec(readFileSync(new URL('../server/schema.sql', import.meta.url), 'utf8'));
   db.prepare('INSERT INTO workspaces(id,name,slug,created_at,updated_at) VALUES(?,?,?,?,?)').run('ws', 'Fixture', 'fixture', 'now', 'now');
-  const env = { TALVORI_SLACK_CALLBACK_URL: 'https://callback.example.test/api/connection-platform/oauth/callback', ...Object.fromEntries(['GITHUB','GOOGLE','LINEAR','JIRA','SLACK','FIGMA'].flatMap(family => [[`TALVORI_${family}_CLIENT_ID`, 'fixture-client'], [`TALVORI_${family}_CLIENT_SECRET`, 'fixture-secret']])), ...overrides };
+  const env = { FRONDOSE_SLACK_CALLBACK_URL: 'https://callback.example.test/api/connection-platform/oauth/callback', ...Object.fromEntries(['GITHUB','GOOGLE','LINEAR','JIRA','SLACK','FIGMA'].flatMap(family => [[`FRONDOSE_${family}_CLIENT_ID`, 'fixture-client'], [`FRONDOSE_${family}_CLIENT_SECRET`, 'fixture-secret']])), ...overrides };
   const calls = [];
   const platform = createConnectionPlatform({ db, dataDir, env, workerIntervalMs: 0, authorize: () => true, fetchImpl: async (url, options) => { calls.push({ url: String(url), options }); return fetchImpl ? fetchImpl(String(url), options) : json({ access_token: 'fixture-access', refresh_token: 'fixture-refresh', expires_in: 3600 }); } });
   async function connect(provider) { const row = await platform.create({ provider, workspace_id: 'ws' }, actor); const authorization = await platform.beginAuthorization(row.id, actor); const state = new URL(authorization.authorization_url).searchParams.get('state'); return platform.completeAuthorization({ state, code: 'fixture-code' }, actor); }
@@ -41,7 +41,7 @@ test('Slack rejects HTTP callback before external access; diagnostics never expo
   assert.equal(slack.configured, false); assert.match(slack.setup_required.join(' '), /HTTPS/); assert.ok(!JSON.stringify(catalog).includes('fixture-secret'));
   const row = await platform.create({ provider: 'slack', workspace_id: 'ws' }, actor);
   await assert.rejects(platform.beginAuthorization(row.id, actor), /HTTPS/); assert.equal(calls.length, 0);
-}, undefined, { TALVORI_SLACK_CALLBACK_URL: '' }));
+}, undefined, { FRONDOSE_SLACK_CALLBACK_URL: '' }));
 
 test('declined consent consumes state and never saves a token', () => fixture(async ({ platform, calls, db }) => {
   const row = await platform.create({ provider: 'linear', workspace_id: 'ws' }, actor), flow = await platform.beginAuthorization(row.id, actor), state = new URL(flow.authorization_url).searchParams.get('state');

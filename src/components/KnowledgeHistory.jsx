@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Dialog, ErrorMessage } from '../ui.jsx';
-import { talvoriApi } from '../data/api.js';
+import { frondoseApi } from '../data/api.js';
 import { DocumentContent } from './DocumentContent.jsx';
 import { RevisionComparison } from './RevisionComparison.jsx';
 
@@ -9,7 +9,7 @@ export function KnowledgeHistory({ item, onRestore, onClose }) {
   const [compare, setCompare] = useState(null);
   useEffect(() => {
     let alive = true;
-    talvoriApi.history(item.id, item.workspace_id).then(response => {
+    frondoseApi.history(item.id, item.workspace_id).then(response => {
       if (!alive) return;
       const versions = new Map([[item.version, item]]);
       for (const change of response.result) if (change.entity_type === 'knowledge_entries') {

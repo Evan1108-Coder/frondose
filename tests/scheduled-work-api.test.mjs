@@ -127,7 +127,7 @@ async function proposedAction(f,proposal,{cookie,content='Prepare a schedule cha
   const response=await f.call(`/chats/${f.chat.id}/turns`,{agent_id:f.agent.id,content,client_turn_id:`proposal_${crypto.randomUUID()}`,work_mode:'conversation'},'POST',cookie);
   for(let i=0;i<80;i++){const run=f.db.prepare('SELECT * FROM runs WHERE id=?').get(response.run.id);if(run?.status==='completed')break;await new Promise(resolve=>setTimeout(resolve,10));}
   const run=f.db.prepare('SELECT * FROM runs WHERE id=?').get(response.run.id);assert.equal(run.status,'completed');
-  captureAgentActions(f.db,run.id,`\`\`\`talvori-actions\n${JSON.stringify({nonce:'schedule_fixture',actions:[proposal]})}\n\`\`\``,'schedule_fixture');
+  captureAgentActions(f.db,run.id,`\`\`\`frondose-actions\n${JSON.stringify({nonce:'schedule_fixture',actions:[proposal]})}\n\`\`\``,'schedule_fixture');
   return f.db.prepare('SELECT * FROM agent_action_requests WHERE run_id=?').get(run.id);
 }
 
@@ -193,7 +193,7 @@ test('schedule awareness is sponsor-only and another manager cannot confirm or c
   const privateSchedule=(await f.call('/scheduled-work',f.scheduleBody({chat_id:f.chat.id,content:'MEMBER_PRIVATE_SCHEDULE_TITLE'},{request_id:'member_private_schedule'}),'POST',who.cookie)).result;
   assert.ok(!JSON.stringify((await f.call(`/agent-awareness?workspace_id=${f.workspace.id}`,undefined,'GET',who.ownerCookie)).context.schedules).includes('MEMBER_PRIVATE_SCHEDULE_TITLE'));
   const sourceRun=f.db.prepare('SELECT * FROM runs WHERE id=?').get(action.run_id);
-  assert.throws(()=>captureAgentActions(f.db,sourceRun.id,`\`\`\`talvori-actions\n${JSON.stringify({nonce:'foreign_schedule',actions:[{type:'schedule.update',schedule_id:privateSchedule.id,version:1,state:'cancelled'}]})}\n\`\`\``,'foreign_schedule'),/source sponsor/);
+  assert.throws(()=>captureAgentActions(f.db,sourceRun.id,`\`\`\`frondose-actions\n${JSON.stringify({nonce:'foreign_schedule',actions:[{type:'schedule.update',schedule_id:privateSchedule.id,version:1,state:'cancelled'}]})}\n\`\`\``,'foreign_schedule'),/source sponsor/);
 });
 
 test('schedule metadata copied into a later run preserves original historical source ACLs',async t=>{
@@ -247,7 +247,7 @@ test('scheduled local snapshot notes retain historical source access and cannot 
   const f=await fixture(t),privateProject=(await f.call('/projects',{workspace_id:f.workspace.id,name:'Private snapshot source'})).project;
   const doc=(await f.call('/documents',{workspace_id:f.workspace.id,project_id:privateProject.id,title:'Snapshot evidence',content:'SNAPSHOT_NOTE_HISTORICAL_SECRET'})).document;
   const who=await signedMember(f),snapshot=(await f.call(`/chat-collaboration/${f.chat.id}`,{workspace_id:f.workspace.id,action:'context',version:0,sources:[{kind:'document',id:doc.id}]},'POST',who.cookie)).result;
-  const payload={chat_id:f.chat.id,content:'Pinned context note',context_snapshot_id:snapshot.id,attachments:[{name:`talvori-context-${snapshot.id}.md`,type:'text/markdown',content:snapshot.content,rumbo_context_snapshot:snapshot.id}]};
+  const payload={chat_id:f.chat.id,content:'Pinned context note',context_snapshot_id:snapshot.id,attachments:[{name:`frondose-context-${snapshot.id}.md`,type:'text/markdown',content:snapshot.content,rumbo_context_snapshot:snapshot.id}]};
   const schedule=(await f.call('/scheduled-work',f.scheduleBody(payload),'POST',who.cookie)).result;
   await f.call(`/documents/${doc.id}`,{project_id:f.project.id,content:'Public current text'},'PATCH',who.ownerCookie);
   await f.call('/governance',{workspace_id:f.workspace.id,action:'grant',member_id:who.member.id,permission:'documents.read',effect:'deny',scope_type:'project',scope_id:privateProject.id,reason:'Revoke snapshot historical source'},'POST',who.ownerCookie);
@@ -259,7 +259,7 @@ test('scheduled local snapshot notes retain historical source access and cannot 
 
 test('OpenRouter scheduled message uses exact reviewed context and returns a reviewable local action',async t=>{
   const key=randomBytes(32),requests=[];
-  const f=await fixture(t,{integrationOptions:{env:{TALVORI_CONNECTION_ENCRYPTION_KEY:key.toString('base64')},fetchImpl:async(url,options)=>{
+  const f=await fixture(t,{integrationOptions:{env:{FRONDOSE_CONNECTION_ENCRYPTION_KEY:key.toString('base64')},fetchImpl:async(url,options)=>{
     requests.push({url,options});assert.equal(url,'https://openrouter.ai/api/v1/chat/completions');
     const prompt=JSON.parse(options.body).messages[0].content,nonce=prompt.match(/"nonce":"([^"]+)"/)?.[1];assert.ok(nonce);
     return Response.json({choices:[{message:{content:`Please review the Route.\n\`\`\`rumbo-actions\n${JSON.stringify({nonce,actions:[{type:'record.create',resource:'tasks',fields:{title:'API-provider proposed Route',project_id:f.project.id}}]})}\n\`\`\``},finish_reason:'stop'}],usage:{prompt_tokens:40,completion_tokens:15,total_tokens:55}});

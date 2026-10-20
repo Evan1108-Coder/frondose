@@ -1,11 +1,11 @@
-// Isolated UI regression suite. Set TALVORI_PLAYWRIGHT_MODULE to an installed Playwright module when it is not a project dependency.
+// Isolated UI regression suite. Set FRONDOSE_PLAYWRIGHT_MODULE to an installed Playwright module when it is not a project dependency.
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
-const { chromium } = await import(process.env.TALVORI_PLAYWRIGHT_MODULE || 'playwright');
+const { chromium } = await import(process.env.FRONDOSE_PLAYWRIGHT_MODULE || 'playwright');
 import { createLocalApi } from '../server/local-api.mjs';
 import { SETTINGS_GROUPS, PAGE_RESOURCE, RESOURCE_TYPES } from '../src/lib/settings-catalog.js';
 const dir = await mkdtemp(join(tmpdir(), 'rumbo-settings-browser-'));
@@ -30,7 +30,7 @@ const go = async section => { await page.goto(`${base}/#/settings/${section}`); 
 const select = async (label, option) => { await page.getByRole('combobox', { name: label, exact: true }).click(); await page.getByRole('option', { name: option, exact: true }).click(); };
 try {
   await go('preferences');
-  assert.match(await page.title(), /Talvori/);
+  assert.match(await page.title(), /Frondose/);
   for (const [, sections] of SETTINGS_GROUPS) for (const [id] of sections) {
     await go(id);
     assert.ok((await page.locator('.settings-body').innerText()).trim().length > 10, id);

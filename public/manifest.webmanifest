@@ -1,6 +1,6 @@
 {
-  "name": "Talvori",
-  "short_name": "Talvori",
+  "name": "Frondose",
+  "short_name": "Frondose",
   "description": "Organize agents, projects, conversations, and connected work.",
   "start_url": "/",
   "scope": "/",
@@ -9,7 +9,7 @@
   "theme_color": "#0f1011",
   "icons": [
     {
-      "src": "/brand/talvori-app-icon.png",
+      "src": "/brand/frondose-app-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

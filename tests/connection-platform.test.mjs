@@ -17,7 +17,7 @@ async function fixture(run, options = {}) {
   db.prepare('INSERT INTO workspaces(id,name,slug,created_at,updated_at) VALUES(?,?,?,?,?)').run('ws', 'Workspace', 'ws', 'now', 'now');
   db.prepare('INSERT INTO teams(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?)').run('team', 'ws', 'Team', 'now', 'now');
   db.prepare('INSERT INTO projects(id,workspace_id,name,identifier,created_at,updated_at) VALUES(?,?,?,?,?,?)').run('project', 'ws', 'Project', 'APP', 'now', 'now');
-  const calls = [], permissions = [], env = { TALVORI_GITHUB_CLIENT_ID: 'test-client', TALVORI_GITHUB_CLIENT_SECRET: 'test-secret', TALVORI_SLACK_CLIENT_ID: 'slack-client', TALVORI_SLACK_CLIENT_SECRET: 'slack-secret', TALVORI_SLACK_CALLBACK_URL: 'https://example.test/api/connection-platform/oauth/callback', ...options.env };
+  const calls = [], permissions = [], env = { FRONDOSE_GITHUB_CLIENT_ID: 'test-client', FRONDOSE_GITHUB_CLIENT_SECRET: 'test-secret', FRONDOSE_SLACK_CLIENT_ID: 'slack-client', FRONDOSE_SLACK_CLIENT_SECRET: 'slack-secret', FRONDOSE_SLACK_CALLBACK_URL: 'https://example.test/api/connection-platform/oauth/callback', ...options.env };
   const platform = createConnectionPlatform({ db, dataDir, authorize: async request => { permissions.push(request); return request.actor?.id === 'owner'; }, ...options, env, fetchImpl: async (url, config) => { calls.push({ url: String(url), ...config }); if (options.fetchImpl) return options.fetchImpl(url, config); if (String(url).includes('/oauth/') || String(url).includes('/oauth.v2.access')) return json({ access_token: 'sensitive-access-token', refresh_token: 'sensitive-refresh-token', expires_in: 3600 }); if (String(url).includes('/user/repos')) return json([{ full_name: 'acme/app', html_url: 'https://github.com/acme/app' }]); if (String(url).includes('/issues') && config.method === 'POST') return json({ id: 7, title: 'Created issue' }); if (String(url).includes('/issues')) return json([{ id: 1, title: 'Example', html_url: 'https://github.com/acme/app/issues/1', updated_at: '2026-01-01' }]); return json({ ok: true, channels: [{ id: 'C1', name: 'general', is_member: true }] }); } });
   async function connect(provider = 'github') { const connection = await platform.create({ provider, workspace_id: 'ws' }, actor); const flow = await platform.beginAuthorization(connection.id, actor); const state = new URL(flow.authorization_url).searchParams.get('state'); await platform.completeAuthorization({ state, code: 'test-code' }, actor); return connection; }
   try { await run({ platform, db, dataDir, calls, permissions, connect }); } finally { platform.close(); db.close(); rmSync(dataDir, { recursive: true }); }
@@ -135,7 +135,7 @@ test('signed webhook delivery is deduplicated into persistent sync queue', () =>
   assert.equal((await platform.jobs.ingest(connection.id, body, headers)).duplicate, true);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM platform_sync_jobs').get().n, 3);
   await platform.jobs.tick(); assert.equal(db.prepare("SELECT COUNT(*) AS n FROM platform_sync_jobs WHERE state='completed'").get().n, 1);
-}, { env: { TALVORI_GITHUB_WEBHOOK_SECRET: 'webhook-secret' }, workerIntervalMs: 0 }));
+}, { env: { FRONDOSE_GITHUB_WEBHOOK_SECRET: 'webhook-secret' }, workerIntervalMs: 0 }));
 
 test('Slack signing enforces freshness and returns verified URL challenge', () => fixture(async ({ platform, connect }) => {
   const connection = await connect('slack'); await platform.jobs.policy(connection.id, actor, { webhooks_enabled: true });
@@ -143,7 +143,7 @@ test('Slack signing enforces freshness and returns verified URL challenge', () =
   const signature = `v0=${createHmac('sha256', 'slack-signing-secret').update(`v0:${timestamp}:${raw}`).digest('hex')}`;
   assert.deepEqual(await platform.jobs.ingest(connection.id, raw, { 'x-slack-request-timestamp': timestamp, 'x-slack-signature': signature }), { challenge: 'challenge123' });
   await assert.rejects(platform.jobs.ingest(connection.id, raw, { 'x-slack-request-timestamp': '1', 'x-slack-signature': signature }), /timestamp/);
-}, { env: { TALVORI_SLACK_WEBHOOK_SECRET: 'slack-signing-secret' }, workerIntervalMs: 0 }));
+}, { env: { FRONDOSE_SLACK_WEBHOOK_SECRET: 'slack-signing-secret' }, workerIntervalMs: 0 }));
 
 test('GitHub code adapter decodes bounded text and never executes or follows download URLs', async () => {
   const urls = [], adapter = createProviderAdapter('github', async url => { urls.push(url); return { type: 'file', name: 'app.js', path: 'src/app.js', content: Buffer.from('export const version = 1;').toString('base64'), encoding: 'base64', size: 25, download_url: 'http://127.0.0.1/private', html_url: 'https://github.com/acme/app/blob/main/src/app.js' }; });

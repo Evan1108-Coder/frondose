@@ -1,6 +1,6 @@
 # Security Policy
 
-Talvori is a local-first AI work environment with provider connections, local workspace data, and reviewed tool workflows. Its README states that local integration credentials in `.rumbo/integrations.private.json` are not encrypted. Protect that file and the machine account that stores it.
+Frondose is a local-first AI work environment with provider connections, local workspace data, and reviewed tool workflows. Its README states that local integration credentials in `.rumbo/integrations.private.json` are not encrypted. Protect that file and the machine account that stores it.
 
 ## Reporting a vulnerability
 

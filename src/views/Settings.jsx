@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { ImageField } from '../components/ImageField.jsx';
 import { Form } from "../components/Form.jsx";
 import { CircleUser, Paintbrush, Bell, Users, Database, Archive, Activity, Download, RotateCcw, Pencil, Folder, Keyboard, ShieldCheck, X, Check } from "../components/icons.jsx";
-import { talvoriApi } from "../data/api.js";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseApi } from "../data/api.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import {
   Button,
   Empty,
@@ -48,7 +48,7 @@ export function SettingsView() {
     notifications = settings.notifications ?? {};
   const update = (group, value) =>
     perform(
-      () => talvoriActions.updateSettings({ [group]: value }),
+      () => frondoseActions.updateSettings({ [group]: value }),
       "Preference saved",
     );
   return (
@@ -196,7 +196,7 @@ export function SettingsView() {
               <div className="setting-row">
                 <span>
                   <strong>Keyboard shortcuts</strong>
-                  <small>Move around Talvori without leaving the keyboard.</small>
+                  <small>Move around Frondose without leaving the keyboard.</small>
                 </span>
                 <Button icon={Keyboard} onClick={showShortcuts}>
                   View shortcuts
@@ -254,11 +254,11 @@ export function SettingsView() {
                   icon={Download}
                   onClick={() =>
                     perform(async () => {
-                      const response = await talvoriApi.exportWorkspace(
+                      const response = await frondoseApi.exportWorkspace(
                         workspace.id,
                       );
                       download(
-                        `talvori-${workspace.slug ?? workspace.name}-export.json`,
+                        `frondose-${workspace.slug ?? workspace.name}-export.json`,
                         response.result,
                       );
                       notify("Workspace exported");
@@ -286,7 +286,7 @@ export function SettingsView() {
                 <Database />
                 <p>
                   Keep a private backup of the server’s data directory to preserve
-                  the full installation. New installations use <code>.talvori</code>;
+                  the full installation. New installations use <code>.frondose</code>;
                   upgraded installations retain their existing data location.
                   Workspace JSON exports do not include account credentials.
                 </p>
@@ -332,7 +332,7 @@ export function SettingsView() {
                   busy={status.refreshing}
                   icon={RotateCcw}
                   onClick={() =>
-                    perform(() => talvoriActions.refresh(), "Workspace refreshed")
+                    perform(() => frondoseActions.refresh(), "Workspace refreshed")
                   }
                 >
                   Refresh workspace data
@@ -340,7 +340,7 @@ export function SettingsView() {
                 <Button
                   icon={Download}
                   onClick={() => {
-                    download("talvori-diagnostics.json", {
+                    download("frondose-diagnostics.json", {
                       generatedAt: new Date().toISOString(),
                       meta: data.meta,
                       counts: {
@@ -392,7 +392,7 @@ export function Profile() {
         onSubmit={(event) => {
           event.preventDefault();
           execute(async () => {
-            await talvoriActions.updateProfile({
+            await frondoseActions.updateProfile({
               name: name.trim(),
               email: email.trim() || null,
               avatar_url: avatar,
@@ -473,7 +473,7 @@ export function ArchiveList() {
               icon={RotateCcw}
               onClick={() =>
                 perform(async () => {
-                  await talvoriActions[item.action](item.id, {
+                  await frondoseActions[item.action](item.id, {
                     archived_at: null,
                   });
                   notify(`${item.label} restored`);

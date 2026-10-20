@@ -55,7 +55,7 @@ export function breadcrumbItems({ page, workspace, data, labels = {} }) {
     if (page.view === 'projects') return [...items, { label: project.name, current: true }];
     items.push({ label: project.name, view: 'projects', id: project.id });
   }
-  const label = labels[page.view] || { work: 'Active work', chats: 'Conversations', teams: 'Areas', 'rumbo-agent': 'Talvori', documents: 'Documents', reader: 'Docs' }[page.view] || 'Workspace';
+  const label = labels[page.view] || { work: 'Active work', chats: 'Conversations', teams: 'Areas', 'rumbo-agent': 'Frondose', documents: 'Documents', reader: 'Docs' }[page.view] || 'Workspace';
   const entity = ENTITY_COLLECTIONS[page.view] && data[ENTITY_COLLECTIONS[page.view]]?.find(row => row.id === page.id && !val(row, 'archived_at'));
   if (entity) {
     items.push({ label, view: page.view, id: null, options: project && page.view !== 'projects' ? { projectId: project.id } : undefined });

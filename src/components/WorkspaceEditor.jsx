@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Plus } from "./icons.jsx";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import { Button, Dialog, ErrorMessage, Field, Select, useApp, useAsync } from "../ui.jsx";
 import { Form } from "./Form.jsx";
 import { DateField } from "./DateField.jsx";
@@ -45,7 +45,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
       if (kind === "teamMember") input = { ...input, team_id: item?.team_id ?? defaults.team_id, name: form.title.trim(), email: form.email.trim() || null, role: form.role.trim() };
       if (kind === "document") input = { ...input, team_id: item?.team_id ?? defaults.team_id ?? null, project_id: item?.project_id ?? defaults.project_id ?? null, title: form.title.trim(), content: form.content };
       if (kind === "milestone") input = { ...input, project_id: item?.project_id ?? defaults.project_id, title: form.title.trim(), description: form.description, status: form.status, target_date: form.target_date || null };
-      const result = item ? await talvoriActions[`update${entity.action}`](item.id, input) : await talvoriActions[`create${entity.action}`](input);
+      const result = item ? await frondoseActions[`update${entity.action}`](item.id, input) : await frondoseActions[`create${entity.action}`](input);
       notify(`${entity.label[0].toUpperCase()}${entity.label.slice(1)} ${item ? "saved" : "created"}`);
       onClose();
       onSaved?.(result);
@@ -58,7 +58,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
         {kind === 'team' ? <TeamAppearanceFields value={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} /> : null}
         <Field label={["team", "teamMember"].includes(kind) ? "Name" : "Title"}><input {...defaultField(kind === 'team' ? 'name' : 'title', kind === 'team' ? 'Name' : 'Title')} autoFocus required maxLength={200} value={form.title} onChange={(event) => change("title", event.target.value)} placeholder={{ team: "e.g. Product", teamMember: "Full name", document: "Name this document", milestone: "A meaningful checkpoint" }[kind]} /></Field>
         {["team", "milestone"].includes(kind) ? <Field label="Description"><textarea {...defaultField('description', 'Description')} rows={4} value={form.description} onChange={(event) => change("description", event.target.value)} placeholder={kind === "team" ? "What does this Area work on?" : "What should be true when this is complete?"} /></Field> : null}
-        {kind === "teamMember" ? <><Field label="Role"><input value={form.role} maxLength={200} onChange={(event) => change("role", event.target.value)} placeholder="e.g. Product lead" /></Field><Field label="Email" hint="Optional contact information. Talvori will not send an email."><input type="email" value={form.email} onChange={(event) => change("email", event.target.value)} placeholder="name@example.com" /></Field></> : null}
+        {kind === "teamMember" ? <><Field label="Role"><input value={form.role} maxLength={200} onChange={(event) => change("role", event.target.value)} placeholder="e.g. Product lead" /></Field><Field label="Email" hint="Optional contact information. Frondose will not send an email."><input type="email" value={form.email} onChange={(event) => change("email", event.target.value)} placeholder="name@example.com" /></Field></> : null}
         {kind === "milestone" ? <div className="form-grid"><Select label="Status" value={form.status} onChange={(value) => change("status", value)}>{Object.entries(MILESTONE_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><Field label="Target date"><DateField {...defaultField('target-date', 'Target date')} data-field-default-allow="true" value={form.target_date} onChange={(value) => change("target_date", value)} /></Field></div> : null}
         {kind === "document" ? <div className="document-writing"><div className="document-write-toolbar"><div className="segmented"><button type="button" className={!preview ? "active" : ""} aria-pressed={!preview} onClick={() => setPreview(false)}>Write</button><button type="button" className={preview ? "active" : ""} aria-pressed={preview} onClick={() => setPreview(true)}>Preview</button></div><span>Markdown supported</span></div>{preview ? <div className="document-preview">{form.content.trim() ? <DocumentContent content={form.content} /> : <p className="muted">Your document preview will appear here.</p>}</div> : <Field label="Content"><textarea {...defaultField('content', 'Content')} className="document-input" rows={14} value={form.content} onChange={(event) => change("content", event.target.value)} placeholder={"# The plan\n\nWrite your decisions, guidelines, and next steps…"} /></Field>}<span className="document-word-count">{form.content.trim() ? form.content.trim().split(/\s+/).length : 0} words</span></div> : null}
         <ErrorMessage error={error} />
@@ -73,8 +73,8 @@ export function SpaceArchiveDialog({ kind, item, onClose, onArchived }) {
   const entity = ENTITY[kind];
   async function archive() {
     await execute(async () => {
-      await talvoriActions[`update${entity.action}`](item.id, { archived_at: new Date().toISOString() });
-      notify(`${entity.label[0].toUpperCase()}${entity.label.slice(1)} archived`, "success", () => talvoriActions[`update${entity.action}`](item.id, { archived_at: null }));
+      await frondoseActions[`update${entity.action}`](item.id, { archived_at: new Date().toISOString() });
+      notify(`${entity.label[0].toUpperCase()}${entity.label.slice(1)} archived`, "success", () => frondoseActions[`update${entity.action}`](item.id, { archived_at: null }));
       onClose(); onArchived?.();
     });
   }

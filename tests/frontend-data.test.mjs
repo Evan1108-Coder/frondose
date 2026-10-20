@@ -4,8 +4,8 @@ import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { apiRequest, talvoriApi, TalvoriApiError } from "../src/data/api.js";
-import { createTalvoriStore } from "../src/data/talvoriStore.js";
+import { apiRequest, frondoseApi, FrondoseApiError } from "../src/data/api.js";
+import { createFrondoseStore } from "../src/data/frondoseStore.js";
 import { createLocalApi } from "../server/local-api.mjs";
 
 const deferred = () => {
@@ -26,7 +26,7 @@ test("API failures surface the server's nested validation message", async (t) =>
     error: { code: "validation_error", message: "Choose a project from this workspace.", details: ["project_id"] },
   }), { status: 400, headers: { "Content-Type": "application/json" } }));
   await assert.rejects(apiRequest("/api/tasks", { method: "POST", body: {} }), (error) => {
-    assert.ok(error instanceof TalvoriApiError);
+    assert.ok(error instanceof FrondoseApiError);
     assert.equal(error.message, "Choose a project from this workspace.");
     assert.equal(error.code, "validation_error");
     assert.deepEqual(error.details, ["project_id"]);
@@ -36,7 +36,7 @@ test("API failures surface the server's nested validation message", async (t) =>
 
 test("a failed real write never falls through to a successful browser demo", async (t) => {
   t.mock.method(globalThis, "fetch", async () => { throw new TypeError("Network unavailable"); });
-  await assert.rejects(talvoriApi.createWorkspace({ name: "Keep this real" }), { code: "network_error" });
+  await assert.rejects(frondoseApi.createWorkspace({ name: "Keep this real" }), { code: "network_error" });
 });
 
 test("timed-out writes report uncertainty instead of claiming they were not saved", async (t) => {
@@ -62,7 +62,7 @@ test("CRUD helpers return the created entity so navigation can use its id", asyn
   t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ project: { id: "project_new", name: "New" } }), {
     status: 201, headers: { "Content-Type": "application/json" },
   }));
-  const created = await talvoriApi.createProject({ name: "New" });
+  const created = await frondoseApi.createProject({ name: "New" });
   assert.equal(created.result.id, "project_new");
   assert.equal(created.source, "server");
 });
@@ -75,11 +75,11 @@ test("connection helpers use the integration contracts without invoking an accou
       headers: { "Content-Type": "application/json" },
     });
   });
-  await talvoriApi.connectConnection("github", { method: "existing" });
-  await talvoriApi.connectionStatus("github");
-  await talvoriApi.checkConnection("github");
-  await talvoriApi.connectionResources("google-drive", { pageToken: "next/page+2" });
-  await talvoriApi.disconnectConnection("github");
+  await frondoseApi.connectConnection("github", { method: "existing" });
+  await frondoseApi.connectionStatus("github");
+  await frondoseApi.checkConnection("github");
+  await frondoseApi.connectionResources("google-drive", { pageToken: "next/page+2" });
+  await frondoseApi.disconnectConnection("github");
   assert.deepEqual(calls, [
     { path: "/api/connections/github/connect", method: "POST", body: { method: "existing" } },
     { path: "/api/connections/github/status", method: "GET", body: undefined },
@@ -91,7 +91,7 @@ test("connection helpers use the integration contracts without invoking an accou
 
 test("optimistic task updates roll back on a rejected write", async () => {
   const pending = deferred();
-  const store = createTalvoriStore({ bootstrap: async () => response(initialData()), updateTask: () => pending.promise });
+  const store = createFrondoseStore({ bootstrap: async () => response(initialData()), updateTask: () => pending.promise });
   await store.actions.refresh();
   const operation = store.actions.updateTask("task_one", { status: "done" });
   assert.equal(store.getSnapshot().data.tasks[0].status, "done");
@@ -107,7 +107,7 @@ test("queued edits preserve the latest optimistic value while earlier writes set
   let persisted = initialData();
   const firstWrite = deferred();
   const calls = [];
-  const store = createTalvoriStore({
+  const store = createFrondoseStore({
     bootstrap: async () => response(structuredClone(persisted)),
     updateTask: async (id, input) => {
       calls.push(input.status);
@@ -134,7 +134,7 @@ test("a stale event poll cannot replace a newly saved task", async () => {
   const old = initialData();
   const poll = deferred();
   const saved = { ...old, tasks: [{ ...old.tasks[0], status: "done" }] };
-  const store = createTalvoriStore({
+  const store = createFrondoseStore({
     bootstrap: async () => response(old), events: () => poll.promise,
     updateTask: async () => response(saved.tasks[0], saved),
   });
@@ -150,7 +150,7 @@ test("a delayed poll cannot undo a newer manual refresh from another tab", async
   let canonical = initialData();
   const old = structuredClone(canonical);
   const poll = deferred();
-  const store = createTalvoriStore({
+  const store = createFrondoseStore({
     bootstrap: async () => response(canonical), events: () => poll.promise,
   });
   await store.actions.refresh();
@@ -165,7 +165,7 @@ test("a delayed poll cannot undo a newer manual refresh from another tab", async
 test("a saved write remains successful when its follow-up refresh fails", async () => {
   let reads = 0;
   const saved = { id: "project_new", name: "Saved locally" };
-  const store = createTalvoriStore({
+  const store = createFrondoseStore({
     bootstrap: async () => {
       if (++reads > 1) throw new Error("Server disconnected after saving");
       return response(initialData());
@@ -182,7 +182,7 @@ test("a saved write remains successful when its follow-up refresh fails", async 
 
 test("optimistic settings preserve sibling preferences and recover after failure", async () => {
   const pending = deferred();
-  const store = createTalvoriStore({ bootstrap: async () => response(initialData()), updateSettings: () => pending.promise });
+  const store = createFrondoseStore({ bootstrap: async () => response(initialData()), updateSettings: () => pending.promise });
   await store.actions.refresh();
   const operation = store.actions.updateSettings({ notifications: { approvals: false } });
   assert.deepEqual(store.getSnapshot().data.settings.notifications, { approvals: false, runFailed: true });
@@ -195,7 +195,7 @@ test("a failed queued edit does not prevent later changes from saving", async ()
   let calls = 0;
   const saved = initialData();
   saved.tasks[0].status = "done";
-  const store = createTalvoriStore({
+  const store = createFrondoseStore({
     bootstrap: async () => response(initialData()),
     updateTask: async () => {
       if (++calls === 1) throw new Error("First edit rejected");
@@ -226,7 +226,7 @@ test("client actions preserve API contracts for workspace, agents, memory, setti
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  const store = createTalvoriStore(talvoriApi);
+  const store = createFrondoseStore(frondoseApi);
   await store.actions.refresh();
   assert.ok(Array.isArray(store.getSnapshot().data.agents));
   assert.ok(Array.isArray(store.getSnapshot().data.memory_notes));
@@ -255,10 +255,10 @@ test("client actions preserve API contracts for workspace, agents, memory, setti
   assert.ok(store.getSnapshot().data.tasks.find((item) => item.id === task.id).archived_at);
   await store.actions.updateTask(task.id, { archived_at: null, status: "done" });
   assert.equal(store.getSnapshot().data.tasks.find((item) => item.id === task.id).status, "done");
-  const exportedWorkspace = (await talvoriApi.exportWorkspace(workspace.id)).result;
-  assert.equal(exportedWorkspace.format, "talvori.workspace");
+  const exportedWorkspace = (await frondoseApi.exportWorkspace(workspace.id)).result;
+  assert.equal(exportedWorkspace.format, "frondose.workspace");
   assert.ok(exportedWorkspace.data.memory_notes.some((item) => item.id === note.id));
-  const exportedChat = (await talvoriApi.exportChat(chat.id)).result;
+  const exportedChat = (await frondoseApi.exportChat(chat.id)).result;
   assert.match(exportedChat.markdown, /Saved to the local database/);
   assert.ok(exportedChat.filename.endsWith(".md"));
 

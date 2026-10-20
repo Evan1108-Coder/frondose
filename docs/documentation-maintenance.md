@@ -1,6 +1,6 @@
-# Maintaining Talvori Docs
+# Maintaining Frondose Docs
 
-The handbook lives at `#/docs`. Article routes are `#/docs/<article-id>`; category indexes use `#/docs/group-<group-id>`. It is an area of the existing Talvori app, not a separately deployed documentation service.
+The handbook lives at `#/docs`. Article routes are `#/docs/<article-id>`; category indexes use `#/docs/group-<group-id>`. It is an area of the existing Frondose app, not a separately deployed documentation service.
 
 ## Content and behavior
 
@@ -13,7 +13,7 @@ The handbook lives at `#/docs`. Article routes are `#/docs/<article-id>`; catego
 
 ## Screenshots
 
-`public/docs/` contains paired light/dark PNG captures of the real Talvori interface, made with an isolated sample workspace. They are not user data, generated product mockups, or production account captures. Theme changes select the matching image immediately. Preserve both images when updating a feature screenshot.
+`public/docs/` contains paired light/dark PNG captures of the real Frondose interface, made with an isolated sample workspace. They are not user data, generated product mockups, or production account captures. Theme changes select the matching image immediately. Preserve both images when updating a feature screenshot.
 
 Projects, chats, teams and Playbooks are main-panel crops, 1088 × 912. Appearance settings, Field defaults, and the structured-template dialog show the complete settings screen, 1440 × 980. The renderer uses those intrinsic dimensions to reserve layout space without stretching the capture. Workbench has no screenshot rather than showing a fabricated execution result. The new pairs use an isolated sample workspace; the Playbooks capture shows a real completed local draft action, and no AI account was contacted.
 

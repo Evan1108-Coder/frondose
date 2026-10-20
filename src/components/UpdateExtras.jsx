@@ -1,6 +1,6 @@
 import { Button, Field, Select, useApp } from '../ui.jsx';
 import { STATUSES, PROJECT_STATUSES } from '../lib/model.js';
-import { TalvoriAgentEntryDialog } from './TalvoriAgentEntry.jsx';
+import { FrondoseAgentEntryDialog } from './FrondoseAgentEntry.jsx';
 
 export function UpdateWorkChanges({ targetType, targetId, value, onChange, disabled }) {
   const { data } = useApp();
@@ -41,5 +41,5 @@ export function AttachmentLinks({ value }) {
 }
 
 export function AskUpdateAgent({ entry, onClose }) {
-  return <TalvoriAgentEntryDialog source={{ type: 'update', id: entry.id }} onClose={onClose} />;
+  return <FrondoseAgentEntryDialog source={{ type: 'update', id: entry.id }} onClose={onClose} />;
 }

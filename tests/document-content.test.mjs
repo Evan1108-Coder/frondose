@@ -16,7 +16,7 @@ const project = fileURLToPath(new URL('..', import.meta.url));
 let component;
 async function renderer() {
   if (component) return component;
-  const directory = mkdtempSync(join(tmpdir(), 'talvori-rich-render-'));
+  const directory = mkdtempSync(join(tmpdir(), 'frondose-rich-render-'));
   try {
     const built = await build({
       absWorkingDir: project, entryPoints: ['src/components/DocumentContent.jsx'], write: false,

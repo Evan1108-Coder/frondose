@@ -1,6 +1,6 @@
 # Personal agent capabilities
 
-Talvori brings conversations, recorded Activity and Scheduled work together.
+Frondose brings conversations, recorded Activity and Scheduled work together.
 It can reuse explicitly selected past messages, propose reviewed schedule
 changes, and run opt-in subscriptions for supported workspace events. It is not
 an OpenAI Your dot integration or full replacement.
@@ -13,15 +13,15 @@ Sources: [Tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory
 
 ## Current comparison
 
-| Capability | Talvori status | Boundary |
+| Capability | Frondose status | Boundary |
 | --- | --- | --- |
 | Chat with connected agents | Implemented | Each user authorizes their own supported provider. Account verification and model entitlement are separate. |
-| Require an AI connection | Implemented | Without a ready connection, Talvori opens a Connect AI screen before onboarding/new chat. Saved history and future-work management remain readable. The server still checks readiness on every launch. |
+| Require an AI connection | Implemented | Without a ready connection, Frondose opens a Connect AI screen before onboarding/new chat. Saved history and future-work management remain readable. The server still checks readiness on every launch. |
 | Understand workspace configuration and expressions | Bounded implementation | Readable work summaries, allowlisted server settings, template/label/status configuration, selected-message reactions and custom-emoji metadata enter the exact inspected context. Credentials, private drafts, browser-local preferences and omitted content do not. |
 | Natural language and emojis | Implemented guidance and rendering | The agent can use Unicode emojis and listed active custom shortcodes, following the user's style. Model replies are not guaranteed; reactions never authorize actions. It must not pretend to be human or claim complete awareness. |
-| Inspect ongoing work and results | Implemented | Talvori → Activity shows permission-filtered recorded runs, runtime approval gates, outputs and conversation links. Completed execution is not proof of achieved results. |
+| Inspect ongoing work and results | Implemented | Frondose → Activity shows permission-filtered recorded runs, runtime approval gates, outputs and conversation links. Completed execution is not proof of achieved results. |
 | Stop active work | Implemented | Stop affects the selected run. It does not undo changes or cancel future schedules. |
-| Manage future work | Implemented | Talvori → Scheduled and Settings use the same canonical schedules, controls and occurrence receipts. |
+| Manage future work | Implemented | Frondose → Scheduled and Settings use the same canonical schedules, controls and occurrence receipts. |
 | Ask for a recurring prompt | Implemented | One-off, daily and weekly proposals require fresh inspection and final confirmation. Saved prompts/model/context remain exact; each provider occurrence can be billed. |
 | Ask to pause, reschedule, resume or cancel | Implemented | A typed pending proposal pins the schedule owner, exact version and timing/state. Only that owner can confirm. Prompt/model/recipient/context cannot be changed through this action. |
 | Reuse an earlier discussion | Explicit retrieval implemented | Search readable messages, select them and snapshot their canonical content. This is lexical search, not autonomous semantic retrieval or access to ChatGPT/Claude account history. |
@@ -37,7 +37,7 @@ Sources: [Tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory
 
 ## Use the new flows
 
-1. Open Talvori → **Activity** to inspect runs, search/filter them, stop one, open
+1. Open Frondose → **Activity** to inspect runs, search/filter them, stop one, open
    its conversation or review an output. Use **Review conversation** for proposals
    in a completed reply. **Needs you** covers blocked/failed/runtime approval-gated
    runs; it is not an unread-proposal counter.
@@ -81,11 +81,11 @@ isolated automated test fixtures.
 
 | Blocked result | Required owner setup |
 | --- | --- |
-| Public, always-on Talvori | A production HTTPS origin and hosting account with a persistent Node backend, private writable storage and TLS reverse proxy. Provision an owner password and stable server-only 32-byte encryption key. Never expose Vite or reuse development CLI accounts for visitors. Follow the exact environment/deployment steps in [AI connections](ai-connections.md#running-the-backend-on-a-public-origin). |
-| Public Hugging Face browser authorization | Register Talvori in Hugging Face Applications with the production `/api/ai-connections/huggingface/callback`; configure `TALVORI_HF_CLIENT_ID` and the confidential-client secret when applicable on the server. Users supply their own inference access. |
-| Public GitHub Copilot browser authorization | Register the GitHub application with the production `/api/ai-connections/copilot/callback`; configure `TALVORI_GITHUB_CLIENT_ID` and `TALVORI_GITHUB_CLIENT_SECRET`. A live inference tester needs eligible Copilot access; an ordinary GitHub account alone does not verify inference. The operator's Copilot account does not power other users. |
-| Live inference verification | Enter a consenting test user's provider key/account through Talvori's connection UI, choose an entitled model, and approve the explicit billable test. Do not paste keys/passwords into chat. Fixture tests do not certify real provider access. |
-| Provider-hosted Talvori branding | Update actual registered application names, logos and callback/homepage origins in provider dashboards. See [rebrand checklist](talvori-rebrand.md#provider-hosted-authorization-operator-checklist). Repository assets cannot rename remote registrations. |
+| Public, always-on Frondose | A production HTTPS origin and hosting account with a persistent Node backend, private writable storage and TLS reverse proxy. Provision an owner password and stable server-only 32-byte encryption key. Never expose Vite or reuse development CLI accounts for visitors. Follow the exact environment/deployment steps in [AI connections](ai-connections.md#running-the-backend-on-a-public-origin). |
+| Public Hugging Face browser authorization | Register Frondose in Hugging Face Applications with the production `/api/ai-connections/huggingface/callback`; configure `FRONDOSE_HF_CLIENT_ID` and the confidential-client secret when applicable on the server. Users supply their own inference access. |
+| Public GitHub Copilot browser authorization | Register the GitHub application with the production `/api/ai-connections/copilot/callback`; configure `FRONDOSE_GITHUB_CLIENT_ID` and `FRONDOSE_GITHUB_CLIENT_SECRET`. A live inference tester needs eligible Copilot access; an ordinary GitHub account alone does not verify inference. The operator's Copilot account does not power other users. |
+| Live inference verification | Enter a consenting test user's provider key/account through Frondose's connection UI, choose an entitled model, and approve the explicit billable test. Do not paste keys/passwords into chat. Fixture tests do not certify real provider access. |
+| Provider-hosted Frondose branding | Update actual registered application names, logos and callback/homepage origins in provider dashboards. See [rebrand checklist](frondose-rebrand.md#provider-hosted-authorization-operator-checklist). Repository assets cannot rename remote registrations. |
 | Hosted ChatGPT/Claude subscription authorization | Required provider approval and a supported integration agreement, not a copied local/OSS OAuth client ID. Direct provider API-key routes are separate alternatives. Current restrictions and sources are recorded in [AI connections](ai-connections.md). |
 
 No owner credential, domain or approval can switch on the unimplemented

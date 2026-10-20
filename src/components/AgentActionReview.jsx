@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { refreshTalvori } from '../data/useTalvori.js';
+import { refreshFrondose } from '../data/useFrondose.js';
 import { Button, Dialog, ErrorMessage, useApp } from '../ui.jsx';
 import { ServiceLogo } from './ServiceLogo.jsx';
 import { ScheduleWorkDialog } from './ScheduledWork.jsx';
@@ -64,7 +64,7 @@ export function AgentActionReview({ run }) {
     try {
       const result = await apiRequest(`/api/agent-actions/${selected.id}/decision`, { method: 'POST', body: { decision }, timeoutMs: 60000 });
       setActions(items => items.map(item => item.id === selected.id ? { ...item, status: result.result.status || (result.result.approval_required ? 'awaiting_approval' : item.status), result: result.result.result } : item));
-      setSelected(null); await refreshTalvori();
+      setSelected(null); await refreshFrondose();
     } catch (cause) {
       setError(cause);
       try { const refreshed = await apiRequest(`/api/agent-actions?run_id=${encodeURIComponent(run.id)}`); setActions(refreshed.result.actions); setSelected(items => refreshed.result.actions.find(action => action.id === items?.id) || items); } catch { /* Keep the original failure visible when status refresh also fails. */ }

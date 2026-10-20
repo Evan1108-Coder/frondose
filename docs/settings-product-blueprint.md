@@ -1,4 +1,4 @@
-# Talvori settings and organization — proposed product design
+# Frondose settings and organization — proposed product design
 
 Status: historical proposal, partly implemented and superseded by later user decisions. September 19, 2026. See [implementation record](settings-implementation.md) for actual behavior, verification, and remaining work. The Local system navigation below was explicitly rejected and is not implemented.
 
@@ -6,7 +6,7 @@ Status: historical proposal, partly implemented and superseded by later user dec
 
 Settings should configure how people organize, instruct, supervise, and reuse AI work. They are not a reason to add unrelated product modules. Success means a user can find a control, understand whom it affects, predict its effect, and reverse a change without losing work.
 
-The supplied Linear screenshots are references for information hierarchy, a dedicated settings sidebar, grouped rows, restrained styling, and clear administration boundaries. Keep Talvori's terminology, brand, Lucide/Morphicons system, and local-first constraints.
+The supplied Linear screenshots are references for information hierarchy, a dedicated settings sidebar, grouped rows, restrained styling, and clear administration boundaries. Keep Frondose's terminology, brand, Lucide/Morphicons system, and local-first constraints.
 
 ## Existing foundation and important gaps
 
@@ -41,7 +41,7 @@ Don't expose every eventual page immediately. Ship pages when they have meaningf
 
 ### Profile
 
-Retain local name, avatar, and optional email. Explicitly state that this is not an online account or authentication identity. Add a display-name preview. Do not offer password changes, sessions, or two-factor authentication until Talvori actually has a login system.
+Retain local name, avatar, and optional email. Explicitly state that this is not an online account or authentication identity. Add a display-name preview. Do not offer password changes, sessions, or two-factor authentication until Frondose actually has a login system.
 
 ### Preferences
 
@@ -155,7 +155,7 @@ Use one catalog in Settings and the existing Connections entry point. Both reach
 | Google services | Drive first; Calendar/Gmail later only if justified | Attach selected documents; optional scheduling or message workflows |
 | Knowledge/tools | Notion; custom tools/MCP later | Explicitly selected context or capabilities |
 
-“Google account” identifies an account; it does not mean access to every Google service. Service/resource grants must remain separate. Likewise, an account being connected must not grant every Talvori agent access to every repository or channel.
+“Google account” identifies an account; it does not mean access to every Google service. Service/resource grants must remain separate. Likewise, an account being connected must not grant every Frondose agent access to every repository or channel.
 
 For unimplemented entries, show Planned, purpose, intended data direction, and “View planned capabilities.” Do not display a working-looking Connect button, collect tokens, open fake authorization pages, or allow an Enabled state. A connection plan can be browsed without being configured.
 

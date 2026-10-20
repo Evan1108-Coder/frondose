@@ -73,7 +73,7 @@ test('prepared draft keeps immutable source lineage without copying private runt
   assert.doesNotMatch(JSON.stringify(prepared),/PRIVATE PROVIDER|PRIVATE PROTOCOL|PRIVATE NONCE/);
   assert.match(prepared.context.content,/Also verify the tests/);
   assert.equal(f.db.prepare('SELECT count(*) n FROM chat_context_snapshots').get().n,1);
-  const attachments = [{name:`talvori-context-${prepared.context.id}.md`,type:'text/markdown',content:prepared.context.content,rumbo_context_snapshot:prepared.context.id}];
+  const attachments = [{name:`frondose-context-${prepared.context.id}.md`,type:'text/markdown',content:prepared.context.content,rumbo_context_snapshot:prepared.context.id}];
   const inherited = chatContextSnapshotAccess(f.db,{chatId:'target',workspaceId:'ws',attachments,actor:f.actor,allowed:f.allowed});
   assert.ok(inherited.sources.some(ref=>ref.table==='documents'&&ref.id==='secret-doc'));
   f.db.prepare("UPDATE documents SET project_id='source-project' WHERE id='secret-doc'").run();

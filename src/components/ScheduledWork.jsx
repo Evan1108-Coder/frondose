@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { apiRequest } from '../data/api.js';
-import { refreshTalvori } from '../data/useTalvori.js';
+import { refreshFrondose } from '../data/useFrondose.js';
 import { Button, Dialog, ErrorMessage, Field, Select, useApp } from '../ui.jsx';
 import { Clock } from './icons.jsx';
 import { DateField } from './DateField.jsx';
@@ -23,7 +23,7 @@ export function ScheduleWorkDialog({ workspaceId, kind, payload, contextInspecti
     try {
       if (!validTimezone(timezone)) throw new Error('Choose a recognized time zone, such as Asia/Shanghai.');
       const response = await apiRequest('/api/scheduled-work', { method: 'POST', body: { workspace_id: workspaceId, kind, title, payload, local_time: time, timezone, recurrence, request_id: request.current, ...(contextInspectionId ? { context_inspection_id: contextInspectionId } : {}) } });
-      await refreshTalvori(); notify(kind === 'message' ? 'Message scheduled' : 'Action scheduled');
+      await refreshFrondose(); notify(kind === 'message' ? 'Message scheduled' : 'Action scheduled');
       onScheduled?.(response.result); onClose();
     } catch (cause) { setError(cause); } finally { setBusy(false); }
   }
@@ -34,7 +34,7 @@ export function ScheduleWorkDialog({ workspaceId, kind, payload, contextInspecti
     <ScheduleTimeFields disabled={busy} time={time} setTime={setTime} timezone={timezone} setTimezone={setTimezone} />
     {kind === 'message' ? <Field label="Repeat">{payload.action_request_id ? <p>{recurrence === 'daily' ? 'Every day at this time' : recurrence === 'weekly' ? 'Every week on this day' : 'Do not repeat'}</p> : <Select disabled={busy} value={recurrence} onChange={setRecurrence}><option value="none">Do not repeat</option><option value="daily">Every day at this time</option><option value="weekly">Every week on this day</option></Select>}</Field> : null}
     {recurrence !== 'none' && payload.agent_id ? <p className="schedule-context-note">Confirming authorizes a separate agent run for each occurrence until you pause or cancel. Provider usage may be charged each time; response actions still require their own applicable review.</p> : null}
-    <p className="schedule-context-note">{contextInspectionId ? 'This message saves the context you reviewed. Later conversation or workspace changes will not be included.' : kind === 'action' ? 'Talvori checks the target and your access again when the action runs. A changed target needs a fresh review.' : 'This saves a note in the selected conversation without contacting an AI.'} Talvori’s server must be running at the scheduled time.</p>
+    <p className="schedule-context-note">{contextInspectionId ? 'This message saves the context you reviewed. Later conversation or workspace changes will not be included.' : kind === 'action' ? 'Frondose checks the target and your access again when the action runs. A changed target needs a fresh review.' : 'This saves a note in the selected conversation without contacting an AI.'} Frondose’s server must be running at the scheduled time.</p>
     <ErrorMessage error={error} /><footer className="form-submit-row"><Button disabled={busy} onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" icon={Clock} busy={busy}>{kind === 'action' ? 'Approve and schedule' : 'Schedule message'}</Button></footer>
   </form></Dialog>;
 }

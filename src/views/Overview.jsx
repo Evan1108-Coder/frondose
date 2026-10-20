@@ -9,7 +9,7 @@ import {
   val,
   visible,
 } from "../lib/model.js";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import { WorkLabels } from '../components/WorkProperties.jsx';
 import { AccessApprovalInbox } from '../components/AccessApprovalInbox.jsx';
 
@@ -331,7 +331,7 @@ export function InboxView() {
   );
   const markRead = (ids) =>
     perform(async () => {
-      await talvoriActions.updateSettings({
+      await frondoseActions.updateSettings({
         inbox: { readIds: [...new Set([...readIds, ...ids])] },
       });
       notify("Inbox updated");

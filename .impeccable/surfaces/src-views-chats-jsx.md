@@ -7,13 +7,13 @@ related_targets: ["src/components/ChatMessage.jsx","src/views/Reader.jsx"]
 
 # Conversations
 
-Visitor mode: Operate / Read. Existing Talvori workspace, real actors and source permissions. User delegates detailed choices and pins ChatGPT-style human-right/AI-left conversation, with work details elsewhere.
+Visitor mode: Operate / Read. Existing Frondose workspace, real actors and source permissions. User delegates detailed choices and pins ChatGPT-style human-right/AI-left conversation, with work details elsewhere.
 
 ## Direction contract
 
 THESIS: Conversation is a readable exchange, not a terminal transcript. Keep workspace replies, reactions, knowledge and reviewed actions usable.
 
-OWN-WORLD: Retain Talvori's Inter, neutral dark/light tokens, indigo actions, inset sidebar and thin outline icons. Dark user bubbles use the supplied #2c2c2c sample; AI prose stays on the canvas. Provider marks are contained within padded 40px frames.
+OWN-WORLD: Retain Frondose's Inter, neutral dark/light tokens, indigo actions, inset sidebar and thin outline icons. Dark user bubbles use the supplied #2c2c2c sample; AI prose stays on the canvas. Provider marks are contained within padded 40px frames.
 
 STORY: Read a reply, follow a real document/website/result, or open Active work without losing the conversation. A temporary full-sized reader returns to its source, never a permanent sidebar destination.
 

@@ -1,4 +1,4 @@
-# Talvori
+# Frondose
 
 <!-- impeccable:product-schema 1 -->
 
@@ -23,11 +23,12 @@ are the primary audience; larger teams are a planned commercial audience.
 
 ## Brand commitments
 
-On October 19, 2026, Evan chose **Talvori** to replace Rumbo, requested new
-logos and a complete rebrand, and explicitly confirmed that features,
+On October 20, 2026, Evan chose **Frondose** to replace Talvori (formerly Rumbo).
+This continues the October 19 complete rebrand: features,
 navigation, workflows, and layouts should be preserved. Audit authorization,
 loading/error screens, metadata, exports, and small labels as well as primary UI.
-Do not rewrite user-authored content to achieve branding consistency.
+Do not rewrite user-authored content to achieve branding consistency. Use the
+authored F mark while retaining the existing palette, layouts and orb colors.
 
 ## Operating constraints
 

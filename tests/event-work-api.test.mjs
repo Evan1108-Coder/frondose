@@ -11,7 +11,7 @@ import { createEventWorkPolicy } from '../server/event-work-policy.mjs';
 import { readRunContext } from '../server/run-context-store.mjs';
 
 async function fixture(t, options = {}) {
-  const directory = await mkdtemp(join(tmpdir(), 'talvori-event-api-'));
+  const directory = await mkdtemp(join(tmpdir(), 'frondose-event-api-'));
   let clock = new Date().toISOString(), providerError = false;
   const prompts = [];
   const api = createLocalApi({ dataDir: directory, scheduledWorkOptions: { now: () => new Date(clock), scheduleIntervalMs: options.timer || 3600000 }, integrationOptions: { env: {}, fetchImpl: () => { throw Error('External network forbidden'); }, execute: async (_exe, args) => ({ code: 0, stdout: args.includes('mcp') ? '[]' : 'Logged in' }), spawnProcess: () => {
@@ -146,7 +146,7 @@ test('two queued moves match immutable recorded project and Area scopes, never t
   const moves = f.db.prepare("SELECT * FROM change_log WHERE entity_type='tasks' AND entity_id=? AND before_json IS NOT NULL ORDER BY rowid").all(route.id);
   assert.equal(moves.length, 2);
   const policy = createEventWorkPolicy({ db: f.db, allowed: () => true, filter: data => data });
-  const event = { ...moves[0], source: 'Talvori', actor_id: 'local-owner' };
+  const event = { ...moves[0], source: 'Frondose', actor_id: 'local-owner' };
   const job = target => ({ workspace_id: f.workspace.id, trigger: { event: 'route.updated', ...target } });
   assert.equal(policy.matchEvent(job({ target_type: 'project', target_id: projectB.id }), event, { id: 'local-owner' }), 'route.updated');
   assert.equal(policy.matchEvent(job({ target_type: 'project', target_id: f.project.id }), event, { id: 'local-owner' }), null);

@@ -1,4 +1,4 @@
-import { talvoriEnvironment } from './brand-config.mjs';
+import { frondoseEnvironment } from './brand-config.mjs';
 import { randomBytes, randomUUID, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,19 +35,19 @@ export function installConnectionPlatform(db) {
 }
 
 export function createConnectionPlatform({ db, dataDir, env = process.env, fetchImpl = fetch, authorize, requireApproval, workerIntervalMs = 5000, paused = false } = {}) {
-  env = talvoriEnvironment(env);
+  env = frondoseEnvironment(env);
   if (!db || !dataDir || typeof authorize !== 'function') throw new Error('Connection platform requires a database, private data directory and authorization callback.');
   installConnectionPlatform(db);
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   let key;
-  if (env.TALVORI_CONNECTION_ENCRYPTION_KEY) key = Buffer.from(env.TALVORI_CONNECTION_ENCRYPTION_KEY, 'base64');
+  if (env.FRONDOSE_CONNECTION_ENCRYPTION_KEY) key = Buffer.from(env.FRONDOSE_CONNECTION_ENCRYPTION_KEY, 'base64');
   else {
     const keyPath = join(dataDir, 'connections.key');
     try { key = readFileSync(keyPath); }
     catch (error) { if (error.code !== 'ENOENT') throw error; key = randomBytes(32); writeFileSync(keyPath, key, { flag: 'wx', mode: 0o600 }); }
     chmodSync(keyPath, 0o600);
   }
-  if (key.length !== 32) throw new Error('TALVORI_CONNECTION_ENCRYPTION_KEY must encode exactly 32 bytes.');
+  if (key.length !== 32) throw new Error('FRONDOSE_CONNECTION_ENCRYPTION_KEY must encode exactly 32 bytes.');
   const pending = new Map(), refreshes = new Map(), authGenerations = new Map(), figmaLifecycles = new Map();
   const actorId = actor => actor?.id || actor?.user_id || actor?.principal_id || null;
   const audit = (connection, actor, type, detail = {}) => db.prepare('INSERT INTO platform_connection_events VALUES(?,?,?,?,?,?)').run(randomUUID(), connection.id, actorId(actor), type, JSON.stringify(detail), now());
@@ -72,13 +72,13 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
   const config = provider => {
     const family = CONNECTOR_CATALOG[provider]?.auth_family;
     if (!family) throw fail('unknown_provider', 'Choose a supported connection.');
-    const prefix = `TALVORI_${family.toUpperCase()}`;
-    const callback = env[`${prefix}_CALLBACK_URL`] || env.TALVORI_CONNECTION_CALLBACK_URL || 'http://127.0.0.1:4174/api/connection-platform/oauth/callback';
+    const prefix = `FRONDOSE_${family.toUpperCase()}`;
+    const callback = env[`${prefix}_CALLBACK_URL`] || env.FRONDOSE_CONNECTION_CALLBACK_URL || 'http://127.0.0.1:4174/api/connection-platform/oauth/callback';
     let callback_error;
     try {
       const url = new URL(callback);
       if (url.username || url.password || url.hash || url.search || (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) callback_error = 'OAuth callback must use HTTPS or loopback HTTP, without credentials, query, or fragment.';
-      if (family === 'slack' && url.protocol !== 'https:') callback_error = 'Slack requires an HTTPS callback. Configure TALVORI_SLACK_CALLBACK_URL with an operator-controlled HTTPS callback before connecting.';
+      if (family === 'slack' && url.protocol !== 'https:') callback_error = 'Slack requires an HTTPS callback. Configure FRONDOSE_SLACK_CALLBACK_URL with an operator-controlled HTTPS callback before connecting.';
     } catch { callback_error = 'Configure a valid OAuth callback URL.'; }
     const writeScopes = { 'google-docs': 'https://www.googleapis.com/auth/documents', 'google-sheets': 'https://www.googleapis.com/auth/spreadsheets', 'google-slides': 'https://www.googleapis.com/auth/presentations' };
     return { ...OAUTH_PROVIDERS[family], ...(writeScopes[provider] ? { scopes: `${OAUTH_PROVIDERS[family].scopes} ${writeScopes[provider]}` } : {}), family, client_id: env[`${prefix}_CLIENT_ID`], client_secret: env[`${prefix}_CLIENT_SECRET`], redirect_uri: callback, callback_error, prefix };
@@ -142,7 +142,7 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
       if (get(peer.id).state !== 'connected') continue;
       const current = readToken(peer.id), prior = current.rumbo_oauth_binding;
       if (prior?.app !== binding.app || prior?.account !== binding.account || prior?.scopes !== binding.scopes || current.refresh_token !== peer.token.refresh_token) continue;
-      // Maintain each existing grant's refresh token and all Talvori resource/actor
+      // Maintain each existing grant's refresh token and all Frondose resource/actor
       // permissions. Starting (but not completing) consent does not revoke that
       // existing grant; disconnect does. Never populate an unapproved record.
       storeToken(peer.id, { ...current, access_token: next.access_token, expires_at: next.expires_at, expires_in: next.expires_in });
@@ -190,7 +190,7 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
     await check(actor, { workspace_id: workspaceId, scope_type: 'workspace' }, 'connections.view');
     const runners = [['codex', 'Codex'], ['claude', 'Claude Code']].map(([id, name]) => ({ id, name, category: 'AI agents', auth_family: 'runner', execution: 'existing_runner', configured: true, setup_required: [], features: [], actions: [], sync_kinds: [], resource_hint: 'Manage the existing provider account and agent execution settings.' }));
     const registration = { github: 'https://github.com/settings/developers', google: 'https://console.cloud.google.com/apis/credentials', linear: 'https://linear.app/settings/api', jira: 'https://developer.atlassian.com/console/myapps/', slack: 'https://api.slack.com/apps', figma: 'https://www.figma.com/developers/apps' };
-    return [...runners, ...Object.values(CONNECTOR_CATALOG).map(item => { const cfg = config(item.id), missing = []; if (!cfg.client_id) missing.push(`The Talvori operator must configure ${cfg.prefix}_CLIENT_ID.`); if (!cfg.client_secret) missing.push(`The Talvori operator must configure ${cfg.prefix}_CLIENT_SECRET.`); if (cfg.callback_error) missing.push(cfg.callback_error); return { ...item, availability: paused ? 'coming_soon' : 'available', configured: !paused && !missing.length, setup_required: paused ? ['External service connections are paused while Talvori focuses on AI agents.'] : missing, callback_url: paused || cfg.callback_error ? null : cfg.redirect_uri, scopes: cfg.scopes, registration_url: paused ? null : registration[cfg.family] }; })];
+    return [...runners, ...Object.values(CONNECTOR_CATALOG).map(item => { const cfg = config(item.id), missing = []; if (!cfg.client_id) missing.push(`The Frondose operator must configure ${cfg.prefix}_CLIENT_ID.`); if (!cfg.client_secret) missing.push(`The Frondose operator must configure ${cfg.prefix}_CLIENT_SECRET.`); if (cfg.callback_error) missing.push(cfg.callback_error); return { ...item, availability: paused ? 'coming_soon' : 'available', configured: !paused && !missing.length, setup_required: paused ? ['External service connections are paused while Frondose focuses on AI agents.'] : missing, callback_url: paused || cfg.callback_error ? null : cfg.redirect_uri, scopes: cfg.scopes, registration_url: paused ? null : registration[cfg.family] }; })];
   }
   async function list(workspaceId, actor) {
     await check(actor, { workspace_id: workspaceId, scope_type: 'workspace' }, 'connections.view');
@@ -211,7 +211,7 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
     const connection = get(id); await check(actor, connection, 'connections.manage');
     const cfg = config(connection.provider);
     if (cfg.callback_error) throw fail('invalid_callback', cfg.callback_error, 409);
-    if (!cfg.client_id || !cfg.client_secret) throw fail('operator_setup_required', 'The Talvori operator must configure this provider OAuth application first.', 409);
+    if (!cfg.client_id || !cfg.client_secret) throw fail('operator_setup_required', 'The Frondose operator must configure this provider OAuth application first.', 409);
     for (const [state, entry] of pending) if (entry.expires < Date.now() || entry.id === id) pending.delete(state);
     const state = randomBytes(32).toString('base64url'), verifier = randomBytes(48).toString('base64url');
     const generation = (authGenerations.get(id) || 0) + 1; authGenerations.set(id, generation);
@@ -225,10 +225,10 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
   }
   async function completeAuthorization(query, actor) {
     const entry = pending.get(query.state); pending.delete(query.state);
-    if (entry && actor && actorId(actor) !== actorId(entry.actor)) throw fail('oauth_actor_mismatch', 'Complete authorization from the same Talvori account.', 403);
+    if (entry && actor && actorId(actor) !== actorId(entry.actor)) throw fail('oauth_actor_mismatch', 'Complete authorization from the same Frondose account.', 403);
     if (entry && query.error && entry.expires >= Date.now()) { audit(get(entry.id), entry.actor, 'authorization_denied'); throw fail('authorization_denied', 'Authorization was declined. No new credentials were saved. You can connect again.', 409); }
     if (!entry || entry.expires < Date.now() || typeof query.code !== 'string' || !query.code || query.code.length > 4096 || /[\x00-\x1f]/.test(query.code)) throw fail('invalid_oauth_state', 'This authorization attempt expired or was already used. Connect again.', 409);
-    if (actor && actorId(actor) !== actorId(entry.actor)) throw fail('oauth_actor_mismatch', 'Complete authorization from the same Talvori account.', 403);
+    if (actor && actorId(actor) !== actorId(entry.actor)) throw fail('oauth_actor_mismatch', 'Complete authorization from the same Frondose account.', 403);
     const connection = get(entry.id); await check(entry.actor, connection, 'connections.manage');
     const cfg = entry.cfg;
     return figmaLifecycle(cfg, async () => {
@@ -342,7 +342,7 @@ export function createConnectionPlatform({ db, dataDir, env = process.env, fetch
       if (input?.delete_cache) db.prepare('INSERT INTO platform_connection_actions VALUES(?,?,?,?,?,?)').run(id, input.idempotency_key, purgeFingerprint, 'started', null, now());
       db.prepare('DELETE FROM platform_connection_secrets WHERE connection_id=?').run(id);
       if (input?.delete_cache) db.prepare('DELETE FROM platform_external_objects WHERE connection_id=?').run(id);
-      audit(connection, actor, 'disconnected', { cache_deleted: Boolean(input?.delete_cache), provider_revocation: 'Revoke the Talvori app in provider settings to invalidate its grant.' });
+      audit(connection, actor, 'disconnected', { cache_deleted: Boolean(input?.delete_cache), provider_revocation: 'Revoke the Frondose app in provider settings to invalidate its grant.' });
       update(id, { state: 'not_connected', account_label: null, last_error: null, verification: {} });
       if (input?.delete_cache) db.prepare("UPDATE platform_connection_actions SET state='completed',result=? WHERE connection_id=? AND idempotency_key=?").run(JSON.stringify({ disconnected: true, cache_deleted: true }), id, input.idempotency_key);
       db.exec('COMMIT');

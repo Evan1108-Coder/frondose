@@ -66,10 +66,10 @@ test('resource reader bounds text files and rejects active HTML or non-UTF8/bina
 
 test('breadcrumbs expose clickable canonical parents and a named current entity', () => {
   const data = { projects: [{ id: 'p1', name: 'Project' }], chats: [{ id: 'c1', title: 'Design conversation' }], teams: [{ id: 't1', name: 'Research' }] };
-  const workspace = { name: 'Talvori Studio' };
-  assert.deepEqual(breadcrumbItems({ page: { view: 'chats', id: 'c1', projectId: 'p1' }, workspace, data }).map(item => item.label), ['Talvori Studio', 'Projects', 'Project', 'Conversations', 'Design conversation']);
+  const workspace = { name: 'Frondose Studio' };
+  assert.deepEqual(breadcrumbItems({ page: { view: 'chats', id: 'c1', projectId: 'p1' }, workspace, data }).map(item => item.label), ['Frondose Studio', 'Projects', 'Project', 'Conversations', 'Design conversation']);
   const area = breadcrumbItems({ page: { view: 'teams', id: 't1', section: 'resources' }, workspace, data });
-  assert.deepEqual(area.map(item => item.label), ['Talvori Studio', 'Areas', 'Research', 'Resources']);
+  assert.deepEqual(area.map(item => item.label), ['Frondose Studio', 'Areas', 'Research', 'Resources']);
   assert.deepEqual(area[2], { label: 'Research', view: 'teams', id: 't1' });
   assert.equal(area.at(-1).current, true);
 });

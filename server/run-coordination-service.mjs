@@ -44,7 +44,7 @@ export function coordinationTarget(db, { workspaceId, chatId, agentId }) {
   // A personal-agent conversation must not become a side door to another
   // identity. Ordinary conversations deliberately allow explicit recipients.
   if (chat.kind === 'rumbo-agent') {
-    if (!parse(chat.participant_agent_ids_json || '[]').includes(agent.id)) fail('Use the agent bound to this Talvori conversation.');
+    if (!parse(chat.participant_agent_ids_json || '[]').includes(agent.id)) fail('Use the agent bound to this Frondose conversation.');
   }
   return { chat, agent: { ...agent } };
 }

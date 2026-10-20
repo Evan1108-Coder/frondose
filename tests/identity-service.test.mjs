@@ -12,7 +12,7 @@ test('account setup replaces implicit local authority; cookies are opaque, expir
   assert.equal(owner.id, 'local-owner');
   const session = await identity.setup({ email: 'owner@example.com', name: 'Owner', password: 'correct long password' }, owner);
   assert.equal(identity.resolve({ headers: {} }), null);
-  const req = { headers: { cookie: `talvori_session=${session.token}` } };
+  const req = { headers: { cookie: `frondose_session=${session.token}` } };
   const actor = identity.resolve(req);
   assert.equal(actor.id, 'local-owner');
   assert.ok(!JSON.stringify(db.prepare('SELECT * FROM identity_sessions').all()).includes(session.token));
@@ -22,7 +22,7 @@ test('account setup replaces implicit local authority; cookies are opaque, expir
   assert.equal(identity.resolve(req), null);
   const next = await identity.login({ email: 'owner@example.com', password: 'correct long password' });
   time += 8 * 86400000;
-  assert.equal(identity.resolve({ headers: { cookie: `talvori_session=${next.token}` } }), null);
+  assert.equal(identity.resolve({ headers: { cookie: `frondose_session=${next.token}` } }), null);
   await assert.rejects(identity.setup({ email: 'x@y.com', password: 'another password' }, owner), /already complete/);
   db.close();
 });

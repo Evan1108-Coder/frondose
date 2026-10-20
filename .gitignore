@@ -2,6 +2,7 @@
 node_modules/
 dist/
 .rumbo/
+.frondose/
 .talvori/
 .env
 .env.*

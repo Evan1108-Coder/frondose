@@ -13,7 +13,7 @@ const require=createRequire(import.meta.url);
 let component;
 async function render(props={}) {
   if(!component){
-    const directory=mkdtempSync(join(tmpdir(),'talvori-toolbar-test-'));
+    const directory=mkdtempSync(join(tmpdir(),'frondose-toolbar-test-'));
     try{
       const result=await build({entryPoints:['src/components/ConversationToolbar.jsx'],bundle:true,write:false,platform:'node',format:'esm',jsx:'automatic',loader:{'.css':'empty'},plugins:[{name:'shared-react',setup(builder){builder.onResolve({filter:/^react(?:-dom)?(?:\/.*)?$/},args=>({path:require.resolve(args.path),external:true}));}}]});
       const path=join(directory,'toolbar.mjs');writeFileSync(path,result.outputFiles[0].text);

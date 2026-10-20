@@ -195,7 +195,7 @@ function pinDirect(f,policy=directActionPolicy(f.db,'ws',f.actor)) {
   captureRunContext(f.db,f.run.id,{finalPrompt:'Exact reviewed prompt',actionNonce:'nonce',manifest:{resolved:{workspace_id:'ws'},fingerprint:'fixture-reviewed',direct_action_policy:policy},sourceAccess:{version:1,workspace_id:'ws',sources:[],connections:[]}});
 }
 function directCapture(f,actions,options={}) {
-  const text = `Requested.\n\`\`\`talvori-actions\n${JSON.stringify({nonce:'nonce',actions})}\n\`\`\``;
+  const text = `Requested.\n\`\`\`frondose-actions\n${JSON.stringify({nonce:'nonce',actions})}\n\`\`\``;
   const authorizeCapture = options.authorizeCapture || (()=>{});
   return captureAgentActions(f.db,f.run.id,text,'nonce',{authorizeCapture,executeDirect:request=>executeDirectAgentAction(f.db,{...request,actor:f.actor,allowed:f.allowed,authorizeCapture,...options})});
 }

@@ -75,12 +75,14 @@ test('general conversations use an empty private transient directory and restric
   for (const provider of ['codex', 'claude']) {
     const child = fakeProcess(); let launch;
     const { service, directory } = fixture(t, {
+      env: { FRONDOSE_GITHUB_CLIENT_SECRET:'fixture-current-secret', TALVORI_GITHUB_CLIENT_SECRET:'fixture-old-secret', RUMBO_GITHUB_CLIENT_SECRET:'fixture-original-secret' },
       execute: async (_command, args) => ({ code: 0, stdout: args.includes('mcp') ? '[]' : '{"loggedIn":true}' }),
       spawnProcess: (command, args, options) => { launch = { command, args, options }; return child; },
     });
     await service.connect(provider, { method: 'existing' });
     const events = [];
     await service.startRun({ provider, prompt: 'Help plan a presentation.', workMode: 'conversation' }, { onEvent: event => events.push(event) });
+    assert.ok(!Object.keys(launch.options.env).some(key => /^(?:FRONDOSE|TALVORI|RUMBO)_/.test(key)), 'Operator secrets under every brand stay outside provider runtimes');
     assert.equal(statSync(launch.options.cwd).mode & 0o777, 0o700);
     assert.deepEqual(readdirSync(launch.options.cwd), []);
     assert.notEqual(launch.options.cwd, directory);
@@ -118,7 +120,7 @@ test('general conversation scratch directories are removed on setup failure and 
 });
 
 test('opening setup and cached status never checks accounts, leaks secrets, or starts a process', (t) => {
-  const { service } = fixture(t, { env: { TALVORI_GOOGLE_CLIENT_ID: 'client', TALVORI_GOOGLE_CLIENT_SECRET: 'private-client-secret' } });
+  const { service } = fixture(t, { env: { FRONDOSE_GOOGLE_CLIENT_ID: 'client', FRONDOSE_GOOGLE_CLIENT_SECRET: 'private-client-secret' } });
   const setups = service.listSetups();
   assert.equal(setups.length, 4);
   assert.ok(setups.every((setup) => setup.connection.state === 'not_connected'));
@@ -204,7 +206,7 @@ test('Google requires registered OAuth config and validates state before token e
   const missing = fixture(t).service;
   await assert.rejects(missing.connect('google-drive', { method: 'browser' }), { code: 'configuration_required' });
   const requests = [];
-  const { service } = fixture(t, { env: { TALVORI_GOOGLE_CLIENT_ID: 'test-client', TALVORI_GOOGLE_CLIENT_SECRET: 'test-secret' }, fetchImpl: async (url, options) => { requests.push({ url, options }); return ok({ access_token: 'test-access', refresh_token: 'test-refresh', expires_in: 3600 }); } });
+  const { service } = fixture(t, { env: { FRONDOSE_GOOGLE_CLIENT_ID: 'test-client', FRONDOSE_GOOGLE_CLIENT_SECRET: 'test-secret' }, fetchImpl: async (url, options) => { requests.push({ url, options }); return ok({ access_token: 'test-access', refresh_token: 'test-refresh', expires_in: 3600 }); } });
   const start = await service.connect('google-drive', { method: 'browser', origin: 'http://127.0.0.1:4999' });
   const authUrl = new URL(start.authorizationUrl);
   assert.equal(authUrl.hostname, 'accounts.google.com');
@@ -222,7 +224,7 @@ test('Google requires registered OAuth config and validates state before token e
 
 test('Google resource listing refreshes expired tokens and returns metadata only', async (t) => {
   let exchanges = 0;
-  const { service } = fixture(t, { env: { TALVORI_GOOGLE_CLIENT_ID: 'client', TALVORI_GOOGLE_CLIENT_SECRET: 'secret' }, fetchImpl: async (url, options) => {
+  const { service } = fixture(t, { env: { FRONDOSE_GOOGLE_CLIENT_ID: 'client', FRONDOSE_GOOGLE_CLIENT_SECRET: 'secret' }, fetchImpl: async (url, options) => {
     if (url.includes('/token')) { exchanges++; return ok({ access_token: `token${exchanges}`, refresh_token: 'refresh', expires_in: 1 }); }
     assert.equal(options.headers.Authorization, 'Bearer token2');
     return ok({ files: [{ id: 'file1', name: 'Project brief', webViewLink: 'https://drive.google.com/file/d/file1/view' }] });
@@ -452,15 +454,15 @@ test('Codex receives one generated native MCP server without capability values i
   await service.connect('codex', { method: 'existing' });
   await service.startRun({ provider: 'codex', prompt: 'Use the reviewed tool', cwd: directory, nativeToolBridge: bridge.descriptor });
   const serialized = JSON.stringify(launch.args);
-  assert.equal(serialized.includes(bridge.descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY), false);
-  assert.equal(serialized.includes(bridge.descriptor.env.TALVORI_NATIVE_TOOL_SOCKET), false);
+  assert.equal(serialized.includes(bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY), false);
+  assert.equal(serialized.includes(bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET), false);
   for (const value of [
-    `mcp_servers.talvori.command=${JSON.stringify(process.execPath)}`,
-    'mcp_servers.talvori.env_vars=["TALVORI_NATIVE_TOOL_SOCKET","TALVORI_NATIVE_TOOL_CAPABILITY"]',
-    'mcp_servers.talvori.enabled_tools=["documents.read"]',
-    'mcp_servers.talvori.required=true',
+    `mcp_servers.frondose.command=${JSON.stringify(process.execPath)}`,
+    'mcp_servers.frondose.env_vars=["FRONDOSE_NATIVE_TOOL_SOCKET","FRONDOSE_NATIVE_TOOL_CAPABILITY"]',
+    'mcp_servers.frondose.enabled_tools=["documents.read"]',
+    'mcp_servers.frondose.required=true',
   ]) assert.ok(launch.args.includes(value), value);
-  assert.equal(launch.options.env.TALVORI_NATIVE_TOOL_CAPABILITY, bridge.descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY);
+  assert.equal(launch.options.env.FRONDOSE_NATIVE_TOOL_CAPABILITY, bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY);
   child.emit('close', 0);
 });
 
@@ -473,12 +475,12 @@ test('Claude keeps restricted builtins and allows only exact generated native MC
   await service.startRun({ provider: 'claude', prompt: 'Review', cwd: directory, nativeToolBridge: bridge.descriptor });
   assert.equal(launch.args[launch.args.indexOf('--tools') + 1], 'Read,Glob,Grep');
   assert.equal(launch.args.includes('--disallowedTools'), false);
-  assert.ok(launch.args.includes('mcp__talvori__reviews.record'));
-  assert.ok(launch.args.includes('mcp__talvori__outputs.read'));
+  assert.ok(launch.args.includes('mcp__frondose__reviews.record'));
+  assert.ok(launch.args.includes('mcp__frondose__outputs.read'));
   const config = JSON.parse(launch.args[launch.args.indexOf('--mcp-config') + 1]);
-  assert.deepEqual(Object.keys(config.mcpServers), ['talvori']);
-  assert.equal(JSON.stringify(config).includes(bridge.descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY), false);
-  assert.equal(launch.options.env.TALVORI_NATIVE_TOOL_CAPABILITY, bridge.descriptor.env.TALVORI_NATIVE_TOOL_CAPABILITY);
+  assert.deepEqual(Object.keys(config.mcpServers), ['frondose']);
+  assert.equal(JSON.stringify(config).includes(bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY), false);
+  assert.equal(launch.options.env.FRONDOSE_NATIVE_TOOL_CAPABILITY, bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY);
   assert.ok(launch.args.includes('--bare')); assert.ok(launch.args.includes('--restricted'));
   child.emit('close', 0);
 });
@@ -487,7 +489,7 @@ test('native bridge descriptor tampering and reserved Codex server collisions fa
   const bridge = await createNativeAgentToolBridge({ listTools: () => [{ name: 'documents.read', inputSchema: { type: 'object' } }], callTool: () => ({}), expiresAt: Date.now() + 30_000 });
   t.after(() => bridge.close());
   let spawns = 0;
-  const { service, directory } = fixture(t, { execute: async (_command, args) => ({ code: 0, stdout: args.includes('mcp') ? '[{"name":"talvori","enabled":true}]' : 'Logged in' }), spawnProcess: () => { spawns++; return fakeProcess(); } });
+  const { service, directory } = fixture(t, { execute: async (_command, args) => ({ code: 0, stdout: args.includes('mcp') ? '[{"name":"frondose","enabled":true}]' : 'Logged in' }), spawnProcess: () => { spawns++; return fakeProcess(); } });
   await service.connect('codex', { method: 'existing' });
   await assert.rejects(service.startRun({ provider: 'codex', prompt: 'Work', cwd: directory, nativeToolBridge: { ...bridge.descriptor, command: '/tmp/untrusted' } }), { code: 'invalid_native_tool_bridge' });
   await assert.rejects(service.startRun({ provider: 'codex', prompt: 'Work', cwd: directory, nativeToolBridge: bridge.descriptor }), { code: 'provider_configuration' });

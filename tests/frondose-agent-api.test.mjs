@@ -14,7 +14,7 @@ async function fixture(t, { onboard = true } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-assistant-api-'));
   const fake = { launches: [], commands: [], mode: 'success' };
   const api = createLocalApi({ dataDir, seedMode: 'clean', integrationOptions: {
-    env: {}, fetchImpl: () => { throw new Error('Network forbidden in Talvori fixtures.'); },
+    env: {}, fetchImpl: () => { throw new Error('Network forbidden in Frondose fixtures.'); },
     execute: async (command, args) => { fake.commands.push({ command, args }); return { stdout: args.includes('mcp') ? '[]' : '{"loggedIn":true}', stderr: '', code: 0 }; },
     spawnProcess: (command, args, options) => {
       const child = new EventEmitter(), launch = { command, args, options };
@@ -22,7 +22,7 @@ async function fixture(t, { onboard = true } = {}) {
       child.stdin = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
       child.kill = () => queueMicrotask(() => child.emit('close', 1));
       child.stdin.end = prompt => { launch.prompt = prompt; if (fake.mode === 'hold') return; queueMicrotask(() => {
-        if (fake.mode === 'success') child.stdout.emit('data', Buffer.from(`${JSON.stringify(command === 'claude' ? { type: 'result', subtype: 'success', result: 'Injected Claude Talvori reply.', is_error: false } : { type: 'item.completed', item: { type: 'agent_message', text: 'Injected Talvori reply.' } })}\n`));
+        if (fake.mode === 'success') child.stdout.emit('data', Buffer.from(`${JSON.stringify(command === 'claude' ? { type: 'result', subtype: 'success', result: 'Injected Claude Frondose reply.', is_error: false } : { type: 'item.completed', item: { type: 'agent_message', text: 'Injected Frondose reply.' } })}\n`));
         child.emit('close', fake.mode === 'success' ? 0 : 1);
       }); };
       return child;
@@ -36,8 +36,8 @@ async function fixture(t, { onboard = true } = {}) {
   };
   const call = async (...args) => { const response = await request(...args); assert.ok(response.status >= 200 && response.status < 300, `${args[0]}: ${JSON.stringify(response.body)}`); return response.body; };
   t.after(async () => { api.close(); await new Promise(resolve => server.close(resolve)); db.close(); await rm(dataDir, { recursive: true, force: true }); });
-  const workspace = (await call('/workspaces', { name: 'Talvori fixture' })).workspace;
-  if (onboard) await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Talvori', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true } }, 'PATCH');
+  const workspace = (await call('/workspaces', { name: 'Frondose fixture' })).workspace;
+  if (onboard) await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Frondose', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true } }, 'PATCH');
   const connect = async (provider = 'codex') => call(`/connections/${provider}/connect`, { method: 'existing' });
   const select = (provider = 'codex') => call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { provider, provider_selected: true, model: '', reasoning_effort: '' } }, 'PATCH');
   const create = async (extra = {}) => { if (!extra.agent_id) await select(extra.provider || 'codex'); return call('/rumbo-agent/chats', { workspace_id: workspace.id, provider: 'codex', request_id: 'new-chat-fixture', ...extra }); };
@@ -54,7 +54,7 @@ test('new workspaces do not inherit local AI activation, personal setup, profile
   const { call, request, workspace, fake } = await fixture(t, { onboard: false });
   await call('/connections/codex/connect', { method: 'existing', workspace_id: workspace.id });
   const other = (await call('/workspaces', { name: 'Independent workspace' })).workspace;
-  const state = (await call(`/talvori-agent?workspace_id=${other.id}`)).result;
+  const state = (await call(`/frondose-agent?workspace_id=${other.id}`)).result;
   assert.equal(state.providers.find(item => item.provider === 'codex').connected, false);
   assert.equal(state.preferences.provider, ''); assert.equal(state.preferences.provider_selected, false);
   assert.equal(state.preferences.onboarding_complete, false);
@@ -66,7 +66,7 @@ test('new workspaces do not inherit local AI activation, personal setup, profile
   const profile = (await call('/agents', { workspace_id: other.id, provider: 'codex', name: 'Unactivated profile', provider_connection_id: 'conn_codex' })).agent;
   const blockedRun = await request('/runs', { workspace_id: other.id, agent_id: profile.id, provider: 'codex', prompt: 'Must not start.', mode: 'live', work_mode: 'conversation', permission_mode: 'read-only' });
   assert.equal(blockedRun.status, 409); assert.equal(blockedRun.body.error.code, 'not_connected');
-  assert.equal((await request('/talvori-agent/preferences', { workspace_id: other.id, preferences: { provider: 'codex', provider_selected: true } }, 'PATCH')).status, 409);
+  assert.equal((await request('/frondose-agent/preferences', { workspace_id: other.id, preferences: { provider: 'codex', provider_selected: true } }, 'PATCH')).status, 409);
   assert.equal((await call(`/connections/codex/status?workspace_id=${other.id}`)).connection.state, 'not_connected', 'Reading status never activates an account');
   await call('/connections/codex/connect', { method: 'existing', workspace_id: other.id });
   await call('/connections/codex/disconnect', { workspace_id: other.id });
@@ -76,7 +76,7 @@ test('new workspaces do not inherit local AI activation, personal setup, profile
   assert.equal(fake.launches.length, 0);
 });
 
-test('Talvori chat creation preserves a selected connected profile and its idempotent identity', async t => {
+test('Frondose chat creation preserves a selected connected profile and its idempotent identity', async t => {
   const { call, request, workspace, connect, create, fake, api } = await fixture(t);
   await connect();
   const profile = (await call('/agents', { workspace_id: workspace.id, name: 'Research partner', provider: 'codex', provider_connection_id: 'conn_codex', instructions: 'Research carefully.', permission_policy: 'review' })).agent;
@@ -85,14 +85,14 @@ test('Talvori chat creation preserves a selected connected profile and its idemp
   assert.deepEqual(created.chat.participant_agent_ids, [profile.id]);
   assert.equal((await create({ agent_id: profile.id })).chat.id, created.chat.id);
   const other = (await call('/agents', { workspace_id: workspace.id, name: 'Different profile', provider: 'codex', provider_connection_id: 'conn_codex' })).agent;
-  assert.equal((await request('/talvori-agent/chats', { workspace_id: workspace.id, provider: 'codex', agent_id: other.id, request_id: 'new-chat-fixture' })).status, 409);
+  assert.equal((await request('/frondose-agent/chats', { workspace_id: workspace.id, provider: 'codex', agent_id: other.id, request_id: 'new-chat-fixture' })).status, 409);
   await call(`/agents/${other.id}`, { provider_connection_id: null }, 'PATCH');
-  assert.equal((await request('/talvori-agent/chats', { workspace_id: workspace.id, provider: 'codex', agent_id: other.id, request_id: 'unbound-profile-fixture' })).status, 409);
+  assert.equal((await request('/frondose-agent/chats', { workspace_id: workspace.id, provider: 'codex', agent_id: other.id, request_id: 'unbound-profile-fixture' })).status, 409);
   assert.equal(api.snapshot().chats.length, 1);
   assert.equal(fake.launches.length, 0);
 });
 
-test('opening Talvori is read-only; disconnected creation stores nothing and configured models are not claimed as discovered', async t => {
+test('opening Frondose is read-only; disconnected creation stores nothing and configured models are not claimed as discovered', async t => {
   const { api, call, request, fake, workspace, connect, create } = await fixture(t);
   const before = api.snapshot();
   const result = (await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result;
@@ -161,7 +161,7 @@ test('pre-onboarding preference records remain usable after upgrade and inherit 
   assert.equal(fake.launches.length, 0);
 });
 
-test('ready accounts never implicitly bind Talvori; legacy defaults and old personal conversations require explicit selection', async t => {
+test('ready accounts never implicitly bind Frondose; legacy defaults and old personal conversations require explicit selection', async t => {
   const { api, db, call, request, fake, workspace, connect, select, create, inspect } = await fixture(t);
   await connect('codex'); await connect('claude');
   const before = api.snapshot();
@@ -189,7 +189,7 @@ test('ready accounts never implicitly bind Talvori; legacy defaults and old pers
   assert.equal(fake.launches.length, 0);
 });
 
-test('explicit Talvori binding requires verified readiness and can be cleared without deleting history or unrelated profiles', async t => {
+test('explicit Frondose binding requires verified readiness and can be cleared without deleting history or unrelated profiles', async t => {
   const { api, call, request, fake, workspace, connect, select, create } = await fixture(t);
   assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { provider: 'codex', provider_selected: true } }, 'PATCH')).body.error.code, 'not_connected');
   await connect('codex'); await select('codex'); const saved = await create();
@@ -243,7 +243,7 @@ test('agent names and bounded uploaded pictures version independently of provide
     assert.equal((await request(`/agents/${agent.id}`, { image_url }, 'PATCH')).status, 400);
     assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { image_url } }, 'PATCH')).status, 400);
   }
-  await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Talvori portrait', image_url: picture } }, 'PATCH');
+  await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: { display_name: 'Frondose portrait', image_url: picture } }, 'PATCH');
   assert.equal(api.snapshot().agents.find(row => row.id === agent.id).image_url, picture);
   await call(`/agents/${agent.id}`, { image_url: null }, 'PATCH');
   assert.equal(api.snapshot().agents.find(row => row.id === agent.id).image_url, null);
@@ -265,7 +265,7 @@ test('chat creation is idempotent and unknown/cross-workspace sources cannot cre
   assert.equal(conflict.status, 409); assert.equal(conflict.body.error.code, 'request_id_reused');
 });
 
-test('Codex and Claude Talvori profiles share their existing accounts, switch per chat without model leakage, and reject unsupported reasoning', async t => {
+test('Codex and Claude Frondose profiles share their existing accounts, switch per chat without model leakage, and reject unsupported reasoning', async t => {
   const { api, call, request, fake, connect, select, create, inspect, send, workspace } = await fixture(t);
   await connect('codex'); await connect('claude');
   const codex = await create(), claude = await create({ provider: 'claude', request_id: 'claude-chat-fixture' });
@@ -369,7 +369,7 @@ test('workspace preferences persist validated intent without provider calls, pro
   const agentCount = api.snapshot().agents.length;
   const settings = { provider: 'codex', model: 'fixture-model', reasoning_effort: 'low', include_workspace: false, include_memory: false, include_chat: false, context_pack_ids: [], native_tools: true };
   await call('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences: settings }, 'PATCH');
-  assert.deepEqual((await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences, { ...settings, provider_selected: false, image_url: null, display_name: 'Talvori', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true });
+  assert.deepEqual((await call(`/rumbo-agent?workspace_id=${workspace.id}`)).result.preferences, { ...settings, provider_selected: false, image_url: null, display_name: 'Frondose', orb_color: 'blue', purpose: 'Help organize this workspace.', guidelines: 'Be clear and ask before changing work.', onboarding_complete: true });
   assert.equal(fake.commands.length, 0); assert.equal(fake.launches.length, 0); assert.equal(api.snapshot().agents.length, agentCount);
   for (const preferences of [{ context_pack_ids: ['missing-pack'] }, { model: '--evil-shell-option' }, { provider: 'claude', reasoning_effort: 'high' }, { native_tools: 'yes' }, { permission_mode: 'workspace-write' }]) {
     assert.equal((await request('/rumbo-agent/preferences', { workspace_id: workspace.id, preferences }, 'PATCH')).status, 400);
@@ -401,7 +401,7 @@ test('source bindings survive presentation changes and cannot be discarded by br
   assert.equal((await request(`/messages/${sent.message.id}`, { content: 'Replace content', archived_at: 'smuggled' }, 'PATCH')).status, 403);
 });
 
-test('Talvori requires exact review even without native tools and rejects cross-Area source containers', async t => {
+test('Frondose requires exact review even without native tools and rejects cross-Area source containers', async t => {
   const { api, call, request, fake, connect, create, workspace } = await fixture(t);
   await connect(); const { chat, agent } = await create();
   const notReviewed = await request(`/chats/${chat.id}/turns`, { agent_id: agent.id, content: 'Please answer', client_turn_id: 'unreviewed-turn' });
@@ -440,7 +440,7 @@ test('derived outputs, versions, comments, reviews and chat updates disappear af
   assert.equal(JSON.stringify(feed).includes('DERIVED_SECRET_UPDATE'), false);
 });
 
-test('Talvori workspace index is bounded, excludes document bodies, can be disabled, and protects generated history after source revocation', async t => {
+test('Frondose workspace index is bounded, excludes document bodies, can be disabled, and protects generated history after source revocation', async t => {
   const { api, call, request, connect, create, inspect, send, workspace } = await fixture(t);
   await connect();
   const projects = [];

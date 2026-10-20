@@ -1,4 +1,4 @@
-import { assertTalvoriSourceReferences } from './context-source-access.mjs';
+import { assertFrondoseSourceReferences } from './context-source-access.mjs';
 
 export const ACTIVITY_TARGET_TABLES = Object.freeze({ project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', output: 'outputs', milestone: 'milestones', chat: 'chats' });
 const AREAS = { project: 'projects', route: 'routes', request: 'workspace', document: 'documents', output: 'documents', milestone: 'projects', chat: 'chats' };
@@ -30,8 +30,8 @@ export function createActivityPolicy(db, allowed = () => true) {
     const destination = target(entry);
     if (!destination || !destination.scopes.every(at => allowed(entry.workspace_id, actor, `${destination.area}.${verb}`, at))) return false;
     try {
-      assertTalvoriSourceReferences(db, entry, 'activity_entries', actor, allowed);
-      assertTalvoriSourceReferences(db, destination.item, destination.table, actor, allowed);
+      assertFrondoseSourceReferences(db, entry, 'activity_entries', actor, allowed);
+      assertFrondoseSourceReferences(db, destination.item, destination.table, actor, allowed);
     } catch { return false; }
     return !destination.requestRoute || allowed(entry.workspace_id, actor, 'routes.read', destination.at);
   }

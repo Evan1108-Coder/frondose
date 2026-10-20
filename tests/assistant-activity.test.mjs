@@ -45,9 +45,9 @@ test('assistant sections round-trip new and legacy links and reject ambiguous/in
   for (const section of ['conversation', 'activity', 'scheduled']) for (const id of [null, 'chat']) {
     const hash = pageHash('rumbo-agent', id, { section });
     assert.deepEqual(parsePage(hash), { view: 'rumbo-agent', id, projectId: null, section });
-    assert.deepEqual(parsePage(hash.replace('talvori-agent', 'rumbo-agent')), parsePage(hash));
+    assert.deepEqual(parsePage(hash.replace('frondose-agent', 'rumbo-agent')), parsePage(hash));
   }
-  assert.equal(parsePage('#/talvori-agent?section=activity&section=scheduled').view, 'overview');
-  assert.equal(parsePage('#/talvori-agent?section=bad').view, 'overview');
+  assert.equal(parsePage('#/frondose-agent?section=activity&section=scheduled').view, 'overview');
+  assert.equal(parsePage('#/frondose-agent?section=bad').view, 'overview');
   assert.throws(() => pageHash('rumbo-agent', null, { section: 'bad' }), /Invalid assistant section/);
 });

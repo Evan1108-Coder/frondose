@@ -1,9 +1,9 @@
 import palettes from './code-themes.json' with { type: 'json' };
 export const CODE_THEMES = [
-  { id: 'app', label: 'Match Talvori', tone: 'automatic' },
-  { id: 'light', label: 'Talvori Light', tone: 'light' },
-  { id: 'dark', label: 'Talvori Dark', tone: 'dark' },
-  { id: 'contrast', label: 'Talvori High Contrast', tone: 'dark' },
+  { id: 'app', label: 'Match Frondose', tone: 'automatic' },
+  { id: 'light', label: 'Frondose Light', tone: 'light' },
+  { id: 'dark', label: 'Frondose Dark', tone: 'dark' },
+  { id: 'contrast', label: 'Frondose High Contrast', tone: 'dark' },
   ...palettes,
 ];
 const themes = new Map(CODE_THEMES.map(theme => [theme.id, theme]));

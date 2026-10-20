@@ -23,12 +23,12 @@ function fixture(t, overrides = {}) {
     prepareMessage: async body => { preparing = true; return { title: 'Exact event task', payload: body.payload, review: { inspection: inspection(), input: { prompt: body.payload.content } } }; },
     dispatchMessage: async (job, occurrence) => { const id = `run_${++sequence}`; db.prepare('INSERT INTO runs VALUES(?,?)').run(id, 'completed'); deliveries.push({ job, occurrence }); return { run_id: id }; },
     eventReadable: () => sourceReadable,
-    matchEvent: (job, event) => event.source === 'Talvori' && event.entity_type === 'tasks' && job.trigger.event === 'route.created' ? 'route.created' : null,
+    matchEvent: (job, event) => event.source === 'Frondose' && event.entity_type === 'tasks' && job.trigger.event === 'route.created' ? 'route.created' : null,
     eventInspection: (_job, event) => ({ metadata: { event_type: 'route.created', source_type: 'route', source_id: event.entity_id, occurred_at: event.created_at }, sourceAccess: { sources: [] } }),
     ...overrides };
   let service = createEventWorkService(options);
   const body = (extra = {}) => ({ workspace_id: 'ws', request_id: 'event_request_1', trigger: { event: 'route.created', target_type: 'workspace', target_id: 'ws' }, payload: { chat_id: 'chat', agent_id: 'agent', content: 'Exact prompt' }, context_inspection_id: 'inspection_1', cooldown_minutes: 5, confirmed_recurring: true, ...extra });
-  const event = (id = `event_${++sequence}`, { workspaceId = 'ws', source = 'Talvori', occurredAt = clock, entityType = 'tasks' } = {}) => { db.prepare('INSERT INTO change_log VALUES(?,?,?,?,?,?,?)').run(id, workspaceId, entityType, `route_${id}`, occurredAt, null, '{}'); db.prepare('INSERT INTO change_attribution VALUES(?,?,?)').run(id, actor.id, source); return id; };
+  const event = (id = `event_${++sequence}`, { workspaceId = 'ws', source = 'Frondose', occurredAt = clock, entityType = 'tasks' } = {}) => { db.prepare('INSERT INTO change_log VALUES(?,?,?,?,?,?,?)').run(id, workspaceId, entityType, `route_${id}`, occurredAt, null, '{}'); db.prepare('INSERT INTO change_attribution VALUES(?,?,?)').run(id, actor.id, source); return id; };
   return { db, actor, deliveries, body, event, options, get service() { return service; }, get preparing() { return preparing; }, time: value => { clock = value; }, revoke: () => { permitted = false; }, revokeSource: () => { sourceReadable = false; }, restoreSource: () => { sourceReadable = true; }, restart: () => { service = createEventWorkService(options); return service; } };
 }
 

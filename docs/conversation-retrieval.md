@@ -14,7 +14,7 @@ bounded to 400 characters. Restricted matches and their counts are not exposed.
 
 Select individual messages, optionally combine them with documents, memory
 notes, or Context Packs, then choose **Snapshot … sources**. Selection contains
-canonical IDs, not client-supplied source text. Talvori resolves the canonical
+canonical IDs, not client-supplied source text. Frondose resolves the canonical
 full message at snapshot creation; it does not copy attachments or adjacent
 messages. Up to 20 explicit sources can be selected; a full snapshot over 15 KB
 is rejected, not silently truncated. Source text is untrusted reference data.

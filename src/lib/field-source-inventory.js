@@ -147,7 +147,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "rumbo-agent.entry.request",
-    "page": "Ask Talvori",
+    "page": "Ask Frondose",
     "label": "What would you like help with?",
     "type": "textarea",
     "eligible": true,
@@ -428,7 +428,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   {
     "key": "source.components-feedback-dialog.feedback-dialog.how-could-rumbo-work-better-for-.75d9672bc16c",
     "page": "Feedback",
-    "label": "How could Talvori work better for you?",
+    "label": "How could Frondose work better for you?",
     "type": "textarea",
     "eligible": true,
     "reason": null
@@ -683,7 +683,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.components-shell.command-palette.search-projects-areas-routes-cha.d6db29bc6af0",
-    "page": "Search Talvori",
+    "page": "Search Frondose",
     "label": "Search projects, Areas, Routes, chats and actions",
     "type": "text",
     "eligible": true,
@@ -955,7 +955,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-docs.docs-view.what-would-you-like-to-do.d8dae1a18c85",
-    "page": "Search Talvori Docs",
+    "page": "Search Frondose Docs",
     "label": "Search documentation articles",
     "type": "search",
     "eligible": true,
@@ -1219,7 +1219,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.agent-name.b83e499d6b30",
-    "page": "Talvori",
+    "page": "Frondose",
     "label": "Agent name",
     "type": "text",
     "eligible": true,
@@ -1227,7 +1227,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.guidelines.4f5700e8f77b",
-    "page": "Talvori",
+    "page": "Frondose",
     "label": "Guidelines",
     "type": "textarea",
     "eligible": true,
@@ -1235,7 +1235,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-rumbo-agent-prefe.rumbo-agent-preferences.purpose.32b086b6238c",
-    "page": "Talvori",
+    "page": "Frondose",
     "label": "Purpose",
     "type": "textarea",
     "eligible": true,
@@ -1492,7 +1492,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   {
     "key": "source.views-workbench.project-workbench.rumbo-terminal-command.6e6218227db1",
     "page": "Workbench · Commands & terminals",
-    "label": "Talvori terminal command",
+    "label": "Frondose terminal command",
     "type": "text",
     "eligible": true,
     "reason": null

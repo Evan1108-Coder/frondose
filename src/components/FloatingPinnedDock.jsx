@@ -4,7 +4,7 @@ import { Ellipsis, Focus } from './icons.jsx';
 import { useApp } from '../ui.jsx';
 import { NAV } from './Shell.jsx';
 import { favoriteKey, resolveFavorite } from '../lib/organization.js';
-import { useTalvoriAgentAppearance } from '../lib/talvori-agent-appearance.js';
+import { useFrondoseAgentAppearance } from '../lib/frondose-agent-appearance.js';
 import './floating-pinned-dock.css';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -12,7 +12,7 @@ const snap = position => ({ x: position.x < 0.08 ? 0.035 : position.x > 0.92 ? 0
 
 export function FloatingPinnedDock() {
   const { data, navigate, organization, updateOrganization, workspace } = useApp();
-  const agentAppearance = useTalvoriAgentAppearance(workspace?.id);
+  const agentAppearance = useFrondoseAgentAppearance(workspace?.id);
   const positionFromPreferences = organization.dockPosition ?? { x: 0.5, y: 0.9 };
   const [position, setPosition] = useState(positionFromPreferences);
   const [hoverIndex, setHoverIndex] = useState(-1);

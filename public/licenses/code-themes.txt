@@ -1,4 +1,4 @@
-Talvori uses adapted syntax palettes from @shikijs/themes. Colors are mapped to Talvori's lightweight token categories and adjusted where necessary for readable contrast. Theme names and palettes belong to their respective authors. Aurora X is excluded.
+Frondose uses adapted syntax palettes from @shikijs/themes. Colors are mapped to Frondose's lightweight token categories and adjusted where necessary for readable contrast. Theme names and palettes belong to their respective authors. Aurora X is excluded.
 
 Source: https://github.com/shikijs/textmate-grammars-themes
 

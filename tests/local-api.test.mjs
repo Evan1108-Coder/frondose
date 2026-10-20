@@ -349,7 +349,7 @@ test("stopping a waiting run cancels approvals and cannot restart a stopped run"
 
 test("exports are scoped to a workspace and chat markdown includes saved messages", async () => {
   const exported = await request('/api/export?workspace_id=ws_personal');
-  assert.equal(exported.format, 'talvori.workspace');
+  assert.equal(exported.format, 'frondose.workspace');
   assert.equal(exported.data.workspaces.length, 1);
   assert.ok(exported.data.projects.every((item) => item.workspace_id === 'ws_personal'));
   assert.ok(exported.data.chats.every((item) => item.workspace_id === 'ws_personal'));
@@ -492,7 +492,7 @@ test('stopping during provider startup prevents spawning and keeps exported cred
   const token = 'github_pat_only_a_local_test_fixture';
   const local = createLocalApi({ dataDir: directory, integrationOptions: {
     externalConnectionsPaused: false,
-    env: { TALVORI_GOOGLE_CLIENT_SECRET: 'private-google-test-fixture' },
+    env: { FRONDOSE_GOOGLE_CLIENT_SECRET: 'private-google-test-fixture' },
     execute: async (_command, args) => {
       if (args.includes('mcp')) { preflightBegan(); await preflightResult; return { code: 0, stdout: '[]', stderr: '' }; }
       return { code: 0, stdout: 'Logged in', stderr: '' };

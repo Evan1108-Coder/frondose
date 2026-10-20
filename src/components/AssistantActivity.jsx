@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Button, ErrorMessage, SearchField, Select, useApp } from '../ui.jsx';
-import { talvoriActions } from '../data/useTalvori.js';
+import { frondoseActions } from '../data/useFrondose.js';
 import { assistantActivity, assistantRunStatus, STOPPABLE_ASSISTANT_RUNS } from '../lib/assistant-activity.js';
 import { relative } from '../lib/model.js';
 import { ServiceLogo } from './ServiceLogo.jsx';
@@ -19,7 +19,7 @@ export function AssistantActivity() {
     const workspaceId = workspace.id;
     setBusy(run.id); setError(null);
     try {
-      await talvoriActions.stopRun(run.id);
+      await frondoseActions.stopRun(run.id);
       if (currentWorkspace.current === workspaceId) notify('Run stopped. Future schedules are unchanged.');
     } catch (cause) { if (currentWorkspace.current === workspaceId) setError(cause); }
     finally { if (currentWorkspace.current === workspaceId) setBusy(null); }
@@ -28,7 +28,7 @@ export function AssistantActivity() {
     if (busy) return;
     const workspaceId = workspace.id;
     setBusy('refresh'); setError(null);
-    try { await talvoriActions.refresh(); }
+    try { await frondoseActions.refresh(); }
     catch (cause) { if (currentWorkspace.current === workspaceId) setError(cause); }
     finally { if (currentWorkspace.current === workspaceId) setBusy(null); }
   }

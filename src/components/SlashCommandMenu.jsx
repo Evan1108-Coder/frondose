@@ -25,7 +25,7 @@ export function SlashCommandMenu({
   );
   if (!text.trimStart().startsWith('/') || text.trimStart().startsWith('//') || text.includes('\n')) return null;
   return <div className="slash-command-menu" role="listbox" aria-label="Slash commands">
-    <header><Search /><span>{query ? `Commands matching “${query}”` : 'Talvori commands'}</span><kbd>Esc</kbd></header>
+    <header><Search /><span>{query ? `Commands matching “${query}”` : 'Frondose commands'}</span><kbd>Esc</kbd></header>
     <div className="slash-command-results">
       {results.map((command, index) => {
         const availability = commandAvailability(command, { context, connections, executableCommandIds });

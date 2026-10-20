@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Form } from "./Form.jsx";
 import { Plus, Check } from "./icons.jsx";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import { DateField } from "./DateField.jsx";
 import { ImageField } from './ImageField.jsx';
 import { validateProjectDates } from "../lib/workspace-spaces.js";
@@ -163,8 +163,8 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           project_id: form.project_id || null,
         };
       const result = item
-        ? await talvoriActions[`update${actions[kind]}`](item.id, input)
-        : await talvoriActions[`create${actions[kind]}`](input);
+        ? await frondoseActions[`update${actions[kind]}`](item.id, input)
+        : await frondoseActions[`create${actions[kind]}`](input);
       notify(
         `${labels[kind][0].toUpperCase()}${labels[kind].slice(1)} ${item ? "saved" : "created"}`,
       );

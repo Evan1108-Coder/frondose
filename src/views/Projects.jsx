@@ -21,7 +21,7 @@ import {
   val,
   visible,
 } from "../lib/model.js";
-import { talvoriActions } from "../data/useTalvori.js";
+import { frondoseActions } from "../data/useFrondose.js";
 import { ProjectRow } from "./Overview.jsx";
 import { Tooltip } from "../components/Tooltip.jsx";
 import { ProjectHub } from "./ProjectHub.jsx";
@@ -31,7 +31,7 @@ import { featureItems } from '../lib/settings-catalog.js';
 import { ActivityFeed } from '../components/ActivityFeed.jsx';
 import { ActivityTimeline } from '../components/ActivityTimeline.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
-import { TalvoriAgentEntryButton } from '../components/TalvoriAgentEntry.jsx';
+import { FrondoseAgentEntryButton } from '../components/FrondoseAgentEntry.jsx';
 import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import { routeForestRows } from '../lib/sub-routes.js';
 import './route-hierarchy-list.css';
@@ -152,7 +152,7 @@ export function RouteRows({ routes, projectId }) {
             }
             onClick={() =>
               perform(() =>
-                talvoriActions.updateTask(route.id, {
+                frondoseActions.updateTask(route.id, {
                   status: route.status === "done" ? "ready" : "done",
                 }),
               )
@@ -340,7 +340,7 @@ export function RoutesView() {
                   const id = e.dataTransfer.getData("text/rumbo-route");
                   if (routes.some((route) => route.id === id))
                     perform(() =>
-                      talvoriActions.updateTask(id, { status: value }),
+                      frondoseActions.updateTask(id, { status: value }),
                     );
                 }}
               >
@@ -437,7 +437,7 @@ function RouteDetail({ route }) {
         <Button icon={Pencil} onClick={() => edit("task", route)}>
           Edit route
         </Button>
-        <TalvoriAgentEntryButton source={{ type: 'task', id: route.id }} />
+        <FrondoseAgentEntryButton source={{ type: 'task', id: route.id }} />
         <Button
           variant="primary"
           icon={Play}
@@ -584,14 +584,14 @@ function RouteDetail({ route }) {
           <section>
             <h3>Properties</h3>
             <p>Reported progress: <strong>{route.reported_progress == null ? 'Not set' : `${route.reported_progress}%`}</strong><br /><small>Manual assessment from published updates; separate from sub-route completion.</small></p>
-            <WorkflowSelect item={route} onChange={patch => perform(() => talvoriActions.updateTask(route.id, patch))} />
-            <LabelPicker value={route.labels ?? []} onChange={labels => perform(() => talvoriActions.updateTask(route.id, { labels }))} />
+            <WorkflowSelect item={route} onChange={patch => perform(() => frondoseActions.updateTask(route.id, patch))} />
+            <LabelPicker value={route.labels ?? []} onChange={labels => perform(() => frondoseActions.updateTask(route.id, { labels }))} />
             <Select
               label="Priority"
               value={route.priority}
               onChange={(value) =>
                 perform(() =>
-                  talvoriActions.updateTask(route.id, { priority: value }),
+                  frondoseActions.updateTask(route.id, { priority: value }),
                 )
               }
             >

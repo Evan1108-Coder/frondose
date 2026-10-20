@@ -3,7 +3,7 @@ import { Button, IconButton, useApp } from '../ui.jsx';
 import { DocumentContent } from './DocumentContent.jsx';
 import { download, initials, relative, val } from '../lib/model.js';
 import { ACTIVE_CHAT_RUNS } from '../lib/chats.js';
-import { talvoriActions } from '../data/useTalvori.js';
+import { frondoseActions } from '../data/useFrondose.js';
 import { useEffect, useRef, useState } from 'react';
 import { Check } from './icons.jsx';
 import { ReactionGlyph } from './ReactionGlyph.jsx';
@@ -34,7 +34,7 @@ export function ChatRunStatus({ run, onRetry, retrying }) {
     {failed ? <details className="chat-error-details"><summary>Technical details</summary><pre>{summary}</pre></details> : null}
     <div className="chat-run-actions">
       <Button variant="ghost" icon={ExternalLink} onClick={() => navigate('work', run.id)}>Open Active work</Button>
-      {active ? <Button variant="ghost" icon={Square} onClick={() => perform(() => talvoriActions.stopRun(run.id), 'Session stopped')}>Stop</Button> : null}
+      {active ? <Button variant="ghost" icon={Square} onClick={() => perform(() => frondoseActions.stopRun(run.id), 'Session stopped')}>Stop</Button> : null}
       {['failed', 'stopped', 'cancelled', 'interrupted'].includes(run.status) && onRetry ? <Button variant="ghost" busy={retrying} icon={RotateCw} onClick={onRetry}>Retry reply</Button> : null}
     </div>
   </div>;

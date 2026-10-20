@@ -16,7 +16,7 @@ test('Updates keeps at most three newest entries and every shipped update opens 
 
 test('help has separate Resources and Updates groups and legacy conversation-index shortcut is removed', () => {
   const help = source('src/components/HelpMenu.jsx'), shell = source('src/components/Shell.jsx');
-  assert.match(help, /Talvori Resources/); assert.match(help, />Updates</);
+  assert.match(help, /Frondose Resources/); assert.match(help, />Updates</);
   assert.match(help, /recentProductUpdates\(\)/);
   assert.doesNotMatch(shell, /className="sidebar-all-chats"/);
 });

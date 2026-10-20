@@ -24,7 +24,7 @@ function putEntity(data, collection, item) {
 }
 
 /** An isolated store makes persistence and race behavior testable without React. */
-export function createTalvoriStore(api) {
+export function createFrondoseStore(api) {
   let canonicalData = null;
   let snapshot = {
     data: null, loading: true, refreshing: false, error: null, syncError: null,

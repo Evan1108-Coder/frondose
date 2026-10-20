@@ -1,6 +1,6 @@
 ---
-name: Talvori
-description: "The observed visual system for Talvori's connected personal-work environment."
+name: Frondose
+description: "The observed visual system for Frondose's connected personal-work environment."
 colors:
   accent: "#6266d5"
   accent-hover: "#585dc4"
@@ -204,26 +204,26 @@ components:
     padding: "16px"
 ---
 
-# Design System: Talvori
+# Design System: Frondose
 
 ## Overview
 
-Talvori uses a restrained workspace interface: Inter typography, neutral layered surfaces, thin outline icons, and a single indigo brand accent. The inset, rounded navigation frame remains distinct from the working canvas. Existing logos, navigation structure, workflows, data, and working connections are retained; the conversation work extends this identity rather than replacing it.
+Frondose uses a restrained workspace interface: Inter typography, neutral layered surfaces, thin outline icons, and a single indigo brand accent. The inset, rounded navigation frame remains distinct from the working canvas. Existing logos, navigation structure, workflows, data, and working connections are retained; the conversation work extends this identity rather than replacing it.
 
-This document is an extraction from the incumbent implementation, not a new visual-world proposal. No creative metaphor or unconfirmed brand language is asserted. Values in the frontmatter are the normative snapshot; production components should use the matching live CSS custom properties so dark and light themes remain coupled. The conversation's human-right/agent-left composition and temporary Docs reader are surface-specific choices recorded in `.impeccable/surfaces/src-views-chats-jsx.md`, not requirements for every Talvori screen.
+This document is an extraction from the incumbent implementation, not a new visual-world proposal. No creative metaphor or unconfirmed brand language is asserted. Values in the frontmatter are the normative snapshot; production components should use the matching live CSS custom properties so dark and light themes remain coupled. The conversation's human-right/agent-left composition and temporary Docs reader are surface-specific choices recorded in `.impeccable/surfaces/src-views-chats-jsx.md`, not requirements for every Frondose screen.
 
 Key characteristics:
 
 - Neutral tonal separation; indigo reserved for recognizable actions and selected emphasis.
 - Compact workspace navigation and controls, with more space allocated to reading.
-- Real provider marks and authored Talvori assets rather than substitute symbols.
+- Real provider marks and authored Frondose assets rather than substitute symbols.
 - Clear focus, honest readiness, and visible outcomes without decorative activity logs.
 
 ## Colors
 
 ### Primary
 
-The accent family is the approved Talvori indigo. `accent` and `accent-hover` identify primary actions; `accent-text` maintains their text treatment. Focus has its own theme-aware token rather than tinting whole panels with brand color.
+The accent family is the approved Frondose indigo. `accent` and `accent-hover` identify primary actions; `accent-text` maintains their text treatment. Focus has its own theme-aware token rather than tinting whole panels with brand color.
 
 ### Neutral
 
@@ -301,7 +301,7 @@ Reading gets the available viewport, not a dialog or another permanent workspace
 ### Do:
 
 - Do use the live semantic theme properties for new UI and verify the corresponding light theme.
-- Do retain the established Talvori logos, inset navigation, Inter hierarchy, and existing feature behavior when extending a surface.
+- Do retain the established Frondose logos, inset navigation, Inter hierarchy, and existing feature behavior when extending a surface.
 - Do give text-entry wrappers a single focused border while preserving keyboard visibility for non-text controls.
 - Do keep provider marks contained and padded, with readable attribution alongside them.
 - Do confine long code and tables to local horizontal scrollers and keep the conversation composer reachable.
@@ -314,4 +314,4 @@ Reading gets the available viewport, not a dialog or another permanent workspace
 - Don't replace real company/service marks with generic plug or terminal symbols.
 - Don't expose private reasoning as a transcript or expand routine execution details into the conversation's primary reading flow.
 - Don't treat saved defaults, catalog presence, or a connected-looking mark as authorization to launch work.
-- Don't ship the generated critique concept, its invented content, or its invented domain as Talvori assets.
+- Don't ship the generated critique concept, its invented content, or its invented domain as Frondose assets.

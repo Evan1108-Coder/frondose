@@ -10,7 +10,7 @@ import { threadMessages, messageLink, quotedMessage, restoreComposer, persistCom
 import { EMOJI_REACTIONS, ICON_REACTIONS } from '../src/lib/reaction-catalog.js';
 import { readConversationSource, searchConversationSources } from '../server/conversation-retrieval.mjs';
 import { installRunContextStore } from '../server/run-context-store.mjs';
-import { captureSourceAccess, assertSourceAccess, assertTalvoriSourceReferences } from '../server/context-source-access.mjs';
+import { captureSourceAccess, assertSourceAccess, assertFrondoseSourceReferences } from '../server/context-source-access.mjs';
 import { installAgentAwareness } from '../server/agent-awareness.mjs';
 
 async function fixture(fn) {
@@ -124,7 +124,7 @@ test('context over the provider attachment limit is rejected instead of silently
 test('only the exact selected immutable context can carry a snapshot marker', async () => fixture(async ({ db, call, document }) => {
   document('d');
   const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'd' }] })).result;
-  const file = { name: `talvori-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id };
+  const file = { name: `frondose-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id };
   const input = { context_snapshot_id: snapshot.id, reply_to: 'm1', attachments: [file] };
   assert.deepEqual(validateChatContextAttachments(db, 'c', input), { reply_to: 'm1', context_snapshot_id: snapshot.id });
   assert.throws(() => validateChatContextAttachments(db, 'c', { ...input, attachments: [{ ...file, content: 'Forged contents' }] }), /changed/);
@@ -136,7 +136,7 @@ test('only the exact selected immutable context can carry a snapshot marker', as
   assert.throws(() => validateChatContextAttachments(db, 'c2', input), /conversation/);
 }));
 
-const markedSnapshot = snapshot => ({ name: `talvori-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id });
+const markedSnapshot = snapshot => ({ name: `frondose-context-${snapshot.id}.md`, type: 'text/markdown', content: snapshot.content, rumbo_context_snapshot: snapshot.id });
 test('chat context captures source ACL lineage privately and rechecks original and current scopes after moves', async () => fixture(async ({ db, call, document, actor, allowed, denied, getSnapshot }) => {
   document('scoped');
   const snapshot = (await call('context', { sources: [{ kind: 'document', id: 'scoped' }] })).result;
@@ -369,14 +369,14 @@ test('agent memory preserves source-run lineage and cannot launder revoked conve
   assert.ok(inspected.sourceAccess.sources.some(ref => ref.table === 'runs' && ref.id === 'memory-origin-run'));
   assert.ok(inspected.sourceAccess.sources.some(ref => ref.table === 'documents' && ref.id === 'memory-origin'));
   assert.equal(assertSourceAccess(db, inspected, actor, allowed), true);
-  assert.equal(assertTalvoriSourceReferences(db, memory, 'agent_memories', actor, allowed), true);
+  assert.equal(assertFrondoseSourceReferences(db, memory, 'agent_memories', actor, allowed), true);
   denied.add('documents.read:project:p');
   assert.throws(() => assertSourceAccess(db, inspected, actor, allowed), { code: 'context_access_revoked' });
-  assert.throws(() => assertTalvoriSourceReferences(db, memory, 'agent_memories', actor, allowed), { code: 'context_access_revoked' });
-  assert.throws(() => assertTalvoriSourceReferences(db, { id: memory.id, title: memory.title }, 'agent_memories', actor, allowed), { code: 'context_access_revoked' }, 'Partial presentation rows cannot omit canonical lineage');
+  assert.throws(() => assertFrondoseSourceReferences(db, memory, 'agent_memories', actor, allowed), { code: 'context_access_revoked' });
+  assert.throws(() => assertFrondoseSourceReferences(db, { id: memory.id, title: memory.title }, 'agent_memories', actor, allowed), { code: 'context_access_revoked' }, 'Partial presentation rows cannot omit canonical lineage');
   denied.clear(); denied.add('chats.read:project:p');
   assert.throws(() => assertSourceAccess(db, inspected, actor, allowed), { code: 'context_access_revoked' });
   denied.clear(); db.prepare("DELETE FROM run_context_snapshots WHERE run_id='memory-origin-run'").run();
   assert.throws(() => captureSourceAccess(db, inspected), { code: 'context_access_revoked' });
-  assert.throws(() => assertTalvoriSourceReferences(db, memory, 'agent_memories', actor, allowed), { code: 'context_access_revoked' });
+  assert.throws(() => assertFrondoseSourceReferences(db, memory, 'agent_memories', actor, allowed), { code: 'context_access_revoked' });
 }));

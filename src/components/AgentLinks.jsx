@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Dialog, ErrorMessage, Select, useApp } from '../ui.jsx';
 import { apiRequest } from '../data/api.js';
-import { talvoriActions } from '../data/useTalvori.js';
+import { frondoseActions } from '../data/useFrondose.js';
 import { AgentIdentity } from './AgentIdentity.jsx';
 import { Plus } from './icons.jsx';
 import './agent-links.css';
@@ -30,7 +30,7 @@ export function AgentLinks({ targetType, targetId, existingAgentIds = [] }) {
       const link = response.result;
       setLinks(current => [...current.filter(item => item.agent_id !== link.agent_id), link]);
       setAdding(false); setSelected('');
-      await talvoriActions.refresh();
+      await frondoseActions.refresh();
     } catch (cause) { setError(cause); } finally { setBusy(false); }
   }
   return <section className="agent-links" aria-label="Linked AI agents">
