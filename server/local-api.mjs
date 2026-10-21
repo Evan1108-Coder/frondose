@@ -14,6 +14,9 @@ import { createNativeAgentToolBridge } from './native-agent-tool-bridge.mjs';
 import { createNativeToolApply } from './native-tool-apply.mjs';
 import { buildTodaySummary } from './today-service.mjs';
 import { installAgentProfiles, validateAgentProfile, snapshotAgentProfile, bumpAgentProfileVersion } from './agent-profiles.mjs';
+import { installRunnerConnections, createRunnerConnectionsService } from './runner-connections.mjs';
+import { installAgentRunnerSettings, createAgentRunnerSettingsService } from './agent-runner-settings.mjs';
+import { RUNNER_PROVIDER_CATALOG } from '../src/lib/runner-provider-catalog.js';
 import { frondoseAgentRoute, runModelSelection, assertFrondoseChatSource, isFrondoseAgentChat, assertFrondoseAgentBinding, isPersonalFrondoseProfile } from './frondose-agent-service.mjs';
 import { installLocalAiWorkspaces, enableLocalAi, localAiEnabled } from './local-ai-workspace.mjs';
 import { installAgentProfileHistory, agentProfileHistoryRoute } from './agent-profile-history.mjs';
@@ -471,6 +474,8 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installAreas(db);
   installSkills(db);
   installAgentProfiles(db);
+  installRunnerConnections(db);
+  installAgentRunnerSettings(db);
   installAgentProfileHistory(db);
   installRunContextStore(db);
   installScheduledWork(db);
@@ -539,13 +544,26 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   const deployment = createDeploymentPolicy(integrationOptions.env || process.env);
   const externalConnectionsPaused = deployment.hosted || integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
-  let identity, governance, access, connectionPlatform, aiConnections, copilotBridge, hostedCopilot;
+  let identity, governance, access, connectionPlatform, aiConnections, copilotBridge, hostedCopilot, runnerConnections, agentRunnerSettings;
   function installAccess() {
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
     governance = createGovernanceService({ db: store.db });
     for (const workspace of store.db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
     access = createAccessBoundary({ db: store.db, governance });
+    const runnerAuthorize = (workspaceId, actor, permission, scope) => {
+      // Legacy installation profiles are visible only to local-owner here. Their
+      // prepared bindings remain workspace-specific, never a global grant.
+      const legacy = scope?.scope_type === 'agent' && actor.id === 'local-owner' && store.db.prepare('SELECT 1 FROM agents WHERE id=? AND workspace_id IS NULL').get(scope.scope_id);
+      return governance.authorize(workspaceId, actor.id, permission, legacy ? undefined : scope);
+    };
+    runnerConnections = createRunnerConnectionsService({ db: store.db, authorize: runnerAuthorize });
+    agentRunnerSettings = createAgentRunnerSettingsService({ db: store.db, authorize: runnerAuthorize,
+      checkRunnerBinding: context => runnerConnections.checkBinding(context),
+      // Existing personal API/OAuth authorization remains in its current service.
+      // This settings surface cannot grant access to another person's credential.
+      checkConnectionAccess: () => false,
+    });
     governance.registerCapabilities([
       { id: 'connections.view', label: 'Inspect connection setup and health', category: 'Connections' },
       { id: 'connections.sync', label: 'Synchronize selected resources', category: 'Connections' },
@@ -1048,6 +1066,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const providerConnection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(agent?.provider_connection_id || `conn_${provider}`);
     if (agent?.provider_connection_id && (!providerConnection || providerConnection.provider !== provider)) throw validationError('The agent’s provider connection is unavailable. Edit its profile before running.');
     if (body.mode === 'live') {
+      const computerSettings = agent && db.prepare('SELECT connection_method,enabled FROM agent_runner_settings WHERE workspace_id=? AND agent_id=?').get(workspaceId, agent.id);
+      if (computerSettings?.connection_method === 'computer') return fail(res, 409, 'runner_execution_not_released', 'This agent is bound to a personal computer. Remote execution is not released yet; Frondose will not fall back to the server’s account.');
+      if (computerSettings && (!computerSettings.enabled || computerSettings.connection_method === 'unselected')) return fail(res, 409, 'agent_connection_disabled', 'This agent’s connection is disabled or unselected. Frondose will not fall back to an old provider account.');
       assertFrondoseAgentBinding(db,workspaceId,agent,actor,access.allowed);
       if (agent && !agent.provider_connection_id) return fail(res, 409, 'profile_unbound', 'Choose the shared provider connection in this agent’s profile before starting live work.');
       const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
@@ -1394,6 +1415,20 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const path = /^\/areas(?:\/[^/]+)?$/.test(requestedPath) ? requestedPath.replace(/^\/areas/, '/teams') : requestedPath;
       deployment.throttleIdentity(req, path);
       if (deployment.hosted && (path === '/identity/setup' || /^\/(workbench|change-reviews)(?:\/|$)/.test(path) || path.startsWith('/connections/'))) return fail(res, 403, 'host_capability_disabled', 'Host filesystem, terminal and shared CLI account management are disabled in public mode.');
+      if (path.startsWith('/runner-transport/')) {
+        res.setHeader('Cache-Control', 'no-store');
+        // These endpoints never fall back to the installation's browser identity.
+        // A one-use pairing code or a private helper credential is mandatory.
+        if (req.method !== 'POST') return fail(res, 405, 'method_not_allowed', 'Use the computer helper to send this request.');
+        const input = await readBody(req, 32_000);
+        if (path === '/runner-transport/claim') return send(res, 201, { result: runnerConnections.claim(input) });
+        const heartbeat = path.match(/^\/runner-transport\/(runner_[A-Za-z0-9_-]+)\/heartbeat$/);
+        if (heartbeat) {
+          const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1];
+          return send(res, 200, { result: runnerConnections.heartbeat(heartbeat[1], token, input.runtimes) });
+        }
+        return fail(res, 404, 'not_found', 'Computer transport endpoint not found.');
+      }
       const actor = identity.resolve(req);
       Object.assign(changeContext.getStore(), { actor, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Frondose' });
       const aiCallback = path.match(/^\/ai-connections\/openrouter\/callback\/([A-Za-z0-9_-]+)$/);
@@ -1460,6 +1495,30 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return filtered;
       };
       const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : 1_000_000) : {};
+      if (path === '/runner-connections' || path.startsWith('/runner-connections/')) {
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = req.method === 'GET' ? url.searchParams.get('workspace_id') : body.workspace_id;
+        if (path === '/runner-connections' && req.method === 'GET') return send(res, 200, { result: { runners: runnerConnections.list({ workspaceId, actor }), catalog: RUNNER_PROVIDER_CATALOG, execution_available: false } });
+        if (path === '/runner-connections/pairing' && req.method === 'POST') return send(res, 201, { result: { pairing: runnerConnections.createPairing({ workspaceId, actor, name: body.name }) } });
+        const item = path.match(/^\/runner-connections\/(runner_[A-Za-z0-9_-]+)(\/confirm)?$/);
+        if (item?.[2] && req.method === 'POST') return send(res, 200, { result: runnerConnections.confirm({ workspaceId, actor, runnerId: item[1] }) });
+        if (item && !item[2] && req.method === 'DELETE') return send(res, 200, { result: runnerConnections.revoke({ workspaceId, actor, runnerId: item[1], version: body.version }) });
+        return fail(res, 404, 'not_found', 'Computer connection action not found.');
+      }
+      const runnerSettings = path.match(/^\/agent-runner-settings\/([A-Za-z0-9._:-]+)$/);
+      if (runnerSettings) {
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = req.method === 'GET' ? url.searchParams.get('workspace_id') : body.workspace_id;
+        const context = { workspaceId, actor, agentId: runnerSettings[1] };
+        if (req.method === 'GET') return send(res, 200, { result: agentRunnerSettings.read(context) });
+        if (req.method === 'PUT') {
+          const { workspace_id: ignored, ...input } = body;
+          if (input.enabled === true || input.connection_method && !['computer', 'unselected'].includes(input.connection_method)) return fail(res, 409, 'runner_execution_not_released', 'Computer settings can be prepared now. Remote execution is not released; existing API and sign-in connections stay in AI connections.');
+          return send(res, 200, { result: agentRunnerSettings.update({ ...context, input }) });
+        }
+        if (req.method === 'DELETE') return send(res, 200, { result: agentRunnerSettings.clear({ ...context, version: body.version }) });
+        return fail(res, 405, 'method_not_allowed', 'Read or update these settings.');
+      }
       const templateInstanceMatch = path.match(/^\/template-instances\/(tasks|projects|chats)\/([^/]+)$/);
       if (templateInstanceMatch && req.method === 'GET') {
         const [, entityType, encodedId] = templateInstanceMatch;

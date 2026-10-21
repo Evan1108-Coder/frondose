@@ -314,6 +314,22 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "source.components-computer-connections.computer-connections-content.computer-name.2e4b0e7942c3",
+    "page": "Computer Connections",
+    "label": "Computer name",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-computer-connections.computer-connections-content.search-runtimes-or-protocols.01afabca8d98",
+    "page": "Computer Connections",
+    "label": "Search agent runtime catalog",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "source.components-conversation-sources.conversation-sources.find-a-decision-or-earlier-discu.563635342ce0",
     "page": "Conversation Sources",
     "label": "Search past conversation messages",

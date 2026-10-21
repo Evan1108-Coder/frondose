@@ -14,7 +14,9 @@
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
     "test:api": "node --test tests/local-api.test.mjs",
-    "test:sites": "node --test tests/sites-worker.test.mjs"
+    "test:sites": "node --test tests/sites-worker.test.mjs",
+    "runner": "node scripts/frondose-runner.mjs",
+    "test:runner": "node --test tests/runner-provider-catalog.test.mjs tests/runner-process.test.mjs tests/runner-events.test.mjs tests/runner-acp-runtime.test.mjs tests/runner-connections.test.mjs tests/runner-helper.test.mjs tests/runner-connections-api.test.mjs tests/runner-public.test.mjs tests/agent-runner-settings.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

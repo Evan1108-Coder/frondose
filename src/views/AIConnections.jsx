@@ -7,6 +7,7 @@ import { refreshFrondose } from '../data/useFrondose.js';
 import { ArrowRight, Check, ExternalLink, Plug, Terminal } from '../components/icons.jsx';
 import { ServiceLogo } from '../components/ServiceLogo.jsx';
 import { ConnectionDialog } from './Connections.jsx';
+import { ComputerConnections } from '../components/ComputerConnections.jsx';
 import './ai-connections.css';
 
 const PROVIDERS = [
@@ -202,7 +203,8 @@ export function AIConnectionsView() {
         })}
         {!matching.length ? <p className="ai-empty-match">No AI connections match your search.</p> : null}
       </div>
-      <details className="ai-direct-note"><summary>About connection methods and credits</summary><p>API keys use your provider API billing. Codex and Claude Code use local runners. OpenRouter, configured Hugging Face, and configured GitHub Copilot offer browser authorization. Public mode never shares the server’s CLI accounts. One connection method is active per provider, person, and workspace.</p></details>
+      <details className="ai-direct-note"><summary>About connection methods and credits</summary><p>API keys use your provider API billing. Codex and Claude Code can use local runtimes. OpenRouter, configured Hugging Face, and configured GitHub Copilot offer browser authorization. Public mode never shares the server’s CLI accounts. Computer pairing below is a separate discovery connection; it does not enable remote AI runs.</p></details>
+      <ComputerConnections key={workspace.id} workspaceId={workspace.id} />
       <div className="ai-plugin-note"><Plug /><span>Service integrations are now called <strong>Plugins</strong>. They remain Coming soon and are separate from AI connections.</span><button type="button" onClick={() => navigate('settings', 'integrations')}>View Plugins <ArrowRight /></button></div>
     </>}
     {runnerDialog ? <ConnectionDialog provider={runnerDialog.provider} setup={runnerDialog.setup} onClose={() => setRunnerDialog(null)} /> : null}

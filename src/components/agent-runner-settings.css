@@ -1,0 +1,23 @@
+.agent-computer-settings-section { grid-column: 1 / -1; min-width: 0; }
+.agent-computer-settings { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); min-width: 0; max-width: 800px; }
+.agent-computer-settings h3 { margin: 0 0 10px; color: var(--text); font-size: 16px; font-weight: 600; }
+.agent-computer-settings p { margin: 0 0 16px; color: var(--secondary); font-size: 13px; line-height: 1.65; max-width: 76ch; }
+.agent-computer-settings form { display: grid; gap: 20px; margin-top: 22px; }
+.agent-computer-settings form > p { margin: 0; }
+.agent-computer-settings .field { margin: 0; min-width: 0; }
+.agent-computer-settings a { color: var(--text); text-underline-offset: 3px; }
+.agent-computer-settings .select-field { width: 100%; min-width: 0; }
+.agent-computer-setting-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.agent-computer-member-picker { margin: 0; padding: 14px; min-width: 0; border: 1px solid var(--border); border-radius: 8px; }
+.agent-computer-member-picker legend { padding-inline: 5px; color: var(--secondary); font-size: 13px; }
+.agent-computer-member-picker label { display: flex; align-items: center; gap: 10px; min-height: 38px; color: var(--text); font-size: 13px; cursor: pointer; }
+.agent-computer-member-picker input { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--accent); }
+.agent-computer-member-picker span { min-width: 0; overflow-wrap: anywhere; }
+.agent-computer-member-picker p { margin: 4px 0; }
+.agent-computer-save { display: flex; flex-wrap: wrap; gap: 10px; }
+.agent-computer-notice { color: var(--text) !important; }
+.agent-computer-unavailable { color: var(--muted) !important; }
+.agent-computer-remove { display: grid; gap: 18px; padding: 22px; }
+.agent-computer-remove p { margin: 0; color: var(--secondary); font-size: 14px; line-height: 1.65; }
+.agent-computer-remove > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+@media (max-width: 600px) { .agent-computer-setting-pair { grid-template-columns: minmax(0, 1fr); } }

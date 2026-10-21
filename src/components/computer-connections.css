@@ -1,0 +1,59 @@
+.computer-connections { margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--border); min-width: 0; }
+.computer-connections-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.computer-connections h2 { margin: 0 0 8px; font-size: 19px; font-weight: 600; letter-spacing: -.02em; }
+.computer-connections h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.computer-connections p { margin: 0 0 14px; color: var(--secondary); font-size: 13px; line-height: 1.65; max-width: 76ch; }
+.computer-connections-header > .button { flex-shrink: 0; }
+.computer-connections-boundary { margin-top: 12px !important; }
+.computer-connections-boundary strong { color: var(--text); font-weight: 550; }
+.computer-connections-notice { color: var(--text) !important; }
+.computer-setup { display: grid; grid-template-columns: minmax(200px, .65fr) minmax(0, 1.35fr); align-items: start; gap: 30px; margin: 24px 0 28px; }
+.computer-pair-form { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.computer-pair-form .field { margin: 0; }
+.computer-pair-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+.computer-pair-form > .button { justify-self: start; }
+.computer-helper-instructions { min-width: 0; }
+.computer-copy-line { display: flex; align-items: center; gap: 12px; min-width: 0; margin: 10px 0 14px; }
+.computer-copy-line code { min-width: 0; flex: 1; color: var(--text); font-family: var(--code-font, "SFMono-Regular", Consolas, monospace); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; user-select: all; }
+.computer-copy-line .button { flex-shrink: 0; }
+.computer-pair-code { padding: 20px; margin: 0 0 28px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.computer-pair-code > .button { padding-inline: 0; }
+.computer-list-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.computer-list-heading h3 { margin: 0; }
+.computer-list-heading > span { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.computer-empty { padding: 16px 0; }
+.computer-list, .computer-list ul, .computer-catalog ul { margin: 0; padding: 0; list-style: none; }
+.computer-list > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 20px; padding: 18px 0; border-bottom: 1px solid var(--border-soft); }
+.computer-identity { display: grid; gap: 5px; min-width: 0; }
+.computer-identity strong { color: var(--text); font-size: 14px; font-weight: 550; overflow-wrap: anywhere; }
+.computer-identity > span { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.computer-row-actions { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end; gap: 8px; }
+.computer-inventory { grid-column: 1 / -1; color: var(--secondary); font-size: 12px; }
+.computer-inventory summary, .computer-catalog summary { cursor: pointer; width: fit-content; padding-block: 7px; }
+.computer-inventory li { display: flex; justify-content: space-between; gap: 18px; padding: 7px 0; }
+.computer-inventory li > span:last-child { color: var(--muted); text-align: right; }
+.computer-catalog { margin-top: 20px; color: var(--text); }
+.computer-catalog > summary { font-size: 14px; font-weight: 550; }
+.computer-catalog > p { margin-top: 10px; }
+.computer-catalog .search-field { max-width: 400px; margin: 16px 0; }
+.computer-catalog > ul { max-height: 360px; overflow: auto; }
+.computer-catalog li { display: grid; grid-template-columns: minmax(160px, .7fr) minmax(0, 1.3fr); align-items: center; gap: 20px; padding: 12px 4px; border-top: 1px solid var(--border-soft); }
+.computer-catalog li > div { display: grid; gap: 5px; min-width: 0; }
+.computer-catalog strong { font-size: 13px; font-weight: 550; }
+.computer-catalog li span { color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.computer-dialog-content { padding: 22px; display: grid; gap: 18px; }
+.computer-dialog-content p { margin: 0; color: var(--secondary); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.computer-dialog-content > div:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+@media (max-width: 720px) {
+  .computer-setup { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .computer-connections-header { flex-wrap: wrap; gap: 4px; }
+  .computer-connections-header > .button { margin-bottom: 10px; }
+}
+@media (max-width: 480px) {
+  .computer-copy-line { align-items: flex-start; flex-direction: column; }
+  .computer-list > li { grid-template-columns: minmax(0, 1fr); }
+  .computer-row-actions { justify-content: flex-start; }
+  .computer-catalog li { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+  .computer-inventory li { flex-direction: column; gap: 4px; }
+  .computer-inventory li > span:last-child { text-align: left; }
+}
