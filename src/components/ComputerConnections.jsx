@@ -119,7 +119,7 @@ function ComputerConnectionsContent({ workspaceId }) {
       </Form>
       <div className="computer-helper-instructions">
         <h3>Run the developer helper</h3>
-        <p>Use a local Frondose checkout on the computer you are pairing. Install Node.js 22.16+ or 24+, then run this from the Frondose folder:</p>
+        <p>Use a local Frondose checkout on the computer you are pairing. Install Node.js 22.17+ or 24+, then run this from the Frondose folder:</p>
         <div className="computer-copy-line"><code>{command}</code><Button disabled={Boolean(busy)} onClick={() => copy(command)}>Copy command</Button></div>
         <p>Paste the pairing code into the terminal when asked, then return here to approve the computer. There is no packaged installer yet.</p>
         <p>The helper must stay running and the computer must stay awake and online. Agent sign-in happens through each provider’s official CLI; Claude and ChatGPT website histories are not automatically synced.</p>

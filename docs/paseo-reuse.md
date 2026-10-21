@@ -14,13 +14,19 @@ This is implementation evidence, not a claim that every provider is released.
 | ACP v1 transport and canonical provider events | Internal, fixture-tested building blocks; not exposed as a remote execution endpoint |
 | Multi-user job relay, concurrency enforcement, persistent sessions | Not implemented/released; stored limits are not runtime enforcement |
 | History import/resume, native tool approvals, provider-specific controls | Not implemented for this new runner path |
-| Windows/macOS/Linux CI | Matrix configured for Node 22.16 and 24; inspect the actual workflow result before claiming native-platform verification |
+| Windows/macOS/Linux CI | Matrix configured for Node 22.17 and 24; inspect the actual workflow result before claiming native-platform verification |
 | Packaged helper installer, service/autostart, public hosting | Not provided by this checkpoint |
 
 No new account, key or purchase is required to test pairing/discovery locally.
 Later provider acceptance tests require the corresponding installed runtime and
 the user's own supported login or API access. Secrets must stay in the provider
 login or local/server secret storage, never in chats or committed files.
+
+The first real Windows CI pass exposed a Node 22.16/libuv file-identity metadata
+bug: the private-file race check rejected legitimate credentials. Frondose now
+requires Node 22.17+ or 24+ and compares exact BigInt file IDs; it does not waive
+the identity check. Node 22.17 bundles libuv 1.51, which includes the upstream
+[Windows stat correction](https://github.com/libuv/libuv/commit/82cdfb75ff9bbd0dc65820ca418b7c5d412ff4d7).
 
 ## Pinned source and permission
 
@@ -86,7 +92,7 @@ used by those tests.
 
 ## Discovery-only helper
 
-`scripts/frondose-runner.mjs` is a source-checkout helper for Node 22.16 or newer,
+`scripts/frondose-runner.mjs` is a source-checkout helper for Node 22.17+ or 24+,
 not a signed installer or released remote execution service. Run it explicitly:
 
 ```sh

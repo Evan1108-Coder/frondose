@@ -22,9 +22,9 @@ async function storageFixture(t) {
   return { base, directory: path.join(base, 'runner') };
 }
 
-test('helper runtime version requires Node 22.16 or newer', () => {
-  for (const version of ['20.19.0', '22.15.9', '22.invalid', 'invalid']) assert.throws(() => requireRunnerNodeVersion(version), /22.16/u);
-  for (const version of ['22.16.0', '22.20.0', '24.0.0']) assert.doesNotThrow(() => requireRunnerNodeVersion(version));
+test('helper requires supported Node releases with corrected Windows file identity', () => {
+  for (const version of ['20.19.0', '22.15.9', '22.16.0', '23.0.0', '22.invalid', 'invalid']) assert.throws(() => requireRunnerNodeVersion(version), /22.17/u);
+  for (const version of ['22.17.0', '22.20.0', '24.0.0', '25.8.2']) assert.doesNotThrow(() => requireRunnerNodeVersion(version));
 });
 
 test('server origin accepts HTTPS and loopback HTTP, rejects credentials and redirect-capable components', () => {

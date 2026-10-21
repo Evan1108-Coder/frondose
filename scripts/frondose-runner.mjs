@@ -23,8 +23,8 @@ function fail(message, code = 'runner_error') {
 
 export function requireRunnerNodeVersion(version = process.versions.node) {
   const [major, minor] = String(version).split('.').map(Number);
-  if (!Number.isInteger(major) || major < 22 || (major === 22 && (!Number.isInteger(minor) || minor < 16))) {
-    throw fail('Frondose helper requires Node.js 22.16 or newer.', 'node_version');
+  if (!Number.isInteger(major) || major < 22 || major === 23 || (major === 22 && (!Number.isInteger(minor) || minor < 17))) {
+    throw fail('Frondose helper requires Node.js 22.17+ or 24+. Older Node 22 releases have a Windows file-identity bug.', 'node_version');
   }
 }
 
@@ -55,7 +55,9 @@ export function defaultRunnerHome({ platform = process.platform, env = process.e
 }
 
 async function statOrNull(target) {
-  try { return await lstat(target); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  // NTFS file IDs may exceed Number.MAX_SAFE_INTEGER. Never compare rounded
+  // numeric IDs for the lstat/open race fence (notably Node 22 on Windows).
+  try { return await lstat(target, { bigint: true }); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
 async function ensureStorageDirectory(directory, { create = false } = {}) {
@@ -76,9 +78,9 @@ async function ensureStorageDirectory(directory, { create = false } = {}) {
     if (!entry) return false;
     if (entry.isSymbolicLink() || !entry.isDirectory()) throw fail('Runner storage cannot contain symbolic links or non-directory parents.', 'unsafe_storage');
   }
-  const stat = await lstat(normalized);
-  if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) throw fail('Runner storage must be owned by the current user.', 'unsafe_storage');
-  if (process.platform !== 'win32' && (stat.mode & 0o077)) {
+  const stat = await lstat(normalized, { bigint: true });
+  if (typeof process.getuid === 'function' && stat.uid !== BigInt(process.getuid())) throw fail('Runner storage must be owned by the current user.', 'unsafe_storage');
+  if (process.platform !== 'win32' && (stat.mode & 0o077n)) {
     throw fail('Runner storage must be private (directory mode 0700).', 'unsafe_storage');
   }
   return true;
@@ -100,9 +102,9 @@ function validateConfig(value) {
 }
 
 async function checkConfigStat(entry) {
-  if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink !== 1 || entry.size > 64 * 1024 ||
-      (typeof process.getuid === 'function' && entry.uid !== process.getuid()) ||
-      (process.platform !== 'win32' && (entry.mode & 0o077))) {
+  if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink !== 1n || entry.size > 64n * 1024n ||
+      (typeof process.getuid === 'function' && entry.uid !== BigInt(process.getuid())) ||
+      (process.platform !== 'win32' && (entry.mode & 0o077n))) {
     throw fail('Helper credentials must be a private regular file, not a link or shared file.', 'unsafe_storage');
   }
 }
@@ -115,7 +117,7 @@ export async function readRunnerConfig(directory = defaultRunnerHome()) {
   await checkConfigStat(entry);
   const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   try {
-    const opened = await handle.stat();
+    const opened = await handle.stat({ bigint: true });
     await checkConfigStat(opened);
     if (entry.ino !== opened.ino || entry.dev !== opened.dev) throw fail('Helper credential file changed while opening.', 'unsafe_storage');
     let value;

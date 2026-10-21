@@ -26,7 +26,7 @@ A local-first workspace for projects, conversations, and AI workers. A **Route**
 
 ## Setup
 
-Requires Node.js 22.16+ or 24+. The reviewed-action executor uses SQLite's transaction-state API; this pass was verified with Node 25.8.2.
+Requires Node.js 22.17+ or 24+. Node 22.16's Windows file-identity bug is not worked around by weakening credential-file checks. The reviewed-action executor uses SQLite's transaction-state API; this pass was verified with Node 25.8.2.
 
 ```sh
 npm install
