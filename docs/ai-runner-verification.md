@@ -85,10 +85,14 @@ paired computer's restricted Claude route does not inherit that server bridge.
   including independent profile/local-sharing gates, requester/owner grants,
   current/historical source revocation and suppressed late completion. These use
   temporary accounts/databases and fake runtimes, not shared real subscriptions.
-- The final local changed-tree suite passed **1,607/1,607 tests**. Production
+- The final local changed-tree suite passed **1,610/1,610 tests**, including the
+  follow-up legacy shared-profile workspace-readiness regressions. Production
   build, Sites packaging checks and documentation/inventory checks also passed.
-  The six OS/Node CI jobs are recorded separately after actual remote execution;
-  local fixture results are not inferred OS/provider certification.
+  [Core runner CI](https://github.com/Evan1108-Coder/frondose/actions/runs/39721908728)
+  passed all six combinations of macOS/Windows/Linux and Node 22.17/24 for
+  commit `beb8a46`. Those jobs ran runner tests and production builds, not real
+  provider accounts. Later commit-specific checks remain authoritative for
+  follow-up changes; local fixture results are not inferred provider certification.
 
 Relevant executable evidence lives in `tests/runner-runtime.test.mjs`,
 `tests/runner-runtime-events.test.mjs`, `tests/runner-runtime-cleanup.test.mjs`,

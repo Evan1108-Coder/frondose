@@ -93,3 +93,15 @@ test('legacy installation profiles prepare separate bindings per workspace witho
   assert.ok(agent);
   assert.equal((await call(`/agent-runner-settings/${agent.id}?workspace_id=${ws}`)).status, 200);
 });
+
+test('legacy computer readiness is scoped per workspace and never presented as a global binding',async t=>{
+  const {call,pairing,db,ws}=await fixture(t), agent=db.prepare("SELECT * FROM agents WHERE workspace_id IS NULL AND provider='codex' LIMIT 1").get();
+  const claim=await pairing();await call(`/runner-connections/${claim.runner_id}/confirm`,'POST',{workspace_id:ws});
+  await call(`/runner-transport/${claim.runner_id}/heartbeat`,'POST',{runtimes:[{id:'codex',state:'installed'}],execution_policy:{enabled:true,provider_ids:['codex']}},{authorization:`Bearer ${claim.credential}`});
+  const saved=await call(`/agent-runner-settings/${agent.id}`,'PUT',{workspace_id:ws,version:0,connection_method:'computer',runner_id:claim.runner_id,runtime_id:'codex',enabled:true});assert.equal(saved.status,200,JSON.stringify(saved));
+  const other=(await call('/workspaces','POST',{name:'Not the bound workspace'})).body.workspace.id;
+  await call(`/agent-runner-settings/${agent.id}`,'PUT',{workspace_id:other,version:0,connection_method:'unselected',enabled:false});
+  const bootstrap=await call('/bootstrap'), record=bootstrap.body.agents.find(item=>item.id===agent.id);
+  assert.equal(record.runner_connection,null);assert.equal(record.runner_connections_by_workspace[ws].state,'ready');assert.equal(record.runner_connections_by_workspace[other].enabled,false);assert.equal(record.runner_connections_by_workspace[other].can_use,false);
+  assert.ok(!JSON.stringify(record).includes(claim.credential));
+});

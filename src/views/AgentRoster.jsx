@@ -8,6 +8,7 @@ import { AgentMemoryPanel } from "../components/AgentMemoryPanel.jsx";
 import { agentDefaultChoices, duplicateAgentDefinition, exportAgentDefinition, parseAgentDefinition } from "../lib/agent-editor.js";
 import { AGENT_PROVIDERS, agentReadiness, summarizeAgent } from "../lib/agents.js";
 import { isScopedAiProvider } from '../lib/ai-providers.js';
+import { hasAgentAccountRoute } from '../lib/computer-agent-controls.js';
 import { download, relative, val, visible } from "../lib/model.js";
 import { ConnectionDialog } from "./Connections.jsx";
 import "./agents-page.css";
@@ -165,7 +166,7 @@ export function AgentsView() {
   return <main className={`page agents-page ${page.id ? "has-agent-selection" : ""}`}>
     <PageHeader title="Your Agents" description="Specialized agents for your workspace. Your personal Frondose is managed in its own tab."><Button onClick={() => setImporting(true)}>Import definition</Button>{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
     {!page.id ? <section className="agent-provider-strip" aria-label="Provider connections">
-      <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).filter(([id]) => ['codex', 'claude', 'copilot'].includes(id) || data.connections.some(item => item.provider === id)).map(([id, provider]) => {
+      <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).filter(([id]) => hasAgentAccountRoute(id)).map(([id, provider]) => {
         const connection = data.connections.find((item) => item.provider === id);
         const readiness = agentReadiness({ id, provider: id, workspace_id: workspace.id, status: "available" }, connection);
         return <button key={id} className="agent-provider-summary" onClick={() => isScopedAiProvider(id) ? navigate('connections', id) : setConnectionProvider(id)} aria-label={`Manage ${provider.name} connection`}><AgentIdentity compact provider={id} /><strong>{provider.name}</strong><span className={`agent-connection-label is-${readiness.state}`}><i aria-hidden="true" />{readiness.state === "sample" ? "Connected · sample" : readiness.canStartLive ? "Connected" : readiness.state === "connecting" ? "Signing in" : readiness.state === "not_installed" ? "Not installed" : "Not connected"}</span></button>;

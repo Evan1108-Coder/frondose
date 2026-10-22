@@ -1,8 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computerAgentControls, requestNativeTools } from '../src/lib/computer-agent-controls.js';
+import { agentForWorkspace, computerAgentControls, hasAgentAccountRoute, requestNativeTools } from '../src/lib/computer-agent-controls.js';
 import { agentReadiness } from '../src/lib/agents.js';
 import { RUNNER_PROVIDER_CATALOG } from '../src/lib/runner-provider-catalog.js';
+import { readFileSync } from 'node:fs';
+
+test('computer-only runtimes never enter the legacy account-management strip', () => {
+  for (const provider of ['codex', 'claude', 'copilot', 'openai', 'gemini', 'huggingface']) assert.equal(hasAgentAccountRoute(provider), true);
+  for (const provider of ['omp', 'pi', 'opencode', 'muse', 'antigravity', 'amp-acp']) assert.equal(hasAgentAccountRoute(provider), false);
+  const roster = readFileSync(new URL('../src/views/AgentRoster.jsx', import.meta.url), 'utf8');
+  assert.match(roster, /Object.entries\(AGENT_PROVIDERS\)\.filter\(\(\[id\]\) => hasAgentAccountRoute\(id\)\)/);
+});
+
+test('legacy shared profiles resolve computer availability in the selected workspace only', () => {
+  const ready = { enabled: true, state: 'ready', can_use: true, runtime_id: 'codex' };
+  const disabled = { enabled: false, state: 'agent_connection_disabled', can_use: false, connection_method: 'unselected' };
+  const raw = { id: 'shared', provider: 'codex', provider_connection_id: null, workspace_id: null, runner_connection: null, runner_connections_by_workspace: { a: ready, b: disabled } };
+  const inA = agentForWorkspace(raw, 'a'), inB = agentForWorkspace(raw, 'b'), inC = agentForWorkspace(raw, 'c');
+  assert.equal(agentReadiness(inA).canStartLive, true);
+  assert.equal(agentReadiness(inB).canStartLive, false);
+  assert.equal(agentReadiness(inC).canStartLive, false);
+  assert.equal(inA.runner_connection, ready);
+  assert.equal(inB.runner_connection, disabled);
+  assert.equal(inC.runner_connection, null);
+  assert.equal(inA.runner_connections_by_workspace, undefined);
+  assert.equal(inB.runner_connections_by_workspace, undefined);
+  assert.equal(raw.runner_connections_by_workspace.b, disabled, 'presentation selection must not mutate raw bootstrap state');
+  assert.equal(agentForWorkspace({ ...raw, runner_connection: ready, runner_connections_by_workspace: { b: disabled } }, 'b').runner_connection, disabled, 'explicit disabled/unselected summary cannot fall back to a ready legacy account');
+  const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  assert.match(app, /\.map\(item => agentForWorkspace\(item, workspace\?\.id\)\)/);
+});
 
 test('Gemini CLI binding is not mistaken for Gemini API and native bridge is never sent', () => {
   const agent = { provider: 'gemini', runner_connection: { enabled: true, state: 'ready', native_tools_allowed: true, requires_project_access: true } };

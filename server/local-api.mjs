@@ -1532,7 +1532,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
         const filtered = access.filter(data, actor);
         const enrichConnections = snapshot => {
-          if (Array.isArray(snapshot?.agents)) snapshot.agents = snapshot.agents.map(agent => ({ ...agent, runner_connection:runnerConnection(agent,actor,agent.workspace_id || data.workspace_id || null) }));
+          if (Array.isArray(snapshot?.agents)) snapshot.agents = snapshot.agents.map(agent => {
+            const bindings = agent.workspace_id ? null : Object.fromEntries(db.prepare('SELECT workspace_id FROM agent_runner_settings WHERE agent_id=?').all(agent.id).flatMap(({workspace_id:workspaceId}) => access.allowed(workspaceId,actor,'connections.view') ? [[workspaceId,runnerConnection(agent,actor,workspaceId)]] : []));
+            return {...agent,runner_connection:runnerConnection(agent,actor,agent.workspace_id || data.workspace_id || null),...(bindings && Object.keys(bindings).length ? {runner_connections_by_workspace:bindings} : {})};
+          });
           if (!Array.isArray(snapshot?.connections)) return;
           snapshot.connections = snapshot.connections.map(connection => {
             if (!isScopedAiProvider(connection.provider) && !['codex', 'claude'].includes(connection.provider)) return connection;

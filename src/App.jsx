@@ -4,6 +4,7 @@ import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
 import { IconColorsProvider } from './components/IconColors.jsx';
 import { FieldDefaultsProvider } from './components/FieldDefaultsProvider.jsx';
 import { fieldDefinitionsForWorkspace } from './lib/field-inventory.js';
+import { agentForWorkspace } from './lib/computer-agent-controls.js';
 import {
   Component,
   lazy,
@@ -265,7 +266,7 @@ export function App() {
         (item) =>
           !val(item, "workspace_id") ||
           val(item, "workspace_id") === workspace?.id,
-      ),
+      ).map(item => agentForWorkspace(item, workspace?.id)),
       memory_notes: scoped("memory_notes"),
       messages: (rawData.messages ?? []).filter((item) =>
         chatIds.has(val(item, "chat_id")),
