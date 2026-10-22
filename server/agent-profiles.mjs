@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { validationError, validateAvatar } from './validation.mjs';
-import { EXECUTION_PROVIDERS } from '../src/lib/ai-providers.js';
+import { EXECUTION_PROVIDERS, isBrowserAiProvider } from '../src/lib/ai-providers.js';
 import { validApiModel } from '../src/lib/ai-provider-catalog.js';
+import { getRunnerProvider } from '../src/lib/runner-provider-catalog.js';
 
 export const AGENT_PROFILE_FIELDS = [
   'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions',
@@ -107,7 +108,7 @@ export function validateAgentProfile(db, record, { actor, allowed, importing = f
     const connection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(record.provider_connection_id);
     if (!connection) throw validationError('The selected provider connection no longer exists.');
     if (connection.provider !== record.provider) throw validationError('The provider connection must match the agent provider.');
-  } else if (!importing && record.provider_connection_id === undefined && EXECUTION_PROVIDERS.includes(record.provider)) {
+  } else if (!importing && record.provider_connection_id === undefined && EXECUTION_PROVIDERS.includes(record.provider) && (!getRunnerProvider(record.provider) || isBrowserAiProvider(record.provider) || ['codex', 'claude', 'copilot'].includes(record.provider))) {
     const connection = db.prepare('SELECT id FROM connections WHERE provider=?').get(record.provider);
     if (!connection) throw validationError('Create the provider connection before saving this agent.');
     record.provider_connection_id = connection.id;

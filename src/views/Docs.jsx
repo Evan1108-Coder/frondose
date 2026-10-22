@@ -9,11 +9,13 @@ import { UiIcon } from '../components/icons.jsx';
 import { DOC_ARTICLE_ICONS } from '../lib/docs-icons.js';
 import { ConnectionPreview } from '../components/ConnectionPreview.jsx';
 import { CONNECTION_PREVIEWS } from '../lib/connection-previews.js';
+import { getRunnerProvider } from '../lib/runner-provider-catalog.js';
+import { AgentIdentity } from '../components/AgentIdentity.jsx';
 import './connection-platform.css';
 import './docs.css';
 
 const GROUP_ICONS = { 'getting-started': Compass, workspace: Users, 'projects-routes': GitBranch, 'chats-agents': Bot, workbench: Terminal, knowledge: LibraryBig, integrations: Plug, settings: Settings, workflows: Workflow, developers: Code };
-const SCREENSHOTS = new Set(['projects', 'chats', 'settings', 'teams']);
+const SCREENSHOTS = new Set(['projects', 'chats', 'settings', 'teams', 'structured-templates', 'field-defaults', 'computer-connections', 'computer-agent-settings']);
 function useRenderedTheme() {
   const read = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
   const [theme, setTheme] = useState(read);
@@ -24,8 +26,9 @@ function DocsScreenshot({ name, theme, caption }) {
   const { page } = useApp();
   const article = DOC_ARTICLES.find(item => item.id === page.id);
   if (article?.connectionProvider) return <ConnectionIllustration article={article} />;
-  if (!SCREENSHOTS.has(name)) return null;
-  return <figure className="docs-screenshot"><img src={`/docs/${name}-${theme}.png`} alt={`${caption} in Frondose, ${theme} theme`} loading="lazy" width={['settings', 'structured-templates', 'field-defaults'].includes(name) ? 1440 : 1088} height={['settings', 'structured-templates', 'field-defaults'].includes(name) ? 980 : 912} /><figcaption>{caption} · Example workspace</figcaption></figure>;
+  if (!SCREENSHOTS.has(name)) return article ? <ArticleConnectionReferences article={article} /> : null;
+  const wideScreenshot = ['settings', 'structured-templates', 'field-defaults', 'computer-connections', 'computer-agent-settings'].includes(name);
+  return <figure className="docs-screenshot"><img src={`/docs/${name}-${theme}.png`} alt={`${caption} in Frondose, ${theme} theme`} loading="lazy" width={wideScreenshot ? 1440 : 1088} height={wideScreenshot ? 980 : 912} /><figcaption>{caption} · Example workspace</figcaption></figure>;
 }
 function ConnectionIllustration({ article }) {
   const previews = CONNECTION_PREVIEWS[article.connectionProvider];
@@ -38,6 +41,10 @@ function ArticleCard({ article, onOpen }) {
 }
 function ArticleIcon({ article }) {
   return <UiIcon icon={DOC_ARTICLE_ICONS[article.id]} interactive={false} aria-hidden="true" data-doc-icon={article.id} />;
+}
+function ArticleConnectionReferences({ article }) {
+  const runtime = getRunnerProvider(article.runnerProvider);
+  return <>{runtime ? <figure className="docs-runner-flow"><ol><li><FrondoseSymbol size={24} decorative /><strong>Frondose</strong><span>Reviewed request</span></li><li><Terminal aria-hidden="true" /><strong>Your computer</strong><span>Local execution policy</span></li><li><AgentIdentity compact provider={runtime.id} /><strong>{runtime.title}</strong><span>{runtime.protocol}</span></li></ol><figcaption>Connection path · the runtime uses your computer’s OS account, not a Frondose sandbox</figcaption></figure> : null}{article.sources?.length && !article.connectionProvider ? <nav className="docs-provider-sources" aria-label="Provider setup references"><span>Provider references</span>{article.sources.map(source => <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">{source.label}<ArrowRight aria-hidden="true" /></a>)}</nav> : null}</>;
 }
 export function DocsView() {
   const { page, navigate, showFeedback, perform, notify } = useApp();

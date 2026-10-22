@@ -70,7 +70,7 @@ test('pairing expiry, platform, inventory, execution and offline status are trut
   assert.throws(() => service.heartbeat(value.runner_id, value.credential, [{ id: runtimeId, state: 'installed' }, { id: runtimeId, state: 'installed' }]), /inventory/);
   service.heartbeat(value.runner_id, value.credential, []);
   assert.equal(service.checkBinding({ ...context, runnerId: value.runner_id, runtimeId, operation: 'configure' }), true);
-  assert.throws(() => service.checkBinding({ ...context, runnerId: value.runner_id, runtimeId, operation: 'use' }), /not released/);
+  assert.throws(() => service.checkBinding({ ...context, runnerId: value.runner_id, runtimeId, operation: 'use' }), { code: 'runner_execution_not_authorized' });
   advance(90_001); assert.equal(service.list(context)[0].state, 'offline');
 });
 

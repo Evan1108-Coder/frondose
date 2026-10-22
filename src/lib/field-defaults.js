@@ -5,7 +5,14 @@ const VERSION = 1;
 const MAX_VALUE_LENGTH = 4000;
 const MAX_VALUES = 9;
 const SAFE_KEY = /^[a-z0-9][a-z0-9:._-]{0,159}$/i;
-const SENSITIVE = /password|passcode|secret|(?:access|refresh|auth|verification|bearer)[._ -]?token|\btoken\b|api.?key|credential|payment|credit.?card|card.?number|cvc|cvv|bank.?account|account.?number|private.?key|authorization|one.?time.?code|social.?security|passport/i;
+const SENSITIVE = /password|passcode|secret|(?:access|refresh|auth|verification|bearer)[._ -]?token|\btoken\b|api.?key|credential|payment|credit.?card|card.?number|cvc|cvv|bank.?account|account.?number|private.?key|authorization|one.?time.?code|(?:pairing|recovery|verification|connection)[._ -]?code|social.?security|passport/i;
+
+// A safe prompt/instructions field can warn not to paste credentials. That
+// warning is not a request for a secret; names, types and accessible labels
+// remain checked unchanged, including credentials named before the warning.
+export function fieldHintMetadata(hint) {
+  return String(hint || '').replace(/\b(?:do not|don't|never)\s+(?:paste|include|store|save)\s+(?:any\s+)?(?:credentials?|secrets?|passwords?|api\s*keys?)\b[^\n]*/gi, '');
+}
 
 export function fieldDefaultsStorageKey(workspaceId) {
   return `rumbo:field-defaults:v${VERSION}:${String(workspaceId || 'unknown')}`;
@@ -144,6 +151,24 @@ export function updateFieldEntry(workspaceId, key, patch, storage) {
   return updateFieldDefaults(workspaceId, current => ({ ...current, fields: { ...current.fields, [key]: { ...(current.fields[key] || { enabled: true, primaryId: null, values: [] }), ...patch } } }), storage);
 }
 
+// Removing an override restores the source default; an empty override is
+// deliberately different and continues to suppress a shared source value.
+export function resetFieldEntry(workspaceId, key, storage) {
+  if (!SAFE_KEY.test(key)) return false;
+  return updateFieldDefaults(workspaceId, current => {
+    const fields = { ...current.fields };
+    delete fields[key];
+    return { ...current, fields };
+  }, storage);
+}
+
+export function availableFieldValues(settings, definition) {
+  const field = normalizeFieldDefinition(definition);
+  if (!field?.eligible || !settings?.enabled) return [];
+  const entry = settings.fields?.[field.key] ?? settings.fields?.[field.sourceKey];
+  return entry?.enabled ? (entry.values || []).filter(value => value.enabled && validFieldDefaultValue(field, value.value)).sort((a, b) => a.slot - b.slot) : [];
+}
+
 export function resolveFieldValue(settings, definition, slot = null) {
   const normalized = normalizeFieldDefinition(definition);
   if (!normalized?.eligible || !settings?.enabled) return null;
@@ -152,7 +177,7 @@ export function resolveFieldValue(settings, definition, slot = null) {
   // remains authoritative and never falls through to a generic value.
   const entry = settings.fields?.[normalized.key] ?? settings.fields?.[normalized.sourceKey];
   if (!entry?.enabled) return null;
-  const available = entry.values?.filter(value => value.enabled && validFieldDefaultValue(normalized, value.value)) ?? [];
+  const available = availableFieldValues(settings, normalized);
   // Keep Command 1 intuitive even if a single saved option was moved to a
   // different numbered slot. Its configured slot remains a second alias.
   if (slot === 1 && available.length === 1) return available[0];
@@ -182,9 +207,9 @@ function fieldElementDefinition(element) {
   // Fallback is semantic. Never depend on React useId(), DOM position, or a
   // list index. Source-instrumented controls normally do not need this path.
   const key = element.dataset.fieldDefaultKey || element.dataset.fieldDefaultSource || `discovered.${stableSlug(page)}.${stableSlug(sectionName)}.${stableSlug(element.name || label)}.${type}`;
-  const metadata = [element.name, element.id, element.placeholder, element.autocomplete, element.getAttribute('aria-label')].filter(Boolean).join(' ');
+  const metadata = [element.name, element.id, fieldHintMetadata(element.placeholder), element.autocomplete, element.getAttribute('aria-label')].filter(Boolean).join(' ');
   const scopeLabel = dialog?.getAttribute?.('aria-label') || textForSelector(dialog, 'h1,h2,[data-dialog-title]');
-  const sensitiveForm = /authentication|sign.?in|sign.?up|security|payment|billing|credential/i.test(scopeLabel) || Boolean(dialog?.querySelector?.('[data-field-default-sensitive]')) || [...(dialog?.querySelectorAll?.('input, textarea') ?? [])].some(control => SENSITIVE.test([control.type, control.name, control.id, control.placeholder, control.autocomplete, control.getAttribute('aria-label')].filter(Boolean).join(' ')));
+  const sensitiveForm = /authentication|sign.?in|sign.?up|security|payment|billing|credential/i.test(scopeLabel) || Boolean(dialog?.querySelector?.('[data-field-default-sensitive]')) || [...(dialog?.querySelectorAll?.('input, textarea') ?? [])].some(control => SENSITIVE.test([control.type, control.name, control.id, fieldHintMetadata(control.placeholder), control.autocomplete, control.getAttribute('aria-label')].filter(Boolean).join(' ')));
   return normalizeFieldDefinition({ key, sourceKey: element.dataset.fieldDefaultSource, page, label, type, sensitive: Boolean(sensitiveForm) || SENSITIVE.test(metadata) });
 }
 

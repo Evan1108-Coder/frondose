@@ -28,7 +28,8 @@ test('chat inspections and sends share exact normalized instruction and attachme
   assert.match(chats, /attachments: sentAttachments/);
   assert.match(chats, /const sentFiles = sentAttachments/);
   assert.match(chats, /content: text, attachments: sentFiles, agent_id: recipient/);
-  assert.match(chats, /if \(agent && !recoveringTurn && !contextReady && \(composer.permission === 'workspace-write' \|\| composer.nativeTools === true\)\)/);
+  assert.match(chats, /if \(agent && !recoveringTurn && !contextReady && \(composer.permission === 'workspace-write' \|\| requestNativeTools\(agent, composer.nativeTools\)\)\)/);
+  assert.equal((chats.match(/native_tools: requestNativeTools\(agent, composer.nativeTools\)/g) || []).length, 2, 'review and send normalize computer-native IPC identically');
   assert.match(chats, /prepareExplicitChatSend/);
   assert.match(chats, /context_inspection_id: captured\.id/);
   assert.match(chats, /agent\?\.version \?\? null/);
@@ -52,4 +53,8 @@ test('retry controls prepare a reviewed attempt instead of launching when the re
   assert.match(chats, /context_inspection_id: reviewedRetry\.result\.id/);
   assert.match(chats, /source_message_id: retryDraft.message.id/);
   assert.match(chats, /onClick=\{retryReviewed\}/);
+  assert.match(chats, /\[retryProjectEdits, setRetryProjectEdits\] = useState\(false\)/);
+  assert.match(chats, /Allow project edits for this retry/);
+  assert.match(chats, /permission_mode: retryRequest.permission_mode/);
+  assert.match(chats, /retryRequiresProject && \(!retryProjectEdits \|\| retryRequest.work_mode !== 'project'\)/);
 });

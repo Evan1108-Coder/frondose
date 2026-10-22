@@ -342,7 +342,7 @@ test('Claude uses restricted read tools and surfaces structured failures even wi
   await service.connect('claude', { method: 'existing' });
   await service.startRun({ provider: 'claude', prompt: 'Review', cwd: directory }, { onComplete: (event) => finished.push(event) });
   assert.equal(args[args.indexOf('--tools') + 1], 'Read,Glob,Grep');
-  assert.ok(args.includes('--bare'));
+  assert.ok(args.includes('--safe-mode')); assert.ok(!args.includes('--bare'));
   assert.ok(args.includes('--restricted'));
   assert.equal(args[args.indexOf('--disallowedTools') + 1], 'mcp__*');
   assert.ok(!args.includes('Bash'));
@@ -472,7 +472,10 @@ test('Claude keeps restricted builtins and allows only exact generated native MC
   const child = fakeProcess(); let launch;
   const { service, directory } = fixture(t, { execute: async () => ({ code: 0, stdout: '{"loggedIn":true}' }), spawnProcess: (command, args, options) => { launch = { command, args, options }; return child; } });
   await service.connect('claude', { method: 'existing' });
-  await service.startRun({ provider: 'claude', prompt: 'Review', cwd: directory, nativeToolBridge: bridge.descriptor });
+  await assert.rejects(service.startRun({ provider: 'claude', prompt: 'Review', cwd: directory, nativeToolBridge: bridge.descriptor }), {code:'claude_bridge_api_key_required'});
+  const keyed = fixture(t, {env:{ANTHROPIC_API_KEY:'fixture-key-not-real'},execute: async()=>({code:0,stdout:'{"loggedIn":true}'}),spawnProcess:(command,args,options)=>{launch={command,args,options};return child;}}).service;
+  await keyed.connect('claude',{method:'existing'});
+  await keyed.startRun({ provider: 'claude', prompt: 'Review', cwd: directory, nativeToolBridge: bridge.descriptor });
   assert.equal(launch.args[launch.args.indexOf('--tools') + 1], 'Read,Glob,Grep');
   assert.equal(launch.args.includes('--disallowedTools'), false);
   assert.ok(launch.args.includes('mcp__frondose__reviews.record'));

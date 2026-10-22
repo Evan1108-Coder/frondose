@@ -61,7 +61,9 @@ test('native choices are present in both reviewed context and actual launches wi
   assert.match(work, /\[nativeTools, setNativeTools\] = useState\(false\)/);
   assert.match(work, /native_tools: nativeTools/);
   assert.match(work, /native_tools: mode === "live" && nativeTools/);
-  assert.equal((chats.match(/native_tools: composer.nativeTools === true/g) || []).length, 2);
+  assert.equal((chats.match(/native_tools: requestNativeTools\(agent, composer.nativeTools\)/g) || []).length, 2);
+  assert.match(chats, /native_tools: requestNativeTools\(retryAgent, retryNativeTools\)/);
+  assert.match(chats, /!retryAgent.runner_connection \? <NativeToolsChoice/);
   assert.match(chats, /native_tools: retryRequest.native_tools/);
   assert.match(chats, /composer.nativeTools = false/);
   assert.match(workflows, /checked=\{step.config.native_tools === true\}/);

@@ -1,162 +1,204 @@
-# Paseo reuse and runner provider catalog
+# Paseo reuse and computer AI connections
 
-This is implementation evidence, not a claim that every provider is released.
+This is an implementation and operator guide, not a claim that every provider,
+account, model, OS or external plugin has passed live acceptance testing.
 
-## Release checkpoint
+## Source, license and coverage
 
-| Part | Status |
-| --- | --- |
-| Existing personal API/OAuth connections | Preserved; not replaced by the computer helper |
-| 47-entry provider catalog and license provenance | Implemented, pinned; individual adapters and OS combinations remain unverified |
-| Pair → claim → browser approval → inventory → revoke | Implemented; scoped to a workspace and its computer owner |
-| Named-agent computer, sharing and session preferences | Persisted as disabled preparation, private by default; saving blocks live use of that profile |
-| Remove preparation | Explicit owner-confirmed operation returns to the previous connection; credentials and audit are retained |
-| ACP v1 transport and canonical provider events | Internal, fixture-tested building blocks; not exposed as a remote execution endpoint |
-| Multi-user job relay, concurrency enforcement, persistent sessions | Not implemented/released; stored limits are not runtime enforcement |
-| History import/resume, native tool approvals, provider-specific controls | Not implemented for this new runner path |
-| Windows/macOS/Linux CI | Matrix configured for Node 22.17 and 24; inspect the actual workflow result before claiming native-platform verification |
-| Packaged helper installer, service/autostart, public hosting | Not provided by this checkpoint |
+Frondose adapts selected code/data from [Paseo](https://github.com/getpaseo/paseo)
+revision `c70a6cfb9ea29c87df52b6b6c574775b0d3b169c`. Its root license is
+Apache-2.0, Copyright (c) 2025-present Mohamed Boudra. The full license,
+attribution/modification record and unmodified catalog snapshot are retained in
+`third-party/paseo/`. No upstream root NOTICE was present.
 
-No new account, key or purchase is required to test pairing/discovery locally.
-Later provider acceptance tests require the corresponding installed runtime and
-the user's own supported login or API access. Secrets must stay in the provider
-login or local/server secret storage, never in chats or committed files.
+The pinned catalog contains 39 ACP entries, six distinct native identities and
+two distinct bundled provider plugins: **47 identities in total**. Hoplite is
+already counted in the ACP list. OMP is not enabled by upstream by default.
+`src/lib/runner-provider-catalog.js` retains the source revision, launch template,
+protocol, pinned package version where available, installation reference and
+individual security notices. Other community plugins and dependencies require
+their own license/security review. Permission to reuse code is not permission
+to redistribute a provider subscription, use a trademark as our own, or execute
+untrusted plugins for workspace members.
 
-The first real Windows CI pass exposed a Node 22.16/libuv file-identity metadata
-bug: the private-file race check rejected legitimate credentials. Frondose now
-requires Node 22.17+ or 24+ and compares exact BigInt file IDs; it does not waive
-the identity check. Node 22.17 bundles libuv 1.51, which includes the upstream
-[Windows stat correction](https://github.com/libuv/libuv/commit/82cdfb75ff9bbd0dc65820ca418b7c5d412ff4d7).
+## Three independent connection routes
 
-## Pinned source and permission
+| Route | Where credentials live | Execution host |
+| --- | --- | --- |
+| API key | Encrypted actor/workspace-scoped server storage | Frondose's allowlisted API adapter |
+| Supported browser authorization | Encrypted actor/workspace-scoped server storage | Provider-specific supported API/SDK path |
+| Paired computer | Provider-owned login/config on the computer; private helper credential locally | The owner's explicitly authorized Mac, Windows or Linux computer |
 
-Frondose reuses catalog data from [Paseo](https://github.com/getpaseo/paseo) at
-revision `c70a6cfb9ea29c87df52b6b6c574775b0d3b169c`. That revision's root license
-is Apache 2.0, with Copyright (c) 2025-present Mohamed Boudra. The complete license,
-attribution/modification record and an unmodified catalog snapshot are retained
-under `third-party/paseo/`. No upstream root NOTICE was present.
+The computer route does not borrow the public server owner's CLI login. A
+profile is a named identity, not another provider account. Several profiles may
+use the same runtime/account and keep separate instructions and conversations.
+They still share the underlying account's limits and provider terms.
 
-`src/lib/runner-provider-catalog.js` adapts actual catalog data, not a manually
-invented list. The pinned in-app source contains **39 ACP catalog entries**. The
-protocol manifest contains six native identities (including disabled-by-default
-OMP). Antigravity and Muse are bundled provider plugins; Hoplite is also bundled
-but already occurs in the catalog. Their union is **47 distinct provider IDs**.
-The older documentation list is not the canonical count.
+## Install and pair the source helper
 
-Only this selected code/data is incorporated here. Other Paseo files, dependencies
-and community plugins require their own license/security review before reuse.
-Apache permission is not provider authentication, subscription-sharing permission,
-trademark permission or proof of plugin compatibility.
+Use Node **22.17+ or 24+** and a Frondose source checkout on the execution
+computer. The helper supports macOS, Windows and Linux; a provider CLI can have
+narrower OS/architecture requirements. Mobile browsers control an available host
+but do not execute desktop CLIs themselves.
 
-## Discovery and cross-platform process foundation
-
-`server/runner-process.mjs` resolves installed binaries using filesystem checks.
-It does not execute version probes, installers, provider login or inference.
-It ignores empty/relative PATH entries. Windows resolution recognizes approved
-PATHEXT executable/batch extensions and case-insensitive environment variable keys.
-
-The macOS, Linux and Windows process-preparation code keeps discrete argv and
-`shell: false`. Windows `.cmd` and `.bat` shims use explicit `cmd.exe /d /s /v:off /c`
-dispatch with a deliberately restricted argument alphabet. Values containing
-expansion syntax, quotes or shell metacharacters are rejected. Arbitrary prompts
-must be sent through protocol stdin, not a batch argument. Native executables
-receive literal arguments without the cmd layer. This is a process-launch
-foundation, not an operating-system sandbox or execution authorization system.
-
-Some upstream templates use `npx -y` or `uvx`, which can fetch and execute packages.
-Cataloguing them does not authorize that operation. Entries explicitly require a
-separate installation approval. Discovering npx/uvx reports `launcher_only`, never
-an installed provider or signed-in account. Discovery returns no account identity
-or model entitlement.
-
-## What is and is not proven
-
-The catalog marks all individual macOS/Windows/Linux provider combinations
-**unverified**. Node process support on those systems does not prove a particular
-third-party CLI is available there. Other operating systems fail closed until a
-dedicated implementation is provided. Mobile browsers are controllers; they do
-not run these desktop/server CLIs.
-
-Catalog presence does not enable a runtime adapter. Existing local Codex, Claude
-and Copilot routes are identified separately; all additional adapters must pass
-transport, permission, isolation and history tests before release. The Antigravity
-catalog notice preserves the upstream full-access-only limitation rather than
-silently enabling a bypass. User/workspace sharing requires separate grants and
-provider-permitted use; it never exposes the host account credentials.
-
-Fixture tests validate catalog coverage/provenance, no-execution discovery,
-POSIX filesystem behavior, Windows path/shim preparation and real local Node
-stdin/stdout. They do **not** constitute live provider testing or native Windows
-acceptance testing on this Mac. No real AI accounts, sign-ins or paid calls are
-used by those tests.
-
-## Discovery-only helper
-
-`scripts/frondose-runner.mjs` is a source-checkout helper for Node 22.17+ or 24+,
-not a signed installer or released remote execution service. Run it explicitly:
+In Frondose → AI connections → Connect a computer, create a name and pairing code.
+Then run on that computer:
 
 ```sh
 node scripts/frondose-runner.mjs pair --server https://frondose.com
 node scripts/frondose-runner.mjs status
-node scripts/frondose-runner.mjs run --once
+```
+
+`https://frondose.com` is the intended origin, not a claim that hosting is already
+deployed. For a local server use its exact loopback URL. Enter the code privately
+at the helper prompt, not as a command-line argument, environment variable or
+chat message. Return to the browser and approve the exact computer you claimed.
+Pairing codes expire and are single-use; the browser cannot remotely turn on OS
+execution. Pairing and local authorization are separate steps.
+
+There is not yet a signed packaged installer or automatic background service.
+The helper and server must remain running and the computer awake and online.
+
+## Authorize execution locally
+
+Install the intended provider runtimes and use their own supported sign-in. An
+inventory entry means only that a command was found. It does not verify identity,
+model entitlement, provider billing or tool safety.
+
+For example, to allow installed Codex and Claude with two concurrent requests:
+
+```sh
+node scripts/frondose-runner.mjs authorize --providers codex,claude --max-concurrent 2
 node scripts/frondose-runner.mjs run
+```
+
+The owner can additionally opt in to these permissions; none is implied merely
+by pairing:
+
+| Option | Meaning |
+| --- | --- |
+| `--allow-native-tools` | The selected runtimes may use their own tools, subject to profile/request/project checks |
+| `--allow-shared` | Explicitly permitted workspace members may request work; current grants and profile audience still apply |
+| `--allow-package-downloads` | Permit catalogued package-launcher execution that can download third-party code |
+| `--project project_id=/absolute/folder` | Map an allowed Frondose project to its actual absolute folder on this computer |
+| `--max-concurrent 1` through `8` | Local ceiling; server and per-agent ceilings still apply |
+
+Use the folder syntax appropriate to the execution OS. For Windows, quote the
+whole project mapping when its absolute drive path contains spaces. Do not point
+a project at the home directory, the helper credential directory or unrelated
+private data. A project record's folder on a different server is not automatically
+the folder on this computer.
+
+`npx -y` and `uvx` templates can fetch and execute packages. Merely finding their
+launcher reports `launcher_only`, not an installed authenticated provider.
+Discovery never installs software, signs in or sends a model request. Prefer
+reviewed manual installation; inspect package provenance before approving
+downloads. A pinned top-level version is not a complete dependency trust audit.
+
+To disable execution or forget local pairing:
+
+```sh
+node scripts/frondose-runner.mjs disable
 node scripts/frondose-runner.mjs disconnect
 ```
 
-Pairing reads the code through a hidden stdin prompt, never a command argument or
-environment variable. It stores the returned helper credential, then stops; the
-owner must approve the individual computer in Frondose and explicitly run the
-helper. `run` sends provider IDs and filesystem discovery states only, not local
-paths, provider credentials or account information. It never launches an AI
-runtime, executes a plugin, installs packages, or authenticates to a provider.
-The server response cannot enable execution in this helper version.
+`disable` removes local execution consent. `disconnect` forgets local helper
+credentials; use the browser's Disconnect computer action to revoke its server
+registration too. Neither command uninstalls providers, globally signs them out
+or rolls back completed work.
+
+## Bind the profile and choose its audience
+
+In Your Agents, create a profile with the desired runtime/provider. Open its
+Computer connection section, select the confirmed computer and matching runtime,
+choose private/selected-member/workspace access, select a concurrency limit and
+explicitly enable the binding. Native tools have a separate profile opt-in. The
+computer's local policy must allow the selected runtime, members, packages and
+tools before the binding can execute.
+
+Frondose's personal agent has the same explicit path in its own Setup tab:
+choose a computer runtime, prepare its canonical profile, bind/enable the computer
+and then save the AI selection. Creating or saving a profile never sends a prompt.
+The personal agent does not borrow another named profile's credentials.
+
+Every dispatch requires active membership, current agent/run/connection grants,
+an allowed audience, an active connection owner and the computer's local policy.
+A profile's provider and bound runtime must agree. Concurrency is the bounded
+intersection of server, computer and agent limits, not a billing/spend guarantee.
+An explicitly disabled, disconnected or denied computer binding never silently
+falls back to another account. Removing the binding is a separate owner-confirmed
+operation that can restore a prior explicitly configured account path.
+
+## Execution, tools and history boundaries
+
+The helper relays jobs over its authenticated server connection and starts the
+selected catalogued protocol adapter. Public progress, response text, tools,
+permissions and terminal status enter Frondose's canonical run/event records.
+Unknown events remain bounded evidence. Private model reasoning is not invented
+or displayed as a transcript.
+
+**Native execution uses the OS user's privileges, not an OS/tenant sandbox.**
+Denying client-mediated filesystem/terminal requests does not constrain tools a
+provider runtime executes internally. Review local extensions, hooks, MCP servers
+and credentials. Generic native-tool runtimes require explicit authorized project
+access; Codex/Claude can use their restricted General chat paths. Antigravity's
+upstream full-access-only behavior must never be presented as read-only. Do not
+use a shared privileged OS account for untrusted workspace members; isolate the
+host/account when stronger separation is needed.
+
+Conversation grouping retains Frondose identity/provenance. Reviewed turns use
+freshly compiled exact context rather than silently resuming opaque provider
+history. CLI history import/resume/fork and universal two-way synchronization are
+not released by this work. Claude Code does not import Claude.ai chats; Codex does
+not import ordinary ChatGPT conversations. The same distinction applies to other
+providers' desktop/web histories. Provider-native UI feature parity cannot be
+inferred from a functioning wire protocol.
+
+Stop, cancellation, disconnect and membership changes are rechecked at dispatch
+and result handling. An interrupted/uncertain effect is not automatically replayed.
+Stopping cannot undo files, external calls or provider-side jobs already accepted.
+
+## Credential/process handling
 
 HTTPS is required except explicit loopback HTTP development origins. Redirects,
 URL credentials, non-root paths, queries and fragments are rejected. Requests
-have a 20-second timeout and a 1 MiB response limit. The helper supports graceful
-cancellation, browser-approval waiting, bounded transient backoff, and stops on
-authentication/revocation failures rather than retrying indefinitely.
+have bounded time/output, cancellation and transient retry backoff. Revoked or
+invalid credentials stop rather than falling back to anonymous owner identity.
 
-Credentials are atomically published without overwriting an existing pairing.
-The application directory is created with mode 0700 and its config with 0600;
-symlink ancestors, symlink config files and hardlinks are refused. Defaults are
-macOS Application Support, Windows LOCALAPPDATA, and Linux XDG_DATA_HOME (or
-`~/.local/share`), with an absolute `FRONDOSE_RUNNER_HOME` override. Windows uses
-the per-user application's inherited ACL: Node mode bits are not a Windows ACL
-audit. Do not point the override at a shared, synchronized or public directory.
+Helper files are stored atomically in a private application directory; symlink
+ancestors, symlink credential files and hardlinks are refused. macOS uses
+Application Support, Windows LOCALAPPDATA and Linux XDG_DATA_HOME (otherwise
+`~/.local/share`), with an absolute `FRONDOSE_RUNNER_HOME` override. Windows inherits
+the user's ACL; POSIX mode bits are not a Windows ACL audit. Never use a shared or
+public directory. Exact BigInt file identity checks require Node 22.17+: real
+Windows tests exposed a Node 22.16/libuv metadata bug, and Frondose did not weaken
+the check to work around it.
 
-`disconnect` forgets this computer's local credential only. Revoke the computer
-through Frondose's browser controls to invalidate its server registration. The
-helper does not invent a credential-based remote revoke API.
+Executable resolution ignores empty/relative PATH entries. POSIX/native launches
+use discrete arguments with `shell:false`. Windows command shims use a restricted
+argument alphabet under explicit `cmd.exe`; arbitrary prompt text travels through
+protocol input, not shell interpolation. These are launch safeguards, not process
+isolation.
 
-## UI verification and design-system fit
+## Documentation and evidence
 
-The October 21, 2026 finish review returned **SHIP** for the scoped discovery
-and disabled agent-preparation extension, with no blocking finding. This is not
-approval to release remote execution or a claim of live compatibility across the
-47 catalog entries.
+The in-app handbook includes one provider-specific guide for each of the 47
+runtime IDs, one for each of the 16 API providers, supported account-authorization
+guides and computer setup/permissions/history guides. Each uses the shared registry
+for commands and provenance, provider links, distinct searchable article icons
+and contextual links from settings. Unknown provider marks use honest text
+monograms rather than fabricated company logos. The real app screenshots are
+examples, not claims of a logged-in provider account.
 
-`ComputerConnections` extends the existing AI Connections page;
-`AgentRunnerSettings` extends the named-agent detail. Source and screenshot review
-confirm the incumbent neutral surfaces, restrained indigo actions, typography,
-semantic theme tokens, and shared buttons, fields, selects and dialogs remain in
-use. Pairing, browser approval, discovery, authentication and execution are
-explicitly distinguished. Desktop controls remain bounded; narrow layouts stack
-controls and wrap helper commands rather than expanding the page.
+Automated transport, policy, lifecycle, race and platform tests use temporary
+databases and injected provider processes. The Windows/macOS/Linux Node matrix
+checks Frondose's implementation. It does not verify every vendor binary/account
+on those systems. No paid inference or real account is used by automated tests.
+Before claiming a provider is live-verified, a willing account owner must install,
+authenticate and explicitly send a reviewed request for the exact model/OS/tool
+mode. Keep those acceptance results distinct from fixture and CI evidence.
 
-The four retained dark-theme captures are
-`.impeccable/review/runner-desktop.png`, `runner-mobile.png`,
-`runner-agent-desktop.png` and `runner-agent-mobile.png` in that same directory.
-The checkpoint reports 20 passing UI interaction checks, including a 320px narrow
-layout, 1,416 passing automated tests, and a passing production build. One detector
-pass found zero primary findings and four advisory findings for compact 13px copy,
-consistent with the incumbent connection surface. These checks used no paid AI
-accounts and do not establish native-OS execution or live-provider acceptance.
-The below-fold footer and light theme were not independently visually verified;
-screen-reader behavior was not independently tested by this finish review.
-
-`DESIGN.md`, `.impeccable/design.json` and the surface brief are preserved. Existing
-documentation drift remains reported, not repaired: `DESIGN.md` is newer than the
-sidecar's generation timestamp, compact-copy guidance differs from the local
-surface, and the sidecar has no tonal-ramp metadata required by the current
-document playbook. This ordinary extension does not redefine the visual system.
+Signed installers/autostart, unrestricted public signup/hosting, universal native
+history import and arbitrary community-plugin execution remain separate release
+work. See [AI connections](ai-connections.md) for server/OAuth setup and current
+hosted-route limitations.

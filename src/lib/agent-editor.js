@@ -63,7 +63,7 @@ export function hasAgentText(form) {
 export function validateAgentForm(form) {
   if (!form.name.trim()) return { field: "name", message: "Give this agent a name before saving." };
   if (!EXECUTION_PROVIDERS.includes(form.provider)) return { field: "provider", message: "Choose a supported AI provider." };
-  if (isBrowserAiProvider(form.provider) && !form.model.trim()) return { field: 'model', message: 'Choose an explicit chat model from your provider’s catalog.' };
+  if (isBrowserAiProvider(form.provider) && form.provider_connection_id && !form.model.trim()) return { field: 'model', message: 'Choose an explicit chat model from your provider’s catalog.' };
   for (const [field, limit] of Object.entries(DEFINITION_LIMITS)) {
     if (typeof form[field] !== "string" || form[field].length > limit || /\0/.test(form[field])) return { field, message: `${field.replaceAll("_", " ")} must be text, at most ${limit.toLocaleString()} characters, without null characters.` };
   }
@@ -72,8 +72,9 @@ export function validateAgentForm(form) {
   if (!["reviewed", "none"].includes(form.memory_policy)) return { field: "memory_policy", message: "Choose reviewed memory or no saved memory." };
   if (!["review", "read-only"].includes(form.permission_policy)) return { field: "permission_policy", message: "Choose review required or read-only." };
   const directory = form.working_directory.trim();
-  if (directory && (!directory.startsWith("/") || /[\0\r\n]/.test(directory))) {
-    return { field: "working_directory", message: "Use an absolute folder path, such as /Users/you/Projects/example, or leave it blank." };
+  const absoluteDirectory = directory.startsWith('/') || /^[A-Za-z]:[\\/]/.test(directory) || /^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/.test(directory);
+  if (directory && (!absoluteDirectory || /[\0\r\n]/.test(directory))) {
+    return { field: "working_directory", message: "Use an absolute folder path for the execution computer, such as /Users/you/project or C:\\Projects\\example, or leave it blank." };
   }
   return null;
 }

@@ -1,8 +1,10 @@
 import { byUpdated, val, visible } from "./model.js";
 import { isBrowserAiProvider, isScopedAiProvider } from './ai-providers.js';
 import { API_PROVIDERS } from './ai-provider-catalog.js';
+import { RUNNER_PROVIDER_CATALOG, getRunnerProvider } from './runner-provider-catalog.js';
 
 export const AGENT_PROVIDERS = {
+  ...Object.fromEntries(RUNNER_PROVIDER_CATALOG.map(provider => [provider.id, { name: provider.title, company: '', capabilities: ['Computer runtime'], permissions: 'Explicit computer and project policy', description: `Run ${provider.title} on an explicitly authorized personal computer.` }])),
   copilot: { name: 'GitHub Copilot', company: 'GitHub', capabilities: ['Conversations', 'Reviewed Frondose actions'], permissions: 'General chat; tools disabled', description: 'Use your private Copilot local ACP connection for reviewed conversations.' },
   codex: {
     name: "Codex",
@@ -31,8 +33,16 @@ export function agentReadiness(agent, connection) {
   const result = (state, label, description, action, canStartLive = false, canSimulate = !isBrowserAiProvider(agent?.provider)) =>
     ({ state, label, description, action, canStartLive, canSimulate });
   if (!agent || val(agent, "archived_at")) return result("archived", "Archived", "Restore this agent before starting a session.", "restore", false, false);
-  if (!provider) return result("unsupported", "Not supported", "This provider cannot run sessions in Frondose yet. Choose Codex or Claude.", "configure", false, false);
+  if (!provider) return result("unsupported", "Not supported", "This provider is not in the supported connection catalog.", "configure", false, false);
   if (agent.status === "paused") return result("paused", "Paused", "New sessions are paused. Sessions already running are not stopped.", "resume", false, false);
+  const computer = agent.runner_connection;
+  if (computer) {
+    const runtime = getRunnerProvider(computer.runtime_id);
+    if (!computer.enabled) return result('needs_connection', 'Computer disabled', 'Enable this profile’s computer binding after reviewing the local computer policy. No other account will be substituted.', 'configure', false, false);
+    if (computer.can_use === false || ['forbidden', 'access_denied', 'not_authorized'].includes(computer.state)) return result('needs_connection', 'Computer access unavailable', 'The computer policy, profile audience or your current workspace permissions do not allow this request.', 'configure', false, false);
+    if (computer.state !== 'online' && computer.state !== 'ready') return result('needs_connection', 'Computer unavailable', 'Its helper must be approved, authorized, awake and online. Check AI connections; Frondose will not use another account instead.', 'configure', false, false);
+    return result('ready', 'Computer ready', `${runtime?.title || provider.name} is configured on your computer. ${computer.requires_project_access ? 'Requires an authorized project and explicit native-tool access; execution is not OS-sandboxed.' : 'Review context and access before sending.'} Provider account/model access is checked by the actual request.`, 'start', true, false);
+  }
   if ((Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId")) && !val(agent, "provider_connection_id")) return result("needs_connection", "Choose connection", "This profile is not bound to an account. Select a shared provider connection in the profile before live work.", "configure");
   if (val(agent, "provider_connection_id") && connection?.id !== val(agent, "provider_connection_id")) return result("needs_connection", "Connection unavailable", "This profile’s selected provider connection is unavailable. Review the profile connection before live work.", "configure");
   const state = connection?.provider === agent.provider ? connection.workspace_states ? connection.workspace_states[val(agent, 'workspace_id')] || 'not_connected' : connection.state : "not_connected";
@@ -69,6 +79,7 @@ export function runsForAgent(agent, runs = []) {
 }
 
 export function summarizeAgent(agent, data = {}) {
+  const computerProvider = agent.runner_connection && getRunnerProvider(agent.runner_connection.runtime_id);
   const selectedConnection = val(agent, "provider_connection_id");
   const hasBinding = Object.hasOwn(agent, "provider_connection_id") || Object.hasOwn(agent, "providerConnectionId");
   const connection = (data.connections || []).find((item) => item.provider === agent.provider && (hasBinding ? !!selectedConnection && item.id === selectedConnection : true));
@@ -79,7 +90,7 @@ export function summarizeAgent(agent, data = {}) {
   const projectIds = new Set([...assignedTasks, ...chats, ...runs].map((item) => val(item, "project_id")).filter(Boolean));
   const runIds = new Set(runs.map(run => run.id));
   return {
-    provider: AGENT_PROVIDERS[agent.provider] || { name: agent.provider || "Unknown provider", company: "", capabilities: [], permissions: "Not supported" },
+    provider: computerProvider ? { name: computerProvider.title, company: '', capabilities: ['Computer runtime'], permissions: 'Computer policy and explicit project access' } : AGENT_PROVIDERS[agent.provider] || { name: agent.provider || "Unknown provider", company: "", capabilities: [], permissions: "Not supported" },
     connection,
     readiness: agentReadiness(agent, connection),
     runs,

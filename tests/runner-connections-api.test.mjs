@@ -73,8 +73,8 @@ test('prepared agent settings cannot enable execution or fall back to a host acc
   assert.equal(saved.body.result.usage_scope, 'private'); assert.equal(saved.body.result.owner_actor_id, 'local-owner');
   assert.equal((await call(`/agent-runner-settings/${id}`, 'PUT', input)).status, 409);
   const run = await call('/runs', 'POST', { mode: 'live', workspace_id: ws, agent_id: id, provider: 'claude', title: 'Do not launch', prompt: 'This must not reach an AI.' });
-  assert.equal(run.status, 409, JSON.stringify(run.body));
-  assert.equal(run.body.error.code, 'runner_execution_not_released');
+  assert.equal(run.status, 403, JSON.stringify(run.body));
+  assert.equal(run.body.error.code, 'agent_connection_disabled');
   assert.equal(db.prepare('SELECT count(*) AS n FROM runs WHERE agent_id=?').get(id).n, 0);
   const clear = await call(`/agent-runner-settings/${id}`, 'PUT', { workspace_id: ws, version: 1, connection_method: 'unselected', runner_id: null, runtime_id: null, enabled: false });
   assert.equal(clear.status, 200);

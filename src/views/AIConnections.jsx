@@ -158,6 +158,7 @@ export function AIConnectionsView() {
             : <span className="ai-unavailable-action">{detail.id === 'copilot' ? 'Coming soon' : 'Operator setup required'}</span>}
         </div>
       </div>
+      <p className="ai-connection-guide-links"><a href={`#/docs/${detail.id === 'copilot' ? 'account-copilot' : apiDefinition ? `api-${detail.id}` : `computer-${detail.id}`}`}>Read the {detail.name} setup guide</a>{apiDefinition?.auth ? <> · <a href={`#/docs/account-${detail.id}`}>Account authorization</a></> : null}{isLocal(detail) || detail.id === 'copilot' ? <> · <a href={`#/docs/computer-${detail.id}`}>Paired-computer route</a> · <button type="button" className="text-button" onClick={() => { navigate('connections'); requestAnimationFrame(() => document.getElementById('computer-connections-heading')?.scrollIntoView({ block: 'start' })); }}>Connect your computer</button></> : null}</p>
       <ErrorMessage error={error} />
       {detail.id === 'copilot' ? <CopilotAccount workspaceId={workspace.id} saved={saved} setup={state?.copilot_oauth_setup} hosted={hosted} busy={busy} onAuthorize={() => start('copilot')} onDisconnect={() => setConfirm({ type: 'disconnect', provider: 'copilot' })} onStatus={connection => setState(current => ({ ...current, copilot: connection }))} onAction={operation => run(async () => { await post('copilot', operation); await load(); })} onTest={() => openModels('copilot')} /> : null}
       {apiDefinition ? <div className="ai-methods" aria-label="Connection methods">
@@ -179,7 +180,7 @@ export function AIConnectionsView() {
         </div>
       </div>
     </section> : <>
-      <PageHeader title="AI connections" description="Choose a connection. Account access and agent permissions are separate." />
+      <PageHeader title="AI connections" description="Choose API credentials, supported account authorization, or a personal computer. Account access and agent permissions are separate."><Button onClick={() => navigate('docs', 'provider-connections')}>Connection guides</Button></PageHeader>
       <div className="ai-catalog-controls">
         <div className="ai-filter-tabs" role="group" aria-label="Filter AI connections">
           {[[ 'all', 'All' ], [ 'api', 'API key' ], [ 'sign-in', 'Sign in' ], [ 'local', 'Local' ]].map(([id, label]) => <button type="button" key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}
@@ -203,7 +204,7 @@ export function AIConnectionsView() {
         })}
         {!matching.length ? <p className="ai-empty-match">No AI connections match your search.</p> : null}
       </div>
-      <details className="ai-direct-note"><summary>About connection methods and credits</summary><p>API keys use your provider API billing. Codex and Claude Code can use local runtimes. OpenRouter, configured Hugging Face, and configured GitHub Copilot offer browser authorization. Public mode never shares the server’s CLI accounts. Computer pairing below is a separate discovery connection; it does not enable remote AI runs.</p></details>
+      <details className="ai-direct-note"><summary>About connection methods and credits</summary><p>API keys use your provider API billing. OpenRouter, configured Hugging Face, and configured GitHub Copilot offer browser authorization. A paired computer uses the owner’s locally authorized runtimes and account. Public mode never borrows the server owner’s CLI login. Each computer and agent policy must explicitly allow execution; connecting never starts a request.</p></details>
       <ComputerConnections key={workspace.id} workspaceId={workspace.id} />
       <div className="ai-plugin-note"><Plug /><span>Service integrations are now called <strong>Plugins</strong>. They remain Coming soon and are separate from AI connections.</span><button type="button" onClick={() => navigate('settings', 'integrations')}>View Plugins <ArrowRight /></button></div>
     </>}

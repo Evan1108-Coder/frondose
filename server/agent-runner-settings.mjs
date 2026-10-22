@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 const METHODS = new Set(['unselected', 'api', 'oauth', 'computer']);
 const SCOPES = new Set(['private', 'members', 'workspace']);
 const SESSIONS = new Set(['conversation', 'new-session']);
-const MUTABLE = new Set(['connection_method', 'runner_id', 'runtime_id', 'usage_scope', 'usage_member_ids', 'max_concurrent_sessions', 'session_policy', 'enabled']);
+const MUTABLE = new Set(['connection_method', 'runner_id', 'runtime_id', 'usage_scope', 'usage_member_ids', 'max_concurrent_sessions', 'session_policy', 'enabled', 'native_tools_allowed']);
 const fail = (message, statusCode = 400, code = 'agent_runner_settings_invalid') => { throw Object.assign(new Error(message), { statusCode, code }); };
 const stableId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(value);
 const identity = actor => actor && stableId(actor.id) ? actor.id : fail('Sign in to manage agent connections.', 401, 'authentication_required');
@@ -12,17 +12,18 @@ const plainObject = value => value && typeof value === 'object' && !Array.isArra
 export const DEFAULT_AGENT_RUNNER_SETTINGS = Object.freeze({
   connection_method: 'unselected', runner_id: null, runtime_id: null,
   usage_scope: 'private', usage_member_ids: Object.freeze([]),
-  max_concurrent_sessions: 1, session_policy: 'conversation', enabled: false,
+  max_concurrent_sessions: 1, session_policy: 'conversation', enabled: false, native_tools_allowed: false,
 });
 
 /** Settings contain references, not secrets, executable commands or authority. */
 export function normalizeAgentRunnerSettings(input = {}, current = DEFAULT_AGENT_RUNNER_SETTINGS) {
   if (!plainObject(input)) fail('Agent connection settings must be an object.');
   for (const field of Object.keys(input)) if (!MUTABLE.has(field) && field !== 'version') fail(`Unsupported agent connection setting: ${field}.`);
-  const result = Object.fromEntries([...MUTABLE].map(field => [field, Object.hasOwn(input, field) ? input[field] : current[field]]));
+  const result = Object.fromEntries([...MUTABLE].map(field => [field, Object.hasOwn(input, field) ? input[field] : Object.hasOwn(current, field) ? current[field] : DEFAULT_AGENT_RUNNER_SETTINGS[field]]));
   for (const [field, values] of [['connection_method', METHODS], ['usage_scope', SCOPES], ['session_policy', SESSIONS]]) if (!values.has(result[field])) fail(`Choose a supported ${field.replaceAll('_', ' ')}.`);
   for (const field of ['runner_id', 'runtime_id']) if (result[field] !== null && !stableId(result[field])) fail(`Choose a valid ${field.replaceAll('_', ' ')}.`);
   if (typeof result.enabled !== 'boolean') fail('Agent availability must be true or false.');
+  if (typeof result.native_tools_allowed !== 'boolean') fail('Native runtime tools require explicit consent.');
   if (!Number.isSafeInteger(result.max_concurrent_sessions) || result.max_concurrent_sessions < 1 || result.max_concurrent_sessions > 8) fail('Allow between 1 and 8 simultaneous sessions for this agent.');
   if (Object.hasOwn(input, 'usage_scope') && input.usage_scope !== current.usage_scope && !Object.hasOwn(input, 'usage_member_ids')) result.usage_member_ids = [];
   if (!Array.isArray(result.usage_member_ids) || result.usage_member_ids.length > 200 || result.usage_member_ids.some(value => !stableId(value))) fail('Choose at most 200 workspace member IDs.');
@@ -73,6 +74,7 @@ export function installAgentRunnerSettings(db) {
     actor_id TEXT NOT NULL, action TEXT NOT NULL, version INTEGER NOT NULL,
     detail_json TEXT NOT NULL, created_at TEXT NOT NULL
   );`);
+  if (!db.prepare('PRAGMA table_info(agent_runner_settings)').all().some(column => column.name === 'native_tools_allowed')) db.exec('ALTER TABLE agent_runner_settings ADD COLUMN native_tools_allowed INTEGER NOT NULL DEFAULT 0');
 }
 
 /**
@@ -114,7 +116,7 @@ export function createAgentRunnerSettingsService({ db, authorize, checkRunnerBin
     if (!row) return null;
     let ids;
     try { ids = JSON.parse(row.usage_member_ids_json); } catch { fail('Saved agent connection settings are invalid.', 409, 'agent_runner_settings_corrupt'); }
-    const config = normalizeAgentRunnerSettings(Object.fromEntries([...MUTABLE].map(field => [field, field === 'usage_member_ids' ? ids : field === 'enabled' ? row.enabled === 1 : row[field]])));
+    const config = normalizeAgentRunnerSettings(Object.fromEntries([...MUTABLE].map(field => [field, field === 'usage_member_ids' ? ids : ['enabled', 'native_tools_allowed'].includes(field) ? row[field] === 1 : row[field]])));
     return { agent_id: row.agent_id, workspace_id: row.workspace_id, owner_actor_id: row.owner_actor_id, ...config, version: row.version, created_at: row.created_at, updated_at: row.updated_at };
   };
   const read = ({ workspaceId, agentId, actor }) => {
@@ -154,6 +156,7 @@ export function createAgentRunnerSettingsService({ db, authorize, checkRunnerBin
       db.prepare(`INSERT INTO agent_runner_settings(agent_id,workspace_id,owner_actor_id,connection_method,runner_id,runtime_id,usage_scope,usage_member_ids_json,max_concurrent_sessions,session_policy,enabled,version,created_at,updated_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(agent_id,workspace_id) DO UPDATE SET connection_method=excluded.connection_method,runner_id=excluded.runner_id,runtime_id=excluded.runtime_id,usage_scope=excluded.usage_scope,usage_member_ids_json=excluded.usage_member_ids_json,max_concurrent_sessions=excluded.max_concurrent_sessions,session_policy=excluded.session_policy,enabled=excluded.enabled,version=excluded.version,updated_at=excluded.updated_at`)
         .run(agentId, workspaceId, current?.owner_actor_id || actor.id, config.connection_method, config.runner_id, config.runtime_id, config.usage_scope, JSON.stringify(config.usage_member_ids), config.max_concurrent_sessions, config.session_policy, Number(config.enabled), version, current?.created_at || at, at);
+      db.prepare('UPDATE agent_runner_settings SET native_tools_allowed=? WHERE workspace_id=? AND agent_id=?').run(Number(config.native_tools_allowed), workspaceId, agentId);
       db.prepare('INSERT INTO agent_runner_settings_audit(id,agent_id,workspace_id,actor_id,action,version,detail_json,created_at) VALUES(?,?,?,?,?,?,?,?)')
         .run(`ars_${randomUUID()}`, agentId, workspaceId, actor.id, own ? 'settings.updated' : 'agent.disabled', version, JSON.stringify({ connection_method: config.connection_method, usage_scope: config.usage_scope, enabled: config.enabled, changed_fields: Object.keys(input).filter(field => field !== 'version') }), at);
       const result = unpack(stored(workspaceId, agentId));

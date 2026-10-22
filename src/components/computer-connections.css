@@ -7,6 +7,15 @@
 .computer-connections-boundary { margin-top: 12px !important; }
 .computer-connections-boundary strong { color: var(--text); font-weight: 550; }
 .computer-connections-notice { color: var(--text) !important; }
+.computer-connections a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.computer-policy-summary { grid-column: 1 / -1; min-width: 0; padding-block: 4px; }
+.computer-policy-summary > strong { font-size: 13px; font-weight: 550; }
+.computer-policy-summary p { margin: 7px 0; font-size: 12px; }
+.computer-policy-summary > a { font-size: 12px; }
+.computer-runtime-title { display: flex !important; align-items: center; gap: 10px !important; }
+.computer-runtime-title > div { display: grid; gap: 5px; min-width: 0; }
+.computer-catalog li > div:last-child { display: grid; gap: 5px; }
+.computer-catalog li > div:last-child a { font-size: 12px; }
 .computer-setup { display: grid; grid-template-columns: minmax(200px, .65fr) minmax(0, 1.35fr); align-items: start; gap: 30px; margin: 24px 0 28px; }
 .computer-pair-form { display: grid; align-content: start; gap: 14px; min-width: 0; }
 .computer-pair-form .field { margin: 0; }

@@ -272,6 +272,10 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (!['read-only', 'workspace-write'].includes(permissionMode)) throw error('invalid_permissions', 'Choose analysis or project editing permissions.');
     if (provider === 'claude' && permissionMode !== 'read-only') throw error('unsupported_permissions', 'Claude currently supports analysis only. Use Codex for edits inside the project folder.');
     nativeToolBridge = validateNativeToolBridge(nativeToolBridge);
+    // --bare suppresses subscription OAuth/keychain; --safe-mode preserves that
+    // login but suppresses MCP, including an explicitly supplied bridge. Never
+    // advertise a connected subscription bridge which Claude cannot actually use.
+    if (provider === 'claude' && nativeToolBridge && !env.ANTHROPIC_API_KEY) throw error('claude_bridge_api_key_required','Claude subscription sign-in supports restricted chat without the native Frondose bridge. Turn off native tools, or configure your own Anthropic API key for this local bridge.',409);
     const codexOverrides = ['approval_policy="never"', 'features.hooks=false', 'features.apps=false', 'features.remote_plugin=false', 'features.multi_agent=false', 'sandbox_workspace_write.writable_roots=[]', 'sandbox_workspace_write.network_access=false', 'sandbox_workspace_write.exclude_tmpdir_env_var=true', 'sandbox_workspace_write.exclude_slash_tmp=true', 'shell_environment_policy.ignore_default_excludes=false'].flatMap((value) => ['-c', value]);
     if (reasoningEffort) codexOverrides.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`);
     if (workMode === 'conversation') codexOverrides.push(...[
@@ -313,7 +317,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
       : ['--disallowedTools', workMode === 'conversation' ? '*' : 'mcp__*'];
     const args = provider === 'codex'
       ? ['exec', '--json', '--color', 'never', '--sandbox', permissionMode, '--skip-git-repo-check', ...(model ? ['--model', model] : []), ...(workMode === 'conversation' ? ['--ignore-user-config', '--ignore-rules', '--ephemeral'] : []), ...codexOverrides, '-']
-      : ['-p', '--bare', '--restricted', '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : []), '--permission-mode', 'dontAsk', '--tools', workMode === 'conversation' ? '' : 'Read,Glob,Grep', ...claudeMcpArgs, '--strict-mcp-config', '--mcp-config', claudeConfig, '--max-turns', '12'];
+      : ['-p', nativeToolBridge ? '--bare' : '--safe-mode', '--restricted', '--no-session-persistence', '--output-format', 'stream-json', '--verbose', ...(model ? ['--model', model] : []), '--permission-mode', 'dontAsk', '--tools', workMode === 'conversation' ? '' : 'Read,Glob,Grep', ...claudeMcpArgs, '--strict-mcp-config', '--mcp-config', claudeConfig, '--max-turns', '12'];
     if (signal?.aborted) throw error('session_cancelled', 'The session was cancelled before it started.', 409);
     if (closed || status(provider).state !== 'connected') throw error('not_connected', 'This connection was closed while the session was starting. Reconnect and try again.', 409);
     const bridgeSecret = nativeToolBridge?.env.FRONDOSE_NATIVE_TOOL_CAPABILITY;

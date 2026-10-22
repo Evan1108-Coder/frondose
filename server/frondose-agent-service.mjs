@@ -115,22 +115,23 @@ export function assertFrondoseAgentBinding(db, workspaceId, agent, actor, allowe
   return setup;
 }
 
-function ensureProfile(db, workspaceId, provider, actor, allowed, integration) {
+function ensureProfile(db, workspaceId, provider, actor, allowed, integration, prepareComputer = false) {
   const setup = preferences(db, workspaceId, actor, allowed);
-  if (!setup.onboarding_complete) fail('Finish Frondose setup before creating a conversation.', 'onboarding_required');
-  if (setup.provider_selected !== true || setup.provider !== provider) fail('Choose Frondose’s AI connection in the Frondose tab before creating a conversation.', 'assistant_connection_required');
+  if (!prepareComputer && !setup.onboarding_complete) fail('Finish Frondose setup before creating a conversation.', 'onboarding_required');
+  if (!prepareComputer && (setup.provider_selected !== true || setup.provider !== provider)) fail('Choose Frondose’s AI connection in the Frondose tab before creating a conversation.', 'assistant_connection_required');
   if (!PROVIDERS.includes(provider)) throw validationError('Choose a supported AI provider.');
-  if (integration.status(provider, workspaceId, actor).state !== 'connected') fail(`Connect ${aiProviderName(provider)} before preparing Frondose.`, 'not_connected');
   const id = profileId(workspaceId, provider), existing = db.prepare('SELECT * FROM agents WHERE id=?').get(id);
+  const computerReady = existing && integration.runnerConnection?.(existing,actor,workspaceId)?.state === 'ready';
+  if (!prepareComputer && !computerReady && integration.status(provider, workspaceId, actor).state !== 'connected') fail(`Connect ${aiProviderName(provider)} before preparing Frondose.`, 'not_connected');
   if (existing) {
     if (!allowed(workspaceId, actor, 'agents.read', { scope_type: 'agent', scope_id: id })) deny();
-    if (existing.workspace_id !== workspaceId || existing.provider !== provider || existing.archived_at || existing.status !== 'available' || existing.provider_connection_id !== `conn_${provider}`) fail('Restore and connect the Frondose profile in Agent Studio before continuing.', 'profile_unavailable');
+    if (existing.workspace_id !== workspaceId || existing.provider !== provider || existing.archived_at || existing.status !== 'available' || !prepareComputer && !computerReady && !existing.provider_connection_id) fail('Restore and connect the Frondose profile in its tab before continuing.', 'profile_unavailable');
     return existing;
   }
   if (!allowed(workspaceId, actor, 'agents.write')) deny('Creating the Frondose profile requires agent-management permission.');
   const created = stamp();
   db.prepare(`INSERT INTO agents(id,workspace_id,name,provider,role,provider_connection_id,description,instructions,permission_policy,output_behavior,model,reasoning_effort,image_url,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, workspaceId, setup.display_name, provider, 'Workspace assistant', `conn_${provider}`,
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, workspaceId, setup.display_name, provider, 'Workspace assistant', prepareComputer ? null : db.prepare('SELECT id FROM connections WHERE provider=?').get(provider)?.id || null,
     'A workspace assistant using the shared provider connection. No separate provider account.',
     `${baseInstructions}${guidanceBlock(setup)}`,
     'review', 'Give a clear answer, cite available source IDs where helpful, and distinguish proposed changes from completed actions.', setup.model || '', setup.reasoning_effort || '', setup.image_url || null, created, created);
@@ -148,9 +149,11 @@ export async function frondoseAgentRoute({ db, req, res, path, url, body, send, 
     workspace(db, workspaceId, actor, allowed);
     const visible = filter({ agents: db.prepare('SELECT * FROM agents WHERE workspace_id=? AND archived_at IS NULL').all(workspaceId) }).agents;
     const providers = PROVIDERS.map(provider => {
-      const status = integration.status(provider, workspaceId, actor), agent = visible.find(row => row.id === profileId(workspaceId, provider));
+      const agent = visible.find(row => row.id === profileId(workspaceId, provider));
+      const computer = agent && integration.runnerConnection?.(agent,actor,workspaceId);
+      const status = computer ? {state:computer.state === 'ready' ? 'connected' : 'not_connected'} : integration.status(provider, workspaceId, actor);
       const models = [...new Set(visible.filter(row => row.provider === provider && row.model).map(row => row.model))].sort();
-      return { provider, label: aiProviderName(provider), connection_id: `conn_${provider}`, state: status.state, connected: status.state === 'connected', model_required: isBrowserAiProvider(provider), agent_id: agent?.id || null, agent: agent ? present(agent) : null,
+      return { provider, label: aiProviderName(provider), connection_id: `conn_${provider}`, state: status.state, connected: status.state === 'connected', model_required: !computer && isBrowserAiProvider(provider), agent_id: agent?.id || null, agent: agent ? {...present(agent),runner_connection:computer || null} : null,
         models: [...(isBrowserAiProvider(provider) ? [] : [{ id: '', label: 'Automatic', provenance: 'provider_default', availability: 'provider_controlled' }]), ...models.map(id => ({ id, label: id, provenance: 'configured_profile', availability: 'unverified' }))],
         model_catalog_complete: false, model_catalog_note: 'The CLI connections do not expose an account-specific model catalog to Frondose. Configured identifiers are not proof of availability; the provider validates them when a run starts.', reasoning_efforts: provider === 'codex' ? REASONING : [''] };
     });
@@ -163,7 +166,8 @@ export async function frondoseAgentRoute({ db, req, res, path, url, body, send, 
     const next = { ...current, ...body.preferences };
     if (next.provider !== '' && !PROVIDERS.includes(next.provider)) throw validationError('Choose a supported AI connection.');
     if (typeof next.provider_selected !== 'boolean' || next.provider_selected && !next.provider) throw validationError('Choose an AI connection or leave Frondose unbound.');
-    if (next.provider_selected && (!current.provider_selected || current.provider !== next.provider) && integration.status(next.provider, body.workspace_id, actor).state !== 'connected') fail('Connect and verify this AI connection before selecting it for Frondose.', 'not_connected');
+    const selectedProfile = db.prepare('SELECT * FROM agents WHERE id=?').get(profileId(body.workspace_id,next.provider));
+    if (next.provider_selected && (!current.provider_selected || current.provider !== next.provider) && integration.runnerConnection?.(selectedProfile || {},actor,body.workspace_id)?.state !== 'ready' && integration.status(next.provider, body.workspace_id, actor).state !== 'connected') fail('Connect and verify this AI connection before selecting it for Frondose.', 'not_connected');
     runModelSelection(next, null, next.provider);
     for (const key of ['include_workspace', 'include_memory', 'include_chat', 'native_tools']) if (typeof next[key] !== 'boolean') throw validationError('Context preferences must be true or false.');
     if (!Array.isArray(next.context_pack_ids) || next.context_pack_ids.length > 100 || new Set(next.context_pack_ids).size !== next.context_pack_ids.length || next.context_pack_ids.some(id => !agentProfileReferenceReadable(db, body.workspace_id, 'workspace_items', id, { actor, allowed }))) throw validationError('Choose readable Context Packs in this workspace.');
@@ -196,8 +200,9 @@ export async function frondoseAgentRoute({ db, req, res, path, url, body, send, 
     send(res, 200, { result: next }); return true;
   }
   if (path === '/rumbo-agent/profile' && req.method === 'POST') {
-    exact(body, ['workspace_id', 'provider']); workspace(db, body.workspace_id, actor, allowed);
-    const agent = ensureProfile(db, body.workspace_id, body.provider, actor, allowed, integration);
+    exact(body, ['workspace_id', 'provider', 'prepare_computer']); workspace(db, body.workspace_id, actor, allowed);
+    if (body.prepare_computer !== undefined && typeof body.prepare_computer !== 'boolean') throw validationError('Choose whether to prepare a computer binding.');
+    const agent = ensureProfile(db, body.workspace_id, body.provider, actor, allowed, integration, body.prepare_computer === true);
     send(res, 200, { agent: present(agent) }); return true;
   }
   if (path === '/rumbo-agent/chats' && req.method === 'POST') {
@@ -209,9 +214,10 @@ export async function frondoseAgentRoute({ db, req, res, path, url, body, send, 
       if (!identifier(body.agent_id)) throw validationError('Choose an existing agent profile.');
       selectedAgent = db.prepare('SELECT * FROM agents WHERE id=?').get(body.agent_id);
       if (!selectedAgent || selectedAgent.workspace_id && selectedAgent.workspace_id !== body.workspace_id || !allowed(body.workspace_id, actor, 'agents.read', { scope_type: 'agent', scope_id: body.agent_id })) deny();
-      if (selectedAgent.archived_at || selectedAgent.status !== 'available' || selectedAgent.provider !== body.provider || !PROVIDERS.includes(selectedAgent.provider) || selectedAgent.provider_connection_id !== `conn_${selectedAgent.provider}`) fail('Choose an available, connected profile for the selected connection.', 'profile_unavailable');
+      const computerReady = integration.runnerConnection?.(selectedAgent,actor,body.workspace_id)?.state === 'ready';
+      if (selectedAgent.archived_at || selectedAgent.status !== 'available' || selectedAgent.provider !== body.provider || !PROVIDERS.includes(selectedAgent.provider) || !computerReady && !selectedAgent.provider_connection_id) fail('Choose an available, connected profile for the selected connection.', 'profile_unavailable');
       assertFrondoseAgentBinding(db, body.workspace_id, selectedAgent, actor, allowed);
-      if (integration.status(selectedAgent.provider, body.workspace_id, actor).state !== 'connected') fail('Connect this agent’s provider before creating a conversation.', 'not_connected');
+      if (!computerReady && integration.status(selectedAgent.provider, body.workspace_id, actor).state !== 'connected') fail('Connect this agent’s provider before creating a conversation.', 'not_connected');
     }
     const source = body.source ? readFrondoseSource(db, body.workspace_id, body.source, actor, allowed) : null;
     const task = body.task_id ? readFrondoseSource(db, body.workspace_id, { type: 'task', id: body.task_id }, actor, allowed) : null;

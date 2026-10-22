@@ -41,6 +41,8 @@ test("agent form validates names, supported providers and absolute folders", () 
     assert.equal(validateAgentForm({ ...form, working_directory })?.field, "working_directory");
   }
   assert.equal(validateAgentForm({ ...form, working_directory: " /Users/you/Projects/example " }), null);
+  for (const working_directory of ['C:\\Projects\\example', 'D:/Work/example', '\\\\server\\share\\project']) assert.equal(validateAgentForm({ ...form, working_directory }), null, working_directory);
+  for (const working_directory of ['C:relative', '\\relative', '\\\\server', 'C:\\Work\nunsafe']) assert.equal(validateAgentForm({ ...form, working_directory })?.field, 'working_directory', working_directory);
 });
 
 test("editing a shared agent preserves global scope and leaves operational fields alone", () => {

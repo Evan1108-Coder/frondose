@@ -6,6 +6,7 @@ import { DOC_CONNECTIONS } from './docs-connections.js';
 import { DOC_COLLABORATION } from './docs-collaboration.js';
 import { DOC_TEMPLATES_AND_SCHEDULING } from './docs-playbooks.js';
 import { API_PROVIDERS } from './ai-provider-catalog.js';
+import { DOC_AI_CONNECTIONS } from './docs-ai-connections.js';
 export const DOC_GROUPS = [
   { id: 'updates', title: 'Updates', description: 'Release notes and changes to Frondose.' },
   { id: 'getting-started', title: 'Getting started', description: 'Your first workspace, a clear brief, and a useful result.' },
@@ -534,4 +535,4 @@ const REFERENCE_ARTICLES = [
   ], { related: ['developer-testing', 'developer-architecture', 'preferences'] }),
 ];
 
-export const DOC_ARTICLES = [...REFERENCE_ARTICLES, ...DOC_WORKFLOWS, ...DOC_GOVERNANCE, ...DOC_CONNECTIONS, ...DOC_COLLABORATION, ...DOC_TEMPLATES_AND_SCHEDULING];
+export const DOC_ARTICLES = [...REFERENCE_ARTICLES, ...DOC_WORKFLOWS, ...DOC_GOVERNANCE, ...DOC_CONNECTIONS, ...DOC_COLLABORATION, ...DOC_TEMPLATES_AND_SCHEDULING, ...DOC_AI_CONNECTIONS];

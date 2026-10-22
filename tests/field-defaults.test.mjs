@@ -4,7 +4,7 @@ import {
   fieldDefaultsStorageKey, fieldDefaultShortcutSlot, normalizeFieldDefaults,
   normalizeFieldDefinition, readFieldDefaults, readFieldInventory,
   registerFieldDefinition, resolveFieldValue, saveFieldDefaults, updateFieldEntry,
-  definitionForElement, validFieldDefaultValue,
+  availableFieldValues, definitionForElement, resetFieldEntry, validFieldDefaultValue,
 } from '../src/lib/field-defaults.js';
 
 function memoryStorage() {
@@ -181,4 +181,40 @@ test('shortcut parser ignores IME and unrelated keys', () => {
   assert.equal(fieldDefaultShortcutSlot({ code: 'Digit9', key: '9', altKey: true, shiftKey: true }), 9);
   assert.equal(fieldDefaultShortcutSlot({ code: 'Digit1', key: '1', ctrlKey: true, isComposing: true }), null);
   assert.equal(fieldDefaultShortcutSlot({ code: 'Digit1', key: '1', ctrlKey: true, shiftKey: true }), null);
+});
+
+test('pairing, recovery and verification codes cannot enter the field inventory or preferences', () => {
+  for (const name of ['pairing_code', 'recovery-code', 'verification.code', 'connection code']) {
+    assert.equal(normalizeFieldDefinition({ key: 'safe.label', label: name }).eligible, false, name);
+    assert.equal(normalizeFieldDefinition({ key: `safe.${name.replaceAll(' ', '-')}` }).eligible, false, name);
+  }
+});
+
+test('safe instructions warning against pasting credentials remain usable without allowing credential requests', () => {
+  const control = placeholder => ({ matches: () => true, closest: () => null, getAttribute: () => null, tagName: 'TEXTAREA', type: 'textarea', dataset: { fieldDefaultKey: 'safe.instructions', fieldDefaultLabel: 'Instructions' }, placeholder });
+  assert.equal(definitionForElement(control('Write generalized instructions. Do not paste credentials or private context.'))?.eligible, true);
+  assert.equal(definitionForElement(control('Paste your API key here. Do not paste passwords.')), null);
+});
+
+test('pointer picker offers only enabled valid values in numbered order with exact override semantics', () => {
+  const definition = { key: 'safe.specific', sourceKey: 'safe.source', type: 'number' };
+  const settings = normalizeFieldDefaults({ fields: { 'safe.source': { enabled: true, primaryId: 'later', values: [
+    { id: 'later', slot: 7, value: '7' }, { id: 'first', slot: 2, value: '2' },
+    { id: 'hidden', slot: 3, value: '3', enabled: false }, { id: 'invalid', slot: 4, value: 'not a number' },
+  ] } } });
+  assert.deepEqual(availableFieldValues(settings, definition).map(value => value.id), ['first', 'later']);
+  assert.deepEqual(availableFieldValues({ ...settings, enabled: false }, definition), []);
+  assert.deepEqual(availableFieldValues({ ...settings, fields: { ...settings.fields, 'safe.specific': { enabled: true, values: [] } } }, definition), []);
+});
+
+test('resetting a field removes its override and restores shared source fallback without touching another workspace', () => {
+  const storage = memoryStorage();
+  const value = text => ({ primaryId: 'v', values: [{ id: 'v', slot: 1, value: text }] });
+  saveFieldDefaults('one', { fields: { 'safe.source': value('Shared'), 'safe.specific': value('Own') } }, storage);
+  saveFieldDefaults('two', { fields: { 'safe.specific': value('Other workspace') } }, storage);
+  assert.ok(resetFieldEntry('one', 'safe.specific', storage));
+  assert.equal(readFieldDefaults('one', storage).fields['safe.specific'], undefined);
+  assert.equal(resolveFieldValue(readFieldDefaults('one', storage), { key: 'safe.specific', sourceKey: 'safe.source' }).value, 'Shared');
+  assert.equal(resolveFieldValue(readFieldDefaults('two', storage), { key: 'safe.specific' }).value, 'Other workspace');
+  assert.equal(resetFieldEntry('one', '../invalid', storage), false);
 });

@@ -24,6 +24,7 @@ import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnB
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
 import { prepareFrondoseAgentEntry } from '../lib/frondose-agent-entry.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
+import { computerAgentControls, requestNativeTools } from '../lib/computer-agent-controls.js';
 import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.js';
 import { prepareExplicitChatSend } from '../lib/chat-send-context.js';
 import { coordinationDraft, personalComposerDefaults } from '../lib/chat-coordination.js';
@@ -96,6 +97,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const [accessOpen, setAccessOpen] = useState(false);
   const [reviewedContext, setReviewedContext] = useState(null), [retryDraft, setRetryDraft] = useState(null), [reviewedRetry, setReviewedRetry] = useState(null);
   const [retryNativeTools, setRetryNativeTools] = useState(false), [nativeActivityOpen, setNativeActivityOpen] = useState(false), [nativeRunId, setNativeRunId] = useState('');
+  const [retryProjectEdits, setRetryProjectEdits] = useState(false);
   const [updatesDirty, setUpdatesDirty] = useState(false), [updatesPending, setUpdatesPending] = useState(false), [discardUpdates, setDiscardUpdates] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0), [commandLibraryOpen, setCommandLibraryOpen] = useState(false), [commandQuery, setCommandQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false), [search, setSearch] = useState(''), [retrying, setRetrying] = useState(null);
@@ -127,14 +129,15 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const connection = data.connections.find(item => item.provider === agent?.provider && (!val(agent, 'provider_connection_id') || item.id === val(agent, 'provider_connection_id')));
   const readiness = agent ? agentReadiness(agent, connection) : null;
   const readyRecipients = agents.filter(item => agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive);
-  const folder = val(project, 'local_path') || val(agent, 'working_directory');
+  const computerControls = computerAgentControls(agent, { projectId: project?.id, globalReadOnly: data.settings?.agentDefaults?.approvalMode === 'read_only' });
+  const folder = computerControls.bound ? project?.id || null : val(project, 'local_path') || val(agent, 'working_directory');
   const notes = visible(data.memory_notes).filter(note => !val(note, 'project_id') || val(note, 'project_id') === project?.id);
   const collaboration = (data.chat_collaboration || []).find(item => item.chat_id === chat.id) || { version: 0, bookmarks: [], drafts: [], branch: null };
   const bookmarks = new Set(collaboration.bookmarks || []);
   const replies = useMemo(() => { const map = new Map(); for (const message of messages) if (message.metadata?.reply_to) map.set(message.metadata.reply_to, (map.get(message.metadata.reply_to) || 0) + 1); return map; }, [messages]);
   const contextChoices = [...visible(data.documents).map(item => ({ kind: 'document', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.memory_notes).map(item => ({ kind: 'memory', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.workspace_items || []).filter(item => item.kind === 'context_pack').map(item => ({ kind: 'pack', id: item.id, title: item.name }))];
   const contextPending = Boolean(composer.context && typeof composer.context.content !== 'string');
-  const blocker = personalPending ? 'Loading Frondose’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) });
+  const blocker = personalPending ? 'Loading Frondose’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : computerControls.requiresProject && composer.permission === 'conversation' ? 'This computer runtime needs Build access to a project mapped by its owner. Choose Build and review access; enable native tools in the agent’s computer settings if unavailable.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) });
   const queueOnly = Boolean(activeRecipient && !composer.turn);
   const queueBlocker = queueOnly && (composer.files.length || composer.context || composer.replyTo || composer.text.length > 10000) ? 'Queued follow-ups support plain text up to 10,000 characters. Send attachments or a reply after this run finishes.' : null;
   const inThread = threadMessages(messages, threadId);
@@ -144,7 +147,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const connectedProviders = (data.connections || []).filter(item => item.status === 'connected' || item.connected).map(item => item.provider);
   const slashVisible = composer.text.trimStart().startsWith('/') && !composer.text.trimStart().startsWith('//') && !composer.text.includes('\n');
   const slashResults = slashVisible ? searchCommands(composer.text.trimStart().slice(1), { context: 'chat' }).slice(0, 10) : [];
-  const readOnlyProfile = agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
+  const readOnlyProfile = !computerControls.bound && agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
   const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
   const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
   const sentAttachments = composer.context && !contextPending ? [{ name: `frondose-context-${composer.context.id}.md`, type: 'text/markdown', content: composer.context.content, rumbo_context_snapshot: composer.context.id }, ...composer.files] : [...composer.files];
@@ -155,22 +158,23 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
     chat_id: chat.id, agent_id: agent.id, prompt: composer.text.trim() || 'Shared attachments',
     work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission,
-    include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true, attachments: sentAttachments, source_message_id: null,
+    include_memory: includeMemory, include_chat: true, native_tools: requestNativeTools(agent, composer.nativeTools), attachments: sentAttachments, source_message_id: null,
     context_pack_ids: [], area_id: val(project, 'team_id') || val(task, 'team_id') || null,
     ...assistantOptions,
-    ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
+    ...(composer.permission !== 'conversation' && folder && !computerControls.bound ? { cwd: folder } : {}),
   } : null;
   const inspectionKey = JSON.stringify([inspectionRequest, agent?.version ?? null]);
   const contextReady = reviewedContext?.key === inspectionKey && Date.parse(reviewedContext.result.expires_at) > Date.now();
   const recoveringTurn = Boolean(composer.turn);
   const retryAgent = retryDraft ? agents.find(item => item.id === val(retryDraft.run, 'agent_id')) : null;
+  const retryRequiresProject = computerAgentControls(retryAgent).requiresProject;
   const retryRequest = retryDraft && retryAgent ? {
     workspace_id: val(chat, 'workspace_id'), project_id: project?.id ?? null, task_id: task?.id ?? null,
     chat_id: chat.id, agent_id: retryAgent.id, prompt: retryDraft.message.content.trim(),
-    source_message_id: retryDraft.message.id, work_mode: val(retryDraft.run, 'work_mode') || 'project', permission_mode: 'read-only',
+    source_message_id: retryDraft.message.id, work_mode: val(retryDraft.run, 'work_mode') || 'project', permission_mode: retryRequiresProject && retryProjectEdits ? 'workspace-write' : 'read-only',
     ...(typeof retryDraft.message.metadata?.include_workspace === 'boolean' ? { include_workspace: retryDraft.message.metadata.include_workspace } : {}),
     ...(typeof retryDraft.message.metadata?.model === 'string' ? { model: retryDraft.message.metadata.model, reasoning_effort: retryDraft.message.metadata.reasoning_effort || '' } : {}),
-    include_memory: composer.memory && val(retryAgent, 'memory_policy') !== 'none', include_chat: true, native_tools: retryNativeTools,
+    include_memory: composer.memory && val(retryAgent, 'memory_policy') !== 'none', include_chat: true, native_tools: requestNativeTools(retryAgent, retryNativeTools),
     attachments: [], context_pack_ids: [], area_id: val(project, 'team_id') || val(task, 'team_id') || null,
   } : null;
   const retryInspectionKey = JSON.stringify([retryRequest, retryAgent?.version ?? null]);
@@ -364,7 +368,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       return;
     }
     if (composer.context && composer.files.length >= 20) { setError(new Error('The context snapshot uses one attachment slot. Remove a file before sending.')); return; }
-    if (agent && !recoveringTurn && !contextReady && (composer.permission === 'workspace-write' || composer.nativeTools === true)) { setAccessOpen(true); return; }
+    if (agent && !recoveringTurn && !contextReady && (composer.permission === 'workspace-write' || requestNativeTools(agent, composer.nativeTools))) { setAccessOpen(true); return; }
     sending.current = true; composer.sending = true; setBusy(true); setError(null);
     const text = composer.text.trim() || 'Shared attachments', files = [...composer.files], version = composer.version;
     const context = composer.context;
@@ -387,10 +391,10 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
         content: text, sender_type: 'user', sender_id: 'local', sender_name: data.profile?.name || 'You', attachments: sentFiles, metadata: { delivery: 'note', ...metadata },
       }) : await frondoseActions.sendChatTurn(chat.id, {
         content: text, attachments: sentFiles, agent_id: recipient, client_turn_id: composer.turn, ...metadata,
-        work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission, include_memory: includeMemory, include_chat: true, native_tools: composer.nativeTools === true,
+        work_mode: composer.permission === 'conversation' ? 'conversation' : 'project', permission_mode: effectivePermission, include_memory: includeMemory, include_chat: true, native_tools: requestNativeTools(agent, composer.nativeTools),
         ...(captured ? { context_inspection_id: captured.id } : {}), context_pack_ids: [], area_id: inspectionRequest?.area_id ?? null,
         ...assistantOptions,
-        ...(composer.permission !== 'conversation' && folder ? { cwd: folder } : {}),
+        ...(composer.permission !== 'conversation' && folder && !computerControls.bound ? { cwd: folder } : {}),
       });
       if (composer.version === version) { composer.text = ''; composer.version += 1; composer.turn = null; composer.replyTo = null; composer.context = null; }
       composer.nativeTools = false;
@@ -409,7 +413,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
 
   async function prepareSchedule() {
     if (busy || composer.sending || composer.turn || !composer.text.trim() || blocker) return;
-    if (agent && (composer.permission !== 'conversation' || composer.nativeTools)) { setError(new Error('Scheduling supports Chat without native tools.')); return; }
+    if (agent && (composer.permission !== 'conversation' || requestNativeTools(agent, composer.nativeTools))) { setError(new Error('Scheduling supports Chat without native tools.')); return; }
     const version = composer.version;
     setBusy(true); setError(null);
     try {
@@ -506,10 +510,13 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   }
   function retry(message, run) {
     if (retrying || active) return;
+    const target = agents.find(item => item.id === val(run, 'agent_id'));
+    setRetryProjectEdits(Boolean(composer.retryKeys[message.id]) && computerAgentControls(target).requiresProject && (val(run, 'work_mode') || 'project') === 'project');
     setRetryDraft({ message, run }); setRetryNativeTools(Boolean(composer.retryKeys[message.id]) && composer.retryNativeTools?.[message.id] === true); setReviewedRetry(null); setError(null);
   }
   async function retryReviewed() {
     if (!retryDraft || !retryContextReady) { setError(new Error('Inspect and use the regenerated context before retrying.')); return; }
+    if (retryRequiresProject && (!retryProjectEdits || retryRequest.work_mode !== 'project')) { setError(new Error('This runtime needs an explicit project-edit retry. Review that access, or send a new message in a project conversation.')); return; }
     const { message, run } = retryDraft;
     if (retrying || active) return;
     setRetrying(run.id); setError(null);
@@ -517,7 +524,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     composer.retryNativeTools ||= {}; composer.retryNativeTools[message.id] = retryRequest.native_tools;
     persistComposer(chat.id, composer, draftStorage());
     try {
-const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: 'read-only', include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
+const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run, 'agent_id'), source_message_id: message.id, client_turn_id: composer.retryKeys[message.id], work_mode: val(run, 'work_mode') || 'project', permission_mode: retryRequest.permission_mode, include_memory: retryRequest.include_memory, include_chat: true, ...(typeof retryRequest.include_workspace === 'boolean' ? { include_workspace: retryRequest.include_workspace } : {}), native_tools: retryRequest.native_tools, context_inspection_id: reviewedRetry.result.id, ...(typeof message.metadata?.model === 'string' ? { model: message.metadata.model, reasoning_effort: message.metadata.reasoning_effort || '' } : {}), context_pack_ids: [], area_id: retryRequest.area_id });
       delete composer.retryKeys[message.id];
       delete composer.retryNativeTools[message.id];
       persistComposer(chat.id, composer, draftStorage());
@@ -590,9 +597,9 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
           if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && (data.settings?.preferences?.sendKey !== 'modifier' || event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy) event.currentTarget.form.requestSubmit(); }
         }} />
         <div className="chat-compose-controls"><div className="chat-compose-target">
-          {agent && !isBrowserAiProvider(agent.provider) ? <div className="chat-compose-modes" role="group" aria-label="Work mode">
+          {agent && (!isBrowserAiProvider(agent.provider) || computerControls.bound) ? <div className="chat-compose-modes" role="group" aria-label="Work mode">
             <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission !== 'workspace-write'} onClick={() => change({ permission: 'conversation', nativeTools: false })}>Chat</button>
-            {agent.provider === 'codex' && !readOnlyProfile ? <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'workspace-write'} onClick={() => { change({ permission: 'workspace-write' }); setAccessOpen(true); }}>Build</button> : null}
+            {(computerControls.bound ? computerControls.canBuild : agent.provider === 'codex' && !readOnlyProfile) ? <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'workspace-write'} onClick={() => { change({ permission: 'workspace-write', nativeTools: false }); setAccessOpen(true); }}>Build</button> : null}
           </div> : null}
           {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation', nativeTools: false })}><option value="note">Note · only saved here</option>{agent && !readiness?.canStartLive ? <option value={agent.id} disabled>Connection needed</option> : null}{readyRecipients.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
@@ -604,9 +611,9 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
       </Form>
       {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{personalMode ? <button onClick={()=>navigate('rumbo-agent')}>Frondose setup</button> : agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : queueOnly ? queueBlocker ? <p className="chat-compose-notice" role="status">{queueBlocker}</p> : <details className="chat-queue-explanation"><summary>Working · follow-ups queue for the next turn</summary><p>Queued instructions do not enter the current provider run. Load the draft and send it when ready, or keep chatting with another agent.</p></details> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
     </div>
-    {accessOpen && agent ? <Dialog title="Access and context" subtitle="Chat prepares bounded context when you send. Project access and native tools still require explicit review." wide onClose={() => setAccessOpen(false)}><div className="dialog-body chat-context-content">{!isBrowserAiProvider(agent.provider) ? <><NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /><Toggle label="Read project files for this message" description="Requires a linked working folder. Turning this on does not grant write access." checked={composer.permission !== 'conversation'} disabled={busy || composer.sending || recoveringTurn || composer.permission === 'workspace-write'} onChange={value => { change({ permission: value ? 'read-only' : 'conversation' }); setReviewedContext(null); }} /></> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} /></div><footer className="dialog-footer"><Button onClick={() => setAccessOpen(false)}>Done</Button></footer></Dialog> : null}
+    {accessOpen && agent ? <Dialog title="Access and context" subtitle="Chat prepares bounded context when you send. Project access and native tools still require explicit review." wide onClose={() => setAccessOpen(false)}><div className="dialog-body chat-context-content">{!computerControls.api ? <>{!computerControls.bound ? <NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /> : <p>Computer execution follows the owner’s local policy and this profile’s native-tool settings. Build requires this conversation’s project ID to be mapped to its real folder on that computer. Native tools run as the OS user, not in a Frondose sandbox. <a href="#/docs/computer-agent-permissions">Review permissions</a>.</p>}{!computerControls.requiresProject ? <Toggle label="Read project files for this message" description={computerControls.bound ? 'Requires a project mapped by the computer owner. A server folder is not automatically available on that computer.' : 'Requires a linked working folder. Turning this on does not grant write access.'} checked={composer.permission !== 'conversation'} disabled={busy || composer.sending || recoveringTurn || composer.permission === 'workspace-write'} onChange={value => { change({ permission: value ? 'read-only' : 'conversation' }); setReviewedContext(null); }} /> : <p>This runtime requires an authorized Build/project request; it cannot be converted into a restricted General chat runtime by a browser toggle.</p>}</> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} /></div><footer className="dialog-footer"><Button onClick={() => setAccessOpen(false)}>Done</Button></footer></Dialog> : null}
     {scheduleDraft ? <ScheduleWorkDialog workspaceId={val(chat, 'workspace_id')} kind="message" payload={scheduleDraft.payload} contextInspectionId={scheduleDraft.contextInspectionId} onClose={() => setScheduleDraft(null)} onScheduled={() => { if (composer.version === scheduleDraft.version) { change({ text: '', files: [], turn: null, replyTo: null, context: null }); setReviewedContext(null); } }} /> : null}
-    {retryDraft ? <Dialog title="Review retry context" subtitle="Retrying creates a new bounded attempt. Context is regenerated from current accessible sources; the original message stays unchanged." wide onClose={() => { if (!retrying) { setRetryDraft(null); setReviewedRetry(null); } }}><div className="dialog-body chat-context-content"><ErrorMessage error={error} />{retryAgent && !isBrowserAiProvider(retryAgent.provider) ? <NativeToolsChoice checked={retryNativeTools} disabled={Boolean(retrying) || Boolean(composer.retryKeys[retryDraft.message.id])} onChange={value => { setRetryNativeTools(value); setReviewedRetry(null); }} /> : null}{composer.retryKeys[retryDraft.message.id] ? <p>An earlier retry delivery is unconfirmed. Its native-tool choice stays fixed while recovering the same turn.</p> : null}{retryAgent ? <ContextInspector key={`retry-context:${retryDraft.message.id}:${retryAgent.version ?? 0}`} request={retryRequest} onReviewed={result => setReviewedRetry({ key: retryInspectionKey, result })} onInvalidated={() => setReviewedRetry(null)} /> : <p>This message’s agent is unavailable. Restore or configure the profile before retrying.</p>}</div><footer className="dialog-footer"><Button disabled={Boolean(retrying)} onClick={() => { setRetryDraft(null); setReviewedRetry(null); }}>Cancel</Button><Button variant="primary" busy={Boolean(retrying)} disabled={!retryContextReady || Boolean(active)} onClick={retryReviewed}>Retry message</Button></footer></Dialog> : null}
+    {retryDraft ? <Dialog title="Review retry context" subtitle="Retrying creates a new bounded attempt. Context is regenerated from current accessible sources; the original message stays unchanged." wide onClose={() => { if (!retrying) { setRetryDraft(null); setReviewedRetry(null); } }}><div className="dialog-body chat-context-content"><ErrorMessage error={error} />{retryAgent && !isBrowserAiProvider(retryAgent.provider) && !retryAgent.runner_connection ? <NativeToolsChoice checked={retryNativeTools} disabled={Boolean(retrying) || Boolean(composer.retryKeys[retryDraft.message.id])} onChange={value => { setRetryNativeTools(value); setReviewedRetry(null); }} /> : null}{retryAgent?.runner_connection ? <p>Computer retries use the current profile/local execution policy and freshly reviewed context. Server-native MCP is not enabled by this retry. Check prior effects before retrying interrupted work.</p> : null}{retryRequiresProject && (val(retryDraft.run, 'work_mode') || 'project') === 'project' ? <Toggle label="Allow project edits for this retry" description="This runtime cannot run a restricted read-only retry. Explicitly review project access; native tools run as the computer’s OS user and previous effects are not undone." checked={retryProjectEdits} disabled={Boolean(retrying) || Boolean(composer.retryKeys[retryDraft.message.id])} onChange={value => { setRetryProjectEdits(value); setReviewedRetry(null); }} /> : null}{composer.retryKeys[retryDraft.message.id] ? <p>An earlier retry delivery is unconfirmed. Its native-tool and project-access choices stay fixed while recovering the same turn.</p> : null}{retryAgent ? <ContextInspector key={`retry-context:${retryDraft.message.id}:${retryAgent.version ?? 0}`} request={retryRequest} onReviewed={result => setReviewedRetry({ key: retryInspectionKey, result })} onInvalidated={() => setReviewedRetry(null)} /> : <p>This message’s agent is unavailable. Restore or configure the profile before retrying.</p>}</div><footer className="dialog-footer"><Button disabled={Boolean(retrying)} onClick={() => { setRetryDraft(null); setReviewedRetry(null); }}>Cancel</Button><Button variant="primary" busy={Boolean(retrying)} disabled={!retryContextReady || Boolean(active) || retryRequiresProject && !retryProjectEdits} onClick={retryReviewed}>Retry message</Button></footer></Dialog> : null}
     {updatesOpen ? <Dialog className="chat-updates-dialog" title="Conversation updates" subtitle="Progress and decisions about this conversation. Updates are separate from chat messages and never contact an agent." wide onClose={() => { if (updatesPending) notify('Resolve the pending update request before closing.'); else if (updatesDirty) setDiscardUpdates(true); else setUpdatesOpen(false); }}><div className="dialog-body" style={{ padding: 'clamp(12px, 3vw, 24px)' }}><Suspense fallback={<p role="status">Opening conversation updates…</p>}><ActivityFeed key={chat.id} workspaceId={val(chat, 'workspace_id')} targetType="chat" targetId={chat.id} onDirtyChange={setUpdatesDirty} onPendingChange={setUpdatesPending} /></Suspense></div></Dialog> : null}
     {nativeActivityOpen ? <Dialog title="Conversation native tools" subtitle="Choose one recorded run. Reading tool records or reviewing a proposal never launches an agent." wide onClose={() => setNativeActivityOpen(false)}><div className="native-tool-decision"><Select label="Recorded conversation run" value={nativeRunId} onChange={setNativeRunId}><option value="">Choose run…</option>{runs.filter(run => run.mode === 'live').map(run => <option key={run.id} value={run.id}>{run.title || run.id} · {run.status} · {relative(run.created_at)}</option>)}</Select>{nativeRunId && runs.some(run => run.id === nativeRunId && run.mode === 'live') ? <NativeToolActivity key={nativeRunId} runId={nativeRunId} /> : <p>No run selected. Simulations do not invoke native tools.</p>}</div></Dialog> : null}
     {discardUpdates ? <Dialog title="Discard this update draft?" onClose={() => setDiscardUpdates(false)}><div className="dialog-body" style={{ padding: 24 }}><p>This unsaved text will be lost. Published updates and saved drafts stay unchanged.</p><div className="form-submit-row"><Button onClick={() => setDiscardUpdates(false)}>Keep editing</Button><Button variant="danger" onClick={() => { setDiscardUpdates(false); setUpdatesDirty(false); setUpdatesOpen(false); }}>Discard draft</Button></div></div></Dialog> : null}

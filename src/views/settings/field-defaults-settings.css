@@ -24,5 +24,15 @@
 .field-default-value-actions button:hover, .field-default-add:hover { background: var(--hover); }
 .field-default-add { justify-self: start; }
 .field-default-add:disabled { opacity: .5; cursor: not-allowed; }
+.field-default-card-actions, .field-default-filter, .field-default-reset > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.field-default-filter { justify-content: space-between; font-size: 14px; }
+.field-default-filter > span { color: var(--muted); }
+.field-default-card-actions button, .field-default-filter button, .field-default-reset button { color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: inherit; }
+.field-default-card-actions button:hover, .field-default-filter button:hover, .field-default-reset button:hover { background: var(--hover); }
+.field-default-filter button:disabled { opacity: .5; cursor: not-allowed; }
+.field-default-reset { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; }
+.field-default-reset p { margin: 0; line-height: 1.5; }
+.field-default-page, .field-default-card, .field-default-values, .field-default-value, .field-default-card-heading > div { min-width: 0; }
+.field-default-value :is(input, textarea, select) { font-size: 16px; }
 .field-default-excluded { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); }
 @media (max-width: 680px) { .field-default-card-heading { flex-direction: column; } .field-default-excluded { flex-direction: column; } }

@@ -188,3 +188,7 @@
   .frondose-setup-history > button { align-items: flex-start; gap: 12px; }
   .frondose-setup-history time { max-width: 90px; text-align: right; }
 }
+.frondose-computer-setup { margin-top: 32px; padding-top: 26px; border-top: 1px solid var(--border); min-width: 0; }
+.frondose-computer-setup h2 { margin: 0 0 10px; color: var(--text); font-size: 19px; font-weight: 600; }
+.frondose-computer-setup > p { color: var(--secondary); font-size: 14px; line-height: 1.65; max-width: 76ch; margin: 0 0 20px; }
+.frondose-computer-setup a { color: var(--text); text-underline-offset: 3px; }

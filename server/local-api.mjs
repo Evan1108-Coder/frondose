@@ -16,6 +16,8 @@ import { buildTodaySummary } from './today-service.mjs';
 import { installAgentProfiles, validateAgentProfile, snapshotAgentProfile, bumpAgentProfileVersion } from './agent-profiles.mjs';
 import { installRunnerConnections, createRunnerConnectionsService } from './runner-connections.mjs';
 import { installAgentRunnerSettings, createAgentRunnerSettingsService } from './agent-runner-settings.mjs';
+import { installRunnerJobs, createRunnerJobsService } from './runner-jobs.mjs';
+import { runnerRequiresNativeTools } from '../src/lib/runner-policy.js';
 import { RUNNER_PROVIDER_CATALOG } from '../src/lib/runner-provider-catalog.js';
 import { frondoseAgentRoute, runModelSelection, assertFrondoseChatSource, isFrondoseAgentChat, assertFrondoseAgentBinding, isPersonalFrondoseProfile } from './frondose-agent-service.mjs';
 import { installLocalAiWorkspaces, enableLocalAi, localAiEnabled } from './local-ai-workspace.mjs';
@@ -163,6 +165,7 @@ const PROVIDERS = {
   openrouter: { category: 'agent', displayName: 'OpenRouter', description: 'Conversations and reviewed Frondose actions through your OpenRouter account.', authMethod: 'oauth_pkce', capabilities: ['chat', 'reviewed_actions'], constraints: ['Uses the signed-in user’s workspace connection and credits.', 'An explicit model is required. No project-file or native tools.'] },
   huggingface: { category: 'agent', displayName: 'Hugging Face Inference', description: 'Conversations and reviewed Frondose actions through your Hugging Face account.', authMethod: 'oauth_pkce', capabilities: ['chat', 'reviewed_actions'], constraints: ['Requires a configured Hugging Face OAuth app and connected user account.', 'An explicit chat model is required. No project-file or native tools.'] },
   ...Object.fromEntries(API_PROVIDERS.filter(item => !item.auth).map(item => [item.id, { category: 'agent', displayName: item.name, description: `Conversations and reviewed Frondose actions through ${item.name}.`, authMethod: 'api_key', capabilities: ['chat', 'reviewed_actions'], constraints: ['Uses your personal workspace API key and provider billing.', 'Test a model before live work. No project-file or native tools.'] }])),
+  ...Object.fromEntries(RUNNER_PROVIDER_CATALOG.filter(item => !['codex','claude','copilot', ...API_PROVIDERS.map(provider => provider.id)].includes(item.id)).map(item => [item.id, { category: 'agent', displayName: item.title, description: 'Runs on an explicitly paired and authorized personal computer.', authMethod: 'personal_computer', capabilities: ['chat','structured_events'], constraints: ['Requires the owner’s local execution policy and runtime authentication.'] }])),
 };
 
 function now() { return new Date().toISOString(); }
@@ -475,6 +478,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installSkills(db);
   installAgentProfiles(db);
   installRunnerConnections(db);
+  installRunnerJobs(db);
   installAgentRunnerSettings(db);
   installAgentProfileHistory(db);
   installRunContextStore(db);
@@ -607,9 +611,11 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     }
     if (deployment.hosted && !isBrowserAiProvider(provider)) return { provider, state: 'not_connected', error_code: 'personal_runner_required' };
     if (['codex', 'claude'].includes(provider) && !localAiEnabled(getDb(), workspaceId, provider)) return { provider, state: 'not_connected', workspace_activation_required: true };
-    return isBrowserAiProvider(provider) ? aiConnections.readyState(provider, workspaceId, actor) : integration.status(provider);
+    return isBrowserAiProvider(provider) ? aiConnections.readyState(provider, workspaceId, actor) : ['codex','claude','github','google-drive'].includes(provider) ? integration.status(provider) : { provider, state: 'not_connected', error_code: 'personal_runner_required' };
   }
   function startProviderRun(options, callbacks) {
+    if (options.runnerBinding) return runnerJobs.enqueue({ runId: options.runId, workspaceId: options.workspaceId, agentId: options.agentId, actor: options.actor,
+      request: { prompt: options.prompt, model: options.model, workMode: options.workMode, permissionMode: options.permissionMode, projectId: options.projectId, chatId: options.chatId, timeoutMs: options.timeoutMs, reasoningEffort: options.reasoningEffort } }, callbacks);
     if (options.provider === 'copilot') return aiConnections.copilotOAuth.status(options.workspaceId, options.actor) ? hostedCopilot.startRun(options, callbacks) : deployment.hosted ? Promise.reject(validationError('Authorize your own GitHub account for hosted Copilot.')) : copilotBridge.startRun(options, callbacks);
     if (deployment.hosted && !isBrowserAiProvider(options.provider)) throw validationError('A shared host CLI account cannot serve public users. Use a personal API/OAuth connection.');
     return isBrowserAiProvider(options.provider) ? aiConnections.startAgentRun({ ...options, workspaceId: options.workspaceId, actor: options.actor }, callbacks) : integration.startRun(options, callbacks);
@@ -644,6 +650,30 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   const listeners = new Map();
   const runTimers = new Map();
   const liveRuns = new Map();
+  const makeRunnerJobs = () => createRunnerJobsService({ db: store.db, connections: runnerConnections, settings: agentRunnerSettings,
+    authorizeJob(job) {
+      const run = getDb().prepare('SELECT * FROM runs WHERE id=?').get(job.run_id);
+      const profile = getDb().prepare('SELECT * FROM agents WHERE id=?').get(job.agent_id);
+      if (!run || run.status !== 'running' || !profile || profile.archived_at || profile.status === 'paused' || profile.version !== run.agent_profile_version) return false;
+      const captured = readRunContext(getDb(), run.id); if (!captured) return false;
+      for (const actorId of new Set([job.actor_id,job.owner_actor_id])) {
+        const who = { id: actorId };
+        assertSourceAccess(getDb(), captured.inspection, who, access.allowed);
+        governance.authorize(job.workspace_id, actorId, 'agents.run', run.project_id ? { scope_type: 'project', scope_id: run.project_id } : {});
+      }
+      return true;
+    },
+  });
+  let runnerJobs = makeRunnerJobs();
+  const runnerJobTimer = setInterval(() => { if (!closed) runnerJobs.sweep(); }, 5000); runnerJobTimer.unref();
+  function runnerConnection(agent, actor, workspaceId = agent.workspace_id) {
+    if (!workspaceId || !agent?.id) return null;
+    const settings = getDb().prepare('SELECT * FROM agent_runner_settings WHERE workspace_id=? AND agent_id=?').get(workspaceId,agent.id);
+    if (!settings) return null;
+    const decision = agentRunnerSettings.canUse({ workspaceId, agentId:agent.id, actor });
+    return { state: decision.allowed ? 'ready' : decision.reason, can_use:decision.allowed, enabled: settings.enabled === 1, runtime_id: settings.runtime_id, runner_id: settings.runner_id, native_tools_allowed: settings.native_tools_allowed === 1, requires_project_access: runnerRequiresNativeTools(settings.runtime_id), connection_method: settings.connection_method };
+  }
+  const agentProviderReady = (agent,workspaceId,actor) => { const computer = runnerConnection(agent,actor,workspaceId); return computer ? computer.state === 'ready' : providerState(agent.provider,workspaceId,actor).state === 'connected'; };
   const nativeBridges = new Map();
   const makeNativeTools = () => createNativeAgentToolService({ db: getDb(), allowed: access.allowed, filter: (data, actor) => access.filter(data, actor), apply: createNativeToolApply({ db: getDb(), allowed: access.allowed }) });
   let nativeToolService = makeNativeTools();
@@ -668,7 +698,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     },
   });
   if (seedMode !== 'demo') {
-    for (const provider of Object.keys(PROVIDERS).filter(provider => !isScopedAiProvider(provider))) {
+    for (const provider of ['codex','claude','github','google-drive']) {
       const status = integration.status(provider);
       getDb().prepare('UPDATE connections SET state=?,mode=?,metadata_json=?,last_probed_at=? WHERE provider=?')
         .run(status.state, 'local', JSON.stringify(status), status.checkedAt || null, provider);
@@ -743,6 +773,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const frondosePreferences = parseJson(db.prepare('SELECT value_json FROM settings WHERE key=?').get(`rumboAgent:${resolved.workspaceId}`)?.value_json, {});
     for (const field of ['model', 'reasoning_effort']) if (Object.hasOwn(priorSelection, field) && body[field] !== undefined && body[field] !== priorSelection[field]) throw validationError('Retry with the original model and reasoning settings, or send a new message.');
     const selection = runModelSelection({ model: body.model ?? priorSelection.model, reasoning_effort: body.reasoning_effort ?? priorSelection.reasoning_effort }, agent, body.provider || agent?.provider || 'codex');
+    const computer = agent && getDb().prepare("SELECT * FROM agent_runner_settings WHERE workspace_id=? AND agent_id=? AND connection_method='computer'").get(resolved.workspaceId,agent.id);
     const input = {
       ...resolved.links, agent_id: agent?.id || null, area_id: body.area_id || null,
       prompt: prompt.trim(), work_mode: workMode, permission_mode: permissionMode, timeout_ms: timeoutMs,
@@ -752,7 +783,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       attachments: (turn?.source?.id || body.source_message_id) ? [] : turn?.attachments ?? body.attachments ?? [],
       source_message_id: turn?.source?.id ?? body.source_message_id ?? null,
       context_pack_ids: [...new Set(packs)].sort(),
-      cwd: workMode === 'conversation' ? null : sessionWorkingDirectory(resolved.project, agent, body.cwd) || null,
+      cwd: workMode === 'conversation' ? null : computer ? `project:${resolved.project?.id || ''}` : sessionWorkingDirectory(resolved.project, agent, body.cwd) || null,
+      ...(computer ? { computer_binding: { version: computer.version, runner_id: computer.runner_id, runtime_id: computer.runtime_id, native_tools_allowed: computer.native_tools_allowed === 1 } } : {}),
       profile_version: agent?.version ?? null, provider_connection_id: agent?.provider_connection_id ?? null,
       native_tools: body.native_tools === true,
       ...selection,
@@ -1066,18 +1098,21 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     const providerConnection = db.prepare('SELECT id,provider FROM connections WHERE id=?').get(agent?.provider_connection_id || `conn_${provider}`);
     if (agent?.provider_connection_id && (!providerConnection || providerConnection.provider !== provider)) throw validationError('The agent’s provider connection is unavailable. Edit its profile before running.');
     if (body.mode === 'live') {
+      let runnerBinding = null;
       const computerSettings = agent && db.prepare('SELECT connection_method,enabled FROM agent_runner_settings WHERE workspace_id=? AND agent_id=?').get(workspaceId, agent.id);
-      if (computerSettings?.connection_method === 'computer') return fail(res, 409, 'runner_execution_not_released', 'This agent is bound to a personal computer. Remote execution is not released yet; Frondose will not fall back to the server’s account.');
+      if (computerSettings?.connection_method === 'computer') runnerBinding = agentRunnerSettings.authorizeUse({ workspaceId, agentId:agent.id, actor });
       if (computerSettings && (!computerSettings.enabled || computerSettings.connection_method === 'unselected')) return fail(res, 409, 'agent_connection_disabled', 'This agent’s connection is disabled or unselected. Frondose will not fall back to an old provider account.');
       assertFrondoseAgentBinding(db,workspaceId,agent,actor,access.allowed);
-      if (agent && !agent.provider_connection_id) return fail(res, 409, 'profile_unbound', 'Choose the shared provider connection in this agent’s profile before starting live work.');
+      if (agent && !agent.provider_connection_id && !runnerBinding) return fail(res, 409, 'profile_unbound', 'Choose this agent’s AI connection before starting live work.');
       const defaults = parseJson(db.prepare("SELECT value_json FROM settings WHERE key='agentDefaults'").get()?.value_json, {});
       if (liveRuns.size >= (defaults.concurrentRuns || 2)) return fail(res, 409, 'concurrency_limit', 'The simultaneous session limit has been reached. Wait for a session to finish or increase the limit in Settings.');
-      if (providerState(provider, workspaceId, actor).state !== 'connected') return fail(res, 409, 'not_connected', `Connect ${PROVIDERS[provider].displayName} before starting a live session.`);
+      if (!runnerBinding && providerState(provider, workspaceId, actor).state !== 'connected') return fail(res, 409, 'not_connected', `Connect ${PROVIDERS[provider].displayName} before starting a live session.`);
       if (typeof body.prompt !== 'string' || !body.prompt.trim()) throw validationError('Write an instruction for the agent.');
       const input = contextInput(body, resolved, agent, turn);
-      if (isBrowserAiProvider(provider) && (!input.model || input.work_mode !== 'conversation' || input.native_tools)) return fail(res, 400, 'api_provider_options', 'Choose an explicit chat model and General chat. Browser AI connections support reviewed Frondose actions, without project-file or native tools.');
-      if (provider === 'copilot' && (input.work_mode !== 'conversation' || input.permission_mode !== 'read-only' || input.native_tools)) return fail(res, 400, 'copilot_options', 'Copilot supports General chat and reviewed Frondose actions, without native tools or project folders.');
+      if (!runnerBinding && isBrowserAiProvider(provider) && (!input.model || input.work_mode !== 'conversation' || input.native_tools)) return fail(res, 400, 'api_provider_options', 'Choose an explicit chat model and General chat. Browser AI connections support reviewed Frondose actions, without project-file or native tools.');
+      if (!runnerBinding && provider === 'copilot' && (input.work_mode !== 'conversation' || input.permission_mode !== 'read-only' || input.native_tools)) return fail(res, 400, 'copilot_options', 'Copilot supports General chat and reviewed Frondose actions, without native tools or project folders.');
+      if (runnerBinding && input.native_tools) return fail(res,400,'remote_bridge_unavailable','The local Frondose tool bridge cannot be sent to a remote computer. Use reviewed workspace action proposals instead.');
+      if (runnerBinding && runnerRequiresNativeTools(provider) && (!runnerBinding.native_tools_allowed || input.work_mode !== 'project' || input.permission_mode !== 'workspace-write')) return fail(res,409,'runner_native_tools_required','This runtime requires explicit consent and project editing. Use a locally mapped project, or a tools-disabled Codex/Claude General chat.');
       if (input.native_tools && (!agent?.provider_connection_id || !awarenessEnabled(db, workspaceId))) return fail(res, 409, 'native_tools_unavailable', 'Native tools require a bound agent profile and enabled workspace awareness.');
       if (input.native_tools && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact context and native tools before launching.');
       const { work_mode: workMode, permission_mode: permissionMode, cwd } = input;
@@ -1092,16 +1127,24 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const stableContext = value => JSON.stringify(value, (_key, item) => isRecord(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
       if (preview && (currentInspection.manifest.fingerprint !== preview.inspection.manifest.fingerprint || stableContext(currentInspection.sourceAccess) !== stableContext(preview.inspection.sourceAccess))) return fail(res, 409, 'stale_context', 'Context changed after inspection. Review the updated context before starting.');
       const inspection = preview?.inspection || currentInspection;
+      if (runnerBinding) {
+        assertSourceAccess(db, inspection, { id: runnerBinding.owner_actor_id }, access.allowed);
+        runnerJobs.validateRequest({ workspaceId, agentId:agent.id,actor,request:{prompt:inspection.finalPrompt,workMode,permissionMode,projectId:project?.id} });
+        if (workMode === 'project') {
+          const computer = runnerConnections.get({ workspaceId, actor:{id:runnerBinding.owner_actor_id}, runnerId:runnerBinding.runner_id });
+          if (!project || !computer.execution_policy.project_ids.includes(project.id)) return fail(res,409,'runner_project_not_mapped','Map this project ID to a specific folder in the local helper first.');
+        }
+      }
       if (workMode === 'project' && (typeof cwd !== 'string' || !cwd)) throw validationError('Coding and project-file work require a linked folder. Link a project folder or set the agent’s working folder. General chat does not need one.');
       if (turn) {
-        if (workMode === 'project') {
+        if (workMode === 'project' && !runnerBinding) {
         if (!isAbsolute(cwd)) throw validationError('Link an absolute project folder before sending to an agent.');
         let actual;
         try { actual = realpathSync(cwd); if (!statSync(actual).isDirectory()) throw new Error(); }
         catch { throw validationError('The linked project folder does not exist.'); }
         if ([parsePath(actual).root, homedir(), '/Users', '/System', '/Library', '/Applications', '/usr', '/etc', '/private', '/var'].includes(actual)) throw validationError('Choose a specific project folder, not your home folder or a system directory.');
         }
-        if (!['read-only', 'workspace-write'].includes(permissionMode) || (provider === 'claude' && permissionMode !== 'read-only')) throw validationError('Choose read-only access for Claude, or read-only / project editing for Codex.');
+        if (!['read-only', 'workspace-write'].includes(permissionMode) || (!runnerBinding && provider === 'claude' && permissionMode !== 'read-only')) throw validationError('Choose supported project access for this connection.');
       }
       db.exec('BEGIN');
       let sourceMessage = turn?.source;
@@ -1153,7 +1196,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const startingController = new AbortController();
       liveRuns.set(runId, { stop: () => startingController.abort() });
       try {
-        if (workMode !== 'conversation' && project?.id) await changeReviews.beginRun(runId, actor, cwd).catch(() => addRunEvent(runId, 'review.unavailable', 'Automatic change capture unavailable for this folder or access level.', { demo: false }));
+        if (!runnerBinding && workMode !== 'conversation' && project?.id) await changeReviews.beginRun(runId, actor, cwd).catch(() => addRunEvent(runId, 'review.unavailable', 'Automatic change capture unavailable for this folder or access level.', { demo: false }));
         let nativeBridge;
         if (input.native_tools) {
           nativeBridge = await createNativeAgentToolBridge({
@@ -1164,7 +1207,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
           nativeBridges.set(runId, nativeBridge);
           addRunEvent(runId, 'tools.connected', 'Reviewed native tools connected for this run; mutations require human review.', { demo: false, tool_count: nativeBridge.descriptor.enabledTools.length });
         }
-        const controller = await startProviderRun({ provider, workspaceId, actor, prompt, cwd, permissionMode, workMode, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, signal: startingController.signal, ...(nativeBridge ? { nativeToolBridge: nativeBridge.descriptor } : {}) }, {
+        const controller = await startProviderRun({ provider, workspaceId, actor, prompt, cwd, permissionMode, workMode, runnerBinding, runId, agentId:agent?.id, projectId:project?.id, chatId:links.chat_id, timeoutMs: input.timeout_ms, model: input.model, reasoningEffort: input.reasoning_effort, signal: startingController.signal, ...(nativeBridge ? { nativeToolBridge: nativeBridge.descriptor } : {}) }, {
           onEvent(event) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) addRunEvent(runId, event.type, event.summary, { ...event.payload, demo: false }); },
           onUsageReport(report) { if (!closed && getDb().prepare("SELECT 1 FROM runs WHERE id=? AND status='running'").get(runId)) recordRunUsage(getDb(), runId, report); },
           onComplete(result) {
@@ -1175,11 +1218,12 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
             if (!current) return;
             const emptyReply = Boolean(turn && result.status === 'completed' && !result.text?.trim());
             const finalStatus = current.status === 'stopped' ? 'stopped' : emptyReply ? 'failed' : result.status;
+            if (runnerBinding && finalStatus !== 'completed') result.text = '';
             updateRun(runId, finalStatus, true);
             const usageReason = result.usage_capture_incomplete ? 'usage_persistence_failed' : emptyReply ? 'empty_reply' : typeof result.error_code === 'string' && /^[A-Za-z0-9_.:-]{1,120}$/.test(result.error_code) ? result.error_code : null;
             finalizeRunUsage(getDb(), runId, { status: finalStatus, reason: usageReason });
             if (isBrowserAiProvider(provider) && result.usage) addRunEvent(runId, 'usage.reported', 'Provider-reported token usage', { demo: false, source: result.usage.source, usage: result.usage, note: 'Provider-reported tokens; not billing or an account balance.' });
-            changeReviews.finishRun(runId, actor).then(reviewId => { if (!closed && reviewId) addRunEvent(runId, 'review.captured', 'Observed changes saved for review', { review_id: reviewId, demo: false }); }).catch(() => { if (!closed) addRunEvent(runId, 'review.unavailable', 'Change capture could not finish. No complete run diff is available.', { demo: false }); });
+            if (!runnerBinding) changeReviews.finishRun(runId, actor).then(reviewId => { if (!closed && reviewId) addRunEvent(runId, 'review.captured', 'Observed changes saved for review', { review_id: reviewId, demo: false }); }).catch(() => { if (!closed) addRunEvent(runId, 'review.unavailable', 'Change capture could not finish. No complete run diff is available.', { demo: false }); });
             if (finalStatus === 'completed' && awareness && result.text) {
               try { result.text = captureAgentActions(getDb(), runId, result.text, actionNonce, {
                 authorizeCapture: ({ run, proposal }) => authorizeAgentProposal(run, proposal),
@@ -1317,9 +1361,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         if (preview.consumed_run_id || input.chat_id !== chat.id || input.agent_id !== payload.agent_id || input.prompt !== payload.content.trim() || JSON.stringify(input.attachments) !== JSON.stringify(attachments)) throw validationError('The message changed after context review. Inspect it again.');
         if (input.work_mode !== 'conversation' || input.permission_mode !== 'read-only' || input.native_tools || input.workflow_step || input.skill_evaluation || input.source_message_id) throw validationError('Schedule a new General chat message without project-file tools.');
         const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(payload.agent_id);
-        if (!agent || agent.status === 'paused' || !agent.provider_connection_id) throw validationError('Choose an available agent bound to its AI connection.');
+        if (!agent || agent.status === 'paused' || !agent.provider_connection_id && !runnerConnection(agent,actor,body.workspace_id)) throw validationError('Choose an available agent bound to its AI connection.');
         governance.authorize(body.workspace_id, actor.id, 'agents.run', chat.project_id ? { scope_type: 'project', scope_id: chat.project_id } : {});
-        if (providerState(agent.provider, body.workspace_id, actor).state !== 'connected') throw validationError('Connect this agent before scheduling its message.');
+        if (!agentProviderReady(agent,body.workspace_id,actor)) throw validationError('Connect this agent before scheduling its message.');
         const fresh = await compileContext(input, actor, preview.inspection.actionNonce);
         if (fresh.manifest.fingerprint !== preview.inspection.manifest.fingerprint) throw Object.assign(validationError('The context changed. Inspect it again before scheduling.'), { statusCode: 409 });
         return { title: `${agent.name} · ${payload.content.trim().slice(0, 100)}`, payload: { ...payload, content: payload.content.trim(), attachments }, review: { input, inspection: preview.inspection,...(payload.action_request_id ? {schedule_proposal_id:payload.action_request_id} : {}) },
@@ -1381,9 +1425,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       authorizeDelivery(job, actor) {
         const chat = scheduleChat(job.payload.chat_id, job.workspace_id, actor, true);
         const agent = db.prepare('SELECT * FROM agents WHERE id=? AND archived_at IS NULL').get(job.payload.agent_id);
-        if (!agent || agent.status === 'paused' || !agent.provider_connection_id || agent.version !== job.review.input.profile_version || agent.provider_connection_id !== job.review.input.provider_connection_id) throw Object.assign(validationError('The saved agent configuration changed. Create a freshly reviewed event subscription.'), { code: 'event_profile_changed', statusCode: 409 });
+        if (!agent || agent.status === 'paused' || !agent.provider_connection_id && !runnerConnection(agent,actor,job.workspace_id) || agent.version !== job.review.input.profile_version || agent.provider_connection_id !== job.review.input.provider_connection_id) throw Object.assign(validationError('The saved agent configuration changed. Create a freshly reviewed event subscription.'), { code: 'event_profile_changed', statusCode: 409 });
         governance.authorize(job.workspace_id, actor.id, 'agents.run', chat.project_id ? { scope_type: 'project', scope_id: chat.project_id } : {});
-        if (providerState(agent.provider, job.workspace_id, actor).state !== 'connected') throw Object.assign(validationError('Reconnect and verify this agent’s AI connection before enabling event work.'), { code: 'not_connected', statusCode: 409 });
+        if (!agentProviderReady(agent,job.workspace_id,actor)) throw Object.assign(validationError('Reconnect and verify this agent’s AI connection before enabling event work.'), { code: 'not_connected', statusCode: 409 });
       },
     });
   }
@@ -1420,12 +1464,18 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         // These endpoints never fall back to the installation's browser identity.
         // A one-use pairing code or a private helper credential is mandatory.
         if (req.method !== 'POST') return fail(res, 405, 'method_not_allowed', 'Use the computer helper to send this request.');
-        const input = await readBody(req, 32_000);
+        const input = await readBody(req, 900_000);
         if (path === '/runner-transport/claim') return send(res, 201, { result: runnerConnections.claim(input) });
         const heartbeat = path.match(/^\/runner-transport\/(runner_[A-Za-z0-9_-]+)\/heartbeat$/);
         if (heartbeat) {
           const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1];
-          return send(res, 200, { result: runnerConnections.heartbeat(heartbeat[1], token, input.runtimes) });
+          return send(res, 200, { result: runnerConnections.heartbeat(heartbeat[1], token, input.runtimes, input.execution_policy) });
+        }
+        const jobAction = path.match(/^\/runner-transport\/(runner_[A-Za-z0-9_-]+)\/(poll|events|complete)$/);
+        if (jobAction) {
+          const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || '')?.[1];
+          const result = jobAction[2] === 'poll' ? runnerJobs.poll(jobAction[1],token,input.active_job_ids) : runnerJobs[jobAction[2]](jobAction[1],token,input);
+          return send(res,200,{result});
         }
         return fail(res, 404, 'not_found', 'Computer transport endpoint not found.');
       }
@@ -1482,6 +1532,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
         const filtered = access.filter(data, actor);
         const enrichConnections = snapshot => {
+          if (Array.isArray(snapshot?.agents)) snapshot.agents = snapshot.agents.map(agent => ({ ...agent, runner_connection:runnerConnection(agent,actor,agent.workspace_id || data.workspace_id || null) }));
           if (!Array.isArray(snapshot?.connections)) return;
           snapshot.connections = snapshot.connections.map(connection => {
             if (!isScopedAiProvider(connection.provider) && !['codex', 'claude'].includes(connection.provider)) return connection;
@@ -1498,7 +1549,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (path === '/runner-connections' || path.startsWith('/runner-connections/')) {
         res.setHeader('Cache-Control', 'no-store');
         const workspaceId = req.method === 'GET' ? url.searchParams.get('workspace_id') : body.workspace_id;
-        if (path === '/runner-connections' && req.method === 'GET') return send(res, 200, { result: { runners: runnerConnections.list({ workspaceId, actor }), catalog: RUNNER_PROVIDER_CATALOG, execution_available: false } });
+        if (path === '/runner-connections' && req.method === 'GET') { const runners = runnerConnections.list({ workspaceId, actor }); return send(res, 200, { result: { runners, catalog: RUNNER_PROVIDER_CATALOG, execution_available:runners.some(item => item.execution_available) } }); }
         if (path === '/runner-connections/pairing' && req.method === 'POST') return send(res, 201, { result: { pairing: runnerConnections.createPairing({ workspaceId, actor, name: body.name }) } });
         const item = path.match(/^\/runner-connections\/(runner_[A-Za-z0-9_-]+)(\/confirm)?$/);
         if (item?.[2] && req.method === 'POST') return send(res, 200, { result: runnerConnections.confirm({ workspaceId, actor, runnerId: item[1] }) });
@@ -1513,7 +1564,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         if (req.method === 'GET') return send(res, 200, { result: agentRunnerSettings.read(context) });
         if (req.method === 'PUT') {
           const { workspace_id: ignored, ...input } = body;
-          if (input.enabled === true || input.connection_method && !['computer', 'unselected'].includes(input.connection_method)) return fail(res, 409, 'runner_execution_not_released', 'Computer settings can be prepared now. Remote execution is not released; existing API and sign-in connections stay in AI connections.');
+          if (input.connection_method && !['computer', 'unselected'].includes(input.connection_method)) return fail(res, 409, 'agent_connection_method_unsupported', 'Manage API and sign-in connections in AI connections. This surface configures paired computers.');
           return send(res, 200, { result: agentRunnerSettings.update({ ...context, input }) });
         }
         if (req.method === 'DELETE') return send(res, 200, { result: agentRunnerSettings.clear({ ...context, version: body.version }) });
@@ -1633,7 +1684,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await acceptanceEvidenceRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed })) return;
       if (await skillReliabilityRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor) })) return;
       if (await skillsRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed })) return;
-      if (await frondoseAgentRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor), integration: { status: providerState }, present })) return;
+      if (await frondoseAgentRoute({ db, req, res, path, url, body, send, actor, allowed: access.allowed, filter: data => access.filter(data, actor), integration: { status: providerState, runnerConnection }, present })) return;
       if (path === '/context/inspect' && req.method === 'POST') {
         access.check({ actor, path: '/runs', method: 'GET', url, body });
         const resolved = resolveRunContext(db, body);
@@ -1965,6 +2016,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
 
   function close() {
     if (closed) return;
+    runnerJobs.close(); clearInterval(runnerJobTimer);
     finalizeInterruptedRunUsage(store.db, 'server_interrupted');
     closed = true;
     clearInterval(scheduledWorkTimer);
@@ -1982,6 +2034,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   }
   function reset() {
     const directory = store.directory;
+    runnerJobs.close();
     copilotBridge.close();
     hostedCopilot.close(); aiConnections.close();
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
@@ -2005,6 +2058,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     rmSync(`${store.dbPath}-shm`, { force: true });
     store = createDatabase(directory, { seedMode });
     installAccess();
+    runnerJobs = makeRunnerJobs();
     nativeToolService = makeNativeTools();
     workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
     workbenchCheckpoints = createWorkbenchCheckpointService({ db: store.db, workbench, allowed: access.allowed, activeSessionsFor: activeRunsFor });

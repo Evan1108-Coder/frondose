@@ -27,6 +27,17 @@ export function sanitizeRunnerText(value, limit = RUNNER_EVENT_LIMITS.textChars)
     .slice(0, Math.max(0, Math.min(limit, RUNNER_EVENT_LIMITS.textChars)));
 }
 
+/** Full canonical replies have a larger bound than individual activity events.
+ * Redact complete logical secret spans before chunking: a credential split across
+ * provider deltas/chunk boundaries must not be reconstructed into the final text.
+ */
+export function sanitizeRunnerReply(value) {
+  if (typeof value !== 'string' || value.length > 100_000) throw Object.assign(new Error('The provider reply exceeded the bounded capture limit.'), { code: 'runtime_output_limit', statusCode: 409 });
+  const spans = /-----BEGIN [^-]*(?:PRIVATE KEY|CERTIFICATE)-----[\s\S]*?(?:-----END [^-]+-----|$)|https?:\/\/[^\s/@:]+:[^\s/@]+@|\bBearer\s+[A-Za-z0-9._~+/=-]+|\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{12,}|hf_[A-Za-z0-9]{12,}|gh[pousr]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{12,})\b|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|authorization|cookie)\s*(?:=|:)\s*(?:"[^"]*"|'[^']*'|[^\s&,;]+)|[?&](?:key|token|secret|code|signature|auth|api_key|access_token|refresh_token)=[^&#\s]*/gi;
+  const redacted = value.replace(spans, span => sanitizeRunnerText(span));
+  return redacted.match(/[\s\S]{1,12000}/g)?.map(part => sanitizeRunnerText(part)).join('') || '';
+}
+
 /** Bounded JSON-safe diagnostic data, not a lossless archive or authorization input. */
 export function sanitizeRunnerPayload(value) {
   const seen = new WeakSet();
@@ -200,6 +211,59 @@ function frondoseEvents(raw) {
   return null;
 }
 
+function piEvents(raw) {
+  if (raw.type === 'message_update') {
+    const delta = record(raw.assistantMessageEvent);
+    if (delta.type === 'text_delta') return [message('assistant', delta.delta, 'append')];
+    if (delta.type === 'thinking_delta') return [progress(delta.delta, { operation: 'append', visibility: 'provider-exposed', sourceLabel: 'Provider reasoning' })];
+  }
+  if (raw.type === 'message_start' || raw.type === 'message_end') {
+    const item = record(raw.message);
+    if (item.role === 'assistant' || item.role === 'user') return [message(item.role, contentText(item.content), 'snapshot', { messageId: id(item.id), status: raw.type === 'message_end' ? 'completed' : 'running' })];
+    if (item.role === 'toolResult') return [tool({ ...item, id: item.toolCallId, name: item.toolName, content: item.content, status: item.isError ? 'failed' : 'completed' }, 'result')];
+  }
+  if (raw.type?.startsWith('tool_execution_')) return [tool({ ...raw, name: raw.toolName, content: raw.result?.content ?? raw.partialResult?.content, status: raw.type.endsWith('_end') ? raw.isError ? 'failed' : 'completed' : 'running' }, raw.type.endsWith('_update') ? 'patch' : 'snapshot')];
+  if (raw.type === 'extension_ui_request') return [{ kind: 'approval', channel: 'activity', operation: 'requested', status: 'pending', requestId: id(raw.id), title: text(raw.title ?? raw.method ?? 'Provider interaction requested') }];
+  if (raw.type === 'compaction_start' || raw.type === 'compaction_end') return [{ kind: 'compaction', channel: 'activity', operation: 'status', status: raw.type.endsWith('_start') ? 'running' : raw.errorMessage ? 'failed' : 'completed' }];
+  if (raw.type === 'agent_start' || raw.type === 'turn_start') return [lifecycle('running')];
+  if (raw.type === 'agent_end' || raw.type === 'agent_settled') return [lifecycle(raw.willRetry ? 'running' : 'completed')];
+  if (raw.type === 'auto_retry_start' || raw.type === 'auto_retry_end') return [progress(raw.errorMessage ?? raw.finalError ?? 'Provider-owned retry status.', { sourceLabel: 'Provider retry' })];
+  if (raw.type === 'ready') return [lifecycle('ready')];
+  return null;
+}
+
+function antigravityEvents(raw) {
+  if (raw.event === 'init') return [lifecycle('ready')];
+  if (raw.event === 'result') return [...(raw.result?.response ? [message('assistant', raw.result.response, 'snapshot', { final: true })] : []), lifecycle(raw.result?.status === 'SUCCESS' ? 'completed' : 'failed', { text: text(raw.result?.error) })];
+  if (raw.event !== 'step_update') return null;
+  const step = record(raw.step_update), result = [];
+  if (step.text_delta) result.push(['RESPONSE', 'agent_response'].includes(step.step_type) ? message('assistant', step.text_delta, 'append', { messageId: id(step.step_index) }) : progress(step.text_delta, { operation: 'append', sourceLabel: 'Provider step' }));
+  if (step.tool_name || step.tool_info) result.push(tool({ id: step.step_index, name: step.tool_name ?? step.tool_info?.name, output: step.tool_info?.output, status: step.state === 'DONE' ? 'completed' : step.state === 'ERROR' ? 'failed' : 'running' }));
+  if (step.subagent_info) result.push({ kind: 'coordination', channel: 'activity', operation: 'snapshot', sourceLabel: 'Provider child agents' });
+  if (step.usage) result.push({ kind: 'usage', channel: 'activity', operation: 'snapshot' });
+  return result.length ? result : [progress('', { sourceLabel: 'Provider step' })];
+}
+
+function museEvents(raw) {
+  const p = record(raw.params), item = record(p.item);
+  // MSP delta frames omit item kind; do not mislabel exposed reasoning/tool deltas
+  // as assistant answers. The complete item frame supplies its precise kind.
+  if (raw.method === 'item/delta') return [progress(p.delta, { operation: 'append', messageId: id(p.itemId), sourceLabel: 'Provider item update' })];
+  if (['item/started', 'item/updated', 'item/completed'].includes(raw.method)) {
+    if (item.kind === 'agentMessage' || item.kind === 'userMessage') return [message(item.kind === 'userMessage' ? 'user' : 'assistant', item.text, 'snapshot', { messageId: id(item.itemId), status: status(item.status) })];
+    if (item.kind === 'reasoning') return [progress((item.summary || []).join('\n'), { visibility: 'provider-exposed', sourceLabel: 'Provider reasoning summary' })];
+    if (item.kind === 'compaction') return [{ kind: 'compaction', channel: 'activity', operation: 'status', status: status(item.status) }];
+    if (item.kind === 'subagent' || item.kind === 'workflow') return [{ kind: 'coordination', channel: 'activity', operation: 'snapshot', toolCallId: id(item.callId ?? item.itemId) }];
+    return [tool({ id: item.callId ?? item.itemId, name: item.tool ?? item.kind, output: item.visibleOutput, status: item.status })];
+  }
+  if (['approval/request', 'approval/requested', 'approval/updated', 'userInput/request'].includes(raw.method)) return [{ kind: 'approval', channel: 'activity', operation: 'requested', status: 'pending', requestId: id(p.approvalId ?? raw.id), title: text(p.toolName ?? p.subject?.command ?? 'Provider approval requested') }];
+  if (raw.method === 'approval/resolved') return [{ kind: 'approval', channel: 'activity', operation: 'observed-resolution', requestId: id(p.approvalId), status: 'resolved' }];
+  if (raw.method === 'turn/started') return [lifecycle('running', { turnId: id(p.turnId) })];
+  if (raw.method === 'turn/completed') return [lifecycle(p.error || p.terminal === 'failed' ? 'failed' : p.terminal === 'cancelled' ? 'cancelled' : 'completed', { turnId: id(p.turnId) })];
+  if (raw.method === 'session/tokenUsage' || raw.method === 'session/contextUsage') return [{ kind: 'usage', channel: 'activity', operation: 'snapshot' }];
+  return null;
+}
+
 function detectProtocol(raw, providerId) {
   if (raw.method?.startsWith('session/') || raw.sessionUpdate || raw.update?.sessionUpdate) return 'acp';
   if (raw.method?.startsWith('item/') || raw.method?.startsWith('turn/') || raw.type?.startsWith('item.') || raw.type === 'thread.started') return 'codex';
@@ -223,7 +287,7 @@ export function createRunnerEventNormalizer({ providerId, sessionId, workspaceId
         const error = new Error('Provider event belongs to a different native session.'); error.code = 'runner_event_session_mismatch'; throw error;
       }
       const selected = protocol ?? detectProtocol(raw, providerId);
-      const mapper = { acp: acpEvents, codex: codexEvents, claude: claudeEvents, paseo: paseoEvents, frondose: frondoseEvents }[selected];
+      const mapper = { acp: acpEvents, codex: codexEvents, claude: claudeEvents, paseo: paseoEvents, frondose: frondoseEvents, pi: piEvents, omp: piEvents, antigravity: antigravityEvents, muse: museEvents }[selected];
       const events = mapper?.(raw) || [{ kind: 'unknown', channel: 'activity', operation: 'snapshot', text: 'Unsupported provider event retained.' }];
       if (count + events.length > maxEvents || sequence + events.length >= Number.MAX_SAFE_INTEGER) {
         const error = new Error('Runner event capture limit reached.'); error.code = 'runner_event_limit'; throw error;

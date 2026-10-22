@@ -266,6 +266,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "source.components-agent-editor.agent-editor.search-api-providers-and-compute.d48e1d1cd8ab",
+    "page": "Edit agent / New agent · Provider",
+    "label": "Search agent providers",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "source.components-area-settings.area-settings-form.area-instructions.5bfc2ab24843",
     "page": "Area settings · Instructions",
     "label": "Area instructions",
@@ -749,6 +757,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "key": "source.components-skill-evaluation.skill-evaluation-result.checks-performed-rationale.1206df9c3ea3",
     "page": "Review evidence & record result",
     "label": "Checks performed / rationale",
+    "type": "textarea",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-skill-from-run.skill-from-run-dialog.reusable-instructions-optional.d30a875326c7",
+    "page": "Turn this result into a reusable Skill",
+    "label": "Reusable instructions (optional)",
     "type": "textarea",
     "eligible": true,
     "reason": null

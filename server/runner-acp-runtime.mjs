@@ -4,9 +4,10 @@
 // https://agentclientprotocol.com/protocol/v1/prompt-turn
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createAgentJsonlPeer, terminateAgentProcess } from './agent-jsonl-peer.mjs';
+import { createAgentJsonlPeer } from './agent-jsonl-peer.mjs';
+import { terminateRuntimeChild, trackRuntimeChild } from './runner-adapters/transport.mjs';
 import { prepareRunnerLaunch, resolveRunnerExecutable, spawnRunnerProcess } from './runner-process.mjs';
-import { createRunnerEventNormalizer, sanitizeRunnerText } from './runner-events.mjs';
+import { createRunnerEventNormalizer, sanitizeRunnerText, sanitizeRunnerReply } from './runner-events.mjs';
 
 const fail = (code, message) => Object.assign(new Error(message), { code, statusCode: 409 });
 const OS_ENV = /^(?:PATH|PATHEXT|HOME|USERPROFILE|HOMEDRIVE|HOMEPATH|APPDATA|LOCALAPPDATA|SystemRoot|WINDIR|TMPDIR|TEMP|TMP|LANG|LC_[A-Z_]+|XDG_(?:CONFIG|DATA|CACHE)_HOME|HTTPS?_PROXY|ALL_PROXY|NO_PROXY|SSL_CERT_FILE|SSL_CERT_DIR|NODE_EXTRA_CA_CERTS)$/i;
@@ -38,7 +39,7 @@ function flattenOptions(options, depth = 0) {
  * local approval, trusted executable selection, scope and concurrency before use.
  */
 export async function runAcpSession({
-  command, args = [], cwd, prompt, model = '', signal,
+  command, args = [], cwd, prompt, model = '', reasoningEffort = '', signal,
   sessionId = `runner_${randomUUID()}`, providerId = 'acp', workspaceId, actorId,
   emit = () => {}, spawnProcess,
   timeoutMs = 120_000, platform = process.platform, env = process.env,
@@ -49,6 +50,7 @@ export async function runAcpSession({
   if (signal?.aborted) throw fail('session_cancelled', 'The request was cancelled before launch.');
   if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100_000 || prompt.includes('\0')) throw fail('runner_prompt_invalid', 'Choose a nonempty prompt within the 100,000-character limit.');
   if (typeof model !== 'string' || model.length > 200 || /[\x00-\x1f\x7f]/u.test(model)) throw fail('runner_model_invalid', 'Choose a valid provider model.');
+  if (typeof reasoningEffort !== 'string' || reasoningEffort.length > 200 || /[\x00-\x1f\x7f]/u.test(reasoningEffort)) throw fail('runner_effort_invalid', 'Choose a valid provider reasoning effort.');
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 10 || timeoutMs > 1_800_000) throw fail('runner_timeout_invalid', 'Choose an execution deadline of at most 30 minutes.');
   if (typeof emit !== 'function') throw new TypeError('emit must be a function.');
   const pathApi = platform === 'win32' ? path.win32 : path.posix;
@@ -67,8 +69,9 @@ export async function runAcpSession({
     const canonical = normalizer.normalize(event, { protocol });
     for (const item of canonical) emit(item);
   };
-  const child = (spawnProcess || spawnRunnerProcess)(executable, args, { cwd, platform, env: environment });
+  const child = (spawnProcess || spawnRunnerProcess)(executable, args, { cwd, platform, env: environment, detached: platform !== 'win32' });
   if (!child?.stdin || !child?.stdout || !child?.stderr || typeof child.on !== 'function') throw fail('runtime_start_failed', 'The agent did not provide a valid stdio transport.');
+  trackRuntimeChild(child);
   let rejectFailure;
   const failed = new Promise((_, reject) => { rejectFailure = reject; });
   // A pending handshake can fail before the race is attached. Observe immediately.
@@ -104,8 +107,11 @@ export async function runAcpSession({
           if (!providerSessionId || event.params?.sessionId !== providerSessionId) return;
           const update = event.params?.update;
           if (update?.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
-            const delta = sanitizeRunnerText(update.content.text);
-            text += delta;
+            // Canonical replies have a separate 100k bound from activity-event
+            // text. Preserve raw deltas until the complete/partial reply can be
+            // redacted as one logical string, including split credentials.
+            if (typeof update.content.text !== 'string') throw fail('runtime_protocol', 'The agent returned invalid reply text.');
+            text += update.content.text;
             if (text.length > 100_000) throw fail('runtime_output_limit', 'The agent reply exceeded the capture limit.');
           }
         } else if (event.params?.sessionId && event.params.sessionId !== providerSessionId) return;
@@ -129,20 +135,25 @@ export async function runAcpSession({
       if (modelOption) await ask('session/set_config_option', { sessionId: providerSessionId, configId: modelOption.id, value: model });
       else await ask('session/set_model', { sessionId: providerSessionId, modelId: model });
     }
+    if (reasoningEffort) {
+      const option = Array.isArray(created.configOptions) ? created.configOptions.find(item => item?.type === 'select' && item.category === 'thought_level') : null;
+      if (!option || !flattenOptions(option.options).some(item => item?.value === reasoningEffort)) throw fail('runner_effort_unavailable', 'The selected reasoning effort was not advertised by this agent. No prompt was sent.');
+      await ask('session/set_config_option', { sessionId: providerSessionId, configId: option.id, value: reasoningEffort });
+    }
     forward({ type: 'run.started', summary: 'Explicit local ACP prompt started.', payload: { transport: 'acp', clientMediatedTools: false, nativeTools: 'provider-owned-not-sandboxed', timeoutMs } }, 'frondose');
     const result = await ask('session/prompt', { sessionId: providerSessionId, prompt: [{ type: 'text', text: prompt }] });
     const stopReason = typeof result.stopReason === 'string' ? sanitizeRunnerText(result.stopReason, 100) : 'unknown';
     if (stopReason === 'cancelled') {
       forward({ type: 'run.cancelled', summary: 'Provider reported cancellation.' }, 'frondose');
-      return { text, providerSessionId, stopReason };
+      return { text: sanitizeRunnerReply(text), providerSessionId, stopReason };
     }
     forward({ type: stopReason === 'end_turn' ? 'run.completed' : 'run.failed', summary: stopReason === 'end_turn' ? 'Provider turn completed.' : `Provider stopped: ${stopReason}.`, payload: { stopReason } }, 'frondose');
-    return { text, providerSessionId, stopReason };
+    return { text: sanitizeRunnerReply(text), providerSessionId, stopReason };
   } catch (reason) {
     const code = typeof reason?.code === 'string' ? reason.code : 'runtime_error';
     if (code === 'session_cancelled') {
       forward({ type: 'run.cancelled', summary: 'The local request was cancelled.' }, 'frondose');
-      return { text, providerSessionId: providerSessionId || null, stopReason: 'cancelled' };
+      return { text: sanitizeRunnerReply(text), providerSessionId: providerSessionId || null, stopReason: 'cancelled' };
     }
     // Never include unsanitized provider errors, stderr or credentials in failures.
     const safe = fail(code, sanitizeRunnerText(reason?.message || 'The local agent could not complete the request.', 2000));
@@ -150,6 +161,6 @@ export async function runAcpSession({
     throw safe;
   } finally {
     settled = true; clearTimeout(timer); signal?.removeEventListener('abort', abort);
-    peer?.dispose(); terminateAgentProcess(child);
+    peer?.dispose(); await terminateRuntimeChild(child, { platform, env: environment, graceful: true });
   }
 }

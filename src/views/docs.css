@@ -146,3 +146,11 @@
 .docs-provider-sources a:hover { text-decoration: underline; }
 .docs-provider-sources svg { width: 13px; height: 13px; }
 @media (max-width: 1000px) { .docs-connection-illustration .cp-workflow-grid { grid-template-columns: 1fr; } }
+.docs-runner-flow { margin: 28px 0 20px; }
+.docs-runner-flow ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; padding: 20px 0; margin: 0; border-block: 1px solid var(--border); list-style: none; }
+.docs-runner-flow li { display: grid; justify-items: start; align-content: start; gap: 9px; min-width: 0; margin: 0; font-size: 13px; }
+.docs-runner-flow li > svg { width: 24px; height: 24px; color: var(--muted); }
+.docs-runner-flow strong { overflow-wrap: anywhere; color: var(--text); font-size: 14px; font-weight: 550; }
+.docs-runner-flow span { overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
+.docs-runner-flow figcaption { margin-top: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+@media (max-width: 420px) { .docs-runner-flow ol { gap: 12px; } .docs-runner-flow strong { font-size: 13px; } }

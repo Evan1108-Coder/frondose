@@ -395,10 +395,10 @@ const NATIVE_PROVIDERS = [
   { id: 'claude', title: 'Claude Code', protocol: 'claude-stream-json', command: ['claude', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--print'], installLink: 'https://code.claude.com/docs/en/setup', sourceKind: 'native' },
   { id: 'codex', title: 'Codex', protocol: 'codex-app-server', command: ['codex', 'app-server'], installLink: 'https://developers.openai.com/codex/cli/', sourceKind: 'native' },
   { id: 'copilot', title: 'GitHub Copilot', protocol: 'acp', command: ['copilot', '--acp'], installLink: 'https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli', sourceKind: 'native' },
-  { id: 'opencode', title: 'OpenCode', protocol: 'opencode-http', command: ['opencode', 'serve', '--hostname', '127.0.0.1'], installLink: 'https://opencode.ai/docs/', sourceKind: 'native' },
+  { id: 'opencode', title: 'OpenCode', protocol: 'acp', command: ['opencode', 'acp'], installLink: 'https://opencode.ai/docs/', sourceKind: 'native' },
   { id: 'pi', title: 'Pi', protocol: 'pi-rpc', command: ['pi', '--mode', 'rpc'], installLink: 'https://pi.dev', sourceKind: 'native' },
   { id: 'omp', title: 'Oh My Pi', protocol: 'omp-rpc', command: ['omp', '--mode', 'rpc'], installLink: 'https://github.com/can1357/oh-my-pi', sourceKind: 'native', enabledByDefault: false },
-  { id: 'antigravity', title: 'Antigravity', protocol: 'antigravity-stream-json', command: ['agy'], installLink: 'https://github.com/getpaseo/paseo/blob/'+PASEO_SOURCE.revision+'/public-docs/supported-providers.md#antigravity', sourceKind: 'bundled-plugin', sourcePath: 'plugins/antigravity-provider/server/provider.ts', requiresFullAccess: true, securityNotice: 'Paseo uses a full-access-only launch. Frondose must not enable it without an explicit full-access policy and isolated execution.' },
+  { id: 'antigravity', title: 'Antigravity', protocol: 'antigravity-stream-json', command: ['agy'], installLink: 'https://github.com/getpaseo/paseo/blob/'+PASEO_SOURCE.revision+'/public-docs/supported-providers.md#antigravity', sourceKind: 'bundled-plugin', sourcePath: 'plugins/antigravity-provider/server/provider.ts', requiresFullAccess: true, securityNotice: 'Upstream uses a permission-bypass launch. Frondose does not: unhandled permission requests fail or time out. Explicit trusted native-tool consent is required; this is not OS isolation.' },
   { id: 'muse', title: 'Muse Code', protocol: 'muse-msp', command: ['muse', 'serve'], installLink: 'https://github.com/getpaseo/paseo/blob/'+PASEO_SOURCE.revision+'/public-docs/muse-code.md', sourceKind: 'bundled-plugin', sourcePath: 'plugins/muse-provider/server/connection.ts' },
 ];
 
@@ -432,10 +432,10 @@ function normalize(entry, native = false) {
     platforms: { darwin: 'unverified', win32: 'unverified', linux: 'unverified', other: 'unsupported' },
     support: {
       catalogued: true,
-      adapterStatus: ['claude', 'codex', 'copilot'].includes(entry.id) ? 'existing-local-adapter' : 'not-implemented',
+      adapterStatus: 'implemented-fixture-tested',
       liveVerified: false,
       platformVerified: [],
-      historyImport: 'not-verified',
+      historyImport: 'not-implemented',
       sharing: 'requires-explicit-grant-and-provider-permission',
       install: requiresInstallApproval ? 'requires-install-approval' : 'manual-provider-install',
     },

@@ -10,6 +10,7 @@ import {
   readRunnerConfig, writeRunnerConfig, forgetRunnerConfig, getRunnerStatus,
   runnerRequest, readPairingCode, pairRunner, sendRunnerHeartbeat, runRunnerHelper, main,
 } from '../scripts/frondose-runner.mjs';
+import { EMPTY_RUNNER_POLICY } from '../src/lib/runner-policy.js';
 
 const TOKEN = 'T'.repeat(43);
 const PAIRING_CODE = 'C'.repeat(43);
@@ -60,6 +61,8 @@ test('saved credentials use private modes, sanitized status and explicit local f
   assert.equal(status.configured, true);
   assert.equal(status.execution_available, false);
   assert.equal(status.connection_state, 'not_checked');
+  assert.equal(status.local_execution_enabled, false);
+  assert.deepEqual(status.authorized_providers, []);
   assert.equal(JSON.stringify(status).includes(TOKEN), false);
   assert.equal('credential' in status, false);
   await assert.rejects(writeRunnerConfig(directory, config), /already/u);
@@ -140,7 +143,7 @@ test('real loopback HTTP transport sends isolated fixture inventory, never accou
   assert.equal(result.state, 'connected');
   assert.equal(received.headers.origin, origin);
   assert.equal(received.headers.authorization, `Bearer ${TOKEN}`);
-  assert.deepEqual(received.body, { runtimes: [{ id: 'pi', state: 'not_found' }] });
+  assert.deepEqual(received.body, { runtimes: [{ id: 'pi', state: 'not_found' }], execution_policy: { ...EMPTY_RUNNER_POLICY } });
   assert.equal(JSON.stringify(received.body).includes(TOKEN), false);
 });
 
@@ -182,16 +185,18 @@ test('pairing code reader does not print the supplied code', async () => {
   assert.equal(output.includes(PAIRING_CODE), false);
 });
 
-test('heartbeat sends only provider IDs/states, strips local paths and cannot enable execution', async () => {
+test('heartbeat sends only inventory IDs/states and explicit execution policy, never local executable paths', async () => {
+  const executionPolicy = { ...EMPTY_RUNNER_POLICY, enabled: true, provider_ids: ['codex'] };
   const result = await sendRunnerHeartbeat(config, {
+    executionPolicy,
     discover: async () => [{ providerId: 'codex', state: 'installed', executables: [{ path: '/private/user/secret-agent' }], authenticated: true }],
     fetchImpl: async (_url, request) => {
-      assert.deepEqual(JSON.parse(request.body), { runtimes: [{ id: 'codex', state: 'installed' }] });
+      assert.deepEqual(JSON.parse(request.body), { runtimes: [{ id: 'codex', state: 'installed' }], execution_policy: executionPolicy });
       assert.equal(request.body.includes('/private'), false);
       return jsonResponse({ state: 'connected', execution_available: true, next_heartbeat_ms: 1 });
     },
   });
-  assert.equal(result.execution_available, false);
+  assert.equal(result.execution_available, true);
   assert.equal(result.next_heartbeat_ms, 30_000);
   assert.equal(result.installed_count, 1);
 });
@@ -247,6 +252,6 @@ test('CLI help succeeds without opening storage, pairing or contacting a server'
   for (const option of ['--help', '-h', 'help']) {
     let output = '';
     await main([option], { directory: 'not-an-absolute-storage-path', output: { write: chunk => { output += chunk; } }, fetchImpl: () => { throw Error('Must not contact a server'); } });
-    assert.match(output, /Usage:/u); assert.match(output, /Discovery only/u);
+    assert.match(output, /Usage:/u); assert.match(output, /browser approval and explicit local authorization/u);
   }
 });

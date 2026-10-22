@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { STATIC_FIELD_DEFINITIONS, fieldDefinitionsForWorkspace } from '../src/lib/field-inventory.js';
 import { normalizeFieldDefinition } from '../src/lib/field-defaults.js';
 import { RESOURCE_TYPES } from '../src/lib/settings-catalog.js';
 import { SOURCE_FIELD_DEFINITIONS } from '../src/lib/field-source-inventory.js';
-import { analyzeFieldSource, discoverSourceFields, instrumentFieldSource } from '../scripts/field-defaults-transform.mjs';
+import { analyzeFieldSource, discoverSourceFields, fieldDefaultsSourcePlugin, instrumentFieldSource } from '../scripts/field-defaults-transform.mjs';
 
-const root = new URL('../', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../', import.meta.url));
 
 test('committed Node catalog matches the current development/production analyzer', () => {
   assert.deepEqual(SOURCE_FIELD_DEFINITIONS, discoverSourceFields(root), 'Run node scripts/generate-field-inventory.mjs after JSX input changes.');
@@ -95,6 +96,10 @@ test('credential/security/payment forms fail closed, including innocently labele
   }
   assert.equal(analyzeFieldSource('export function Editor(){return <input name="safe" readOnly/>}', 'src/components/Editor.jsx')[0].excluded, true);
   assert.equal(analyzeFieldSource('export function Editor(){return <input name="safe"/>}', 'src/views/settings/SecuritySettings.jsx')[0].excluded, true);
+  const authoredForm = analyzeFieldSource('export function Editor(){return <Form><input aria-label="Name" value={name}/><input aria-label="Temporary pairing code" value={code}/></Form>}', 'src/components/Editor.jsx');
+  assert.ok(authoredForm.every(field => field.excluded));
+  const safeInstructions = analyzeFieldSource('export function Editor(){return <Form><input aria-label="Skill name" value={name}/><textarea aria-label="Instructions" value={instructions} placeholder="Write reusable instructions. Do not paste credentials or one-off private context."/></Form>}', 'src/components/Editor.jsx');
+  assert.ok(safeInstructions.every(field => !field.excluded));
 });
 
 test('existing edits and auto-saving settings are never opted into automatic writes', () => {
@@ -122,4 +127,24 @@ test('Settings resources expose all safe text fields, including query and contac
   const source = readFileSync(resolve(root, 'src/views/settings/ResourcePage.jsx'), 'utf8');
   assert.match(source, /data-field-default-mode': item \? 'edit' : 'create'/);
   assert.doesNotMatch(source, /\['query', 'requester', 'owner'\]\.includes/);
+});
+
+test('computer discovery has searchable defaults but pairing credentials and authority selectors stay excluded', () => {
+  const fields = discoverSourceFields(root);
+  assert.ok(fields.some(field => field.page === 'Computer Connections' && field.label === 'Computer name'));
+  assert.ok(fields.some(field => /search agent runtime catalog/.test(field.label.toLowerCase())));
+  assert.equal(fields.some(field => /pairing[ ._-]?code|credential|api.?key/i.test(`${field.key} ${field.label}`)), false);
+  for (const type of ['password', 'hidden', 'checkbox', 'radio', 'file']) {
+    assert.equal(fields.some(field => field.type === type), false, type);
+  }
+});
+
+test('Vite instrumentation accepts normalized and Windows-style module separators', () => {
+  const plugin = fieldDefaultsSourcePlugin(root);
+  const modulePath = resolve(root, 'src/components/Example.jsx');
+  const source = 'export function Example(){return <input aria-label="Safe value" value={draft}/>}';
+  for (const id of [modulePath.replaceAll('\\', '/'), modulePath.replaceAll('/', '\\')]) {
+    assert.match(plugin.transform(source, id)?.code || '', /data-field-default-source=/);
+  }
+  assert.equal(plugin.transform(source, resolve(root, 'server/Example.jsx')), null);
 });

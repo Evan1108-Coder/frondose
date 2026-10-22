@@ -5,11 +5,11 @@ import { parse } from '@babel/parser';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
-import { normalizeFieldDefinition } from '../src/lib/field-defaults.js';
+import { fieldHintMetadata, normalizeFieldDefinition } from '../src/lib/field-defaults.js';
 
 const CONTROL_NAMES = new Set(['input', 'textarea', 'DateField', 'SearchField']);
 const OMIT_FILES = /(?:^|\/)(?:FieldDefaultsProvider|FieldDefaultsSettings|DateField|SelectField|Playbooks)\.jsx$/;
-const SENSITIVE_FORM = /password|passcode|credential|api.?key|private.?key|secret|authentication|sign.?in|sign.?up|payment|billing|credit.?card|cc[-_]|one.?time.?code|security/i;
+const SENSITIVE_FORM = /password|passcode|credential|api.?key|private.?key|secret|authentication|sign.?in|sign.?up|payment|billing|credit.?card|cc[-_]|one.?time.?code|(?:pairing|recovery|verification|connection)[._ -]?code|security/i;
 const slug = value => value.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
 const words = value => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 const digest = value => createHash('sha256').update(value).digest('hex').slice(0, 12);
@@ -194,13 +194,13 @@ export function analyzeFieldSource(source, filename) {
     if (path === 'ui.jsx' && component === 'SearchField') return; // caller supplies identity through forwarded props
     const wrappers = ancestors.filter(item => item.type === 'JSXElement').map(item => item.openingElement);
     const excluded = wrappers.some(item => attr(item, 'data-field-defaults-exclude'));
-    const form = [...ancestors].reverse().find(item => item.type === 'JSXElement' && ['Dialog', 'form'].includes(item.openingElement.name?.name));
+    const form = [...ancestors].reverse().find(item => item.type === 'JSXElement' && ['Dialog', 'form', 'Form'].includes(item.openingElement.name?.name));
     let sensitiveForm = false;
     if (form && sensitiveScopes.has(form)) sensitiveForm = sensitiveScopes.get(form);
     else if (form) {
       walk(form, [], item => {
       if (item.type === 'JSXOpeningElement' && ['input', 'textarea'].includes(item.name?.name)) {
-        const metadata = ['type', 'autoComplete', 'name', 'data-field-default-label'].map(name => expression(item, name, source)).join(' ');
+        const metadata = [...['type', 'autoComplete', 'name', 'aria-label', 'data-field-default-label'].map(name => expression(item, name, source)), fieldHintMetadata(literal(item, 'placeholder') ?? expression(item, 'placeholder', source))].join(' ');
         if (SENSITIVE_FORM.test(metadata)) sensitiveForm = true;
       }
       });
@@ -218,7 +218,7 @@ export function analyzeFieldSource(source, filename) {
     const key = LEGACY_REBRAND_KEYS[generatedKey] || generatedKey;
     const semanticType = type === 'text' && /^hh:mm$/i.test(literal(node, 'placeholder') || '') ? 'time' : type;
     const { page, label } = displayMetadata(node, ancestors, component, identityLabel, semanticType, words(path.split('/').at(-1).replace(/\.jsx$/, '')), displayCaches);
-    const metadata = ['type', 'autoComplete', 'name', 'placeholder', 'value'].map(name => expression(node, name, source)).join(' ');
+    const metadata = [...['type', 'autoComplete', 'name', 'value'].map(name => expression(node, name, source)), fieldHintMetadata(literal(node, 'placeholder') ?? expression(node, 'placeholder', source))].join(' ');
     const readOnlyAttribute = attr(node, 'readOnly');
     const readOnly = Boolean(readOnlyAttribute && (!readOnlyAttribute.value || readOnlyAttribute.value.expression?.value === true));
     const sensitive = excluded || sensitiveForm || /(?:IdentitySettings|AuthGate|SecuritySettings|BillingSettings)/.test(path) || component === 'GovernanceEditor' || SENSITIVE_FORM.test(metadata);
@@ -267,15 +267,19 @@ export function discoverSourceFields(root) {
 }
 
 export function fieldDefaultsSourcePlugin(root) {
-  const inventory = resolve(root, 'src/lib/field-source-inventory.js');
+  // Vite module IDs use forward slashes even when Node's filesystem paths use
+  // Windows separators. Compare normalized paths or Windows silently loses
+  // both source registration and live input instrumentation.
+  const inventory = resolve(root, 'src/lib/field-source-inventory.js').replaceAll('\\', '/');
+  const sourceRoot = `${resolve(root, 'src').replaceAll('\\', '/')}/`;
   return {
     name: 'rumbo-field-defaults-source', enforce: 'pre',
     load(id) {
-      if (id.split('?')[0] !== inventory) return null;
+      if (id.split('?')[0].replaceAll('\\', '/') !== inventory) return null;
       return `export const SOURCE_FIELD_DEFINITIONS = ${JSON.stringify(discoverSourceFields(root))};`;
     },
     transform(code, id) {
-      if (!id.endsWith('.jsx') || !id.startsWith(resolve(root, 'src') + '/')) return null;
+      if (!id.endsWith('.jsx') || !id.replaceAll('\\', '/').startsWith(sourceRoot)) return null;
       return { code: instrumentFieldSource(code, relative(root, id)), map: null };
     },
     handleHotUpdate(context) {

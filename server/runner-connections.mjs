@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { RUNNER_PROVIDER_CATALOG, getRunnerProvider } from '../src/lib/runner-provider-catalog.js';
+import { EMPTY_RUNNER_POLICY, normalizeRunnerPolicy } from '../src/lib/runner-policy.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const secret = () => randomBytes(32).toString('base64url');
@@ -24,6 +25,7 @@ export function installRunnerConnections(db) {
     code_hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
     runner_id TEXT, confirmed_at TEXT, consumed_at TEXT
   );`);
+  if (!db.prepare('PRAGMA table_info(personal_runners)').all().some(column => column.name === 'execution_policy_json')) db.exec("ALTER TABLE personal_runners ADD COLUMN execution_policy_json TEXT NOT NULL DEFAULT '{}' ");
 }
 
 // Pairing is deliberately two-phase: the browser approves an individual claim.
@@ -44,11 +46,13 @@ export function createRunnerConnectionsService({ db, authorize, now = () => Date
   }
   function present(row) {
     const pairing = db.prepare('SELECT confirmed_at FROM runner_pairing_requests WHERE runner_id=? AND consumed_at IS NOT NULL').get(row.id);
+    let executionPolicy; try { executionPolicy = normalizeRunnerPolicy(JSON.parse(row.execution_policy_json || '{}')); } catch { executionPolicy = { ...EMPTY_RUNNER_POLICY }; }
+    const state = row.revoked_at ? 'revoked' : !pairing?.confirmed_at ? 'approval_required' : row.last_seen_at && now() - Date.parse(row.last_seen_at) < 90_000 ? 'online' : 'offline';
     return { id: row.id, workspace_id: row.workspace_id, owner_actor_id: row.owner_actor_id, name: row.name,
       platform: row.platform, architecture: row.architecture, version: row.version,
       created_at: row.created_at, last_seen_at: row.last_seen_at, revoked_at: row.revoked_at,
-      state: row.revoked_at ? 'revoked' : !pairing?.confirmed_at ? 'approval_required' : row.last_seen_at && now() - Date.parse(row.last_seen_at) < 90_000 ? 'online' : 'offline',
-      runtimes: parse(row.runtimes_json), execution_available: false };
+      state, execution_policy: executionPolicy,
+      runtimes: parse(row.runtimes_json), execution_available: state === 'online' && executionPolicy.enabled };
   }
   function pairing(workspaceId, actor, name) {
     check(workspaceId, actor, 'connections.use');
@@ -92,7 +96,7 @@ export function createRunnerConnectionsService({ db, authorize, now = () => Date
     if (!approved) return { ...row, approved: false };
     return { ...row, approved: true };
   }
-  function heartbeat(runnerId, token, runtimes = []) {
+  function heartbeat(runnerId, token, runtimes = [], executionPolicy = {}) {
     const row = authenticate(runnerId, token);
     if (!row.approved) return { state: 'approval_required', execution_available: false };
     if (!Array.isArray(runtimes) || runtimes.length > RUNNER_PROVIDER_CATALOG.length) throw fail('invalid_inventory', 'Invalid runtime inventory.', 400);
@@ -102,19 +106,31 @@ export function createRunnerConnectionsService({ db, authorize, now = () => Date
       seen.add(item.id);
       return { id: item.id, state: item.state, authenticated: 'unknown', inference_verified: false };
     });
-    db.prepare('UPDATE personal_runners SET last_seen_at=?,runtimes_json=? WHERE id=?').run(stamp(), JSON.stringify(clean), row.id);
-    return { state: 'connected', execution_available: false, next_heartbeat_ms: 30_000 };
+    let policy; try { policy = normalizeRunnerPolicy(executionPolicy); } catch (reason) { throw fail('invalid_policy', reason.message, 400); }
+    db.prepare('UPDATE personal_runners SET last_seen_at=?,runtimes_json=?,execution_policy_json=? WHERE id=?').run(stamp(), JSON.stringify(clean), JSON.stringify(policy), row.id);
+    return { state: 'connected', execution_available: policy.enabled, next_heartbeat_ms: policy.enabled ? 30_000 : 30_000 };
   }
   return {
     createPairing: ({ workspaceId, actor, name }) => pairing(workspaceId, actor, name), claim,
     confirm: ({ workspaceId, actor, runnerId }) => confirm(workspaceId, actor, runnerId),
     heartbeat, authenticate,
     list: ({ workspaceId, actor }) => { check(workspaceId, actor); return db.prepare('SELECT * FROM personal_runners WHERE workspace_id=? AND owner_actor_id=? AND revoked_at IS NULL ORDER BY created_at').all(workspaceId, actor.id).map(present); },
-    checkBinding({ workspaceId, actor, runnerId, runtimeId, operation }) {
-      const row = owned(runnerId, workspaceId, actor, operation === 'use' ? 'connections.use' : 'connections.view');
+    get: ({ workspaceId, actor, runnerId }) => present(owned(runnerId, workspaceId, actor)),
+    checkBinding({ workspaceId, actor, ownerActorId, agentId, runnerId, runtimeId, operation, settings }) {
+      check(workspaceId, actor, operation === 'use' ? 'connections.use' : 'connections.view');
+      const owner = { id: ownerActorId || actor.id };
+      const row = owned(runnerId, workspaceId, owner, operation === 'use' ? 'connections.use' : 'connections.view');
       if (!getRunnerProvider(runtimeId)) throw fail('invalid_provider', 'Choose a supported runtime.', 400);
+      if (agentId && db.prepare('SELECT provider FROM agents WHERE id=?').get(agentId)?.provider !== runtimeId) throw fail('runner_provider_mismatch', 'The runtime must match this agent profile’s provider.', 400);
       if (present(row).state === 'approval_required') throw fail('runner_approval_required', 'Confirm this computer connection first.');
-      if (operation === 'use') throw fail('runner_execution_not_released', 'Computer discovery is connected. Remote AI execution is not released yet.');
+      if (operation === 'use' || settings?.enabled) {
+        const current = present(row), policy = current.execution_policy;
+        if (!current.execution_available || !policy.provider_ids.includes(runtimeId)) throw fail('runner_execution_not_authorized', 'The computer owner must authorize this runtime locally and keep the helper online.');
+        if (actor.id !== owner.id && !policy.allow_workspace_members) throw fail('runner_not_shared', 'The computer owner has not allowed workspace-member execution.', 403);
+        const runtime = current.runtimes.find(item => item.id === runtimeId);
+        if (!runtime || runtime.state !== 'installed' && !(runtime.state === 'launcher_only' && policy.package_execution_approved)) throw fail('runner_runtime_unavailable', 'Install the runtime on the paired computer, or explicitly authorize its package launcher.');
+        if (settings?.native_tools_allowed && !policy.native_tools_approved) throw fail('runner_native_tools_denied', 'Authorize native tools on the computer before enabling them on this profile.');
+      }
       return true;
     },
     revoke: ({ workspaceId, actor, runnerId, version }) => {

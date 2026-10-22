@@ -1,0 +1,12 @@
+.field-default-picker { position: fixed; z-index: 120; display: grid; gap: 2px; color: var(--text); background: var(--elevated); border: 1px solid var(--border-strong); border-radius: 8px; padding: 3px; max-height: min(360px, 60dvh); overflow: auto; font-size: 12px; }
+.field-default-picker button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 30px; padding: 6px 9px; border: 0; border-radius: 6px; color: var(--text); background: transparent; font: inherit; text-align: start; cursor: pointer; }
+.field-default-picker button:hover, .field-default-picker button:focus-visible { background: var(--hover); }
+.field-default-picker button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.field-default-picker-trigger svg { width: 14px; height: 14px; flex-shrink: 0; }
+.field-default-picker-options { display: grid; gap: 2px; }
+.field-default-picker-options button { display: grid; justify-content: stretch; gap: 3px; }
+.field-default-picker-options small { color: var(--muted); white-space: pre-wrap; overflow: hidden; overflow-wrap: anywhere; max-height: 3em; line-height: 1.5; font-size: 12px; }
+.field-default-picker-options p { margin: 6px 9px; color: var(--danger); line-height: 1.5; }
+.field-default-picker-undo { color: var(--secondary) !important; }
+@media (pointer: coarse) { .field-default-picker button { min-height: 44px; } }
+@media (forced-colors: active) { .field-default-picker button:focus-visible { outline-color: Highlight; } }

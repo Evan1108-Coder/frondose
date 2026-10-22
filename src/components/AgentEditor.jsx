@@ -4,7 +4,8 @@ import { frondoseActions } from "../data/useFrondose.js";
 import { apiRequest } from '../data/api.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
 import { API_PROVIDERS, validApiModel } from '../lib/ai-provider-catalog.js';
-import { Button, Dialog, ErrorMessage, Field, Select, useApp, useAsync } from "../ui.jsx";
+import { RUNNER_PROVIDER_CATALOG, getRunnerProvider } from '../lib/runner-provider-catalog.js';
+import { Button, Dialog, ErrorMessage, Field, SearchField, Select, useApp, useAsync } from "../ui.jsx";
 import { AGENT_PRESETS, AGENT_REASONING_OPTIONS, agentDefaultChoices, agentFormPayload, applyAgentPreset, hasAgentText, initialAgentForm, validateAgentForm } from "../lib/agent-editor.js";
 import { val } from "../lib/model.js";
 import { AgentIdentity } from "./AgentIdentity.jsx";
@@ -13,7 +14,8 @@ import { ImageField } from './ImageField.jsx';
 import "./agent-editor.css";
 
 const PRESET_ICONS = { build: Hammer, review: FileText, research: Search };
-const PROVIDERS = [{ id: "codex", label: "Codex" }, { id: "claude", label: "Claude Code" }, { id: 'copilot', label: 'GitHub Copilot' }, ...API_PROVIDERS.map(item => ({ id: item.id, label: item.name }))];
+const ACCOUNT_PROVIDERS = [{ id: "codex", label: "Codex" }, { id: "claude", label: "Claude Code" }, { id: 'copilot', label: 'GitHub Copilot' }, ...API_PROVIDERS.map(item => ({ id: item.id, label: item.id === 'gemini' ? 'Google Gemini API / Gemini CLI' : item.name }))];
+const PROVIDERS = [...ACCOUNT_PROVIDERS, ...RUNNER_PROVIDER_CATALOG.filter(item => !ACCOUNT_PROVIDERS.some(provider => provider.id === item.id)).map(item => ({ id: item.id, label: item.title, computer: true }))];
 
 export function AgentEditor({ item = null, defaults = {}, onClose }) {
   const { data, workspace, notify, navigate } = useApp();
@@ -22,6 +24,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
   const [pendingPreset, setPendingPreset] = useState(null);
   const [discarding, setDiscarding] = useState(false);
   const [validation, setValidation] = useState(null);
+  const [providerQuery, setProviderQuery] = useState('');
   const [apiModels, setApiModels] = useState({}), [modelsLoading, setModelsLoading] = useState(false);
   const { busy, error, execute, setError } = useAsync();
   const providerGroup = useId();
@@ -33,6 +36,9 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
   const scopedWorkspace = item ? val(item, "workspace_id") : workspace?.id;
   const choices = agentDefaultChoices(data, scopedWorkspace, form.default_area_id);
   const connections = (data.connections ?? []).filter(connection => connection.provider === form.provider);
+  const runtime = getRunnerProvider(form.provider);
+  const computerOnly = !ACCOUNT_PROVIDERS.some(provider => provider.id === form.provider);
+  const matchingProviders = PROVIDERS.filter(provider => `${provider.label} ${provider.computer ? 'computer runtime' : 'API account'}`.toLowerCase().includes(providerQuery.trim().toLowerCase()));
   const defaultField = (name, label) => ({ 'data-field-default-key': `agent.new.${name}`, 'data-field-default-page': 'New agent', 'data-field-default-label': label, 'data-field-default-mode': item ? 'edit' : 'create' });
 
   useEffect(() => {
@@ -140,8 +146,9 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
 
             <fieldset className="agent-provider-field" disabled={busy}>
               <legend>Provider</legend>
+              <SearchField label="Search agent providers" value={providerQuery} onChange={setProviderQuery} placeholder="Search API providers and computer runtimes…" />
               <div className="agent-provider-grid">
-                {PROVIDERS.map((provider) => (
+                {matchingProviders.map((provider) => (
                   <label className={`agent-provider-option ${form.provider === provider.id ? "is-selected" : ""}`} key={provider.id}>
                     <input type="radio" name={providerGroup} value={provider.id} checked={form.provider === provider.id} onChange={() => change("provider", provider.id)} />
                     <AgentIdentity provider={provider.id} compact />
@@ -150,15 +157,16 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
                   </label>
                 ))}
               </div>
-              <p className="agent-provider-help">{form.provider === "claude" ? "Claude Code can read and search in this release. Project editing is not supported yet." : form.provider === "codex" ? "Codex supports read-only or project-edit access. Choose permissions before each session." : form.provider === 'copilot' ? 'Copilot uses your private local ACP account. General chat and reviewed Frondose actions are supported; native/file tools are disabled.' : "Browser AI connections support conversations and reviewed Frondose actions. Select an explicit chat model; your connected account’s credits apply."}</p>
+              {!matchingProviders.length ? <p>No providers match. Try a name such as Codex, Gemini or Pi.</p> : null}
+              <p className="agent-provider-help">{computerOnly ? `${runtime?.title || 'This runtime'} runs on a paired, locally authorized computer. After saving, open Computer connection to bind the runtime and review native-tool access. Creating a profile does not install or start it.` : form.provider === "claude" ? "Claude Code has a local analysis route and a separately authorized computer route. Choose actual access before each request." : form.provider === "codex" ? "Codex supports read-only or project-edit access. Choose permissions before each session." : form.provider === 'copilot' ? 'Copilot offers separate hosted GitHub authorization, local ACP and paired-computer routes. Each uses its own account and permission checks.' : "API connections support conversations and reviewed Frondose actions. A paired-computer runtime, where available, is configured separately after saving."}</p>
             </fieldset>
 
-            <Select label="Shared provider connection" name="provider_connection_id" value={form.provider_connection_id} disabled={busy} onChange={value => change("provider_connection_id", value)}>
+            {!computerOnly ? <Select label="API or local account connection" name="provider_connection_id" value={form.provider_connection_id} disabled={busy} onChange={value => change("provider_connection_id", value)}>
               <option value="">Not bound — choose a connection for live work</option>
               {form.provider_connection_id && !connections.some(connection => connection.id === form.provider_connection_id) ? <option value={form.provider_connection_id}>Unavailable connection — replace before running</option> : null}
               {connections.map(connection => <option key={connection.id} value={connection.id}>{val(connection, "account_label") || PROVIDERS.find(provider => provider.id === form.provider)?.label} · {(connection.workspace_states?.[scopedWorkspace] || connection.state)?.replaceAll("_", " ") || "state unknown"}</option>)}
-            </Select>
-            <p className="agent-editor-future-note">Profiles share their connected account’s credentials and usage limits. Frondose does not import ordinary ChatGPT or Claude chat history.</p>
+            </Select> : null}
+            <p className="agent-editor-future-note">{computerOnly ? 'Save this profile, then choose Computer connection on its detail page.' : 'Leave the account unbound if you intend to configure a computer connection after saving.'} Multiple profiles keep separate identities while sharing the underlying account’s limits. Website chat history is not automatically imported.</p>
 
             <Field label="Name">
               <input {...defaultField('name', 'Name')} autoFocus name="name" required maxLength={200} value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="e.g. Code reviewer" disabled={busy} aria-invalid={validation?.field === "name" || undefined} />
@@ -175,7 +183,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
               <input {...defaultField('folder', 'Default working folder')} name="working_directory" value={form.working_directory} maxLength={2000} spellCheck={false} onChange={(event) => change("working_directory", event.target.value)} placeholder="/Users/you/Projects/example" disabled={busy} aria-invalid={validation?.field === "working_directory" || undefined} />
             </Field>
             <section className="agent-editor-section" aria-label="Execution defaults"><h3>Execution defaults</h3>
-              {isBrowserAiProvider(form.provider) ? <div className="agent-api-model"><Field label="Chat model"><Select aria-label="Chat model" value={form.model} disabled={busy || modelsLoading} onChange={value => change('model', value)}><option value="">Choose a model</option>{(apiModels[form.provider] || []).map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}{form.model && !(apiModels[form.provider] || []).some(model => model.id === form.model) ? <option value={form.model}>{form.model} · configured</option> : null}</Select></Field><Button variant="ghost" busy={modelsLoading} disabled={busy || modelsLoading} onClick={async () => { setModelsLoading(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${form.provider}/models?workspace_id=${encodeURIComponent(scopedWorkspace)}`); setApiModels(current => ({ ...current, [form.provider]: response.result.filter(model => validApiModel(model.id) && (!model.output_modalities?.length || model.output_modalities.includes('text'))) })); } catch (cause) { setError(cause); } finally { setModelsLoading(false); } }}>Load models from account</Button></div> : <Field label="Model identifier" hint="Optional provider identifier. Frondose does not verify model availability here; the connected provider can reject an unsupported model."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>}
+              {isBrowserAiProvider(form.provider) && form.provider_connection_id ? <div className="agent-api-model"><Field label="Chat model"><Select aria-label="Chat model" value={form.model} disabled={busy || modelsLoading} onChange={value => change('model', value)}><option value="">Choose a model</option>{(apiModels[form.provider] || []).map(model => <option key={model.id} value={model.id}>{model.name || model.id}</option>)}{form.model && !(apiModels[form.provider] || []).some(model => model.id === form.model) ? <option value={form.model}>{form.model} · configured</option> : null}</Select></Field><Button variant="ghost" busy={modelsLoading} disabled={busy || modelsLoading} onClick={async () => { setModelsLoading(true); setError(null); try { const response = await apiRequest(`/api/ai-connections/${form.provider}/models?workspace_id=${encodeURIComponent(scopedWorkspace)}`); setApiModels(current => ({ ...current, [form.provider]: response.result.filter(model => validApiModel(model.id) && (!model.output_modalities?.length || model.output_modalities.includes('text'))) })); } catch (cause) { setError(cause); } finally { setModelsLoading(false); } }}>Load models from account</Button></div> : <Field label="Model identifier" hint="Optional provider identifier for a computer runtime. API connections require an explicit model before live use; availability is checked by the provider at launch."><input {...defaultField('model', 'Model identifier')} name="model" maxLength={120} value={form.model} onChange={event => change("model", event.target.value)} placeholder="Provider default" disabled={busy} spellCheck={false} /></Field>}
               {form.provider === "codex" ? <Select label="Reasoning effort" name="reasoning_effort" value={form.reasoning_effort} disabled={busy} onChange={value => change("reasoning_effort", value)}><option value="">Provider default</option>{AGENT_REASONING_OPTIONS.map(value => <option key={value} value={value}>{value}</option>)}</Select> : <p>Reasoning-effort selection is only available for Codex in Frondose.</p>}
               <p>Model and reasoning support depend on your installed provider client and selected model. Saving does not test your account.</p>
               <Select label="Permission policy" name="permission_policy" value={form.permission_policy} disabled={busy} onChange={value => change("permission_policy", value)}><option value="review">Review required — no automatic write approval</option><option value="read-only">Read-only — do not request project edits</option></Select>

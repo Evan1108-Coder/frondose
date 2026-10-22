@@ -99,6 +99,17 @@ test('new ACP model config options are supported without claiming entitlement', 
   assert.deepEqual(fake.requests.find(request => request.method === 'session/set_config_option').params, { sessionId: 'native-session', configId: 'model-choice', value: 'available' });
 });
 
+test('ACP reasoning effort must be session-advertised and is applied before a prompt', async () => {
+  const fake = fixture({ created: { configOptions: [{ id: 'thinking', category: 'thought_level', type: 'select', options: [{ value: 'high', name: 'High' }] }] } });
+  await runAcpSession({ ...base, reasoningEffort: 'high', spawnProcess: fake.spawnProcess });
+  const setting = fake.requests.find(request => request.method === 'session/set_config_option');
+  assert.deepEqual(setting.params, { sessionId: 'native-session', configId: 'thinking', value: 'high' });
+  assert.ok(fake.requests.indexOf(setting) < fake.requests.findIndex(request => request.method === 'session/prompt'));
+  const unavailable = fixture();
+  await assert.rejects(runAcpSession({ ...base, reasoningEffort: 'high', spawnProcess: unavailable.spawnProcess }), { code: 'runner_effort_unavailable' });
+  assert.equal(unavailable.requests.some(request => request.method === 'session/prompt'), false);
+});
+
 test('unsupported protocol and malformed session fail before model inference', async () => {
   for (const [config, code] of [[{ initialize: { protocolVersion: 2 } }, 'unsupported_protocol'], [{ created: { sessionId: '' } }, 'runtime_protocol']]) {
     const fake = fixture(config);
@@ -181,4 +192,37 @@ test('provider output and event budgets fail rather than silently retry', async 
   } });
   await assert.rejects(runAcpSession({ ...base, spawnProcess: fake.spawnProcess }), { code: 'runtime_output_limit' });
   assert.equal(fake.requests.filter(message => message.method === 'session/prompt').length, 1);
+});
+
+test('one ACP text chunk larger than the activity-text limit remains intact in the canonical reply', async () => {
+  const reply = 'Long safe reply 👋 '.repeat(2000);
+  const fake = fixture({ onPrompt(message, write) {
+    write({ method: 'session/update', params: { sessionId: 'native-session', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: reply } } } });
+    write({ id: message.id, result: { stopReason: 'end_turn' } });
+  } });
+  const result = await runAcpSession({ ...base, spawnProcess: fake.spawnProcess });
+  assert.equal(result.text.length, reply.length); assert.equal(result.text, reply);
+});
+
+for (const terminal of ['end_turn', 'cancelled', 'abort']) test(`ACP ${terminal} redacts credentials spanning text deltas in the canonical reply`, async () => {
+  const controller = new AbortController();
+  const fake = fixture({ onPrompt(message, write) {
+    for (const delta of ['Account hf_1234567890', '1234567890', ' and Bear', 'er split-token-value', '. Done.']) write({ method: 'session/update', params: { sessionId: 'native-session', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: delta } } } });
+    if (terminal === 'abort') setTimeout(() => controller.abort(), 5);
+    else write({ id: message.id, result: { stopReason: terminal } });
+  } });
+  const result = await runAcpSession({ ...base, signal: controller.signal, spawnProcess: fake.spawnProcess });
+  assert.doesNotMatch(result.text, /hf_12345678901234567890|split-token-value/);
+  assert.match(result.text, /Account \[redacted\] and Bearer \[redacted\]/);
+  assert.equal(result.stopReason, terminal === 'end_turn' ? 'end_turn' : 'cancelled');
+});
+
+test('ACP cancellation preserves a large partial reply without event-limit truncation', async () => {
+  const controller = new AbortController(), reply = 'Partial safe text '.repeat(2000);
+  const fake = fixture({ onPrompt(_message, write) {
+    write({ method: 'session/update', params: { sessionId: 'native-session', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: reply } } } });
+    setTimeout(() => controller.abort(), 5);
+  } });
+  const result = await runAcpSession({ ...base, signal: controller.signal, spawnProcess: fake.spawnProcess });
+  assert.equal(result.text.length, reply.length); assert.equal(result.text, reply); assert.equal(result.stopReason, 'cancelled');
 });

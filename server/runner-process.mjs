@@ -150,5 +150,6 @@ export function spawnRunnerProcess(executable, args = [], options = {}) {
     ...launch.options,
     stdio: ['pipe', 'pipe', 'pipe'],
     signal: options.signal,
+    detached: options.detached === true && (options.platform || process.platform) !== 'win32',
   });
 }

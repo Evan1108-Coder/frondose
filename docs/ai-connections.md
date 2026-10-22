@@ -7,7 +7,8 @@ Frondose distinguishes a provider account from an agent profile. One account can
 | OpenRouter | Browser PKCE or API key | Encrypted credentials, catalog/test, reviewed conversations and scheduled messages, final-reply action proposals | User's OpenRouter credits |
 | Hugging Face Inference | OAuth with `inference-api` after operator registration, or personal API token with Inference Providers permission | Encrypted credentials, catalog/test, reviewed conversations and scheduled messages, final-reply action proposals; API token works without OAuth app setup | User's Hugging Face allowance/credits |
 | GitHub Copilot | GitHub OAuth + official server SDK; local ACP alternative | Implemented: encrypted per-user OAuth, refresh, isolated SDK runtime, explicit model test, reviewed streaming chat, scheduled messages and pending actions. App registration and live verification remain | User's eligible Copilot access/limits |
-| Codex and Claude Code | Existing locally signed-in runner | Implemented for local machine only, not a hosted visitor OAuth account | User's existing provider account, subject to its terms/limits |
+| Codex and Claude Code | Existing local runner, or separately authorized paired-computer runtime | Local restricted paths remain; paired-computer dispatch uses the owner's local policy plus profile/current workspace permissions | User's existing provider account, subject to its terms/limits |
+| 47 Paseo-catalogued computer runtimes | Install and sign in on the paired computer; explicitly authorize runtime IDs locally | Shared ACP and native protocol adapters, owner-scoped job relay and per-agent bindings; real provider/OS acceptance remains separate | Computer owner's configured account/backend, subject to provider-permitted use |
 | OpenAI, Anthropic, Gemini, xAI, Mistral, DeepSeek, Groq, Together, Fireworks, Cohere, Perplexity, Moonshot/Kimi, Alibaba/Qwen, Z.ai/GLM | Personal API key | Implemented with model discovery/configuration, explicit inference test, reviewed conversations, scheduled messages and final-reply action proposals | API key owner |
 
 ## Public browser connections: operator setup (October 18)
@@ -31,7 +32,7 @@ The pinned official `@github/copilot-sdk` runtime is a backend dependency, not a
 
 ### Running the backend on a public origin
 
-This adds a production asset/API entry point (`npm start`) and a guarded **invite-only beta mode**, not an actual hosted deployment. The existing Sites artifact is still a static preview and does not run this backend. Vite must never be exposed publicly. Use one persistent Node backend on a supported runtime (`^22.16` or `>=24`), behind an HTTPS reverse proxy, with private writable database storage. Multiple replicas/shared SQLite and zero-trust tenant workers are not implemented.
+This adds a production asset/API entry point (`npm start`) and a guarded **invite-only beta mode**, not an actual hosted deployment. The existing Sites artifact is still a static preview and does not run this backend. Vite must never be exposed publicly. Use one persistent Node backend on a supported runtime (Node **22.17+ or 24+**), behind an HTTPS reverse proxy, with private writable database storage. Multiple replicas/shared SQLite and zero-trust tenant workers are not implemented.
 
 1. On the intended server, build with `npm ci` and `npm run build`. Use a **new, private** data directory, not a public asset directory or an export of the developer’s workspace/accounts.
 2. With that data directory and stable encryption key configured, start in `FRONDOSE_DEPLOYMENT_MODE=local` on loopback. Access it through a trusted local connection/SSH tunnel, create the intended workspace and complete **Set up your account**. Stop the backend. Public mode refuses to start without this password identity; no anonymous development-owner fallback is allowed. Invitations use existing membership controls and manually shared invitation links, not email delivery. There is no self-signup or password recovery service yet.
@@ -57,15 +58,17 @@ This adds a production asset/API entry point (`npm start`) and a guarded **invit
 
 Before an unrestricted public launch, finish provider live verification, independent security review, hardened tenant workers if native tools are added, recovery/abuse controls, monitoring, backups/restore drills, retention/privacy notices and load tests. These are release gates, not tasks app registration silently completes. Public mode is not enabled on Evan’s current localhost.
 
-### What Paseo does—and what is still not built here
+### Computer runtimes and the Paseo pattern
 
 [Paseo’s supported-provider list](https://github.com/getpaseo/paseo/blob/main/public-docs/supported-providers.md) lists coding-agent transports such as Codex, Claude, OpenCode, Pi, Antigravity and Muse plus ACP agents. That is not a catalog of universally available browser OAuth model APIs. Frondose borrows the browser → server → isolated runtime pattern, while keeping its own reviewed context, scheduling and pending-action permissions.
 
-OpenCode/Pi/OMP/Muse, Cursor/Kimi and other generic ACP adapters, personal remote-runner pairing, persistent native history import/resume and approved hosted ChatGPT/Claude subscription login remain unimplemented. They must not be advertised as working public connections. Antigravity’s documented full-access-only mode is unsuitable for a shared public host. API access to their underlying model families already uses the separate provider catalog; it does not make those agent runtimes interchangeable.
+The computer path now includes pairing, local execution consent, profile bindings, policy-checked dispatch and adapters for the catalogued protocols. This is not 47 live-provider certifications. Install the particular runtime and authenticate through its supported route on the chosen computer. Shared ACP behavior does not imply identical provider features or a provider-independent OS sandbox. Antigravity’s upstream full-access-only mode requires explicit native-tool/project authorization and remains inappropriate for an untrusted shared server account.
+
+Persistent native history import/resume, complete provider-UI parity and approval-only hosted ChatGPT/Claude subscription login are not released by this work. Direct API access to an underlying model family is a different route from its coding-agent CLI. Read [Paseo reuse and computer setup](paseo-reuse.md) for exact helper commands, trust boundaries and evidence.
 
 ### Hosted verification evidence
 
-No public domain has been selected yet. Keep `FRONDOSE_PUBLIC_BASE_URL` configurable; no domain is required to continue isolated implementation or protocol testing. Production callback registration, HTTPS deployment and real-account verification remain blocked until a domain/host and the relevant operator app registrations are available. API-key routes do not need an operator OAuth app, but live inference still needs the key owner’s explicit test and usable allowance. Never send secrets in chat.
+The project owns **frondose.com**, registered through Cloudflare. Domain ownership is not hosting, a deployed callback endpoint or provider authorization. Keep `FRONDOSE_PUBLIC_BASE_URL` configurable. The user reports registering GitHub and Hugging Face apps; secrets remain in their own protected storage and their presence/configuration has not been independently verified. Production HTTPS deployment and real-account tests still need the intended host, environment and willing account owner. API-key routes do not need an operator OAuth app, but live inference still needs the key owner's explicit test and usable allowance. Never send secrets in chat.
 
 OpenRouter/Hugging Face callbacks now claim state before exchanging a code, preventing duplicate exchanges. Disconnect, replacing a key, starting a newer sign-in, revoking access or shutting down the service invalidates an in-flight callback; a late response cannot restore authorization. Hugging Face binds new attempts and credentials to the configured app ID; older pending attempts require restarting sign-in. Existing saved credentials remain readable.
 
@@ -106,20 +109,20 @@ Endpoints are built from an allowlisted provider/region registry, never an arbit
 | Connection | Current status / next work |
 | --- | --- |
 | Codex local runner | Existing CLI plus opt-in stdio app-server transport with streamed events, bounded ephemeral threads, cancellation and denied interactive approvals; opaque native-thread resume is intentionally not used |
-| Claude local runner | Existing restricted CLI analysis; session-aware Agent SDK adapter remains to implement, subject to provider authentication/branding requirements |
+| Claude local runner | Restricted subscription-aware `--safe-mode` chat; the local native Frondose MCP bridge uses `--bare` and requires the user's Anthropic API key. Paired computers also have a fresh stream-JSON adapter. Real-account verification remains |
 | OpenRouter browser authorization | Existing PKCE flow; live-account verification remains |
 | Hugging Face browser authorization | Existing OAuth flow; operator app registration and live-account verification remain |
 | GitHub Copilot browser authorization | Implemented GitHub App/OAuth App code flow and per-user official SDK runtime; operator registration and live verification required |
 | GitHub Copilot local ACP | Implemented device sign-in, ACP handshake/model discovery, explicit verification, reviewed streaming chat/scheduling, scoped account homes and cancellation; real-account inference still needs user verification |
-| OpenCode | Planned runtime adapter; not implemented |
-| Pi | Planned RPC adapter; not implemented |
-| OMP | Planned RPC adapter; not implemented |
-| Antigravity | Planned CLI/plugin adapter; not implemented |
-| Muse Code | Planned MSP adapter; not implemented |
-| Other ACP agents, including Cursor/Kimi | Future generic ACP adapter plus individual compatibility/auth tests; not implemented |
+| OpenCode | Implemented paired-computer `opencode acp` dispatch; protocol fixtures and isolated IPC tests pass, real-account/version verification remains |
+| Pi | Implemented paired-computer RPC dispatch; fixture-tested, live access unverified |
+| OMP | Implemented separate paired-computer RPC identity; fixture-tested, live access unverified |
+| Antigravity | Implemented paired stream-JSON dispatch without upstream permission-bypass flags; unhandled permissions fail or time out. Native project consent required; live compatibility unverified |
+| Muse Code | Implemented paired MSP dispatch for the pinned protocol fingerprint; incompatible schemas fail before prompting, live access unverified |
+| Other ACP agents, including Cursor/Kimi | All 39 pinned ACP catalog entries dispatch through the paired ACP adapter with individual fixture cases; provider authentication, versions, extensions and real OS compatibility still require live verification |
 | ChatGPT-plan OAuth | Separate eligibility-dependent path; not implemented or registered for Frondose. Official docs distinguish OSS/local use from paid/remote hosting. |
 
-These planned adapters do not appear as working connections. API access to a model family does not install its coding-agent runtime. Paseo's provider architecture is a reference, not evidence that an unimplemented Frondose adapter works. See [Paseo providers](https://github.com/getpaseo/paseo/blob/main/docs/providers.md), [Codex app-server](https://learn.chatgpt.com/docs/app-server), [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), and [Copilot ACP](https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server).
+Adapter implementation is not account readiness. These computer bindings require installed/authenticated runtimes, local owner authorization, a current enabled profile and reviewed requests. API access to a model family does not install its coding-agent runtime. Read the [verification record](ai-runner-verification.md) and [computer setup guide](paseo-reuse.md) for evidence and remaining limits. Provider references: [Paseo source](https://github.com/getpaseo/paseo), [Codex app-server](https://developers.openai.com/codex/app-server/), [Claude CLI](https://code.claude.com/docs/en/cli-reference), and [Copilot ACP](https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server).
 
 Non-AI connections remain called **Plugins** and remain paused: GitHub, GitHub Actions, GitHub Packages, Google Drive, Google Docs, Google Sheets, Google Slides, Linear, Jira, Slack, Figma and FigJam. Their stored catalog/adapters do not mean authorization or actions are released. This API-key change does not enable them.
 
@@ -145,7 +148,7 @@ Model discovery is explicit and supports both legacy ACP model metadata and curr
 
 After using the normal Codex runner sign-in, choose **Enable Codex session bridge** on its detail page. This selects `codex app-server --listen stdio://` for future reviewed runs. **Use existing sign-in** in Manage runner selects the original CLI transport again. Neither selection sends an inference prompt. The bridge initializes once, starts an ephemeral native thread with the selected sandbox/never-approve policy, sends the exact reviewed prompt in `turn/start`, handles final items/terminal status, and closes the owned process. Existing inherited-MCP disabling, feature restrictions, validated native Frondose bridge and project permissions remain in force.
 
-Unlike Paseo's general-purpose native-session browser, Frondose intentionally starts a fresh native session for every reviewed turn. The selected conversation history comes from Frondose's permission-checked context compiler. Blindly resuming an old provider thread could retain documents whose current access was revoked or content the user did not inspect. Persistent provider resume, external CLI session import, remote personal-runner pairing, and active-turn steering are not implemented.
+Unlike Paseo's general-purpose native-session browser, Frondose intentionally starts a fresh native session for every reviewed turn. The selected conversation history comes from Frondose's permission-checked context compiler. Blindly resuming an old provider thread could retain documents whose current access was revoked or content the user did not inspect. Computer pairing/dispatch is a separate explicit path; it does not release persistent provider resume, external CLI history import or arbitrary native active-turn steering.
 
 ### Verification evidence and remaining gates
 
@@ -163,9 +166,30 @@ API usage is not integrated into the existing CLI metering ledger or a billing/a
 
 ## Browser-first conversations and the Paseo pattern
 
-Frondose's browser owns the conversation UI, draft, history, run controls and human review. The local server owns the execution process. A user does not have to type in a CLI to chat, but the current Codex and Claude Code paths still need a signed-in CLI installed **on the machine running the Frondose server**. If Frondose is hosted elsewhere, a visitor's locally installed CLI is not automatically available to that host. This is the same useful separation of browser client and local runner that inspired the Paseo direction, customized here to keep Frondose's workspace context, approval boundary and run provenance.
+Frondose's browser owns the conversation UI, draft, history, run controls and human review. Direct local Codex/Claude paths run on the Frondose server machine. The separately paired-computer path relays an explicitly reviewed request to the owner's authorized helper, so the provider CLI can run on another Mac, Windows or Linux computer. That helper must stay running, awake and online; a database does not execute an offline computer. This browser/server/runtime separation follows the Paseo direction while retaining Frondose's workspace context, approval boundary and provenance.
 
-The agent path records chats, turns, context inspections, runs, events, approvals and explicit retries in Frondose. Local runners start a bounded process; browser accounts send a bounded completion request. Neither path currently resumes a provider-native thread or pairs the browser with a remote personal runner. Browser-provider send, stop, failure and action/schedule permission paths are covered by isolated fixtures, not real-account certification.
+Computer-backed conversation controls distinguish runtimes from similarly named
+API routes (notably Gemini CLI versus Gemini API). Native-tool capability comes
+from the profile and local computer policy, not the server-native Frondose MCP
+toggle. Project execution sends a project ID; the helper resolves the owner's
+explicit physical-folder mapping rather than trusting a browser/server path.
+Unsafe-native runtimes require Build/project access. A retry defaults to no new
+project-edit consent; the user must explicitly enable and review project edits
+for a runtime that cannot run read-only. Recovering the same uncertain retry
+keeps its already selected access, and the server never blindly replays it.
+
+Claude's legacy local restricted path uses provider-supported safe startup for
+normal account authentication. Its separately opted-in server-native Frondose
+MCP bridge retains the stricter bare/API-key route and requires the configured
+operator API key. It does not claim that bare mode can read a consumer OAuth
+keychain. The paired-computer restricted General chat route is separate and
+does not inherit that server-native bridge.
+
+The agent path records chats, turns, context inspections, runs, events, approvals and explicit retries in Frondose. Computer connections add local owner policy, runtime allowlists, explicit package/native-tool/member permissions, current project grants and server/helper concurrency. Native tool execution uses the OS account, not tenant isolation. Browser-provider send, stop, failure and action/schedule permission paths are covered by isolated fixtures, not real-account certification.
+
+## In-app documentation coverage
+
+Docs now has a dedicated guide for each of the 47 computer runtime identities, all 16 API providers, OpenRouter/Hugging Face/Copilot account authorization, and computer setup, sharing/tools and history. The guides share registry IDs with the actual controls, include provider/source references, are full-text searchable and keep distinct article icons. Computer guides explain the pinned command, provider-owned authentication, billing, installation approval, OS limits and native-history separation. They never describe a transport fixture as a paid-account acceptance test.
 
 Remaining production work includes real-account verification, streaming/resumable output, provider-usage integration, billing transparency and hosted user/runtime isolation. A project-editing agent remains a different mode requiring a trusted runner and folder permissions. Public access additionally needs the production identity and hosting work above; changing the current loopback host check alone is unsafe.
 
