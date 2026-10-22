@@ -378,6 +378,8 @@ function SectionTitle({ title, description }) {
 export function Profile() {
   const { data, notify, navigate, organization, toggleFavorite } = useApp();
   const [name, setName] = useState(data.profile?.name ?? ""),
+    [username, setUsername] = useState(data.profile?.username ?? ''),
+    [selfName, setSelfName] = useState(data.profile?.self_display_name ?? ''),
     [email, setEmail] = useState(data.profile?.email ?? ""),
     [avatar, setAvatar] = useState(data.profile?.avatar_url ?? null);
   const { busy, error, execute } = useAsync();
@@ -394,6 +396,8 @@ export function Profile() {
           execute(async () => {
             await frondoseActions.updateProfile({
               name: name.trim(),
+              username: username.trim(),
+              self_display_name: selfName.trim(),
               email: email.trim() || null,
               avatar_url: avatar,
             });
@@ -401,8 +405,14 @@ export function Profile() {
           });
         }}
       >
-        <ImageField label="Profile photo" value={avatar} onChange={setAvatar} disabled={busy} />
-        <Field label="Display name">
+        <ImageField label="Profile photo" circle value={avatar} onChange={setAvatar} disabled={busy} />
+        <Field label="Username" hint="Your unique handle on this Frondose installation. 3–32 characters; letters, numbers, dots, underscores or hyphens. This does not change how you sign in.">
+          <input value={username} maxLength={32} autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={event => setUsername(event.target.value)} placeholder="e.g. evan" />
+        </Field>
+        <Field label="Display name (You)" hint="Only you see this name. Leave it empty to use your shared display name.">
+          <input value={selfName} maxLength={100} onChange={event => setSelfName(event.target.value)} placeholder={name || 'Your private name'} />
+        </Field>
+        <Field label="Display name" hint="The name everyone sees with your work.">
           <input
             required
             maxLength={100}

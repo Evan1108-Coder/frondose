@@ -4,7 +4,7 @@ import { FrondoseAgentOrb } from '../components/FrondoseAgentOrb.jsx';
 import { AssistantActivity } from '../components/AssistantActivity.jsx';
 import { apiRequest } from '../data/api.js';
 import { refreshFrondose } from '../data/useFrondose.js';
-import { persistComposer, restoreComposer } from '../lib/chats.js';
+import { persistComposer, restoreComposer, composerOccupied } from '../lib/chats.js';
 import { consumeFrondoseAgentEntry, peekFrondoseAgentEntry } from '../lib/frondose-agent-entry.js';
 import { agentReadiness } from '../lib/agents.js';
 import { hasConnectedAssistantAI, selectedAssistantConnection } from '../lib/assistant-connection.js';
@@ -52,7 +52,7 @@ export function FrondoseAgent() {
 
   function stageDraft(chat, agent, draft) {
     const composer = restoreComposer(chat, data.agents, draftStorage());
-    const occupied = Boolean(composer.text.trim() || composer.files.length || composer.turn || composer.context || composer.replyTo || composer.sending);
+    const occupied = composerOccupied(composer);
     if (!occupied && !requestedAgent && !composer.hasSavedPreferences) Object.assign(composer, { model: preferences.model || '', reasoning: preferences.reasoning_effort || '', includeWorkspace: preferences.include_workspace !== false, includeChat: preferences.include_chat !== false, memory: preferences.include_memory !== false, contextPackIds: preferences.context_pack_ids || [] });
     if (!occupied && typeof draft?.instruction === 'string' && draft.instruction) Object.assign(composer, { text: draft.instruction.slice(0, 10000), recipient: agent?.id || composer.recipient });
     if (!composer.turn) composer.nativeTools = false;
@@ -69,7 +69,7 @@ export function FrondoseAgent() {
     const previous = savedCreation(workspace.id);
     const draft = pending || previous;
     const hasDraft = Boolean(draft?.instruction || draft?.source);
-    const existing = !forceNew && !hasDraft && targetAgent ? chats.find(chat => (val(chat, 'participant_agent_ids') || []).includes(targetAgent.id)) : null;
+    const existing = !forceNew && !hasDraft && targetAgent ? chats.find(chat => val(chat, 'responding_agent_id') ? val(chat, 'responding_agent_id') === targetAgent.id : (val(chat, 'participant_agent_ids') || []).includes(targetAgent.id)) : null;
     if (existing) { stageDraft(existing, targetAgent, null); navigate('chats', existing.id); return; }
     setBusy(true); setError(null); const requestWorkspace = workspace.id;
     try {

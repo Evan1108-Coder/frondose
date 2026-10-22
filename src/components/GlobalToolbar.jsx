@@ -22,7 +22,7 @@ export function GlobalToolbar({ onSearch }) {
       {pinnedItems.map(item => { const Icon = NAV.find(entry => entry.id === item.view)?.icon || Focus; return <button type="button" key={favoriteKey(item)} className="global-tool global-pinned-item" title={item.title} aria-label={`Open pinned ${item.title}`} aria-current={page.view === item.view && page.id === item.id ? 'page' : undefined} onClick={() => navigate(item.view, item.id)}><Icon aria-hidden="true" /></button>; })}
     </div>
     <button type="button" className="global-language" aria-label="Interface language" onClick={() => setLanguageOpen(true)}>EN</button>
-    <button type="button" className="global-profile" aria-label="Open your profile" onClick={() => navigate('settings', 'profile')}>{data.profile?.avatar_url ? <img src={data.profile.avatar_url} alt="" /> : initials(data.profile?.name)}</button>
+    <button type="button" className="global-profile" aria-label="Open your profile" title={data.profile?.self_display_name || data.profile?.name || 'You'} onClick={() => navigate('settings', 'profile')}>{data.profile?.avatar_url ? <img src={data.profile.avatar_url} alt="" /> : initials(data.profile?.self_display_name || data.profile?.name)}</button>
     <FloatingPinnedDock />
     {languageOpen ? <Dialog title="Interface language" onClose={() => setLanguageOpen(false)}><div className="global-language-dialog"><p>English is the only complete interface translation in this build. Other languages need reviewed translations across the whole app before they can be offered here.</p><button type="button" onClick={() => setLanguageOpen(false)}>Continue in English</button></div></Dialog> : null}
   </div>;

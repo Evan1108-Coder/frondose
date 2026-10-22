@@ -26,6 +26,8 @@
 .agent-provider-field { margin: 0; padding: 0; border: 0; min-width: 0; }
 .agent-provider-field legend { padding: 0; margin-bottom: 10px; }
 .agent-provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.agent-provider-field .search-field { margin-bottom: 12px; }
+.agent-provider-field > .search-field + .agent-provider-grid { margin-top: 12px; }
 .agent-provider-option { display: flex; align-items: center; gap: 12px; position: relative; min-height: 52px; padding: 10px 14px; background: var(--input); border: 1px solid var(--border-strong); border-radius: 6px; cursor: pointer; transition: background 120ms, border-color 120ms; font-size: 14px; }
 .agent-provider-option input { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; pointer-events: none; }
 .agent-provider-option:hover { background: var(--hover); }

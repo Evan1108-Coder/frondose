@@ -12,7 +12,7 @@ test('catalog preserves every provider from the pinned Paseo ACP source', async 
   for (const upstreamProvider of entries) {
     const provider = getRunnerProvider(upstreamProvider.id);
     assert.ok(provider, upstreamProvider.id);
-    assert.equal(provider.title, upstreamProvider.title);
+    assert.equal(provider.upstreamTitle, upstreamProvider.title);
     assert.equal(provider.upstreamVersion, upstreamProvider.version);
     assert.equal(provider.installLink, upstreamProvider.installLink);
     assert.equal(JSON.stringify(provider.launchTemplate), JSON.stringify(upstreamProvider.command));

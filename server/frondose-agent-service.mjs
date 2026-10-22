@@ -241,7 +241,7 @@ export async function frondoseAgentRoute({ db, req, res, path, url, body, send, 
     db.exec('BEGIN');
     try {
       const agent = selectedAgent || ensureProfile(db, body.workspace_id, body.provider, actor, allowed, integration), created = stamp();
-      db.prepare('INSERT INTO chats(id,workspace_id,project_id,task_id,title,kind,participant_agent_ids_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id, body.workspace_id, projectId, taskId, 'New chat', 'rumbo-agent', JSON.stringify([agent.id]), created, created);
+      db.prepare('INSERT INTO chats(id,workspace_id,project_id,task_id,title,kind,participant_agent_ids_json,responding_agent_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id, body.workspace_id, projectId, taskId, 'New chat', 'rumbo-agent', JSON.stringify([agent.id]), agent.id, created, created);
       const binding = source ? { source: body.source, source_access: captureSourceAccess(db, { manifest: { resolved: { workspace_id: body.workspace_id }, included: [{ kind: source.kind, id: source.row.id }], excluded: [] } }) } : null;
       if (binding) assertSourceAccess(db, { manifest: { resolved: { workspace_id: body.workspace_id } }, sourceAccess: binding.source_access }, actor, allowed);
       db.prepare('INSERT INTO chat_collaboration(chat_id,workspace_id,version,payload_json,updated_at) VALUES(?,?,?,?,?)').run(id, body.workspace_id, 1, JSON.stringify({ rumbo_creation: identity, ...(binding ? { rumbo_source: binding } : {}) }), created);

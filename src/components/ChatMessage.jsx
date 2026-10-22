@@ -55,10 +55,11 @@ export function ChatMessage({ message, chat, project, run, onRetry, retrying, on
     if (target) navigate('reader', target, { returnTo:pageHash(page.view,page.id,page) });
     else navigate(linked.view, linked.id, linked);
   };
-  const name = val(message, 'sender_name') || (isAgent ? 'Agent' : data.profile?.name || 'You');
+  const ownMessage = type === 'user' && (val(message, 'sender_id') === data.profile?.id || ['local', 'local-owner'].includes(val(message, 'sender_id')) && ['local', 'local-owner'].includes(data.profile?.id));
+  const name = ownMessage && data.profile?.self_display_name || val(message, 'sender_name') || (isAgent ? 'Agent' : data.profile?.name || 'You');
   return <article id={`message-${message.id}`} tabIndex={-1} className={`chat-message chat-message-${type === 'user' ? 'user' : isAgent ? 'agent' : 'system'} ${bookmarked ? 'is-bookmarked' : ''} ${selectionMode ? 'is-selectable' : ''} ${selected ? 'is-selected' : ''}`}>
     {selectionMode ? <label className="chat-message-select"><input type="checkbox" aria-label={`Select message from ${name}: ${message.content.slice(0, 50)}`} checked={Boolean(selected)} onChange={onSelect} /></label> : null}
-    <span className="chat-message-avatar" aria-hidden="true">{isAgent ? <AgentIdentity agent={profile} provider={provider} compact /> : type === 'system' ? <GitBranch /> : initials(name)}</span>
+    <span className="chat-message-avatar" aria-hidden="true">{isAgent ? <AgentIdentity agent={profile} provider={provider} compact /> : type === 'system' ? <GitBranch /> : ownMessage && data.profile?.avatar_url ? <img className="human-profile-photo" src={data.profile.avatar_url} alt="" /> : initials(name)}</span>
     <div className="chat-message-main">
       <header><strong>{name}</strong>{isAgent ? <span className="chat-message-kind">{message.metadata?.mode === 'mock' ? 'Simulation' : 'Agent'}</span> : null}<time dateTime={val(message, 'created_at')}>{relative(val(message, 'created_at'))}</time>
         <div className="chat-message-actions">

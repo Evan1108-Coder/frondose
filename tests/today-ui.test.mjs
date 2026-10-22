@@ -65,7 +65,7 @@ test('Today only reads status and navigates; opening or refreshing never starts 
   assert.match(home, /if \(!controller.signal.aborted\)/);
   assert.doesNotMatch(home, /method:\s*['"](?:POST|PATCH|DELETE)|\/api\/runs|prepare_step|decide_approval|setInterval|demoRequest|spawnProcess/);
   for (const section of ['Needs you', 'Working now', 'Ready to review', 'Suggested next', 'Recent context', 'Failures & context warnings']) assert.ok(home.includes(section));
-  assert.match(home, /Proposals only\. Opening one never starts work/);
+  for (const removed of ['Proposals only. Opening one never starts work.', 'Requests and approval gates that need your review.', 'Recorded execution state, separate from output acceptance.', 'Inspect the result and evidence before accepting it.', 'Counts reflect currently loaded history.', 'Recorded failures and context changes—not inferred causes or confidence scores.', 'Filters apply to Today only']) assert.ok(!home.includes(removed));
   assert.match(home, /Simulation/);
   assert.match(home, /The last loaded summary is shown/);
 });

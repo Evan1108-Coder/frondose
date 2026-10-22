@@ -5,7 +5,7 @@ import { imageFileError } from '../lib/image-crop.js';
 import './image-field.css';
 
 const ImageCropDialog = lazy(() => import('./ImageCropDialog.jsx'));
-export function ImageField({ value, onChange, label = 'Project picture', disabled = false }) {
+export function ImageField({ value, onChange, label = 'Project picture', disabled = false, circle = false }) {
   const input = useRef(null);
   const [source, setSource] = useState(null), [error, setError] = useState(null), [over, setOver] = useState(false);
   useEffect(() => () => { if (source) URL.revokeObjectURL(source); }, [source]);
@@ -16,7 +16,7 @@ export function ImageField({ value, onChange, label = 'Project picture', disable
     if (message) { setError(new Error(message)); return; }
     setError(null); setSource(URL.createObjectURL(files[0]));
   }
-  return <div className="image-field"><span className="field-label">{label}</span><div className={`image-dropzone ${over ? 'drag-over' : ''}`}
+  return <div className={`image-field ${circle ? 'image-field-circle' : ''}`}><span className="field-label">{label}</span><div className={`image-dropzone ${over ? 'drag-over' : ''}`}
     onDragOver={e => { e.preventDefault(); if (!disabled) setOver(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); }}
     onDrop={e => { e.preventDefault(); setOver(false); accept(e.dataTransfer.files); }}>
     <div className="image-field-preview">{value ? <img src={value} alt={`${label} preview`} /> : <Folder size={26} />}</div>

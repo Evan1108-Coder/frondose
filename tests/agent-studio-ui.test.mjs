@@ -85,10 +85,12 @@ test('run and output attribution stays tied to profile ID, not name or unrelated
 test('Studio controls expose honest provider boundaries and reviewed operations', () => {
   const editor = readFileSync(new URL('../src/components/AgentEditor.jsx', import.meta.url), 'utf8');
   const roster = readFileSync(new URL('../src/views/AgentRoster.jsx', import.meta.url), 'utf8');
-  assert.match(editor, /These defaults are not access grants/);
-  assert.match(editor, /Website chat history is not automatically imported/);
-  assert.match(editor, /availability is checked by the provider at launch/);
-  assert.match(editor, /Creating a profile does not install or start it/);
+  assert.match(editor, /label="Personalization"/);
+  assert.match(editor, /label="Connection method"/);
+  assert.match(editor, /Connect AI provider/);
+  assert.match(editor, /identity_kind: identityKind/);
+  assert.doesNotMatch(editor, /Start with a purpose|label="Role"|Default working folder|Execution defaults|Context preferences|Saving a profile does not connect/);
+  assert.doesNotMatch(editor, /frondoseActions\.(?:startRun|startSession)\(/);
   assert.match(roster, /Imports start read-only and unbound/);
   assert.match(roster, /Profile version not recorded/);
   assert.match(roster, /Recorded usage below is separate from account billing/);

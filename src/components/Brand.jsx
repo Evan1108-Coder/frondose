@@ -1,8 +1,8 @@
 import "./brand.css";
 
 const brandAssets = {
-  symbol: "/brand/frondose-symbol.webp",
-  appIcon: "/brand/frondose-app-icon.png",
+  symbol: "/brand/frondose-frond.png",
+  appIcon: "/brand/frondose-frond-icon.png",
 };
 
 function BrandIcon({

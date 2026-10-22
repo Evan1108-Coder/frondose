@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { indexChatActivity, matchingChats, defaultRecipient, turnBlocker, chatMarkdown, restoreComposer, persistComposer } from '../src/lib/chats.js';
+import { indexChatActivity, matchingChats, defaultRecipient, turnBlocker, chatMarkdown, restoreComposer, persistComposer, conversationRecipientBlocker, composerOccupied } from '../src/lib/chats.js';
 
 test('chat indexes keep history in order and retries associated with the original message', () => {
   const messages = [{id:'b',chat_id:'c',created_at:'2026-02-01',content:'Sources'}, {id:'a',chat_id:'c',created_at:'2026-01-01',content:'Plan'}];
@@ -11,11 +11,24 @@ test('chat indexes keep history in order and retries associated with the origina
   assert.deepEqual(matchingChats([{id:'c',title:'Review'}],result.messagesByChat,'source').map(x=>x.id),['c']);
   assert.equal(matchingChats([{id:'other',title:'Other'}],result.messagesByChat,'source').length,0);
 });
-test('single participant defaults to explicit agent selection, groups and missing agents to notes', () => {
+test('single participant keeps its identity even if unavailable; legacy groups remain local notes until selected', () => {
   const agents=[{id:'one'},{id:'two'},{id:'old',archived_at:'yesterday'}];
   assert.equal(defaultRecipient({participant_agent_ids:['one']},agents),'one');
   assert.equal(defaultRecipient({participant_agent_ids:['one','two']},agents),'note');
-  assert.equal(defaultRecipient({participant_agent_ids:['old']},agents),'note');
+  assert.equal(defaultRecipient({participant_agent_ids:['old']},agents),'old');
+  assert.equal(defaultRecipient({responding_agent_id:'gone',participant_agent_ids:['one','two']},agents),'gone');
+});
+test('bound conversations preserve occupied and uncertain composer identities without allowing a fresh mismatched send', () => {
+  const chat={id:'c',responding_agent_id:'bound',participant_agent_ids:['old','bound']};
+  const saved={version:5,text:'Keep my draft',recipient:'old',turn:'uncertain'};
+  const restored=restoreComposer(chat,[],{getItem:()=>JSON.stringify(saved)});
+  assert.equal(restored.recipient,'old');assert.equal(restored.turn,'uncertain');assert.equal(composerOccupied(restored),true);
+  assert.match(conversationRecipientBlocker(chat,'old'),/different agent/);
+  assert.equal(conversationRecipientBlocker(chat,'old',{recovering:true}),null);
+  assert.equal(conversationRecipientBlocker(chat,'note'),null);
+  assert.equal(conversationRecipientBlocker(chat,'bound'),null);
+  for(const draft of [{text:'draft'},{files:[{}]},{turn:'x'},{retryKeys:{message:'retry'}},{context:{id:'source'}},{sending:true}]) assert.equal(composerOccupied(draft),true);
+  assert.equal(composerOccupied({text:'',files:[]}),false);
 });
 test('agent send guards distinguish notes, disconnected accounts, folders, active work and images', () => {
   const ready={agent:{id:'a'},readiness:{canStartLive:true},folder:'/project',files:[]};

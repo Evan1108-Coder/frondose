@@ -1,0 +1,17 @@
+/* Reviewed monochrome logos use their alpha silhouettes with the same legible
+   foreground/backing as the existing service marks. Multicolor files stay img. */
+.service-logo > .service-logo-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: currentColor;
+  mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+}
+@media (forced-colors: active) {
+  .service-logo > .service-logo-mark { background-color: CanvasText; }
+}

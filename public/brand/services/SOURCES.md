@@ -13,3 +13,9 @@ Groq, Together, Fireworks, Cohere, Kimi and Z.ai SVG marks are bundled from
 (matching lowercase filenames). Retrieved October 18, 2026. The collection's
 MIT license is preserved in `LOBE-ICONS-LICENSE.txt`. Product trademarks remain
 with their owners; marks identify connections and do not certify account access.
+
+October 22 audit: all six retained SVGs were compared with immutable Lobe Icons
+revision `ab8cbcc6ce806b923c547628132957c8a8b61509`; they match after trimming only
+the trailing newline. Exact source paths and rendered SHA-256 hashes are in
+`third-party/ai-brands/api-assets.json`. Runtime marks have a separate pinned
+manifest, described in `docs/ai-provider-branding.md`.

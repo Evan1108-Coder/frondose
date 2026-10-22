@@ -265,7 +265,7 @@ test('chat creation is idempotent and unknown/cross-workspace sources cannot cre
   assert.equal(conflict.status, 409); assert.equal(conflict.body.error.code, 'request_id_reused');
 });
 
-test('Codex and Claude Frondose profiles share their existing accounts, switch per chat without model leakage, and reject unsupported reasoning', async t => {
+test('Codex and Claude Frondose profiles share existing accounts but keep separate conversations without model leakage', async t => {
   const { api, call, request, fake, connect, select, create, inspect, send, workspace } = await fixture(t);
   await connect('codex'); await connect('claude');
   const codex = await create(), claude = await create({ provider: 'claude', request_id: 'claude-chat-fixture' });
@@ -276,7 +276,9 @@ test('Codex and Claude Frondose profiles share their existing accounts, switch p
   assert.equal(api.snapshot().connections.filter(row => ['codex', 'claude'].includes(row.provider)).length, 2, 'Profiles never duplicate provider accounts');
   const invalid = await request('/context/inspect', inspect(claude.chat, claude.agent, { model: 'fixture-claude-model', reasoning_effort: 'high' }));
   assert.equal(invalid.status, 400); assert.equal(fake.launches.length, 0);
-  const result = await send(inspect(codex.chat, claude.agent, { model: 'fixture-claude-model', reasoning_effort: '' }));
+  assert.equal((await request('/context/inspect',inspect(codex.chat, claude.agent, {model:'fixture-claude-model',reasoning_effort:''}))).status,409);
+  assert.equal(fake.launches.length,0);
+  const result = await send(inspect(claude.chat, claude.agent, { model: 'fixture-claude-model', reasoning_effort: '' }));
   assert.equal(result.run.provider, 'claude'); assert.equal(result.run.agent_id, claude.agent.id); assert.equal(result.run.status, 'completed');
   assert.equal(fake.launches[0].command, 'claude'); assert.equal(fake.launches[0].args[fake.launches[0].args.indexOf('--model') + 1], 'fixture-claude-model');
   assert.equal(fake.launches[0].args.some(value => value.startsWith('model_reasoning_effort=')), false);
@@ -284,7 +286,8 @@ test('Codex and Claude Frondose profiles share their existing accounts, switch p
   const next = await send(inspect(codex.chat, codex.agent, { model: 'fixture-codex-model', reasoning_effort: 'medium' }), { client_turn_id: 'switched-back-codex' });
   assert.equal(next.run.provider, 'codex'); assert.equal(fake.launches[1].command, 'codex');
   assert.equal(fake.launches[1].args[fake.launches[1].args.indexOf('--model') + 1], 'fixture-codex-model');
-  assert.equal(api.snapshot().messages.filter(row => row.chat_id === codex.chat.id && row.sender_type === 'agent').length, 2);
+  assert.equal(api.snapshot().messages.filter(row => row.chat_id === codex.chat.id && row.sender_type === 'agent').length, 1);
+  assert.equal(api.snapshot().messages.filter(row => row.chat_id === claude.chat.id && row.sender_type === 'agent').length, 1);
 });
 
 test('effective per-turn model is preview-bound, provider-bound, usage-bound and retry-bound without changing the shared profile', async t => {

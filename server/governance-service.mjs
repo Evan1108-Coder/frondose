@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { sharedProfile } from './personal-profile.mjs';
 
 export const GOVERNANCE_RANKS = Object.freeze({ Owner: 100, Admin: 80, Manager: 50, Member: 10 });
 const BASE_PERMISSIONS = [
@@ -135,7 +136,7 @@ export function createGovernanceService({ db, now = () => new Date().toISOString
     const currentUser = member(ws, uid); authorize(ws, uid, 'members.read');
     expireStaleApprovals(ws);
     const policies = rows('governance_rank_policies', ws);
-    return { mode: 'local-development', authenticated: false, current_user: currentUser, members: rows('governance_members', ws), roles: rows('governance_roles', ws), grants: rows('governance_grants', ws), rank_policies: ['Admin', 'Manager', 'Member'].map(rank => policies.find(p => p.rank === rank) || { rank, version: 0, permissions: [...new Set(rank === 'Admin' ? BASE_PERMISSIONS.map(([x]) => x).filter(x => !x.endsWith('.delete') && x !== 'connections.manage') : rank === 'Manager' ? MANAGER : MEMBER)] }), approvals: rows('governance_approvals', ws).map(a => a.status === 'pending' && a.expires_at <= instant() ? { ...a, status: 'expired' } : a), audit: explain(ws, uid, 'audit.read').allowed ? rows('governance_audit', ws).slice(-200).reverse() : [], permissions: db.prepare('SELECT * FROM governance_permissions ORDER BY category,id').all(), ranks: GOVERNANCE_RANKS };
+    return { mode: 'local-development', authenticated: false, current_user: currentUser, members: rows('governance_members', ws).map(person => ({ ...person, ...sharedProfile(db, person.id) })), roles: rows('governance_roles', ws), grants: rows('governance_grants', ws), rank_policies: ['Admin', 'Manager', 'Member'].map(rank => policies.find(p => p.rank === rank) || { rank, version: 0, permissions: [...new Set(rank === 'Admin' ? BASE_PERMISSIONS.map(([x]) => x).filter(x => !x.endsWith('.delete') && x !== 'connections.manage') : rank === 'Manager' ? MANAGER : MEMBER)] }), approvals: rows('governance_approvals', ws).map(a => a.status === 'pending' && a.expires_at <= instant() ? { ...a, status: 'expired' } : a), audit: explain(ws, uid, 'audit.read').allowed ? rows('governance_audit', ws).slice(-200).reverse() : [], permissions: db.prepare('SELECT * FROM governance_permissions ORDER BY category,id').all(), ranks: GOVERNANCE_RANKS };
   }
   function command(ws, uid, action, input = {}) {
     workspace(ws); const actor = member(ws, uid);

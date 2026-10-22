@@ -7,11 +7,11 @@ const ENUMS = {
   tasks: { status: ['backlog', 'ready', 'in_progress', 'review', 'blocked', 'done', 'cancelled'], priority: ['no_priority', 'low', 'medium', 'high', 'urgent'] },
   chats: { kind: ['general', 'direct', 'group', 'project', 'task', 'rumbo-agent'] },
   messages: { sender_type: ['user', 'agent', 'system'], kind: ['message', 'run_event', 'note'] },
-  agents: { provider: [...EXECUTION_PROVIDERS, 'custom'], status: ['available', 'paused'] },
+  agents: { provider: [...EXECUTION_PROVIDERS, 'custom'], identity_kind: ['agent', 'provider'], status: ['available', 'paused'] },
   milestones: { status: ['planned', 'in_progress', 'completed'] },
 };
 const ARRAY_FIELDS = new Set(['assignee_agent_ids_json', 'labels_json', 'participant_agent_ids_json', 'attachments_json', 'context_source_ids_json']);
-const NULLABLE = new Set(['workspace_id', 'project_id', 'team_id', 'task_id', 'chat_id', 'local_path', 'github_url', 'due_at', 'sender_id', 'archived_at', 'working_directory', 'start_date', 'target_date', 'workflow_status_id', 'provider_connection_id', 'default_area_id', 'default_project_id']);
+const NULLABLE = new Set(['workspace_id', 'project_id', 'team_id', 'task_id', 'chat_id', 'local_path', 'github_url', 'due_at', 'sender_id', 'archived_at', 'working_directory', 'start_date', 'target_date', 'workflow_status_id', 'provider_connection_id', 'default_area_id', 'default_project_id', 'responding_agent_id']);
 
 export function validationError(message) {
   return Object.assign(new Error(message), { statusCode: 400, errorCode: 'validation_error' });

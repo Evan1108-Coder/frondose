@@ -1,4 +1,5 @@
 import { createActivityPolicy } from './activity-policy.mjs';
+import { selfProfile } from './personal-profile.mjs';
 import { areaReferenceReadable } from './area-service.mjs';
 import { skillVisible } from './skills-service.mjs';
 import { agentProfileReferenceReadable } from './agent-profiles.mjs';
@@ -80,6 +81,7 @@ export function createAccessBoundary({ db, governance }) {
     if (path.startsWith('/governance') || path.startsWith('/connection-platform') || path.startsWith('/identity') || path.startsWith('/sub-routes/') || path === '/change-reviews' || path.startsWith('/change-reviews/')) return; // These services authenticate every target and source themselves.
     if (['/bootstrap', '/snapshot', '/health', '/events'].includes(path) && method === 'GET') return;
     // Existing global runner credentials and machine preferences belong to the installation owner.
+    if (['/profile', '/account'].includes(path) && ['GET', 'PATCH', 'PUT'].includes(method)) return; // Self-only server-resolved actor, never a supplied member ID.
     if (/^\/(?:auth|connections|settings|profile|account|reset|import)(?:\/|$)/.test(path)) {
       if (actor.id !== 'local-owner') failure('This installation setting is managed by its owner.');
       return;
@@ -368,7 +370,7 @@ export function createAccessBoundary({ db, governance }) {
         return key === 'activity_entries' ? activity.present(item, actor) : filter(item, actor, options);
       });
     }
-    if (data.profile && actor.mode === 'account') result.profile = { id: actor.id, name: actor.name, email: actor.email, avatar_url: null };
+    if (data.profile) result.profile = selfProfile(db, actor);
     if (Array.isArray(result.route_workflows)) {
       const graphs = new Map(), contexts = new Map();
       const graphFor = ws => { if (!graphs.has(ws)) graphs.set(ws, routeGraph(db, ws)); return graphs.get(ws); };

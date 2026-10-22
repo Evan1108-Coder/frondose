@@ -4,6 +4,7 @@ import { recordChange } from './workspace-features.mjs';
 import { captureSourceAccess, assertSourceAccess, chatHasFrondoseSourceHistory } from './context-source-access.mjs';
 import { getReaction, normalizeReactionColor, reactionKey } from '../src/lib/reaction-catalog.js';
 import { readConversationSource, searchConversationSources } from './conversation-retrieval.mjs';
+import { installConversationAgent } from './conversation-agent.mjs';
 
 const stamp = () => new Date().toISOString();
 const uid = prefix => `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 18)}`;
@@ -41,6 +42,7 @@ function contextSnapshot(db, snapshotId, chatId) {
   return { ...publicRow, sources: json(sources_json, []) };
 }
 export function installChatCollaboration(db) {
+  installConversationAgent(db);
   db.exec(`CREATE TABLE IF NOT EXISTS chat_collaboration(
     chat_id TEXT PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -231,7 +233,7 @@ export async function chatCollaborationRoute({ db, req, res, path, url, readBody
         const copied = all.slice(0, all.findIndex(item => item.id === source.id) + 1);
         if (copied.length > 500) throw validationError('This branch would copy more than 500 messages. Start a new chat with a summary instead.');
         const branchId = uid('chat'), now = stamp();
-        db.prepare('INSERT INTO chats(id,workspace_id,project_id,task_id,title,kind,participant_agent_ids_json,pinned,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(branchId, chat.workspace_id, chat.project_id, chat.task_id, title, chat.kind, chat.participant_agent_ids_json, 0, now, now);
+        db.prepare('INSERT INTO chats(id,workspace_id,project_id,task_id,title,kind,participant_agent_ids_json,responding_agent_id,pinned,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(branchId, chat.workspace_id, chat.project_id, chat.task_id, title, chat.kind, chat.participant_agent_ids_json, chat.responding_agent_id, 0, now, now);
         const ids = new Map(copied.map(item => [item.id, uid('message')]));
         copied.forEach(item => {
           const old = json(item.metadata_json), metadata = { delivery: 'branch_reference', origin_chat_id: chat.id, origin_message_id: item.id, origin_sender_type: item.sender_type };

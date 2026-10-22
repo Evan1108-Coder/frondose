@@ -76,6 +76,22 @@ test('profile validation accepts supported defaults and rejects mismatched provi
   assert.throws(() => validateAgentProfile(db, { ...base }), /accessible Area/);
 });
 
+test('provider identities are explicit content types, immutable and do not activate connections', async t => {
+  const { db, ws, call, create } = await fixture(t);
+  const before = db.prepare('SELECT * FROM connections ORDER BY id').all();
+  const provider = await create('/agents', { workspace_id: ws, name: 'Codex', provider: 'codex', identity_kind: 'provider', provider_connection_id: null }, 'agent');
+  assert.equal(provider.identity_kind, 'provider');
+  assert.equal(provider.provider_connection_id, null);
+  assert.equal((await call('PATCH', `/agents/${provider.id}`, { identity_kind: 'agent' })).status, 400);
+  assert.equal((await call('PATCH', `/agents/${provider.id}`, { provider: 'claude' })).status, 400);
+  assert.equal((await call('POST', '/agents', { workspace_id: ws, name: 'Bad kind', provider: 'codex', identity_kind: 'admin' })).status, 400);
+  const custom = await create('/agents', { workspace_id: ws, name: 'My helper', provider: 'codex', provider_connection_id: null }, 'agent');
+  assert.equal(custom.identity_kind, 'agent');
+  assert.equal(JSON.parse(db.prepare('SELECT snapshot_json FROM agent_profile_versions WHERE agent_id=?').get(provider.id).snapshot_json).identity_kind, 'provider');
+  assert.deepEqual(db.prepare('SELECT * FROM connections ORDER BY id').all(), before);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM runs WHERE agent_id IN (?,?)').get(provider.id, custom.id).count, 0);
+});
+
 async function scopedFixture(t) {
   const f = await fixture(t), { db, ws, create } = f;
   const area = await create('/teams', { workspace_id: ws, name: 'Restricted Area' }, 'team');

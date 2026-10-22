@@ -51,6 +51,17 @@ test('steering is a durable exactly-once pending next turn, not a provider call'
   assert.doesNotMatch(JSON.stringify(list),/PRIVATE|source_access_json|target_scope_json/);
 });
 
+test('bound destination rejects new mismatched handoffs but retains older queued records as readable history',t=>{
+  const f=fixture(t);
+  const item=f.create({kind:'handoff',target_chat_id:'target',target_agent_id:'recipient'});
+  f.db.prepare('UPDATE chats SET responding_agent_id=? WHERE id=?').run('agent','target');
+  assert.equal(listRunCoordination(f.db,'run',f.actor,f.allowed).items[0].id,item.id);
+  assert.throws(()=>prepareRunCoordination(f.db,'run',item.id,f.actor,f.allowed),{errorCode:'conversation_agent_mismatch'});
+  assert.throws(()=>f.create({request_id:'new-wrong-target',kind:'handoff',target_chat_id:'target',target_agent_id:'recipient'}),{errorCode:'conversation_agent_mismatch'});
+  assert.equal(f.db.prepare('SELECT count(*) n FROM run_coordination').get().n,1);
+  assert.equal(f.db.prepare('SELECT count(*) n FROM messages').get().n,0);
+});
+
 test('handoff targets require workspace, agent identity and both source/destination ACLs', t => {
   const f = fixture(t);
   for (const extra of [{kind:'handoff',target_chat_id:'foreign-chat',target_agent_id:'recipient'},{kind:'handoff',target_chat_id:'target',target_agent_id:'wrong-workspace'},{kind:'handoff',target_chat_id:'target'},{kind:'steer',target_agent_id:'recipient'},{kind:'handoff',target_chat_id:'source',target_agent_id:'agent'},{kind:'steer',author_type:'agent'}]) assert.throws(()=>f.create(extra));

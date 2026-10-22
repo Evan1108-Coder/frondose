@@ -108,7 +108,7 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
       <IconButton label={`Edit ${agent.name}`} onClick={() => edit("agent", agent)}><Pencil /></IconButton>
     </header>
     <div className="agent-detail-quick-actions"><Button icon={MessageCircle} busy={chatAction.busy} onClick={() => chatAction.execute(async () => {
-      const existing = visible(data.chats).filter(chat => !val(chat, "project_id") && !val(chat, "task_id") && (val(chat, "participant_agent_ids") ?? []).length === 1 && val(chat, "participant_agent_ids")[0] === agent.id).sort((a, b) => String(val(b, "updated_at")).localeCompare(String(val(a, "updated_at"))))[0];
+      const existing = visible(data.chats).filter(chat => !val(chat, "project_id") && !val(chat, "task_id") && val(chat, 'responding_agent_id') === agent.id).sort((a, b) => String(val(b, "updated_at")).localeCompare(String(val(a, "updated_at"))))[0];
       const chat = existing ?? await frondoseActions.createChat({ workspace_id: workspace.id, title: `Chat with ${agent.name}`, participant_agent_ids: [agent.id] });
       navigate("chats", chat.id);
     })}>Chat with agent</Button><Button icon={favorite ? PinOff : Pin} aria-pressed={favorite} onClick={() => toggleFavorite({ view: "agents", id: agent.id })}>{favorite ? "Unfavorite" : "Favorite"}</Button><ErrorMessage error={chatAction.error} /></div>
@@ -119,8 +119,8 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
     </div>
     <div className="agent-detail-content" role="tabpanel" id={`agent-panel-${tab}`} aria-labelledby={`agent-tab-${tab}`}>
       {tab === "overview" ? <>
-        <section className="agent-detail-section"><h3>Purpose</h3><p>{agent.role || "No role defined"}</p>{agent.description ? <small>{agent.description}</small> : null}</section>
-        <section className="agent-detail-section"><h3>Instructions</h3>{agent.instructions ? <p className="agent-instruction-copy">{agent.instructions}</p> : <><p>No instructions yet. Tell this agent how to approach its work.</p><button className="text-button" onClick={() => edit("agent", agent)}>Add instructions <ArrowUpRight /></button></>}<Button onClick={() => setHistoryOpen(true)}>Compare content history</Button></section>
+        {agent.description ? <section className="agent-detail-section"><p>{agent.description}</p></section> : null}
+        {agent.identity_kind !== 'provider' ? <section className="agent-detail-section"><h3>Personalization</h3>{agent.instructions ? <p className="agent-instruction-copy">{agent.instructions}</p> : <button className="text-button" onClick={() => edit("agent", agent)}>Add personalization <ArrowUpRight /></button>}<Button onClick={() => setHistoryOpen(true)}>Compare content history</Button></section> : null}
         <section className="agent-detail-section"><h3>Execution defaults</h3><dl className="agent-default-list"><div><dt>Model</dt><dd>{agent.model || "Provider default"}</dd></div><div><dt>Reasoning</dt><dd>{agent.provider === "codex" ? val(agent, "reasoning_effort") || "Provider default" : "Not supported in Frondose"}</dd></div><div><dt>Permissions</dt><dd>{val(agent, "permission_policy") === "read-only" ? "Read-only" : "Review required"}</dd></div></dl><small>Provider support is checked at launch, not when this page opens. Instructions and defaults never grant access.</small><h3 className="agent-output-heading">Expected output</h3><p className="agent-instruction-copy">{val(agent, "output_behavior") || "Not defined. Set a format, evidence requirements, and stopping condition in the profile."}</p></section>
         <section className="agent-detail-section"><h3><Folder />Working folder</h3><p className="agent-folder">{val(agent, "working_directory") || "Choose with each session"}</p><small>A linked project folder takes precedence.</small></section>
         <section className="agent-detail-section agent-computer-settings-section"><details><summary>Computer connection</summary><Suspense fallback={<p role="status">Loading computer settings…</p>}><AgentRunnerSettings agentId={agent.id} workspaceId={workspace.id} /></Suspense></details></section>
@@ -148,8 +148,12 @@ export function AgentsView() {
   const [query, setQuery] = useState(""), [filter, setFilter] = useState("all");
   const [connectionProvider, setConnectionProvider] = useState(null), [archiveAgent, setArchiveAgent] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [identitySection, setIdentitySection] = useState('agent');
   const { busy, error, execute } = useAsync();
-  const agents = visible(data.agents).filter(agent => !agent.personal_agent).sort((a, b) => a.name.localeCompare(b.name));
+  const identities = visible(data.agents).filter(agent => !agent.personal_agent);
+  const selectedKind = identities.find(agent => agent.id === page.id)?.identity_kind;
+  const showingProviders = page.id ? selectedKind === 'provider' : identitySection === 'provider';
+  const agents = identities.filter(agent => (agent.identity_kind === 'provider') === showingProviders).sort((a, b) => a.name.localeCompare(b.name));
   const personalSelection = page.id && visible(data.agents).some(agent => agent.id === page.id && agent.personal_agent);
   useEffect(() => { if (personalSelection) navigate('rumbo-agent'); }, [personalSelection, navigate]);
   const summaries = new Map(agents.map((agent) => [agent.id, summarizeAgent(agent, data)]));
@@ -164,7 +168,11 @@ export function AgentsView() {
   function exportDefinition(agent) { download(`${agent.name.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80) || "agent"}.frondose-agent.json`, exportAgentDefinition(agent)); notify("Definition exported without account, folder, context, or permission references. Review instruction text before sharing."); }
   function pause(agent) { return execute(async () => { const status = agent.status === "paused" ? "available" : "paused"; await frondoseActions.updateAgent(agent.id, { status }); notify(status === "paused" ? `${agent.name} paused. Existing sessions continue.` : `${agent.name} is available for new sessions.`); }); }
   return <main className={`page agents-page ${page.id ? "has-agent-selection" : ""}`}>
-    <PageHeader title="Your Agents" description="Specialized agents for your workspace. Your personal Frondose is managed in its own tab."><Button onClick={() => setImporting(true)}>Import definition</Button>{agents.length ? <Button variant="primary" icon={Plus} onClick={() => edit("agent")}>New agent</Button> : null}</PageHeader>
+    <PageHeader title="Your Agents"><Button onClick={() => setImporting(true)}>Import definition</Button><Button variant="primary" icon={Plus} onClick={() => edit("agent", null, { identity_kind: showingProviders ? 'provider' : 'agent' })}>{showingProviders ? 'Connect AI provider' : 'New agent'}</Button></PageHeader>
+    <div className="toolbar" role="group" aria-label="Identity type">
+      <Button aria-pressed={!showingProviders} onClick={() => { setIdentitySection('agent'); navigate('agents'); }}>Your agents</Button>
+      <Button aria-pressed={showingProviders} onClick={() => { setIdentitySection('provider'); navigate('agents'); }}>AI providers</Button>
+    </div>
     {!page.id ? <section className="agent-provider-strip" aria-label="Provider connections">
       <div className="agent-provider-summaries">{Object.entries(AGENT_PROVIDERS).filter(([id]) => hasAgentAccountRoute(id)).map(([id, provider]) => {
         const connection = data.connections.find((item) => item.provider === id);
@@ -174,7 +182,7 @@ export function AgentsView() {
       <button className="text-button" onClick={() => navigate("connections")}>Manage connections <ArrowUpRight /></button>
     </section> : null}
     <ErrorMessage error={error} />
-    {!agents.length ? <Empty kind="agents" title="Give your first agent a purpose" description="Create a profile with instructions and a default folder. Connect its provider when you’re ready for live work, or try a simulation first." action="Create an agent" onAction={() => edit("agent")} />
+    {!agents.length ? <Empty kind="agents" title={showingProviders ? 'Connect an AI provider' : 'Create your first agent'} description={showingProviders ? 'Keep a direct provider identity alongside your personalized agents.' : 'Choose a provider, name your agent and personalize how it works.'} action={showingProviders ? 'Connect AI provider' : 'Create an agent'} onAction={() => edit("agent", null, { identity_kind: showingProviders ? 'provider' : 'agent' })} />
       : unavailable ? <Empty kind="agents" title="Agent unavailable" description="This agent may be archived or belong to another workspace. Your other profiles are still available." action="All agents" onAction={() => navigate("agents")} secondaryAction="Open archive" onSecondaryAction={() => navigate("settings", "archive")} />
         : <div className="agent-workspace">
           <section className="agent-roster" aria-label="Agent roster">
@@ -185,7 +193,7 @@ export function AgentsView() {
                 const summary = summaries.get(agent.id);
                 return <div className={`agent-roster-row ${selected?.id === agent.id ? "is-selected" : ""}`} key={agent.id}>
                   <button className="agent-row-main" onClick={() => navigate("agents", agent.id)} aria-label={`Open ${agent.name}`} aria-current={selected?.id === agent.id ? "true" : undefined}>
-                    <AgentIdentity agent={agent} /><span className="agent-row-copy"><strong>{agent.name}</strong><span>{summary.provider.name}{agent.description ? ` · ${agent.description}` : " · Custom agent profile"}</span></span>
+                    <AgentIdentity agent={agent} /><span className="agent-row-copy"><strong>{agent.name}</strong><span>{summary.provider.name}{agent.description ? ` · ${agent.description}` : agent.identity_kind === 'provider' ? ' · Provider identity' : ' · Personalized agent'}</span></span>
                     <Readiness readiness={summary.readiness} />
                   </button>
                   <AgentMenu agent={agent} busy={busy} active={summary.activeRuns.length > 0} onEdit={() => edit("agent", agent)} onDuplicate={() => duplicate(agent)} onExport={() => exportDefinition(agent)} onPause={() => pause(agent)} onArchive={() => setArchiveAgent(agent)} />

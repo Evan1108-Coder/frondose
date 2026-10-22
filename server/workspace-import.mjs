@@ -59,7 +59,17 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
   db.exec('BEGIN');
   try {
     db.prepare('INSERT INTO workspaces (id,name,slug,description,image_url,created_at,updated_at) VALUES (?,?,?,?,?,?,?)').run(workspaceId, `${original.name.slice(0, 140)} (imported)`, workspaceId, String(original.description ?? '').slice(0, 100000), original.image_url ?? null, timestamp, timestamp);
-    const pending = [], importedProfiles = [];
+    const pending = [], importedProfiles = [], unavailableAgents = new Map();
+    const importedAgentIds = new Set((data.agents || []).map(agent => agent.id));
+    const remapConversationAgent = originalAgentId => {
+      if (typeof originalAgentId !== 'string' || !originalAgentId.trim() || originalAgentId.length > 240) throw validationError('Invalid conversation agent identity.');
+      if (importedAgentIds.has(originalAgentId)) return remap(originalAgentId);
+      if (ids.has(originalAgentId)) throw validationError('A conversation agent reference points to non-agent content.');
+      // A deleted profile can remain in both historical participants and the
+      // responder lock. Preserve that relationship without reviving its identity.
+      if (!unavailableAgents.has(originalAgentId)) unavailableAgents.set(originalAgentId, uid());
+      return unavailableAgents.get(originalAgentId);
+    };
     for (const table of tables) for (const source of data[table] ?? []) {
       const row = normalize(table, source);
       if (table === 'teams' && source.tab_icon_color === undefined && row.color?.toLowerCase() === '#8b95a5') row.color = '';
@@ -67,7 +77,13 @@ export function importWorkspace(db, archive, config, normalize, dbValue, validat
       row.id = ids.get(source.id);
       if (table !== 'messages') row.workspace_id = workspaceId;
       for (const field of ['team_id', 'project_id', 'task_id', 'chat_id', 'workflow_status_id']) if (row[field]) row[field] = remap(row[field]);
-      for (const field of ['assignee_agent_ids_json', 'participant_agent_ids_json']) if (row[field]) { if (!Array.isArray(row[field])) throw validationError('Invalid agent references.'); row[field] = row[field].map(remap); }
+      for (const field of ['assignee_agent_ids_json', 'participant_agent_ids_json']) if (row[field]) { if (!Array.isArray(row[field])) throw validationError('Invalid agent references.'); row[field] = row[field].map(table === 'chats' && field === 'participant_agent_ids_json' ? remapConversationAgent : remap); }
+      if (table === 'chats' && row.responding_agent_id) {
+        // Content identities remap; credentials and execution consent do not.
+        // A deleted/missing profile stays blocked, never accidentally pointing
+        // back into the workspace from which this archive was exported.
+        row.responding_agent_id = remapConversationAgent(row.responding_agent_id);
+      }
       if (row.labels_json) { if (!Array.isArray(row.labels_json)) throw validationError('Invalid labels.'); row.labels_json = row.labels_json.map(v => ids.get(v) ?? v); }
       // An imported project must not grant access to folders on this computer.
       if (table === 'projects') { row.local_path = null; row.identifier = row.id.slice(-12).toUpperCase(); }

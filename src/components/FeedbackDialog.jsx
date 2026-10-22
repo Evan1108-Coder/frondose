@@ -30,7 +30,7 @@ export function FeedbackDialog({ onClose }) {
     setError('');
     setPreviewed(false);
   }
-  return <Dialog title="Feedback" subtitle="Help shape Frondose. Tell us what works, what gets in your way, or what you would like to see next." className="rumbo-feedback-dialog" onClose={onClose}>
+  return <Dialog title="Contact us" subtitle="Placeholder — message delivery is not connected yet." className="rumbo-feedback-dialog" onClose={onClose}>
     <form onSubmit={event => { event.preventDefault(); if (message.trim()) setPreviewed(true); }}>
       <div className="rumbo-feedback-body">
         <div className="rumbo-feedback-notice"><strong>Preview only</strong><span>Feedback delivery is not connected yet. Your message and attachments will not be sent or uploaded. Closing this dialog clears the draft.</span></div>
@@ -43,7 +43,7 @@ export function FeedbackDialog({ onClose }) {
         {error ? <p role="alert" className="rumbo-feedback-error">{error}</p> : null}
         {previewed ? <p role="status" className="rumbo-feedback-status">Nothing was sent. Feedback delivery is coming later; your draft is still here while this dialog stays open.</p> : null}
       </div>
-      <footer className="rumbo-feedback-footer"><div><input hidden ref={picker} type="file" multiple onChange={event => { addFiles([...event.target.files]); event.target.value = ''; }} /><Button icon={Paperclip} onClick={() => picker.current?.click()} disabled={files.length >= MAX_FILES}>Attach files</Button><small>Up to 5 files, 10 MB each</small></div><Button type="submit" variant="primary" disabled={!message.trim()}>Send feedback</Button></footer>
+      <footer className="rumbo-feedback-footer"><div><input hidden ref={picker} type="file" multiple onChange={event => { addFiles([...event.target.files]); event.target.value = ''; }} /><Button icon={Paperclip} onClick={() => picker.current?.click()} disabled={files.length >= MAX_FILES}>Attach files</Button><small>Up to 5 files, 10 MB each</small></div><Button type="submit" variant="primary" disabled={!message.trim()}>Preview message</Button></footer>
     </form>
   </Dialog>;
 }

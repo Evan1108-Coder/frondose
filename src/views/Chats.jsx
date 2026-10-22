@@ -20,7 +20,7 @@ import { ConversationSources } from '../components/ConversationSources.jsx';
 import { CommandLibrary, SlashCommandMenu } from '../components/SlashCommandMenu.jsx';
 import { byUpdated, download, relative, val, visible } from '../lib/model.js';
 import { agentReadiness } from '../lib/agents.js';
-import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnBlocker, restoreComposer, persistComposer, messageLink, quotedMessage, threadMessages } from '../lib/chats.js';
+import { ACTIVE_CHAT_RUNS, chatMarkdown, indexChatActivity, matchingChats, turnBlocker, restoreComposer, persistComposer, messageLink, quotedMessage, threadMessages, conversationRecipientBlocker, composerOccupied } from '../lib/chats.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
 import { prepareFrondoseAgentEntry } from '../lib/frondose-agent-entry.js';
 import { isBrowserAiProvider } from '../lib/ai-providers.js';
@@ -89,6 +89,10 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     composers.set(chat.id, draft);
   }
   const composer = composers.get(chat.id);
+  const respondingAgentId = val(chat, 'responding_agent_id');
+  // Reconcile only an entirely empty draft after another tab binds the chat.
+  // Occupied and uncertain drafts retain their original identity for review.
+  if (respondingAgentId && composer.recipient !== 'note' && composer.recipient !== respondingAgentId && !composerOccupied(composer)) composer.recipient = respondingAgentId;
   const [, render] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(null);
   const [contextOpen, setContextOpen] = useState(false), [optionsOpen, setOptionsOpen] = useState(false), [preview, setPreview] = useState(null);
   const [contextReload, setContextReload] = useState(0), [contextLoadError, setContextLoadError] = useState(null);
@@ -128,7 +132,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const personalError = personalMode && !composer.turn && personalSettings.key === personalKey && personalSettings.error;
   const connection = data.connections.find(item => item.provider === agent?.provider && (!val(agent, 'provider_connection_id') || item.id === val(agent, 'provider_connection_id')));
   const readiness = agent ? agentReadiness(agent, connection) : null;
-  const readyRecipients = agents.filter(item => agentReadiness(item, data.connections.find(c => c.provider === item.provider && (!val(item, 'provider_connection_id') || c.id === val(item, 'provider_connection_id')))).canStartLive);
+  const recipientChoices = respondingAgentId ? agents.filter(item => item.id === respondingAgentId) : agents;
   const computerControls = computerAgentControls(agent, { projectId: project?.id, globalReadOnly: data.settings?.agentDefaults?.approvalMode === 'read_only' });
   const folder = computerControls.bound ? project?.id || null : val(project, 'local_path') || val(agent, 'working_directory');
   const notes = visible(data.memory_notes).filter(note => !val(note, 'project_id') || val(note, 'project_id') === project?.id);
@@ -137,7 +141,8 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const replies = useMemo(() => { const map = new Map(); for (const message of messages) if (message.metadata?.reply_to) map.set(message.metadata.reply_to, (map.get(message.metadata.reply_to) || 0) + 1); return map; }, [messages]);
   const contextChoices = [...visible(data.documents).map(item => ({ kind: 'document', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.memory_notes).map(item => ({ kind: 'memory', id: item.id, title: item.title, project_id: val(item, 'project_id') })), ...visible(data.workspace_items || []).filter(item => item.kind === 'context_pack').map(item => ({ kind: 'pack', id: item.id, title: item.name }))];
   const contextPending = Boolean(composer.context && typeof composer.context.content !== 'string');
-  const blocker = personalPending ? 'Loading Frondose’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent ? 'This agent is no longer available. Choose another agent or save a note.' : computerControls.requiresProject && composer.permission === 'conversation' ? 'This computer runtime needs Build access to a project mapped by its owner. Choose Build and review access; enable native tools in the agent’s computer settings if unavailable.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) });
+  const recipientBlocker = conversationRecipientBlocker(chat, composer.recipient, { recovering:Boolean(composer.turn) });
+  const blocker = recipientBlocker || (personalPending ? 'Loading Frondose’s saved context preferences…' : personalError ? personalError.message : contextPending ? contextLoadError ? 'Selected context is unavailable. Reload it or remove the selection before sending.' : 'Loading selected context under your current access…' : composer.recipient !== 'note' && !agent && !composer.turn ? 'This conversation’s agent is unavailable. Restore its profile or save a local note; no other agent will be substituted.' : computerControls.requiresProject && composer.permission === 'conversation' ? 'This computer runtime needs Build access to a project mapped by its owner. Choose Build and review access; enable native tools in the agent’s computer settings if unavailable.' : turnBlocker({ agent, readiness, folder, activeRun: null, files: composer.files, permission: composer.permission, recovering:Boolean(composer.turn) }));
   const queueOnly = Boolean(activeRecipient && !composer.turn);
   const queueBlocker = queueOnly && (composer.files.length || composer.context || composer.replyTo || composer.text.length > 10000) ? 'Queued follow-ups support plain text up to 10,000 characters. Send attachments or a reply after this run finishes.' : null;
   const inThread = threadMessages(messages, threadId);
@@ -203,7 +208,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     apiRequest(`/api/runs/${encodeURIComponent(page.coordinationRunId)}/coordination/${encodeURIComponent(page.coordinationId)}/prepare`, { method:'POST', body:{}, signal:controller.signal }).then(({result}) => {
       if (controller.signal.aborted) return;
       if (!agents.some(item => item.id === result.agent_id)) throw new Error('The handoff agent is unavailable.');
-      const patch = coordinationDraft(result,chat.id,composer);
+      const patch = coordinationDraft(result,chat.id,composer,respondingAgentId);
       Object.assign(composer,patch,{version:composer.version+1});
       persistComposer(chat.id,composer,draftStorage()); render(value=>value+1);
       navigate('chats',chat.id,{projectId:scope.projectId || null});
@@ -251,6 +256,12 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     return ()=>window.removeEventListener('resize',resize);
   }, [composer.text]);
   function change(changes) {
+    if (composer.turn && !Object.hasOwn(changes, 'turn')) { setError(new Error('Delivery is unconfirmed. Retry delivery before editing this draft or changing its agent.')); return false; }
+    if (Object.hasOwn(changes, 'recipient') && changes.recipient !== composer.recipient) {
+      if (composer.turn || composer.sending) { setError(new Error('Resolve the unconfirmed delivery before changing this draft’s agent.')); return false; }
+      const mismatch = conversationRecipientBlocker(chat, changes.recipient);
+      if (mismatch) { setError(new Error(mismatch)); return false; }
+    }
     Object.assign(composer, changes);
     composer.version += 1;
     composer.turn = null;
@@ -258,6 +269,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     persistComposer(chat.id, composer, draftStorage());
     setError(null);
     render(version => version + 1);
+    return true;
   }
   async function collaborationAction(action, body = {}) {
     setActionBusy(true); setCollaborationError(null);
@@ -306,11 +318,15 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     } catch {}
   }
   async function loadDraft(draft) {
-    if (composer.text || composer.files.length || composer.turn) { setError(new Error('Save or clear the current composer before loading a follow-up draft.')); return; }
+    if (composerOccupied(composer)) { setError(new Error('Save or clear the current composer before loading a follow-up draft.')); return; }
+    const mismatch = conversationRecipientBlocker(chat, draft.recipient);
+    if (mismatch) { setError(new Error(mismatch)); return; }
+    const version = composer.version;
     try {
       let context = null;
       if (draft.context_snapshot_id) context = (await apiRequest(`/api/chat-collaboration/${encodeURIComponent(chat.id)}/snapshots/${encodeURIComponent(draft.context_snapshot_id)}?workspace_id=${encodeURIComponent(val(chat, 'workspace_id'))}`)).result;
-      change({ text: draft.content, recipient: draft.recipient, permission: draft.permission, replyTo: draft.reply_to || null, context });
+      if (composer.version !== version || composerOccupied(composer)) { setError(new Error('Your draft changed while loading this follow-up and was kept.')); return; }
+      if (!change({ text: draft.content, recipient: draft.recipient, permission: draft.permission, replyTo: draft.reply_to || null, context })) return;
       notify('Draft loaded. Review it, then send explicitly.'); inputRef.current?.focus();
     } catch (cause) { setError(cause); }
   }
@@ -438,11 +454,11 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       const selected = namedAgent || providerAgent || agent;
       if (!selected) { setError(new Error(`Choose an agent before preparing ${command.command}.`)); return; }
       const instruction = namedAgent ? argv.slice(1).join(' ') : args;
-      change({
+      if (!change({
         recipient: selected.id,
         permission: command.write && selected.provider === 'codex' && folder ? 'workspace-write' : command.write && folder ? 'read-only' : 'conversation',
         text: instruction || command.description,
-      });
+      })) return;
       notify(`${command.command} prepared for ${selected.name}. Review the message and access level before sending.`);
       inputRef.current?.focus();
       return;
@@ -460,7 +476,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
       if (!args) { change({ text: '/agent ' }); return; }
       const selected = findAgent(args);
       if (!selected) { setError(new Error(`No agent named “${args}” is available in this workspace.`)); return; }
-      change({ recipient: selected.id, permission: 'conversation', text: '' }); notify(`${selected.name} selected for the next message.`); return;
+      if (change({ recipient: selected.id, permission: 'conversation', text: '' })) notify(`${selected.name} selected for this conversation’s next send.`); return;
     }
     if (command.id === 'ask') {
       const selected = argv[0] ? findAgent(argv[0]) : null;
@@ -601,7 +617,7 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
             <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission !== 'workspace-write'} onClick={() => change({ permission: 'conversation', nativeTools: false })}>Chat</button>
             {(computerControls.bound ? computerControls.canBuild : agent.provider === 'codex' && !readOnlyProfile) ? <button type="button" disabled={busy || composer.sending || recoveringTurn || Boolean(active)} aria-pressed={composer.permission === 'workspace-write'} onClick={() => { change({ permission: 'workspace-write', nativeTools: false }); setAccessOpen(true); }}>Build</button> : null}
           </div> : null}
-          {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Message recipient" value={composer.recipient} onChange={value => change({ recipient: value, permission: 'conversation', nativeTools: false })}><option value="note">Note · only saved here</option>{agent && !readiness?.canStartLive ? <option value={agent.id} disabled>Connection needed</option> : null}{readyRecipients.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
+          {assistant ? assistant.renderControls?.({ composer, change, agent, blocked: busy || composer.sending || Boolean(composer.turn) || Boolean(active) }) : <Select aria-label="Conversation agent" value={composer.recipient} disabled={busy || composer.sending || recoveringTurn} onChange={value => change({ recipient: value, permission: 'conversation', nativeTools: false })}><option value="note">Note · only saved here</option>{!recipientChoices.some(item => item.id === composer.recipient) && composer.recipient !== 'note' ? <option value={composer.recipient} disabled>Saved agent · unavailable for this draft</option> : null}{respondingAgentId && !recipientChoices.length && composer.recipient !== respondingAgentId ? <option value={respondingAgentId}>Conversation agent · unavailable</option> : null}{recipientChoices.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>}
           <input ref={fileRef} type="file" hidden multiple onChange={attach} accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.js,.jsx,.ts,.tsx,.css,.html,.csv,.py,.rs,.go,.yaml,.yml,.sql,.xml,.sh" />
           {!assistant ? <IconButton label="Insert emoji" onClick={() => setEmojiPicker(true)}><Smile /></IconButton> : null}
           <IconButton label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip /></IconButton>
@@ -609,7 +625,7 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
           {agent ? <IconButton label="Access and context" disabled={personalPending || Boolean(personalError)} onClick={() => setAccessOpen(true)}><SlidersHorizontal /></IconButton> : null}
         </div><Button type="submit" variant="primary" icon={ArrowUp} busy={busy || composer.sending} disabled={(!composer.text.trim() && !composer.files.length) || Boolean(blocker || queueBlocker)} aria-label={queueOnly ? `Queue follow-up for ${agent.name}` : agent ? `Send to ${agent.name}` : 'Save note'}><span className="chat-send-label">{queueOnly ? 'Queue follow-up' : agent ? effectivePermission === 'workspace-write' ? 'Start work' : recoveringTurn ? 'Retry delivery' : 'Send' : 'Save note'}</span></Button></div>
       </Form>
-      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{personalMode ? <button onClick={()=>navigate('rumbo-agent')}>Frondose setup</button> : agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : edit('agent', agent)}>Set folder</button> : null}</div> : queueOnly ? queueBlocker ? <p className="chat-compose-notice" role="status">{queueBlocker}</p> : <details className="chat-queue-explanation"><summary>Working · follow-ups queue for the next turn</summary><p>Queued instructions do not enter the current provider run. Load the draft and send it when ready, or keep chatting with another agent.</p></details> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : null}
+      {blocker ? <div className="chat-compose-notice"><Info /><p>{blocker}</p>{recipientBlocker ? <button disabled={recoveringTurn || busy} onClick={()=>change({recipient:respondingAgentId,permission:'conversation',nativeTools:false})}>Use conversation agent</button> : personalMode ? <button onClick={()=>navigate('rumbo-agent')}>Frondose setup</button> : agent && !readiness?.canStartLive ? <button onClick={() => navigate(readiness?.action === 'connect' ? 'connections' : 'agents', readiness?.action === 'connect' ? null : agent.id)}>Review setup</button> : !folder && agent ? <button onClick={() => project ? edit('project', project) : openAction('move')}>{project ? 'Set project folder' : 'Link a project'}</button> : null}</div> : queueOnly ? queueBlocker ? <p className="chat-compose-notice" role="status">{queueBlocker}</p> : <details className="chat-queue-explanation"><summary>Working · follow-ups queue for the next turn</summary><p>Queued instructions do not enter the current provider run. Load the draft and send it when ready.</p></details> : recoveringTurn ? <p className="chat-compose-notice" role="status">Delivery is unconfirmed. Retry delivery checks the same turn without duplicating work.</p> : !respondingAgentId && composer.recipient !== 'note' ? <p className="chat-compose-notice" role="status">The first accepted send binds this agent for future replies. Historical messages stay unchanged.</p> : null}
     </div>
     {accessOpen && agent ? <Dialog title="Access and context" subtitle="Chat prepares bounded context when you send. Project access and native tools still require explicit review." wide onClose={() => setAccessOpen(false)}><div className="dialog-body chat-context-content">{!computerControls.api ? <>{!computerControls.bound ? <NativeToolsChoice checked={composer.nativeTools === true} disabled={busy || composer.sending || recoveringTurn} onChange={value => { change({ nativeTools: value }); setReviewedContext(null); }} /> : <p>Computer execution follows the owner’s local policy and this profile’s native-tool settings. Build requires this conversation’s project ID to be mapped to its real folder on that computer. Native tools run as the OS user, not in a Frondose sandbox. <a href="#/docs/computer-agent-permissions">Review permissions</a>.</p>}{!computerControls.requiresProject ? <Toggle label="Read project files for this message" description={computerControls.bound ? 'Requires a project mapped by the computer owner. A server folder is not automatically available on that computer.' : 'Requires a linked working folder. Turning this on does not grant write access.'} checked={composer.permission !== 'conversation'} disabled={busy || composer.sending || recoveringTurn || composer.permission === 'workspace-write'} onChange={value => { change({ permission: value ? 'read-only' : 'conversation' }); setReviewedContext(null); }} /> : <p>This runtime requires an authorized Build/project request; it cannot be converted into a restricted General chat runtime by a browser toggle.</p>}</> : null}<ContextInspector key={`chat-context:${chat.id}:${agent.id}:${agent.version ?? 0}`} request={inspectionRequest} onReviewed={result => setReviewedContext({ key: inspectionKey, result })} onInvalidated={() => setReviewedContext(null)} /></div><footer className="dialog-footer"><Button onClick={() => setAccessOpen(false)}>Done</Button></footer></Dialog> : null}
     {scheduleDraft ? <ScheduleWorkDialog workspaceId={val(chat, 'workspace_id')} kind="message" payload={scheduleDraft.payload} contextInspectionId={scheduleDraft.contextInspectionId} onClose={() => setScheduleDraft(null)} onScheduled={() => { if (composer.version === scheduleDraft.version) { change({ text: '', files: [], turn: null, replyTo: null, context: null }); setReviewedContext(null); } }} /> : null}
@@ -627,8 +643,8 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
       })}{!contextChoices.length ? <p>No documents, memory notes, or context packs yet. Past messages can still be selected above.</p> : null}</div><Button disabled={!contextSources.length || recoveringTurn} busy={actionBusy} onClick={async () => { try { const context = await collaborationAction('context', { sources: contextSources }); change({ context }); setContextOpen(false); notify('Context snapshot attached to the composer. Review it before sending.'); } catch {} }}>Snapshot {contextSources.length || 'selected'} sources</Button></section>
       <section><h3>Connected work</h3>{project ? <button className="chat-context-link" onClick={() => { setContextOpen(false); navigate('projects', project.id); }}><Folder />{project.name}</button> : <p>No project linked.</p>}{task ? <button className="chat-context-link" onClick={() => navigate('tasks', task.id)}><GitBranch />{task.title}</button> : null}<Button icon={Pencil} onClick={() => { setContextOpen(false); edit('chat', chat); }}>Edit chat details</Button></section>
       <ReviewPanel targetType="chat" targetId={chat.id} projectId={project?.id} />
-      <section><h3>Agents in this chat</h3>{agents.filter(item => (val(chat, 'participant_agent_ids') || []).includes(item.id)).map(item => <button className="chat-context-link" key={item.id} onClick={() => navigate('agents', item.id)}><ProviderIcon provider={item.provider} />{item.name}</button>)}<p>The composer chooses who receives each message. Other agents are not contacted automatically.</p></section>
-      <section><h3>Working folder · optional for chat</h3><p className="chat-folder">{folder || 'No folder linked. General chat works without one.'}</p><p>Choose project access in the composer to inspect or code in project files. That mode requires a linked folder; General chat only uses the context you send.</p>{agent || project ? <Button icon={Folder} onClick={() => { setContextOpen(false); project ? edit('project', project) : edit('agent', agent); }}>{folder ? 'Change folder' : 'Link folder for project work'}</Button> : null}</section>
+      <section><h3>Responding agent</h3>{respondingAgentId ? <p>{data.agents.find(item=>item.id===respondingAgentId)?.name || 'Unavailable agent'}</p> : <p>Choose one agent for the first future reply. Local notes do not select an agent.</p>}<h3>Historical participants</h3>{(val(chat, 'participant_agent_ids') || []).map(id => { const item=data.agents.find(agent=>agent.id===id); return item ? <button className="chat-context-link" key={id} onClick={() => navigate('agents', id)}><ProviderIcon provider={item.provider} />{item.name}</button> : <p key={id}>Unavailable historical agent</p>; })}<p>History is retained. Other agents never post replies automatically; coordination is a queued draft requiring review and Send.</p></section>
+      <section><h3>Working folder · optional for chat</h3><p className="chat-folder">{folder || 'No folder linked. General chat works without one.'}</p><p>Choose project access in the composer to inspect or code in project files. That mode requires a linked project folder; General chat only uses the context you send.</p><Button icon={Folder} onClick={() => { setContextOpen(false); project ? edit('project', project) : openAction('move'); }}>{project ? 'Project folder' : 'Link a project'}</Button></section>
       <section><Toggle label="Include saved memory" description={val(agent, 'memory_policy') === 'none' ? 'This profile excludes saved memory.' : 'Eligible notes can be included; inspect the exact selection and any limits before sending.'} checked={includeMemory} disabled={val(agent, 'memory_policy') === 'none'} onChange={value => change({ memory: value })} />{notes.map(note => <button className="chat-context-link" key={note.id} onClick={() => { setContextOpen(false); edit('memory', note); }}><BookOpen />{note.title}</button>)}</section>
       <section><h3>Attachments</h3><p>Text and code files can be sent to agents: up to 20 files, 100,000 characters each. Agent context uses at most 16 KB per file and 32 KB total. Full files remain saved here. Images are stored in notes only; they are not sent to CLI providers.</p></section>
     </div><footer className="dialog-footer"><Button onClick={() => setContextOpen(false)}>Done</Button></footer></Dialog> : null}

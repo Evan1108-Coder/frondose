@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { createLocalApi } from '../server/local-api.mjs';
 
 async function withApi(callback) {
@@ -185,7 +186,7 @@ test('chat turns reject invalid targets, archived context, missing folders and u
       { agent_id: foreignAgent.id }, { agent_id: 'missing' }, { content: '' }, { client_turn_id: 'bad' },
       { attachments: [{ name: 'image.png', type: 'image/png', content: 'data:image/png;base64,eA==' }] },
       { attachments: [{ name: 'report.pdf', size: 20 }] }, { permission_mode: 'everything' },
-    ]) await call(`/chats/${chat.id}/turns`, turn(overrides), 'POST', 400);
+    ]) await call(`/chats/${chat.id}/turns`, turn(overrides), 'POST', overrides.agent_id === 'missing' ? 409 : 400);
     await call(`/agents/${agent.id}`, { status: 'paused' }, 'PATCH');
     await call(`/chats/${chat.id}/turns`, turn(), 'POST', 400);
     await call(`/agents/${agent.id}`, { status: 'available' }, 'PATCH');
@@ -196,6 +197,110 @@ test('chat turns reject invalid targets, archived context, missing folders and u
     assert.equal(api.snapshot().messages.length, 0);
     assert.equal(api.snapshot().runs.length, 0);
     assert.equal(fake.launches, 0);
+  });
+});
+
+test('new conversations bind one agent; mismatched live entry points reject before any provider call', async()=>{
+  await withApi(async({call,api,fake,workspace,chat,agent,turn,connectFixture})=>{
+    const other=(await call('/agents',{workspace_id:workspace.id,name:'Other',provider:'codex'})).agent;
+    assert.equal(chat.responding_agent_id,agent.id);
+    await call('/chats',{workspace_id:workspace.id,title:'Invalid group',participant_agent_ids:[agent.id,other.id]},'POST',400);
+    await call(`/chats/${chat.id}`,{responding_agent_id:other.id},'PATCH',409);
+    await call(`/chats/${chat.id}`,{responding_agent_id:null},'PATCH',409);
+    await call(`/chats/${chat.id}/turns`,turn({agent_id:other.id}),'POST',409);
+    await call('/runs',{mode:'live',chat_id:chat.id,agent_id:other.id,prompt:'No substitution'},'POST',409);
+    await call('/context/inspect',{workspace_id:workspace.id,chat_id:chat.id,agent_id:other.id,prompt:'No substitution'},'POST',409);
+    assert.equal(fake.launches,0);assert.equal(fake.commandCalls,0);assert.equal(api.snapshot().runs.length,0);
+    await connectFixture();fake.mode='failure';
+    const receipt=await call(`/chats/${chat.id}/turns`,turn({work_mode:'conversation'}));
+    await call(`/agents/${agent.id}`,{archived_at:new Date().toISOString()},'PATCH');
+    assert.equal((await call(`/chats/${chat.id}/turns`,turn({work_mode:'conversation'}),'POST',200)).run.id,receipt.run.id);
+    await call(`/chats/${chat.id}/turns`,turn({client_turn_id:'new-after-archive',work_mode:'conversation'}),'POST',400);
+    await call(`/chats/${chat.id}/messages`,{content:'A local note remains possible.'});
+    assert.equal(fake.launches,1);
+  });
+});
+
+test('concurrent first legacy sends select one identity without rewriting historical participants',async()=>{
+  await withApi(async({call,api,fake,workspace,agent,chat,turn,connectFixture})=>{
+    const other=(await call('/agents',{workspace_id:workspace.id,name:'Second',provider:'codex'})).agent;
+    const db=new DatabaseSync(api.dbPath);
+    try {
+      db.prepare('UPDATE chats SET responding_agent_id=NULL,participant_agent_ids_json=? WHERE id=?').run(JSON.stringify([agent.id,other.id]),chat.id);
+      const participants=db.prepare('SELECT participant_agent_ids_json FROM chats WHERE id=?').get(chat.id).participant_agent_ids_json;
+      await connectFixture();fake.mode='hold';
+      const results=await Promise.allSettled([
+        call(`/chats/${chat.id}/turns`,turn({work_mode:'conversation'})),
+        call(`/chats/${chat.id}/turns`,turn({agent_id:other.id,client_turn_id:'competing-first-send',work_mode:'conversation'})),
+      ]);
+      assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
+      assert.equal(fake.launches,1);assert.equal(api.snapshot().runs.length,1);
+      const saved=db.prepare('SELECT * FROM chats WHERE id=?').get(chat.id);
+      assert.ok([agent.id,other.id].includes(saved.responding_agent_id));assert.equal(saved.participant_agent_ids_json,participants);
+      const winner=results.find(result=>result.status==='fulfilled').value;
+      await call(`/runs/${winner.run.id}/stop`,{},'POST',200);
+      const loser=saved.responding_agent_id===agent.id?other.id:agent.id;
+      const rejected=await call(`/chats/${chat.id}/turns`,turn({agent_id:loser,client_turn_id:'reject-other-after-win',work_mode:'conversation'}),'POST',409);
+      assert.equal(rejected.error.code,'conversation_agent_mismatch');assert.equal(fake.launches,1);
+    } finally {db.close();}
+  });
+});
+
+test('concurrent identical first sends recover one receipt rather than launching twice',async()=>{
+  await withApi(async({call,api,fake,chat,turn,connectFixture})=>{
+    await connectFixture();fake.mode='hold';
+    const input=turn({work_mode:'conversation'});
+    const responses=await Promise.all([
+      call(`/chats/${chat.id}/turns`,input),
+      call(`/chats/${chat.id}/turns`,input,'POST',200),
+    ]);
+    assert.equal(responses[0].run.id,responses[1].run.id);assert.equal(fake.launches,1);
+    assert.equal(api.snapshot().messages.length,1);
+    await call(`/runs/${responses[0].run.id}/stop`,{},'POST',200);
+  });
+});
+
+test('workspace archives remap conversation identity without transferring credentials or falling back to an original profile',async()=>{
+  await withApi(async({call,api,fake,workspace,chat,agent})=>{
+    const archive=await call(`/export?workspace_id=${workspace.id}`);
+    const imported=await call('/import',archive);
+    const copy=imported.bootstrap.chats.find(item=>item.workspace_id===imported.result.id && item.title===chat.title);
+    const importedAgent=imported.bootstrap.agents.find(item=>item.workspace_id===imported.result.id && item.name===agent.name);
+    assert.equal(copy.responding_agent_id,importedAgent.id);assert.notEqual(copy.responding_agent_id,agent.id);
+    assert.equal(importedAgent.provider_connection_id,null);
+    // Simulate an archive whose responding profile was deleted long ago.
+    archive.data.chats[0].responding_agent_id='deleted-profile';
+    const unavailable=await call('/import',archive);
+    const blocked=unavailable.bootstrap.chats.find(item=>item.workspace_id===unavailable.result.id && item.title===chat.title);
+    assert.notEqual(blocked.responding_agent_id,'deleted-profile');
+    assert.ok(!unavailable.bootstrap.agents.some(item=>item.id===blocked.responding_agent_id));
+    assert.equal(fake.launches,0);assert.equal(api.snapshot().runs.length,0);
+  });
+});
+
+test('deleted conversation agents import as shared unavailable identities without reviving profiles',async()=>{
+  await withApi(async({call,api,fake,workspace,chat,agent})=>{
+    await call(`/chats/${chat.id}/messages`,{content:'Keep this conversation history.'});
+    await call(`/agents/${agent.id}`,undefined,'DELETE',200);
+    const archive=await call(`/export?workspace_id=${workspace.id}`);
+    assert.ok(!archive.data.agents.some(item=>item.id===agent.id));
+    assert.deepEqual(archive.data.chats[0].participant_agent_ids,[agent.id]);
+    assert.equal(archive.data.chats[0].responding_agent_id,agent.id);
+    const imported=await call('/import',archive);
+    const copy=imported.bootstrap.chats.find(item=>item.workspace_id===imported.result.id && item.title===chat.title);
+    assert.notEqual(copy.responding_agent_id,agent.id);
+    assert.deepEqual(copy.participant_agent_ids,[copy.responding_agent_id]);
+    assert.ok(!imported.bootstrap.agents.some(item=>item.id===copy.responding_agent_id));
+    assert.equal(imported.bootstrap.messages.find(item=>item.chat_id===copy.id).content,'Keep this conversation history.');
+    await call(`/chats/${copy.id}/turns`,{agent_id:'codex',content:'Do not substitute another identity.',client_turn_id:'deleted-agent-blocked'},'POST',409);
+    assert.equal(fake.launches,0);assert.equal(api.snapshot().runs.length,0);
+
+    for (const field of ['participant_agent_ids','responding_agent_id']) {
+      const invalid=structuredClone(archive);
+      invalid.data.chats[0][field]=field==='participant_agent_ids'?[workspace.id]:workspace.id;
+      const rejected=await call('/import',invalid,'POST',400);
+      assert.match(rejected.error.message,/non-agent content/);
+    }
   });
 });
 

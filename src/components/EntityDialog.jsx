@@ -6,6 +6,7 @@ import { DateField } from "./DateField.jsx";
 import { ImageField } from './ImageField.jsx';
 import { validateProjectDates } from "../lib/workspace-spaces.js";
 import { WorkflowSelect, LabelPicker } from './WorkProperties.jsx';
+import { initialConversationAgent, conversationAgentFields } from '../lib/conversation-editor.js';
 import {
   Button,
   Dialog,
@@ -63,7 +64,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
     github_url: val(base, "github_url") ?? "",
     due_at: val(base, "due_at")?.slice(0, 10) ?? "",
     assignee_agent_ids: val(base, "assignee_agent_ids") ?? [],
-    participant_agent_ids: val(base, "participant_agent_ids") ?? [],
+    responding_agent_id: initialConversationAgent(base, Boolean(item)),
     provider: base.provider ?? "codex",
     instructions: base.instructions ?? "",
     working_directory: base.working_directory ?? "",
@@ -72,7 +73,9 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
   });
   const initial = useRef(form);
   const [discarding, setDiscarding] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(!defaults.guided);
+  const [advancedOpen, setAdvancedOpen] = useState(true);
+  const [createMore, setCreateMore] = useState(false);
+  const titleRef = useRef(null);
   const keepRef = useRef(null);
   const dirty = JSON.stringify(form) !== JSON.stringify(initial.current);
   useEffect(() => { if (discarding) keepRef.current?.focus(); }, [discarding]);
@@ -82,6 +85,10 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
   const projects = visible(data.projects);
   const teams = visible(data.teams);
   const linkedProject = projects.find((project) => project.id === form.project_id);
+  const boundConversationAgent = kind === 'chat' ? val(item, 'responding_agent_id') : null;
+  const conversationAgents = visible(data.agents).filter(agent => !val(agent, 'workspace_id') || val(agent, 'workspace_id') === workspace?.id);
+  const selectedConversationAgent = data.agents.find(agent => agent.id === form.responding_agent_id);
+  const unavailableConversationAgent = form.responding_agent_id && !conversationAgents.some(agent => agent.id === form.responding_agent_id);
   function requestClose() {
     if (busy) return;
     if (discarding) setDiscarding(false);
@@ -142,8 +149,8 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           title: form.title.trim(),
           project_id: form.project_id || null,
           task_id: form.task_id || null,
-          kind: form.task_id ? "task" : form.project_id ? "project" : "general",
-          participant_agent_ids: form.participant_agent_ids,
+          kind: item?.kind || (form.task_id ? "task" : form.project_id ? "project" : "general"),
+          ...conversationAgentFields({ item, agentId: form.responding_agent_id, agents: data.agents, workspaceId: workspace?.id }),
         };
       if (kind === "agent")
         input = {
@@ -168,6 +175,13 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
       notify(
         `${labels[kind][0].toUpperCase()}${labels[kind].slice(1)} ${item ? "saved" : "created"}`,
       );
+      if (!item && kind === 'task' && createMore) {
+        const next = { ...form, title: '', description: '' };
+        initial.current = next;
+        setForm(next);
+        requestAnimationFrame(() => titleRef.current?.focus());
+        return;
+      }
       onClose();
       if (!item && result?.id) {
         if (kind === "workspace") setWorkspace(result.id);
@@ -184,6 +198,9 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
   }
   return (
     <Dialog
+      editor={!discarding}
+      closeDisabled={busy}
+      className={`writing-editor writing-editor-${kind}`}
       title={discarding ? "Discard your changes?" : `${item ? "Edit" : "New"} ${labels[kind]}`}
       subtitle={
         kind === "workspace"
@@ -193,7 +210,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
       onClose={requestClose}
     >
       {discarding ? <div className="space-discard"><p>Your changes have not been saved. You can keep editing or close without saving.</p><div className="space-editor-actions"><Button onClick={onClose}>Discard changes</Button><Button ref={keepRef} variant="primary" onClick={() => setDiscarding(false)}>Keep editing</Button></div></div> :
-      <Form onSubmit={submit} className="entity-form">
+      <Form onSubmit={submit} className="entity-form writing-form">
         <div className="form-fields">
           <Field
             label={
@@ -205,6 +222,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
             <input
               {...defaultField(kind === 'project' || kind === 'workspace' || kind === 'agent' ? 'name' : 'title', ['workspace', 'project', 'agent'].includes(kind) ? 'Name' : 'Title')}
               autoFocus
+              ref={titleRef}
               required
               maxLength={200}
               value={form.title}
@@ -255,6 +273,17 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           {kind === "workspace" ? <ImageField label="Workspace picture" value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} /> : null}
           {kind === "project" ? (
             <>
+              <WorkflowSelect kind="project" item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
+              <LabelPicker compact kind="project" value={form.labels} onChange={labels => change('labels', labels)} />
+              <div className="form-grid">
+                <Select label="Area" value={form.team_id} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
+                <Field label="Project lead"><input {...defaultField('lead', 'Project lead')} value={form.lead} maxLength={200} onChange={(event) => change("lead", event.target.value)} placeholder="Name of the project lead" /></Field>
+              </div>
+              <div className="form-grid">
+                <Field label="Start date"><DateField {...defaultField('start-date', 'Start date')} data-field-default-allow="true" value={form.start_date} onChange={(value) => change("start_date", value)} /></Field>
+                <Field label="Target date"><DateField {...defaultField('target-date', 'Target date')} data-field-default-allow="true" value={form.target_date} onChange={(value) => change("target_date", value)} /></Field>
+              </div>
+              <details className="editor-details"><summary>Project details & picture</summary><div className="editor-detail-fields">
               <ImageField value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} />
               <Field label="Project brief" hint="The goal and success criteria. Markdown headings and lists are supported.">
                 <textarea
@@ -265,16 +294,6 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                   placeholder="What does success look like?"
                 />
               </Field>
-              <WorkflowSelect kind="project" item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
-              <LabelPicker kind="project" value={form.labels} onChange={labels => change('labels', labels)} />
-              <div className="form-grid">
-                <Select label="Area" value={form.team_id} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
-                <Field label="Project lead"><input {...defaultField('lead', 'Project lead')} value={form.lead} maxLength={200} onChange={(event) => change("lead", event.target.value)} placeholder="Name of the project lead" /></Field>
-              </div>
-              <div className="form-grid">
-                <Field label="Start date"><DateField {...defaultField('start-date', 'Start date')} data-field-default-allow="true" value={form.start_date} onChange={(value) => change("start_date", value)} /></Field>
-                <Field label="Target date"><DateField {...defaultField('target-date', 'Target date')} data-field-default-allow="true" value={form.target_date} onChange={(value) => change("target_date", value)} /></Field>
-              </div>
               <Field
                 label="Working folder"
                 hint="Absolute path to the project folder on this computer. Used when you start a live session."
@@ -295,12 +314,12 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                   placeholder="https://github.com/owner/repo"
                 />
               </Field>
+              </div></details>
             </>
           ) : null}
           {kind === "task" && advancedOpen ? (
             <>
               <Select label="Area" value={linkedProject ? linkedProject.team_id ?? "" : form.team_id} disabled={Boolean(linkedProject)} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
-              <p className="form-note">{linkedProject ? "The Area is inherited from the linked project." : "A route can belong to an Area without a project."}</p>
               <div className="form-grid">
                 <WorkflowSelect item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
                 <Select
@@ -316,7 +335,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                 </Select>
               </div>
               <div className="form-grid">
-                <LabelPicker value={form.labels} onChange={labels => change('labels', labels)} />
+                <LabelPicker compact value={form.labels} onChange={labels => change('labels', labels)} />
                 <Field label="Due date">
                   <DateField
                     {...defaultField('due-date', 'Due date')}
@@ -361,35 +380,17 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                   </option>
                 ))}
               </Select>
-              <fieldset className="agent-options">
-                <legend>Agents in this conversation</legend>
-                {visible(data.agents).length ? (
-                  visible(data.agents).map((agent) => (
-                    <label key={agent.id}>
-                      <input
-                        type="checkbox"
-                        checked={form.participant_agent_ids.includes(agent.id)}
-                        onChange={(e) =>
-                          change(
-                            "participant_agent_ids",
-                            e.target.checked
-                              ? [...form.participant_agent_ids, agent.id]
-                              : form.participant_agent_ids.filter(
-                                  (id) => id !== agent.id,
-                                ),
-                          )
-                        }
-                      />
-                      {agent.name}
-                      <small>{agent.provider}</small>
-                    </label>
-                  ))
-                ) : (
-                  <p className="muted">
-                    Add agents from the Agents page whenever you’re ready.
-                  </p>
-                )}
-              </fieldset>
+              <Select
+                label="Responding agent"
+                value={form.responding_agent_id}
+                required={!item}
+                disabled={busy || Boolean(boundConversationAgent)}
+                onChange={value => change('responding_agent_id', value)}
+              >
+                {!boundConversationAgent ? <option value="">{item ? 'No future agent selected' : 'Choose one agent…'}</option> : null}
+                {unavailableConversationAgent ? <option value={form.responding_agent_id} disabled>{selectedConversationAgent?.name || 'Saved agent'} · unavailable</option> : null}
+                {conversationAgents.filter(agent => !boundConversationAgent || agent.id === boundConversationAgent).map(agent => <option key={agent.id} value={agent.id} disabled={agent.status === 'paused'}>{agent.name}{agent.status === 'paused' ? ' · paused' : ''}</option>)}
+              </Select>
             </>
           ) : null}
           {kind === "agent" ? (
@@ -450,13 +451,14 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           <ErrorMessage error={error} />
         </div>
         <footer className="dialog-footer">
+          {!item && kind === 'task' ? <label className="editor-create-more"><input type="checkbox" checked={createMore} disabled={busy} onChange={event => setCreateMore(event.target.checked)} />Create more</label> : null}
           <Button disabled={busy} onClick={requestClose}>Cancel</Button>
           <Button
             type="submit"
             variant="primary"
             icon={item ? Check : Plus}
             busy={busy}
-            disabled={!form.title.trim()}
+            disabled={!form.title.trim() || kind === 'chat' && !item && !form.responding_agent_id}
           >
             {item ? "Save changes" : `Create ${labels[kind]}`}
           </Button>

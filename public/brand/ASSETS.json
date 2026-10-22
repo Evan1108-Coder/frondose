@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-22",
+  "scope": "Current Frondose frond rasters only; legacy assets are retained for compatibility.",
+  "approval": "Evan approved reuse of the earlier generated frondose-logo-frond-v1 assets; recorded in AGENTS.md October 22 simplification decision.",
+  "generation": {
+    "status": "generated earlier; reused, not generated for this implementation",
+    "prompt": null,
+    "tool": null,
+    "model": null,
+    "date": null,
+    "limitations": "Original generation details are unavailable. No prompt, authorship, trademark clearance or exclusive-rights claim is inferred."
+  },
+  "metadata": "Shipping PNGs carry an origin statement in a PNG tEXt chunk through Impeccable embed-prompt. That text is provenance, not a reconstructed generation prompt. Source Downloads files are unchanged.",
+  "assets": [
+    {
+      "path": "frondose-frond.png",
+      "source": "/Users/EvanLu/Downloads/frondose-logo-frond-v1.png",
+      "sourceSha256": "cc29f9c519298f75de8af77f34efb61b348817c968bffb7086e5d0e6e90cca57",
+      "sha256": "038a773defbe0d1c0cafd1dc69f1814560cb90f9023f10c9f3433b5cbd96ba01",
+      "width": 1254,
+      "height": 1254,
+      "alpha": true,
+      "transformation": "Copied source bytes, then embedded origin metadata only; image data unchanged.",
+      "usage": "Brand.jsx symbol and live-type wordmark; in-app Frondose marks and apple-touch-icon."
+    },
+    {
+      "path": "frondose-frond-icon.png",
+      "source": "/Users/EvanLu/Downloads/frondose-logo-frond-v1-128.png",
+      "sourceSha256": "9ead0d3919f666c6e8c037784e509482dcf7f5f30a780bb67d8f47d92e4b7418",
+      "sha256": "c610105d7eaea0395bce3ca188c6b9e9e5ef46742829e568f63e9ec0697a1578",
+      "width": 128,
+      "height": 128,
+      "alpha": true,
+      "transformation": "Copied supplied 128px variant, then embedded origin metadata only; earlier variant-processing details are unknown.",
+      "usage": "Brand.jsx appIcon, favicon and web app manifest."
+    }
+  ]
+}

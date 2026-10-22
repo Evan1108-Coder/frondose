@@ -14,6 +14,10 @@ test('prepared handoff preserves dirty and uncertain drafts',()=>{
   for (const patch of [{text:'Unsent note'},{files:[{name:'a'}]},{turn:'uncertain'},{context:{id:'old'}},{replyTo:'message'},{sending:true}]) assert.throws(()=>coordinationDraft(prepared,'chat_one',{...empty(),...patch}),/current draft/);
   for(const patch of [{chat_id:'other'},{agent_id:null},{dispatched:true},{context:{...prepared.context,chat_id:'other'}}]) assert.throws(()=>coordinationDraft({...prepared,...patch},'chat_one',empty()),/does not match/);
 });
+test('a handoff cannot substitute another identity for a bound conversation',()=>{
+  assert.throws(()=>coordinationDraft(prepared,'chat_one',empty(),'bound-agent'),/different agent/);
+  assert.equal(coordinationDraft(prepared,'chat_one',empty(),'agent_two').recipient,'agent_two');
+});
 test('coordination navigation roundtrips both references and rejects partial/malformed references',()=>{
   const hash=pageHash('chats','chat_one',{coordinationRunId:'run_one',coordinationId:'coord_one'});
   assert.equal(pageHash(parsePage(hash).view,parsePage(hash).id,parsePage(hash)),hash);

@@ -46,9 +46,20 @@ export function threadMessages(messages, rootId) {
   return messages.filter(message => included.has(message.id));
 }
 export function defaultRecipient(chat, agents) {
+  if (val(chat, 'responding_agent_id')) return val(chat, 'responding_agent_id');
   const ids = val(chat, 'participant_agent_ids') || [];
-  const available = agents.filter(agent => ids.includes(agent.id) && !val(agent, 'archived_at'));
-  return available.length === 1 ? available[0].id : 'note';
+  // Keep the identity visible even when its profile has become unavailable.
+  // Opening a saved conversation never silently converts agent work to notes.
+  return ids.length === 1 ? ids[0] : 'note';
+}
+export function conversationRecipientBlocker(chat, recipient, { recovering = false } = {}) {
+  const bound = val(chat, 'responding_agent_id');
+  if (recovering) return null; // Exact receipt lookup can recover a legacy turn.
+  if (bound && recipient !== 'note' && recipient !== bound) return 'This draft targets a different agent. Its text is preserved. Use the conversation’s responding agent or start another conversation.';
+  return null;
+}
+export function composerOccupied(composer) {
+  return Boolean(composer.text?.trim() || composer.files?.length || composer.turn || composer.context || composer.replyTo || composer.sending || Object.keys(composer.retryKeys || {}).length);
 }
 export function turnBlocker({ agent, readiness, folder, activeRun, files, permission = 'conversation', recovering = false }) {
   if (!agent) return null;

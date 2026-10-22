@@ -210,64 +210,32 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.components-agent-editor.agent-editor.default-working-folder.c40cace68f28",
-    "page": "Edit agent / New agent",
-    "label": "Default working folder",
-    "type": "text",
-    "eligible": true,
-    "reason": null
-  },
-  {
-    "key": "source.components-agent-editor.agent-editor.description.c71859bfd38b",
-    "page": "Edit agent / New agent",
+    "key": "source.components-agent-editor.agent-editor.description.a7c0cc4baa7c",
+    "page": "Edit AI provider / Edit agent / Connect AI provider / New agent",
     "label": "Description",
     "type": "text",
     "eligible": true,
     "reason": null
   },
   {
-    "key": "source.components-agent-editor.agent-editor.expected-output-behavior.639fceacfd05",
-    "page": "Edit agent / New agent",
-    "label": "Expected output behavior",
-    "type": "textarea",
-    "eligible": true,
-    "reason": null
-  },
-  {
-    "key": "source.components-agent-editor.agent-editor.instructions.6c05fdef8c06",
-    "page": "Edit agent / New agent",
-    "label": "Instructions",
-    "type": "textarea",
-    "eligible": true,
-    "reason": null
-  },
-  {
-    "key": "source.components-agent-editor.agent-editor.model-identifier.17419b72c713",
-    "page": "Edit agent / New agent",
-    "label": "Model identifier",
-    "type": "text",
-    "eligible": true,
-    "reason": null
-  },
-  {
-    "key": "source.components-agent-editor.agent-editor.name.8f1509bb2cc6",
-    "page": "Edit agent / New agent",
+    "key": "source.components-agent-editor.agent-editor.name.ada5c53e122c",
+    "page": "Edit AI provider / Edit agent / Connect AI provider / New agent",
     "label": "Name",
     "type": "text",
     "eligible": true,
     "reason": null
   },
   {
-    "key": "source.components-agent-editor.agent-editor.role.52ca8b8be62a",
-    "page": "Edit agent / New agent",
-    "label": "Role",
-    "type": "text",
+    "key": "source.components-agent-editor.agent-editor.personalization.97e0c740037e",
+    "page": "Edit AI provider / Edit agent / Connect AI provider / New agent",
+    "label": "Personalization",
+    "type": "textarea",
     "eligible": true,
     "reason": null
   },
   {
-    "key": "source.components-agent-editor.agent-editor.search-api-providers-and-compute.d48e1d1cd8ab",
-    "page": "Edit agent / New agent · Provider",
+    "key": "source.components-agent-editor.agent-editor.search-providers.607c6422ce97",
+    "page": "Edit AI provider / Edit agent / Connect AI provider / New agent",
     "label": "Search agent providers",
     "type": "search",
     "eligible": true,
@@ -450,8 +418,8 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.components-feedback-dialog.feedback-dialog.how-could-rumbo-work-better-for-.75d9672bc16c",
-    "page": "Feedback",
+    "key": "source.components-feedback-dialog.feedback-dialog.how-could-rumbo-work-better-for-.dd0c24ce5a14",
+    "page": "Contact us",
     "label": "How could Frondose work better for you?",
     "type": "textarea",
     "eligible": true,
@@ -1314,6 +1282,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "source.views-settings.profile.display-name-you.c176df10f0ff",
+    "page": "Your profile",
+    "label": "Display name (You)",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "source.views-settings.profile.display-name.b8eb5dd4d37c",
     "page": "Your profile",
     "label": "Display name",
@@ -1326,6 +1302,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "Your profile",
     "label": "Email",
     "type": "email",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-settings.profile.username.e8fd38529301",
+    "page": "Your profile",
+    "label": "Username",
+    "type": "text",
     "eligible": true,
     "reason": null
   },

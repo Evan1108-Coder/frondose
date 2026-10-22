@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, Keyboard, PanelLeft, Settings } from './icons.jsx';
+import { BookOpen, Keyboard, PanelLeft, Settings, MessageCircle } from './icons.jsx';
 import { Dialog, useApp } from '../ui.jsx';
 import { currentMotionPreference } from '../lib/motion.js';
 import './help-menu.css';
 import { recentProductUpdates } from '../lib/product-updates.js';
 
 export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
-  const { navigate, customizeSidebar, showShortcuts } = useApp();
+  const { navigate, customizeSidebar, showShortcuts, showFeedback } = useApp();
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
@@ -61,6 +61,7 @@ export function HelpMenu({ onNavigate, onAction, overlayOpen }) {
   const go = onNavigate ?? navigate;
   const items = [
     ['Docs', BookOpen, () => go('docs')],
+    ['Contact us', MessageCircle, showFeedback],
     ['What the tools mean', BookOpen, () => setTermsOpen(true)],
     ['Sidebar customization', PanelLeft, customizeSidebar],
     ['Keyboard shortcuts', Keyboard, showShortcuts],

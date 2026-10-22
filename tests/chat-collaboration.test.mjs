@@ -207,6 +207,7 @@ test('chat snapshot migration adds nullable lineage without rewriting legacy con
 });
 
 test('branches copy only history through the selected message, retain origins and never start agents', async () => fixture(async ({ db, call }) => {
+  db.prepare('UPDATE chats SET responding_agent_id=? WHERE id=?').run('unavailable-bound-agent','c');
   const before = db.prepare('SELECT * FROM messages WHERE chat_id=?').all('c');
   const result = (await call('branch', { message_id: 'm2', title: 'Alternative approach' })).result;
   const copied = db.prepare('SELECT * FROM messages WHERE chat_id=? ORDER BY rowid').all(result.chat_id);
@@ -215,6 +216,7 @@ test('branches copy only history through the selected message, retain origins an
   assert.equal(JSON.parse(copied[1].metadata_json).reply_to, copied[0].id);
   assert.deepEqual(db.prepare('SELECT * FROM messages WHERE chat_id=?').all('c'), before);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM runs').get().n, 0);
+  assert.equal(db.prepare('SELECT responding_agent_id FROM chats WHERE id=?').get(result.chat_id).responding_agent_id,'unavailable-bound-agent');
   assert.equal(chatCollaborationSnapshot(db).chat_collaboration.find(item => item.chat_id === result.chat_id).branch.copied_messages, 2);
 }));
 

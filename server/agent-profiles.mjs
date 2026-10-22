@@ -5,7 +5,7 @@ import { validApiModel } from '../src/lib/ai-provider-catalog.js';
 import { getRunnerProvider } from '../src/lib/runner-provider-catalog.js';
 
 export const AGENT_PROFILE_FIELDS = [
-  'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions',
+  'name', 'identity_kind', 'role', 'provider', 'provider_connection_id', 'description', 'instructions',
   'working_directory', 'model', 'reasoning_effort', 'memory_policy',
   'context_source_ids_json', 'default_area_id', 'default_project_id',
   'permission_policy', 'output_behavior', 'color', 'image_url',
@@ -39,6 +39,7 @@ function profileSnapshot(row) {
 
 export function installAgentProfiles(db) {
   addColumns(db, 'agents', {
+    identity_kind: "TEXT NOT NULL DEFAULT 'agent'",
     role: "TEXT NOT NULL DEFAULT ''",
     provider_connection_id: 'TEXT REFERENCES connections(id) ON DELETE SET NULL',
     reasoning_effort: "TEXT NOT NULL DEFAULT ''",
@@ -89,6 +90,8 @@ export function agentProfileReferenceReadable(db, workspaceId, table, id, { acto
 }
 
 export function validateAgentProfile(db, record, { actor, allowed, importing = false } = {}) {
+  record.identity_kind ??= 'agent';
+  if (!['agent', 'provider'].includes(record.identity_kind)) throw validationError('Choose a personalized agent or an AI provider identity.');
   if (record.image_url && (typeof record.image_url !== 'string' || !record.image_url.startsWith('data:'))) throw validationError('Upload a PNG, JPEG or WebP agent picture. External image URLs are not supported.');
   validateAvatar(record.image_url ?? null);
   for (const [field, value] of Object.entries({ role: '', model: '', reasoning_effort: '', memory_policy: 'reviewed', context_source_ids_json: [], default_area_id: null, default_project_id: null, permission_policy: 'review', output_behavior: '' })) if (record[field] === undefined) record[field] = value;

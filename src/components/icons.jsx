@@ -38,6 +38,7 @@ import {
   SlidersHorizontal as SlidersHorizontalNode, Focus as FocusNode,
   ArchiveRestore as ArchiveRestoreNode, History as HistoryNode,
   FolderKanban as FolderKanbanNode, SquareStack as SquareStackNode,
+  Maximize2 as Maximize2Node, Minimize2 as Minimize2Node,
 } from "lucide";
 import { currentMotionPreference } from "../lib/motion.js";
 import { activateIcon, hoverShape, ICON_HOVER_SPRING, ICON_SPRING, registerIcon } from "../lib/icon-motion.js";
@@ -208,3 +209,5 @@ export const ArchiveRestore = defineIcon("ArchiveRestore", ArchiveRestoreNode);
 export const History = defineIcon("History", HistoryNode);
 export const FolderKanban = defineIcon("FolderKanban", FolderKanbanNode);
 export const SquareStack = defineIcon("SquareStack", SquareStackNode);
+export const Maximize2 = defineIcon("Maximize2", Maximize2Node);
+export const Minimize2 = defineIcon("Minimize2", Minimize2Node);

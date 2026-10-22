@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { captureSourceAccess, assertSourceAccess } from './context-source-access.mjs';
 import { readRunContext } from './run-context-store.mjs';
+import { installConversationAgent, assertConversationAgent } from './conversation-agent.mjs';
 
 const stamp = () => new Date().toISOString();
 const fail = (message, code = 'invalid_coordination', statusCode = 400) => { throw Object.assign(new Error(message), { code, errorCode: code, statusCode }); };
@@ -13,6 +14,7 @@ const publicRow = row => { const { source_access_json, target_scope_json, ...ite
 /** This is a coordination ledger, not a second execution engine. Records never
  * invoke providers, interrupt native turns, grant tools, or copy raw run context. */
 export function installRunCoordination(db) {
+  installConversationAgent(db);
   db.exec(`CREATE TABLE IF NOT EXISTS run_coordination (
     id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     source_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -103,6 +105,7 @@ export function createRunCoordination(db, { runId, input, actor, allowed, author
     if (existing.request_hash !== hash) fail('This request ID already recorded different instructions.', 'coordination_request_conflict', 409);
     return { ...publicRow(existing), replayed: true };
   }
+  assertConversationAgent(db.prepare('SELECT * FROM chats WHERE id=?').get(targetChatId), targetAgentId);
   if (db.prepare('SELECT count(*) n FROM run_coordination WHERE source_run_id=?').get(run.id).n >= 50) fail('This run has reached its 50-message coordination limit.', 'coordination_limit', 409);
   const id = `coord_${randomUUID()}`;
   db.prepare('INSERT INTO run_coordination(id,workspace_id,source_run_id,source_chat_id,source_agent_id,target_chat_id,target_agent_id,creator_id,author_type,request_id,request_hash,kind,content,source_access_json,target_scope_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id, run.workspace_id, run.id, run.chat_id, run.agent_id, targetChatId, targetAgentId, actor.id, authorType, requestId, hash, input.kind, canonical.content, JSON.stringify(inspection.sourceAccess), JSON.stringify(target), stamp());
@@ -123,6 +126,7 @@ export function listRunCoordination(db, runId, actor, allowed) {
 export function prepareRunCoordination(db, runId, itemId, actor, allowed) {
   const row = db.prepare('SELECT * FROM run_coordination WHERE id=? AND source_run_id=?').get(identifier(itemId, 'Coordination record'), runId);
   const { target } = assertItem(db, row, actor, allowed, true);
+  assertConversationAgent(db.prepare('SELECT * FROM chats WHERE id=?').get(row.target_chat_id), row.target_agent_id);
   if (JSON.stringify(target) !== row.target_scope_json) fail('The destination identity or scope changed. Record a fresh handoff.', 'coordination_target_changed', 409);
   const snapshotId = row.prepared_snapshot_id || `coord_context_${row.id}`;
   const sourceAccess = parse(row.source_access_json);

@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { installPersonalProfiles, selfProfile, updateSelfProfile } from './personal-profile.mjs';
+import { installConversationAgent, validateConversationAgent, assertConversationAgent, bindConversationAgent } from './conversation-agent.mjs';
 import { frondoseEnvironment, frondoseDataDirectory, frondoseDatabasePath } from './brand-config.mjs';
 import { installFrondoseBrand } from './brand-migration.mjs';
 import { changeContext } from './change-context.mjs';
@@ -89,7 +91,7 @@ const TABLE_CONFIG = {
     required: ['workspace_id', 'title'],
   },
   chats: {
-    fields: ['workspace_id', 'project_id', 'task_id', 'title', 'kind', 'participant_agent_ids_json', 'pinned', 'archived_at'],
+    fields: ['workspace_id', 'project_id', 'task_id', 'title', 'kind', 'participant_agent_ids_json', 'responding_agent_id', 'pinned', 'archived_at'],
     required: ['workspace_id', 'title'],
   },
   messages: {
@@ -97,7 +99,7 @@ const TABLE_CONFIG = {
     required: ['chat_id', 'content'],
   },
   agents: {
-    fields: ['workspace_id', 'name', 'role', 'provider', 'provider_connection_id', 'description', 'instructions', 'working_directory', 'status', 'model', 'reasoning_effort', 'memory_policy', 'context_source_ids_json', 'default_area_id', 'default_project_id', 'permission_policy', 'output_behavior', 'color', 'image_url', 'archived_at'],
+    fields: ['workspace_id', 'name', 'identity_kind', 'role', 'provider', 'provider_connection_id', 'description', 'instructions', 'working_directory', 'status', 'model', 'reasoning_effort', 'memory_policy', 'context_source_ids_json', 'default_area_id', 'default_project_id', 'permission_policy', 'output_behavior', 'color', 'image_url', 'archived_at'],
     required: ['name'],
   },
   memory_notes: {
@@ -195,7 +197,10 @@ function normalizeInput(resource, body) {
     record.labels_json ??= record.labels;
   }
   if (resource === 'projects') record.labels_json ??= record.labels;
-  if (resource === 'chats') record.participant_agent_ids_json ??= record.participant_agent_ids ?? record.participantAgentIds;
+  if (resource === 'chats') {
+    if (record.participant_agent_ids_json === undefined && (record.participant_agent_ids !== undefined || record.participantAgentIds !== undefined)) record.participant_agent_ids_json = record.participant_agent_ids ?? record.participantAgentIds;
+    if (record.responding_agent_id === undefined && record.respondingAgentId !== undefined) record.responding_agent_id = record.respondingAgentId;
+  }
   if (resource === 'agents') record.context_source_ids_json ??= record.context_source_ids ?? record.contextSourceIds;
   if (resource === 'messages') {
     record.attachments_json ??= record.attachments;
@@ -467,6 +472,7 @@ function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   installWorkspaceFeatures(db);
   installWorkflow(db);
   installChatCollaboration(db);
+  installConversationAgent(db);
   installTeamResources(db);
   installCoordination(db);
   installRouteTools(db);
@@ -550,6 +556,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   let store = createDatabase(dataDir, { seedMode });
   let identity, governance, access, connectionPlatform, aiConnections, copilotBridge, hostedCopilot, runnerConnections, agentRunnerSettings;
   function installAccess() {
+    installPersonalProfiles(store.db);
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
     identity = createIdentityService({ db: store.db });
     governance = createGovernanceService({ db: store.db });
@@ -929,6 +936,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         record.sender_type ||= 'user'; record.sender_name ||= 'You'; record.kind ||= 'message';
       }
       validateRecord(db, resource, record, config.required, config.fields);
+      if (resource === 'chats') validateConversationAgent(db, record);
       if (resource === 'agents') validateAgentProfile(db, record, { actor, allowed: access.allowed, filter: data => access.filter(data, actor) });
       if (resource === 'messages') record.metadata_json = { ...record.metadata_json, ...validateChatContextAttachments(db, record.chat_id, { ...record.metadata_json, attachments: record.attachments_json || [] }) };
       validateCustomFields(db, resource, record);
@@ -950,6 +958,8 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (!current) throw Object.assign(validationError(`${resource.slice(0, -1)} not found.`), { statusCode: 404 });
       if (resource === 'chats' && body.kind !== undefined && body.kind !== current.kind && isFrondoseAgentChat(db, current)) throw validationError('A Frondose Agent conversation keeps its dedicated chat type. Rename or archive it instead.');
       if (resource === 'agents' && body.version !== undefined && (!Number.isSafeInteger(body.version) || body.version !== current.version)) throw Object.assign(new Error('This agent profile changed. Reload it before saving.'), { statusCode: 409, errorCode: 'stale_profile' });
+      if (resource === 'agents' && body.identity_kind !== undefined && body.identity_kind !== current.identity_kind) throw validationError('A saved identity keeps its agent or provider type. Create a separate identity instead.');
+      if (resource === 'agents' && current.identity_kind === 'provider' && body.provider !== undefined && body.provider !== current.provider) throw validationError('A provider identity keeps its provider. Add a separate provider instead.');
       if (['tasks', 'projects'].includes(resource) && body.status !== undefined && body.workflow_status_id === undefined && body.status !== current.status) body.workflow_status_id = null;
       if (resource === 'messages' && body.chat_id !== undefined && body.chat_id !== current.chat_id) return fail(res, 400, 'validation_error', 'A message must stay in its original conversation.');
       if (resource === 'messages') {
@@ -986,6 +996,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (resource === 'projects' && body.local_path !== undefined && body.local_path !== current.local_path && workbench.activeSessionsFor(resource,itemId).length) return fail(res,409,'active_terminals','Stop this project’s Workbench terminals before changing its working folder.');
       if (resource === 'agents' && body.provider !== undefined && body.provider !== current.provider && activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop this agent’s active sessions before changing its provider.');
       const record = validateRecord(db, resource, { ...normalizeInput(resource, present(current)), ...body }, config.required, config.fields);
+      if (resource === 'chats') validateConversationAgent(db, record, current);
       if (resource === 'agents') validateAgentProfile(db, record, { actor, allowed: access.allowed, filter: data => access.filter(data, actor) });
       if (resource === 'messages') validateChatContextAttachments(db, record.chat_id, { ...record.metadata_json, attachments: record.attachments_json || [] });
       validateCustomFields(db, resource, record);
@@ -1042,6 +1053,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         for (const field of ['model', 'reasoning_effort']) if (body[field] !== undefined && body[field] !== (selection?.[field] ?? message.metadata?.[field] ?? '')) return fail(res, 409, 'turn_id_reused', 'This send ID already belongs to different model settings.');
         return send(res, 200, { message, run, replayed: true });
       }
+      assertConversationAgent(chat, body.agent_id);
       if (isFrondoseAgentChat(db, chat) && !body.context_inspection_id) return fail(res, 409, 'context_review_required', 'Inspect the exact Frondose Agent context before sending.');
       let source = null;
       if (body.source_message_id !== undefined) {
@@ -1079,6 +1091,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     if (body.title !== undefined && (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 2000)) return fail(res, 400, 'validation_error', 'Session title is required and must be under 2,000 characters.');
     if ((body.agent_name ?? body.agentName) !== undefined && typeof (body.agent_name ?? body.agentName) !== 'string') throw validationError('Agent name must be text.');
     const agentId = body.agent_id || body.agentId;
+    if (body.mode === 'live' && linkedChat) assertConversationAgent(linkedChat, agentId);
     const agent = agentId ? db.prepare('SELECT * FROM agents WHERE id=?').get(agentId) : null;
     if (agentId && (!agent || agent.archived_at || agent.status === 'paused' || (agent.workspace_id && agent.workspace_id !== workspaceId))) throw validationError('Choose an available agent in this workspace.');
     if (body.skill_evaluation) {
@@ -1146,9 +1159,18 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         }
         if (!['read-only', 'workspace-write'].includes(permissionMode) || (!runnerBinding && provider === 'claude' && permissionMode !== 'read-only')) throw validationError('Choose supported project access for this connection.');
       }
+      // A concurrent exact send may have committed while context compilation
+      // yielded. Re-enter the receipt path before any new transaction/provider.
+      if (turn && db.prepare('SELECT 1 FROM chat_turns WHERE chat_id=? AND client_turn_id=?').get(links.chat_id, turn.clientId)) return await launchRun({ actor, body, taskRunMatch, chatTurnMatch, res, scheduledInspection });
       db.exec('BEGIN');
       let sourceMessage = turn?.source;
       try {
+        if (linkedChat) {
+          bindConversationAgent(db, linkedChat.id, agent?.id);
+          // Another request may have passed its early busy check while context
+          // compilation yielded. Recheck before storing a second paid turn.
+          if (db.prepare("SELECT 1 FROM runs WHERE chat_id=? AND status IN ('queued','starting','running','needs_input','paused')").get(linkedChat.id)) throw Object.assign(new Error('This conversation already has work in progress. Wait for it to finish or stop its session.'), { statusCode:409, errorCode:'chat_agent_busy' });
+        }
         if (turn && !sourceMessage) {
           const messageId = id('message');
           const profile = db.prepare("SELECT name FROM local_profile WHERE id='local'").get();
@@ -1344,6 +1366,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
           const attachmentAccess = chatContextSnapshotAccess(db, { chatId: chat.id, workspaceId: body.workspace_id, attachments, actor, allowed: access.allowed });
           return { title: `Note · ${payload.content.trim().slice(0, 100)}`, payload: { ...payload, agent_id: null, content: payload.content.trim(), attachments }, review: { chat, ...(attachmentAccess ? { inspection: { manifest: { resolved: { workspace_id: body.workspace_id } }, sourceAccess: attachmentAccess } } : {}) } };
         }
+        assertConversationAgent(chat, payload.agent_id);
         if (!body.context_inspection_id) throw validationError('Review the exact message context before scheduling it.');
         const preview = getInspection(db, body.context_inspection_id, { actorId: actor.id, workspaceId: body.workspace_id });
         const input = preview.input;
@@ -1693,6 +1716,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const resolved = resolveRunContext(db, body);
         governance.authorize(resolved.workspaceId, actor.id, 'agents.read', resolved.project ? { scope_type: 'project', scope_id: resolved.project.id } : {});
         const agent = body.agent_id ? db.prepare('SELECT * FROM agents WHERE id=?').get(body.agent_id) : null;
+        if (resolved.linkedChat) assertConversationAgent(resolved.linkedChat, body.agent_id);
         if (body.agent_id && (!agent || agent.archived_at || agent.status === 'paused')) throw validationError('Choose an active agent profile.');
         const input = contextInput(body, resolved, agent);
         const inspection = await compileContext(input, actor);
@@ -1826,6 +1850,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const exportedProjectIds = new Set(access.filter({projects:data.projects},actor).projects.map(row=>row.id));
         const exportedAgentIds = new Set(access.filter({agents:data.agents},actor).agents.map(row=>row.id));
         data.agent_project_links = workspaceId ? workspaceAgentLinks(db,workspaceId,{actor,allowed:access.allowed}).filter(link=>link.target_type === 'project' && exportedProjectIds.has(link.target_id) && exportedAgentIds.has(link.agent_id)).map(link=>({workspace_id:workspaceId,project_id:link.target_id,agent_id:link.agent_id})) : [];
+        delete data.profile; // Self-only presentation must never travel in a workspace archive.
         return send(res, 200, { format: 'frondose.workspace', version: 1, exported_at: now(), data });
       }
       const chatExport = path.match(/^\/chats\/([^/]+)\/export$/);
@@ -1982,17 +2007,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return send(res, 200, { connection: present(db.prepare('SELECT * FROM connections WHERE provider=?').get(provider)), probe, safe: true });
       }
 
-      if (req.method === 'GET' && (path === '/account' || path === '/profile')) return send(res, 200, { profile: present(db.prepare("SELECT * FROM local_profile WHERE id='local'").get()) });
+      if (req.method === 'GET' && (path === '/account' || path === '/profile')) return send(res, 200, { profile: selfProfile(db, actor) });
       if ((req.method === 'PATCH' || req.method === 'PUT') && (path === '/account' || path === '/profile')) {
-        const body = normalizeInput('profile', await readBody(req));
-        const allowed = ['name', 'email', 'avatar_url'].filter((field) => body[field] !== undefined);
-        if (!allowed.length) return fail(res, 400, 'validation_error', 'No supported profile fields were supplied.');
-        if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 200)) throw validationError('Your name must be between 1 and 200 characters.');
-        if (body.name) body.name = body.name.trim();
-        if (body.email !== undefined && body.email !== null && (typeof body.email !== 'string' || (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)))) throw validationError('Enter a valid email address.');
-        if (body.avatar_url !== undefined) validateAvatar(body.avatar_url);
-        db.prepare(`UPDATE local_profile SET ${allowed.map((field) => `${field}=?`).join(',')},updated_at=? WHERE id='local'`).run(...allowed.map((field) => body[field]), now());
-        return send(res, 200, { profile: present(db.prepare("SELECT * FROM local_profile WHERE id='local'").get()) });
+        return send(res, 200, { profile: updateSelfProfile(db, actor, await readBody(req)) });
       }
       if (req.method === 'GET' && path === '/settings') {
         const result = {}; for (const row of db.prepare('SELECT * FROM settings ORDER BY key').all()) result[row.key] = parseJson(row.value_json, {});

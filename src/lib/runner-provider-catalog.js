@@ -2,6 +2,7 @@
 // Apache-2.0. See third-party/paseo/LICENSE and NOTICE.md.
 // Modified for Frondose: no remote installation on discovery, no SVG embedding,
 // explicit transport/release/platform status, and immutable provenance.
+import { VERIFIED_RUNNER_NAMES } from './runner-provider-names.js';
 
 export const PASEO_SOURCE = Object.freeze({
   revision: 'c70a6cfb9ea29c87df52b6b6c574775b0d3b169c',
@@ -413,7 +414,9 @@ function normalize(entry, native = false) {
   const requiresInstallApproval = ['npx', 'uvx'].includes(launchTemplate[0]);
   return {
     id: entry.id,
-    title: entry.title,
+    title: VERIFIED_RUNNER_NAMES[entry.id]?.title || entry.title,
+    upstreamTitle: entry.title,
+    nameSourceUrl: VERIFIED_RUNNER_NAMES[entry.id]?.source || entry.installLink,
     description: entry.description || entry.title + ' on your connected computer',
     protocol: entry.protocol || 'acp',
     method: 'computer',

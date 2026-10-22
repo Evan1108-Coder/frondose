@@ -28,7 +28,8 @@ This continues the October 19 complete rebrand: features,
 navigation, workflows, and layouts should be preserved. Audit authorization,
 loading/error screens, metadata, exports, and small labels as well as primary UI.
 Do not rewrite user-authored content to achieve branding consistency. Use the
-authored F mark while retaining the existing palette, layouts and orb colors.
+approved blue frond mark selected on October 22, 2026, while retaining the
+existing palette, layouts and orb colors. The previous F mark is historical.
 
 ## Operating constraints
 

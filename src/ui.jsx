@@ -1,6 +1,6 @@
 import { cloneElement, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, LoaderCircle, Search, CircleAlert, CircleCheck, Circle, CircleDot, Clock, Minus } from "./components/icons.jsx";
+import { X, LoaderCircle, Search, CircleAlert, CircleCheck, Circle, CircleDot, Clock, Minus, Maximize2, Minimize2 } from "./components/icons.jsx";
 import { STATUSES, RUN_STATUSES } from "./lib/model.js";
 import { registerDialog } from "./components/dialog-manager.js";
 import { Tooltip } from "./components/Tooltip.jsx";
@@ -9,6 +9,7 @@ import { ServiceLogo } from './components/ServiceLogo.jsx';
 import { useApp as useAppContext } from './app-context.js';
 import { ErrorNotification } from './components/Notifications.jsx';
 import { currentMotionPreference } from './lib/motion.js';
+import './components/editor-dialog.css';
 
 export { AppContext, useApp } from "./app-context.js";
 export { EmptyState as Empty } from "./components/EmptyState.jsx";
@@ -106,7 +107,7 @@ export function SearchField({
 export function Field({ label, hint, children }) {
   const id = useId();
   return (
-    <div className="field">
+    <div className={`field ${['Name', 'Title', 'Agent name', 'Route title'].includes(label) && children.type === 'input' ? 'editor-name-field' : ''} ${label === 'Description' && children.type === 'textarea' ? 'editor-description-field' : ''}`}>
       <label htmlFor={id}>{label}</label>
       {cloneElement(children, {
         id,
@@ -148,6 +149,7 @@ export function Dialog({
   wide = false,
   className = "",
   closeDisabled = false,
+  editor = false,
 }) {
   const ref = useRef(null);
   const originRef = useRef(null);
@@ -155,6 +157,16 @@ export function Dialog({
   const closeTimer = useRef(null);
   const closingRef = useRef(false);
   const [closing, setClosing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [hasInput, setHasInput] = useState(editor);
+  useLayoutEffect(() => {
+    const panel = ref.current;
+    const update = () => setHasInput(editor || Boolean(panel?.querySelector('form input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), form textarea, form [role="combobox"]')));
+    update();
+    const observer = new MutationObserver(update);
+    if (panel) observer.observe(panel, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [editor]);
   // Capture before the commit: a child autoFocus can already own focus by the
   // time this dialog's effect runs, and that child disappears when we close.
   const openerRef = useRef(typeof document === 'undefined' ? null : document.activeElement);
@@ -167,7 +179,13 @@ export function Dialog({
     if (!fadeMs || className.includes('command-dialog')) { closeRef.current(); return; }
     closingRef.current = true;
     setClosing(true);
-    closeTimer.current = window.setTimeout(() => { if (closeRef.current() === false) { closingRef.current = false; setClosing(false); } }, fadeMs);
+    closeTimer.current = window.setTimeout(() => {
+      closeRef.current();
+      // A guarded close may keep this same dialog mounted for a discard step.
+      // Reset its exit state even when the handler did not explicitly return false.
+      closingRef.current = false;
+      setClosing(false);
+    }, fadeMs);
   };
   requestCloseRef.current = requestClose;
   useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -255,21 +273,34 @@ export function Dialog({
       }}
     >
       <section
-        className={`dialog ${wide ? "wide" : ""} ${className}`}
+        className={`dialog ${wide ? "wide" : ""} ${hasInput ? 'input-dialog' : ''} ${expanded ? 'dialog-expanded' : ''} ${className}`}
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
+        onDragOver={event => {
+          if (event.dataTransfer.types.includes('Files') && ref.current?.querySelector('.image-dropzone, .team-resource-dropzone')) event.preventDefault();
+        }}
+        onDrop={event => {
+          if (!event.dataTransfer.files.length || event.target.closest?.('.image-dropzone, .team-resource-dropzone')) return;
+          const zone = ref.current?.querySelector('.image-dropzone, .team-resource-dropzone');
+          if (!zone) return;
+          event.preventDefault();
+          zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: event.dataTransfer }));
+        }}
       >
         <header className="dialog-heading">
           <div>
             <h2>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
+          <div className="dialog-heading-actions">
+          {hasInput ? <IconButton label={expanded ? 'Restore dialog size' : 'Expand dialog'} aria-pressed={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 /> : <Maximize2 />}</IconButton> : null}
           <IconButton label="Close dialog" disabled={closeDisabled} onClick={requestClose}>
             <X />
           </IconButton>
+          </div>
         </header>
         {children}
       </section>
