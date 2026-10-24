@@ -850,7 +850,15 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.views-agent-roster.agents-view.search-agents.ff915d511a34",
+    "key": "source.views-agent-connections-home.agent-connections-home.search-agent-connections.a4447a557b7b",
+    "page": "Your Agents",
+    "label": "Search Agent Connections",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-agent-roster.agent-roster-view.search-agents.a58404958531",
     "page": "Your Agents",
     "label": "Search agents…",
     "type": "search",

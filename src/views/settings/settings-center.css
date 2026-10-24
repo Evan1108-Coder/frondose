@@ -146,14 +146,12 @@
 @media (max-width: 1150px) { .resource-row { flex-wrap: wrap; } .resource-actions { margin-left: auto; } .resource-summary { min-width: 150px; } .settings-canvas { padding: 24px; } }
 @media (min-width: 801px) and (max-width: 1100px) { .settings-center { gap: 20px; } }
 @media (min-width: 801px) {
-  .in-settings.sidebar-collapsed { --sidebar: 280px; }
+  .in-settings.sidebar-collapsed { --sidebar: var(--sidebar-expanded, 240px); }
   .settings-center.settings-sidebar-hidden { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .settings-center.settings-sidebar-hidden .settings-canvas { grid-column: 1; grid-row: 1; }
   .settings-center.settings-sidebar-hidden .settings-rail { position: fixed; inset: 56px auto 12px 12px; width: var(--sidebar); transform: translateX(calc(-100% - 24px)); pointer-events: none; z-index: 64; transition: transform 200ms var(--ease-drawer); }
   .settings-center.settings-sidebar-hidden.settings-sidebar-peek .settings-rail { transform: translateX(0); pointer-events: auto; box-shadow: 14px 0 36px #0004; }
 }
-@media (min-width: 1400px) { .in-settings.sidebar-collapsed { --sidebar: 292px; } }
-@media (min-width: 801px) and (max-width: 1100px) { .in-settings.sidebar-collapsed { --sidebar: 258px; } }
 @media (max-width: 800px) {
   .settings-center { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr); gap: 12px; }
   .settings-rail { padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 6px; overflow: visible; }

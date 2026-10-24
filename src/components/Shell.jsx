@@ -29,6 +29,7 @@ import { entityKey } from '../lib/sidebar-layout.js';
 import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 import { FrondoseAgentOrb } from './FrondoseAgentOrb.jsx';
 import { useFrondoseAgentAppearance } from '../lib/frondose-agent-appearance.js';
+import { SIDEBAR_DEFAULT_WIDTH } from '../lib/sidebar-size.js';
 
 function FrondoseAgentNavIcon() {
   const { workspace } = useApp();
@@ -243,7 +244,7 @@ export function Sidebar({
         className={`sidebar sidebar-v2 ${mobileOpen ? "mobile-open" : ""} ${collapsed ? "collapsed" : ""}`}
         onPointerLeave={() => { if (sidebarSizing?.hidden) sidebarSizing.setPeek(false); }}
       >
-        {!sidebarSizing?.hidden ? <SidebarResizeHandle width={sidebarSizing?.width ?? 280} preview={sidebarSizing?.preview} onResize={sidebarSizing?.resize} onHide={sidebarSizing?.hide} onRestore={sidebarSizing?.restore} /> : null}
+        {!sidebarSizing?.hidden ? <SidebarResizeHandle width={sidebarSizing?.width ?? SIDEBAR_DEFAULT_WIDTH} preview={sidebarSizing?.preview} onResize={sidebarSizing?.resize} onHide={sidebarSizing?.hide} onRestore={sidebarSizing?.restore} /> : null}
         <div className="sidebar-workspace-row">
         <div className="workspace-picker">
           <button

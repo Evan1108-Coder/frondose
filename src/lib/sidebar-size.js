@@ -1,6 +1,6 @@
 export const SIDEBAR_MIN_WIDTH = 200;
 export const SIDEBAR_HIDE_THRESHOLD = 72;
-export const SIDEBAR_DEFAULT_WIDTH = 280;
+export const SIDEBAR_DEFAULT_WIDTH = 240;
 export const SIDEBAR_PREVIEW_MIN_VIEWPORT = 1000;
 
 export function canShowSidebarPreview(viewportWidth, viewportHeight = 700) {

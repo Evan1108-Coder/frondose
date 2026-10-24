@@ -2,9 +2,7 @@
 .ai-connections > .page-heading { margin-bottom: 26px; }
 .ai-catalog-controls { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 22px 0 20px; }
 .ai-catalog-controls > .search-field { width: min(320px, 100%); margin: 0; }
-.ai-filter-tabs { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
-.ai-filter-tabs button { min-width: 75px; padding: 7px 14px; border: 0; border-radius: 6px; background: transparent; color: var(--secondary); font-size: 12px; font-weight: 520; cursor: pointer; }
-.ai-filter-tabs button[aria-pressed="true"] { color: white; background: var(--accent); box-shadow: 0 1px 5px color-mix(in srgb, var(--accent) 24%, transparent); }
+.ai-filter-tabs > button { min-width: 75px; }
 .ai-filter-tabs button:focus-visible, .ai-provider-row:focus-visible, .ai-provider-back:focus-visible, .ai-plugin-note button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ai-muted { color: var(--muted); font-size: 12px; }
 .ai-provider-table { border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--surface) 55%, var(--bg)); overflow: hidden; }

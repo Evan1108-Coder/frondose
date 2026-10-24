@@ -1,0 +1,9 @@
+Use case: ui-mockup
+Asset type: original wide product-presentation illustration for Frondose's OpenRouter connection gallery, not an interactive screen or actual execution screenshot.
+Primary request: a refined staged software product demo showing choosing a model for a conversation. Make the subject unmistakably a polished chat-and-work interface, not abstract art.
+Scene/backdrop: an opaque pale cool neutral ground with a restrained indigo accent field, soft natural depth. A generous open bottom quarter remains calm and nearly empty for a native caption added later.
+Subject: two layered front-facing dark charcoal application panes in the central upper 65 percent. A main conversation pane sits behind an elegant small model-selection palette, with three quiet rows indicated by neutral geometric circular marks and short text-like strokes. Do not depict any specific model name or invent capabilities. Clean Inter-like sans-serif, subtle 1px separators, generous spacing, the active selection is a restrained indigo strip.
+Composition/framing: landscape 16:9, spacious, central composition, generous safe margins. Model palette overlaps the right part of the main conversation; all art is concentrated in the upper 65 percent. No overall card border, no outer browser frame, no device or desk.
+Text (verbatim): only "Choose your model" and "One conversation. Your model.". Render both exactly, clearly and once each. Do not add other readable words.
+Color palette: neutral charcoal panes, off-white readable text, restrained Frondose indigo accents. No rainbow, neon or glow.
+Constraints: original Frondose-style illustrative composition, not a reproduction of any provider's website. No logos, no brand monograms, no buttons or CTAs, no provider account status, no usage counts, no benchmark, no connected badge, no watermark. This is staged illustrative UI, never claimed as a live run.

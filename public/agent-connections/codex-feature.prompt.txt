@@ -1,0 +1,9 @@
+Use case: ui-mockup
+Asset type: original wide product-presentation illustration for Frondose's Codex connection gallery, not an interactive screen or actual execution screenshot.
+Primary request: a refined staged software product demo showing a code-review conversation beside a small changes panel. Make the subject unmistakably a polished chat-and-work interface, not abstract art.
+Scene/backdrop: an opaque very pale cool neutral ground, a restrained sage-green accent field, soft natural depth. A generous open bottom quarter remains calm and nearly empty for a native caption added later.
+Subject: two overlapping, front-facing dark charcoal application panes in the central upper 65 percent. The main pane holds a readable user prompt and an elegant response with simple code-diff lines; a smaller changes pane floats slightly to its right. Clean Inter-like sans-serif, subtle 1px separators, no crowded tiny text. Fine neutral monospace code lines may be represented by strokes, no fabricated claims.
+Composition/framing: landscape 16:9, spacious, central composition, generous safe margins. Product surfaces occupy upper center rather than filling the image. No overall card border, no outer browser frame, no device or desk.
+Text (verbatim): only "Review this change" and "Changes ready for review". Render both exactly, clearly and once each. Do not add other readable words.
+Color palette: warm-neutral charcoal panes, off-white readable text, restrained sage green for a few added code lines. No purple cast, rainbow, neon or glow.
+Constraints: original Frondose-style illustrative composition, not a reproduction of any provider's website. No logos, no brand monograms, no buttons or CTAs, no provider account status, no usage counts, no benchmark, no connected badge, no watermark. This is staged illustrative UI, never claimed as a live run.

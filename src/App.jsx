@@ -59,7 +59,7 @@ import { NavigationHistory } from './components/NavigationHistory.jsx';
 import { Breadcrumbs } from './components/Breadcrumbs.jsx';
 import { GlobalToolbar } from './components/GlobalToolbar.jsx';
 import './components/sidebar-resize.css';
-import { canShowSidebarPreview, clampPagePreview, clampSidebarWidth, normalizeSidebarSize, shouldEnterSidebarPreview, sidebarWidthFromPointer } from './lib/sidebar-size.js';
+import { canShowSidebarPreview, clampPagePreview, clampSidebarWidth, normalizeSidebarSize, shouldEnterSidebarPreview, sidebarWidthFromPointer, SIDEBAR_DEFAULT_WIDTH } from './lib/sidebar-size.js';
 import { SidebarPagePreview } from './components/SidebarPagePreview.jsx';
 import { FocusView } from "./views/Focus.jsx";
 import { StarredView } from "./views/Starred.jsx";
@@ -433,7 +433,7 @@ export function App() {
     showFeedback: () => { setMobileOpen(false); setFeedbackOpen(true); },
     customizeSidebar: () => { setMobileOpen(false); setSidebarEditorOpen(true); },
     organization, updateOrganization, toggleFavorite, experience, updateExperience,
-    sidebarSizing: { width: previewActive ? viewport.width - 24 : sidebarSize.width ?? clampSidebarWidth(280, window.innerWidth), preview: previewActive, hidden: sidebarSize.hidden, peek: sidebarPeek, setPeek: setSidebarPeek, resize: resizeSidebar, hide: hideSidebar, restore: restoreSidebar },
+    sidebarSizing: { width: previewActive ? viewport.width - 24 : sidebarSize.width ?? clampSidebarWidth(SIDEBAR_DEFAULT_WIDTH, window.innerWidth), preview: previewActive, hidden: sidebarSize.hidden, peek: sidebarPeek, setPeek: setSidebarPeek, resize: resizeSidebar, hide: hideSidebar, restore: restoreSidebar },
   };
   if (!workspace)
     return (

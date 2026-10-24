@@ -8,7 +8,8 @@ import { UiIcon } from "./components/icons.jsx";
 import { ServiceLogo } from './components/ServiceLogo.jsx';
 import { useApp as useAppContext } from './app-context.js';
 import { ErrorNotification } from './components/Notifications.jsx';
-import { currentMotionPreference } from './lib/motion.js';
+import { currentMotionPreference, MOTION } from './lib/motion.js';
+import { dialogRevealFrame, dialogMotionDuration, DIALOG_REVEALED_FRAME } from './lib/dialog-motion.js';
 import './components/editor-dialog.css';
 
 export { AppContext, useApp } from "./app-context.js";
@@ -155,6 +156,8 @@ export function Dialog({
   const originRef = useRef(null);
   const backdropStart = useRef(false);
   const closeTimer = useRef(null);
+  const pendingCloseRef = useRef(null);
+  const animationRef = useRef(null);
   const closingRef = useRef(false);
   const [closing, setClosing] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -173,22 +176,39 @@ export function Dialog({
   const closeRef = useRef(onClose);
   const requestCloseRef = useRef(null);
   closeRef.current = onClose;
-  const requestClose = () => {
+  const requestClose = (action) => {
     if (closingRef.current || closeDisabled) return;
-    const { fadeMs } = currentMotionPreference();
-    if (!fadeMs || className.includes('command-dialog')) { closeRef.current(); return; }
+    // A render-prop footer can use the same guarded exit as the header/backdrop.
+    // An explicit continuation is for navigation/discard, never implicit approval.
+    const finishClose = typeof action === 'function' ? action : () => closeRef.current();
+    pendingCloseRef.current = finishClose;
+    const preference = currentMotionPreference();
+    const duration = dialogMotionDuration(preference, true);
+    if (!duration || className.includes('command-dialog')) { animationRef.current?.cancel(); pendingCloseRef.current = null; finishClose(); return; }
     closingRef.current = true;
     setClosing(true);
+    const panel = ref.current;
+    if (panel?.animate) {
+      const computed = getComputedStyle(panel);
+      const from = { clipPath: computed.clipPath === 'none' ? DIALOG_REVEALED_FRAME.clipPath : computed.clipPath, transform: computed.transform, opacity: computed.opacity };
+      animationRef.current?.cancel();
+      const to = preference.movement ? dialogRevealFrame(panel.getBoundingClientRect(), openerRef.current?.isConnected ? openerRef.current.getBoundingClientRect() : null) : { ...DIALOG_REVEALED_FRAME, opacity: 0 };
+      animationRef.current = panel.animate([from, to], { duration, easing: MOTION.easeOut, fill: 'forwards' });
+    }
     closeTimer.current = window.setTimeout(() => {
-      closeRef.current();
+      const finish = pendingCloseRef.current;
+      pendingCloseRef.current = null;
+      finish?.();
       // A guarded close may keep this same dialog mounted for a discard step.
       // Reset its exit state even when the handler did not explicitly return false.
       closingRef.current = false;
       setClosing(false);
-    }, fadeMs);
+      animationRef.current?.cancel();
+      animationRef.current = null;
+    }, duration);
   };
   requestCloseRef.current = requestClose;
-  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+  useEffect(() => () => { window.clearTimeout(closeTimer.current); animationRef.current?.cancel(); }, []);
   useLayoutEffect(() => {
     const origin = originRef.current, backdrop = ref.current?.closest('.dialog-backdrop');
     if (!origin || !backdrop) return;
@@ -208,6 +228,33 @@ export function Dialog({
       ref.current.style.transformOrigin = `${x}px ${y}px`;
     }
   });
+  useLayoutEffect(() => {
+    const panel = ref.current;
+    if (!panel?.animate || className.includes('command-dialog')) return;
+    const preference = currentMotionPreference(), duration = dialogMotionDuration(preference);
+    if (duration) {
+      const from = preference.movement ? dialogRevealFrame(panel.getBoundingClientRect(), openerRef.current?.isConnected ? openerRef.current.getBoundingClientRect() : null) : { ...DIALOG_REVEALED_FRAME, opacity: 0 };
+      animationRef.current = panel.animate([from, DIALOG_REVEALED_FRAME], { duration, easing: MOTION.easeOut });
+    }
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const stopSpatial = () => {
+      if (currentMotionPreference().movement) return;
+      animationRef.current?.cancel();
+      animationRef.current = null;
+      if (closingRef.current) {
+        window.clearTimeout(closeTimer.current);
+        const finish = pendingCloseRef.current;
+        pendingCloseRef.current = null;
+        finish?.();
+        closingRef.current = false;
+        setClosing(false);
+      }
+    };
+    const observer = new MutationObserver(stopSpatial);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion', 'data-input-modality'] });
+    media.addEventListener('change', stopSpatial);
+    return () => { observer.disconnect(); media.removeEventListener('change', stopSpatial); };
+  }, []);
   useEffect(() => {
     const previous = openerRef.current;
     const manager = registerDialog(ref.current);
@@ -264,6 +311,7 @@ export function Dialog({
     <div
       className="dialog-backdrop"
       data-closing={closing ? 'true' : undefined}
+      data-dialog-reveal="true"
       onPointerDown={(event) => {
         backdropStart.current = event.target === event.currentTarget;
       }}
@@ -302,7 +350,7 @@ export function Dialog({
           </IconButton>
           </div>
         </header>
-        {children}
+        {typeof children === 'function' ? children(requestClose) : children}
       </section>
     </div>
   );

@@ -1,0 +1,10 @@
+.sliding-tabs { position: relative; isolation: isolate; display: inline-flex; align-items: stretch; gap: 2px; max-width: 100%; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.sliding-tabs-plate { position: absolute; left: 0; z-index: -1; border-radius: 7px; background: var(--accent); transform-origin: left center; pointer-events: none; }
+.sliding-tabs > button { position: relative; flex: 1 1 auto; min-width: 0; min-height: 34px; padding: 7px 16px; border: 0; border-radius: 7px; background: transparent; color: var(--secondary); font-size: 13px; font-weight: 550; line-height: 20px; white-space: nowrap; cursor: pointer; transition: color 100ms; }
+.sliding-tabs > button[aria-checked="true"] { color: var(--accent-text, white); }
+.sliding-tabs > button:hover:not([aria-checked="true"]):not(:disabled) { color: var(--text); background: color-mix(in srgb, var(--hover) 65%, transparent); }
+.sliding-tabs > button:disabled { opacity: .5; cursor: not-allowed; }
+.sliding-tabs > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (pointer: coarse) { .sliding-tabs > button { min-height: 44px; } }
+@media (max-width: 460px) { .sliding-tabs > button { padding-inline: 10px; } }
+@media (forced-colors: active) { .sliding-tabs-plate { background: Highlight; } .sliding-tabs > button[aria-checked="true"] { color: HighlightText; outline: 1px solid Highlight; } }

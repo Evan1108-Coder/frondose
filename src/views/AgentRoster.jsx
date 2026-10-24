@@ -12,6 +12,7 @@ import { hasAgentAccountRoute } from '../lib/computer-agent-controls.js';
 import { download, relative, val, visible } from "../lib/model.js";
 import { ConnectionDialog } from "./Connections.jsx";
 import "./agents-page.css";
+import { AgentConnectionsHome } from './AgentConnectionsHome.jsx';
 const AgentProfileHistory = lazy(() => import('../components/AgentProfileHistory.jsx').then(module => ({ default: module.AgentProfileHistory })));
 const AgentUsageDisclosure = lazy(() => import('../components/RunUsage.jsx').then(module => ({ default: module.AgentUsageDisclosure })));
 const AgentRunnerSettings = lazy(() => import('../components/AgentRunnerSettings.jsx').then(module => ({ default: module.AgentRunnerSettings })));
@@ -92,7 +93,10 @@ function ArchiveAgentDialog({ agent, onClose }) {
 }
 
 function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) {
-  const { data, workspace, edit, navigate, startSession, organization, toggleFavorite } = useApp();
+  const { data, workspace, page, edit, navigate, startSession, organization, toggleFavorite } = useApp();
+  const computerSettingsRef = useRef(null);
+  const [computerOpen, setComputerOpen] = useState(page.section === 'computer');
+  useEffect(() => { if (page.section === 'computer') { setTab('overview'); setComputerOpen(true); requestAnimationFrame(() => computerSettingsRef.current?.scrollIntoView({ block: 'start' })); } }, [page.section, agent.id]);
   const chatAction = useAsync();
   const favorite = organization.favorites.some(item => item.view === "agents" && item.id === agent.id);
   const [tab, setTab] = useState("overview");
@@ -123,7 +127,7 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
         {agent.identity_kind !== 'provider' ? <section className="agent-detail-section"><h3>Personalization</h3>{agent.instructions ? <p className="agent-instruction-copy">{agent.instructions}</p> : <button className="text-button" onClick={() => edit("agent", agent)}>Add personalization <ArrowUpRight /></button>}<Button onClick={() => setHistoryOpen(true)}>Compare content history</Button></section> : null}
         <section className="agent-detail-section"><h3>Execution defaults</h3><dl className="agent-default-list"><div><dt>Model</dt><dd>{agent.model || "Provider default"}</dd></div><div><dt>Reasoning</dt><dd>{agent.provider === "codex" ? val(agent, "reasoning_effort") || "Provider default" : "Not supported in Frondose"}</dd></div><div><dt>Permissions</dt><dd>{val(agent, "permission_policy") === "read-only" ? "Read-only" : "Review required"}</dd></div></dl><small>Provider support is checked at launch, not when this page opens. Instructions and defaults never grant access.</small><h3 className="agent-output-heading">Expected output</h3><p className="agent-instruction-copy">{val(agent, "output_behavior") || "Not defined. Set a format, evidence requirements, and stopping condition in the profile."}</p></section>
         <section className="agent-detail-section"><h3><Folder />Working folder</h3><p className="agent-folder">{val(agent, "working_directory") || "Choose with each session"}</p><small>A linked project folder takes precedence.</small></section>
-        <section className="agent-detail-section agent-computer-settings-section"><details><summary>Computer connection</summary><Suspense fallback={<p role="status">Loading computer settings…</p>}><AgentRunnerSettings agentId={agent.id} workspaceId={workspace.id} /></Suspense></details></section>
+        <section ref={computerSettingsRef} className="agent-detail-section agent-computer-settings-section"><details open={computerOpen} onToggle={event => setComputerOpen(event.currentTarget.open)}><summary>Computer connection</summary><Suspense fallback={<p role="status">Loading computer settings…</p>}><AgentRunnerSettings agentId={agent.id} workspaceId={workspace.id} /></Suspense></details></section>
         {projects.length || chats.length ? <section className="agent-detail-section agent-linked-work"><h3>Linked work</h3>{projects.slice(0, 3).map((project) => <button key={project.id} onClick={() => navigate("projects", project.id)}><Folder /><span>{project.name}</span><ArrowUpRight /></button>)}{chats.slice(0, 3).map((chat) => <button key={chat.id} onClick={() => navigate("chats", chat.id)}><MessageCircle /><span>{chat.title}</span><ArrowUpRight /></button>)}</section> : null}
       </> : tab === "context" ? <>
         <section className="agent-detail-section"><h3>Default context</h3><dl className="agent-default-list"><div><dt>Area</dt><dd>{defaultArea?.name || (val(agent, "default_area_id") ? "Unavailable reference" : "No default")}</dd></div><div><dt>Project</dt><dd>{defaultProject?.name || (val(agent, "default_project_id") ? "Unavailable reference" : "No default")}</dd></div><div><dt>Memory</dt><dd>{val(agent, "memory_policy") === "none" ? "Saved memory excluded" : "Eligible reviewed memory only"}</dd></div></dl><p>Context Inspector resolves configured Area and profile Context Packs from currently accessible sources. Review included, excluded, and truncated content before launch. Saved defaults never broaden access.</p><h3 className="agent-output-heading">Context Packs</h3>{packs.length ? <ul>{packs.map(id => <li key={id}>{choices.packs.find(pack => pack.id === id)?.name || "Unavailable Context Pack"}</li>)}</ul> : <p>No Context Packs selected.</p>}<Button onClick={() => edit("agent", agent)}>Edit context preferences</Button></section>
@@ -144,7 +148,13 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
 }
 
 export function AgentsView() {
-  const { data, page, edit, navigate, notify, organization, workspace } = useApp();
+  const { page } = useApp();
+  return !page.id || page.id.startsWith('connection-') ? <AgentConnectionsHome /> : <AgentRosterView />;
+}
+
+function AgentRosterView() {
+  const { data, page: currentPage, edit, navigate, notify, organization, workspace } = useApp();
+  const page = currentPage.id === 'manage' ? { ...currentPage, id: null } : currentPage;
   const [query, setQuery] = useState(""), [filter, setFilter] = useState("all");
   const [connectionProvider, setConnectionProvider] = useState(null), [archiveAgent, setArchiveAgent] = useState(null);
   const [importing, setImporting] = useState(false);

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "purpose": "Original staged product illustrations for the Frondose agent-connection library. Not screenshots of live account activity or official provider products.",
+  "created_on": "2026-10-24",
+  "execution": {
+    "mode": "built-in image_gen",
+    "tool": "image_gen.imagegen",
+    "cli_or_api_fallback": false
+  },
+  "presentation": {
+    "width": 1672,
+    "height": 941,
+    "background": "opaque",
+    "native_overlay_space": "lower quarter",
+    "logos": "Omitted from the generated art; actual registry marks and titles belong in native UI.",
+    "disclosure": "Illustrative preview — not a live run",
+    "claims": "No usage, account connection, model entitlement, benchmark or operational verification claims."
+  },
+  "assets": [
+    {
+      "provider": "codex",
+      "file": "codex-feature.png",
+      "prompt_file": "codex-feature.prompt.txt",
+      "sha256": "34431c66362c2b029d0acf8c4ebdc6e85663296e50c34fff72785e336cab02b3",
+      "steps": [
+        {
+          "operation": "generate",
+          "source_output": "/Users/EvanLu/.codex/generated_images/01a16c01-4504-7443-9e34-8c576989d3f3/exec-cd55302e-e6f3-441f-8f08-dc8e83eef6b3.png",
+          "prompt": "Use case: ui-mockup\nAsset type: original wide product-presentation illustration for Frondose's Codex connection gallery, not an interactive screen or actual execution screenshot.\nPrimary request: a refined staged software product demo showing a code-review conversation beside a small changes panel. Make the subject unmistakably a polished chat-and-work interface, not abstract art.\nScene/backdrop: an opaque very pale cool neutral ground, a restrained sage-green accent field, soft natural depth. A generous open bottom quarter remains calm and nearly empty for a native caption added later.\nSubject: two overlapping, front-facing dark charcoal application panes in the central upper 65 percent. The main pane holds a readable user prompt and an elegant response with simple code-diff lines; a smaller changes pane floats slightly to its right. Clean Inter-like sans-serif, subtle 1px separators, no crowded tiny text. Fine neutral monospace code lines may be represented by strokes, no fabricated claims.\nComposition/framing: landscape 16:9, spacious, central composition, generous safe margins. Product surfaces occupy upper center rather than filling the image. No overall card border, no outer browser frame, no device or desk.\nText (verbatim): only \"Review this change\" and \"Changes ready for review\". Render both exactly, clearly and once each. Do not add other readable words.\nColor palette: warm-neutral charcoal panes, off-white readable text, restrained sage green for a few added code lines. No purple cast, rainbow, neon or glow.\nConstraints: original Frondose-style illustrative composition, not a reproduction of any provider's website. No logos, no brand monograms, no buttons or CTAs, no provider account status, no usage counts, no benchmark, no connected badge, no watermark. This is staged illustrative UI, never claimed as a live run."
+        }
+      ],
+      "observed_text": [
+        "Review this change",
+        "Changes ready for review"
+      ],
+      "visual_check": "Inspected with view_image; open caption space, no provider logo or connected-state claim."
+    },
+    {
+      "provider": "claude",
+      "file": "claude-feature.png",
+      "prompt_file": "claude-feature.prompt.txt",
+      "sha256": "d6157e1f4ed43c8306a08afe93b442f1f54bb8253ce37c0ddedd4883f26955ed",
+      "steps": [
+        {
+          "operation": "generate",
+          "source_output": "/Users/EvanLu/.codex/generated_images/01a16c01-4504-7443-9e34-8c576989d3f3/exec-0670711c-2f99-4d8a-9fbf-fdcd06e3daf2.png",
+          "prompt": "Use case: ui-mockup\nAsset type: original wide product-presentation illustration for Frondose's Claude Code connection gallery, not an interactive screen or actual execution screenshot.\nPrimary request: a refined staged software product demo showing a project-understanding conversation with a compact clear planning pane. Make the subject unmistakably a polished chat-and-work interface, not abstract art.\nScene/backdrop: an opaque pale warm neutral ground with a restrained terracotta accent field, soft natural depth. A generous open bottom quarter remains calm and nearly empty for a native caption added later.\nSubject: two layered, front-facing dark charcoal application panes in the central upper 65 percent. The main conversation has a user prompt above a clearly structured assistant response; a smaller plan pane slightly overlaps to the right, with three quiet ordered line-items drawn as short text-like strokes and small hollow circles, not progress metrics. Clean Inter-like sans-serif, subtle 1px separators, generous line spacing.\nComposition/framing: landscape 16:9, spacious, central composition, generous safe margins. The larger pane is offset slightly left, the smaller pane slightly right, balanced not cluttered. No overall card border, no outer browser frame, no device or desk.\nText (verbatim): only \"Understand the project\" and \"A clear plan, then the work\". Render both exactly, clearly and once each. Do not add other readable words.\nColor palette: warm-neutral charcoal panes, off-white readable text, restrained terracotta and muted peach accents. No purple cast, rainbow, neon or glow.\nConstraints: original Frondose-style illustrative composition, not a reproduction of any provider's website. No logos, no brand monograms, no buttons or CTAs, no provider account status, no usage counts, no benchmark, no connected badge, no watermark. This is staged illustrative UI, never claimed as a live run."
+        }
+      ],
+      "observed_text": [
+        "Understand the project"
+      ],
+      "visual_check": "Inspected with view_image; generator omitted the second requested phrase, so it is available for a native caption instead. Open lower caption space. Original generic user/assistant marks, no provider logo."
+    },
+    {
+      "provider": "openrouter",
+      "file": "openrouter-feature.png",
+      "prompt_file": "openrouter-feature.edit.prompt.txt",
+      "initial_prompt_file": "openrouter-feature.prompt.txt",
+      "sha256": "945d29d4cd20c7c19f031ada0155b4e07405ff7d8f85f58f165aa428bd894e25",
+      "steps": [
+        {
+          "operation": "generate",
+          "source_output": "/Users/EvanLu/.codex/generated_images/01a16c01-4504-7443-9e34-8c576989d3f3/exec-f72d7546-5c34-4f8c-b64a-e0100bc32b25.png",
+          "prompt": "Use case: ui-mockup\nAsset type: original wide product-presentation illustration for Frondose's OpenRouter connection gallery, not an interactive screen or actual execution screenshot.\nPrimary request: a refined staged software product demo showing choosing a model for a conversation. Make the subject unmistakably a polished chat-and-work interface, not abstract art.\nScene/backdrop: an opaque pale cool neutral ground with a restrained indigo accent field, soft natural depth. A generous open bottom quarter remains calm and nearly empty for a native caption added later.\nSubject: two layered front-facing dark charcoal application panes in the central upper 65 percent. A main conversation pane sits behind an elegant small model-selection palette, with three quiet rows indicated by neutral geometric circular marks and short text-like strokes. Do not depict any specific model name or invent capabilities. Clean Inter-like sans-serif, subtle 1px separators, generous spacing, the active selection is a restrained indigo strip.\nComposition/framing: landscape 16:9, spacious, central composition, generous safe margins. Model palette overlaps the right part of the main conversation; all art is concentrated in the upper 65 percent. No overall card border, no outer browser frame, no device or desk.\nText (verbatim): only \"Choose your model\" and \"One conversation. Your model.\". Render both exactly, clearly and once each. Do not add other readable words.\nColor palette: neutral charcoal panes, off-white readable text, restrained Frondose indigo accents. No rainbow, neon or glow.\nConstraints: original Frondose-style illustrative composition, not a reproduction of any provider's website. No logos, no brand monograms, no buttons or CTAs, no provider account status, no usage counts, no benchmark, no connected badge, no watermark. This is staged illustrative UI, never claimed as a live run."
+        },
+        {
+          "operation": "edit",
+          "referenced_image": "/Users/EvanLu/.codex/generated_images/01a16c01-4504-7443-9e34-8c576989d3f3/exec-f72d7546-5c34-4f8c-b64a-e0100bc32b25.png",
+          "source_output": "/Users/EvanLu/.codex/generated_images/01a16c01-4504-7443-9e34-8c576989d3f3/exec-80baafa9-2703-44ec-b67d-399c91cf5cd3.png",
+          "prompt": "Use case: precise-object-edit\nEdit target: the attached original OpenRouter product demo illustration.\nChange only the bottom headline: remove the words \"One conversation. Your model.\" completely and seamlessly restore the pale cool neutral ground beneath them. Keep the entire bottom quarter calm and blank for a native code-rendered caption.\nPreserve everything else exactly: landscape composition and dimensions, the dark charcoal chat and model-palette panes, the phrase \"Choose your model\", the three rows, the indigo active row, background accent field, soft shadows and precise spacing. No new text, no new objects, no logos, no watermark. This is illustrative staged product UI, not a live screenshot."
+        }
+      ],
+      "observed_text": [
+        "Choose your model"
+      ],
+      "visual_check": "Inspected with view_image; targeted imagegen edit removed the baked bottom headline to reserve native caption space. No model names, capabilities, usage claims or provider logo."
+    }
+  ],
+  "provenance": "Each shipping PNG embeds the exact prompt received by its final generation/edit call using impeccable embed-prompt. This manifest retains the complete generation and edit chain. Original generated outputs remain at their built-in save paths; shipping copies are project-local.",
+  "review_status": "Produced and visually inspected; final assembled surface review belongs to the parent task."
+}

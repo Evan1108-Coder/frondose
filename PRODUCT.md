@@ -37,3 +37,17 @@ React/Vite frontend and a persistent Node/SQLite backend. Public mode is
 currently an invite-only beta, not completed open public registration.
 Provider app registrations and live-account verification remain separate from
 implementation and must not be claimed complete without evidence.
+
+## October 24 connection-library scope
+
+Your Agents starts with real connected identities and a searchable provider
+library. Direct provider identities and personalized agents are distinct,
+explicitly created choices; connecting an account never creates either kind
+automatically. Each conversation retains one bound responding identity.
+Choosing a ready provider through the composer’s @ picker prepares a draft or
+offers its separate provider conversation, never sends automatically or replaces
+another conversation’s responder, draft, files or selected context.
+
+Native CLI chat-history import, continuation and synchronization are out of
+scope by the October 24 user decision, not a promised later part of this release.
+Frondose-owned conversation histories and existing data remain intact.

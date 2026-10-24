@@ -77,3 +77,4 @@
   .agent-discard-confirmation .agent-confirm-actions { flex-wrap: wrap; }
   .agent-editor .form-validation-error { margin: 0 20px 16px; }
 }
+.agent-selected-provider { display: flex; align-items: center; gap: 12px; padding-block: 8px; }

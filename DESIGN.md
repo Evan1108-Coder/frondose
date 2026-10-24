@@ -202,6 +202,24 @@ components:
     textColor: "{colors.text}"
     rounded: "{rounded.panel}"
     padding: "16px"
+  sidebar-frame:
+    backgroundColor: "{colors.nav}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.panel}"
+    width: "240px"
+  single-choice-filter:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.popover}"
+    padding: "3px"
+  single-choice-option:
+    textColor: "{colors.secondary}"
+    rounded: "{rounded.button}"
+    padding: "7px 16px"
+    height: "34px"
+  single-choice-option-selected:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-text}"
+    rounded: "{rounded.button}"
 ---
 
 # Design System: Frondose
@@ -246,7 +264,7 @@ Inter Variable is the application family, falling back to Inter and native syste
 
 ## Layout
 
-The application is viewport-height with bounded scroll regions. The desktop shell uses an inset sidebar and a working area with `minmax(0, 1fr)` sizing. The existing frame starts (12px) from the top, bottom, and left. The effective expanded sidebar is normally (280px), becomes (292px) at the wide-screen rule, and (258px) in the intermediate desktop range; user resizing and collapse can override these defaults. At (800px) and below it becomes a fixed drawer, bounded by `min(292px, calc(100vw - 28px))`, rather than shrinking the working area into a permanent rail.
+The application is viewport-height with bounded scroll regions. The desktop shell uses an inset sidebar and a working area with `minmax(0, 1fr)` sizing. The existing frame starts (12px) from the top, bottom, and left. The approved compact default is recorded by `sidebar-frame`; the main and Settings rails share the browser-local width, preserving explicitly saved widths. User resizing and reversible hiding remain available. The ordinary desktop range starts at (200px) and is capped at the smaller of (62%) of the viewport or the viewport minus (300px). At (800px) and below the sidebar becomes a separate fixed drawer, bounded by `min(260px, calc(100vw - 28px))`, rather than shrinking the working area into a permanent rail. Full-width navigation is a temporary mode on viewports at least (1000px) wide and (600px) tall; its small page preview is inert until restored.
 
 Navigation uses a standard (32px) row and a compact (28px) option. The loaded CSS uses (16px) row glyphs and a (20px) nesting inset. Spacing values in the frontmatter are recurring measurements extracted from the CSS, not evidence of a universal mathematical spacing scale.
 
@@ -263,6 +281,8 @@ Tonal layers and thin borders carry most depth. The sidebar has a barely percept
 The conversation composer has a low ambient shadow (`0 12px 32px rgb(0 0 0 / .08)`). Temporary navigation overlays and slash-command menus have stronger local shadows. These are component roles, not a requirement to add shadows to every panel.
 
 Motion is bounded and interruptible. The incumbent motion file defines feedback, popover/fade, dialog/disclosure, and chevron timings; these exact values live in the sidecar. Keyboard modality removes transitions for frequent controls. OS or in-app reduced motion removes travel, scale, and staged expansion, retaining only brief fades where implemented. A working status dot can pulse; reduced motion removes the pulse. Existing one-time route entrance rules are recorded as source behavior, not a new recommendation to animate page content or incoming data.
+
+The approved extension adds a sliding indigo selected plate for single-choice filters and a trigger-origin clipped reveal for shared dialogs. Only the plate changes geometry; labels and dialog text remain at their actual size. Dialog travel is bounded even when the opener is distant. Preference changes cancel in-flight spatial motion. These timings and geometry live in the sidecar; they do not replace the incumbent fallback CSS tokens or authorize decorative movement elsewhere.
 
 ## Shapes
 
@@ -281,6 +301,20 @@ Standard fields use the input surface, ordinary border, and field radius. A focu
 ### Navigation and toolbar
 
 Sidebar labels use neutral default text, brighten on hover/focus, and receive a selected tonal background for the active destination. Section disclosure, user resizing, reversible hiding, and custom ordering remain intact. The global toolbar is a bounded flex group, with horizontally bounded quick access and an icon-only search on narrow screens. Breadcrumb text truncates to protect the controls rather than forcing horizontal page overflow.
+
+### Single-choice filters and dialog reveal
+
+Connection categories, featured-provider choices and other adopted single-choice filters use a shared sliding selected plate, not a tabpanel controller. The group exposes radio checked state, one Tab stop, arrow/Home/End selection, disabled-option skipping and RTL direction. Labels use (13px), weight (550), with (20px) line height; coarse-pointer targets grow to (44px). Selection updates immediately. Keyboard input and reduced motion snap the plate without spatial travel.
+
+Shared dialogs reveal actual-size content from a small clipped shell near the opening control; they do not scale the text. Closing during entrance begins from the visible frame. Header, backdrop, Escape and adopted render-prop footer actions use the same guarded close request. Dirty-draft guards may keep the mounted dialog open, restoring visibility. Explicit navigation continuations run after dismissal, not before it. Command palettes remain immediate. See `docs/sidebar-motion-and-sizing.md` for operation details.
+
+### Agent connection library
+
+Your Agents extends the established workspace identity with open section spacing, real connected-identity tiles, a wide authored product-image frame and grouped provider cards. The surface-specific composition remains in `.impeccable/surfaces/src-views-agentconnectionshome-jsx.md`, not a mandate to turn every page into a catalog. Ordinary catalog cards retain the panel radius, thin quiet border and semantic neutral surfaces. Product illustrations are visibly non-live examples; real provider marks remain distinct from connection readiness. Detail pages lead with explicit connection choices, then two non-live previews and readable setup information. At narrower widths, grids step from three columns to two and then one; actions wrap without losing their labels.
+
+### Release timeline and popup reader
+
+Help keeps an ordered dot-and-dash release timeline and a separate resources control. Only the newest published unread release with a real article becomes the footer announcement. The centered reader leads with an authored illustration or brand mark, then date, lead and semantic article sections in a bounded scroller; its footer remains reachable. Back to work dismisses through the shared close request. Go to Docs uses an explicit close continuation before navigation. Reading does not change the working route or create a permanent tab; this popup is distinct from the existing full-viewport temporary Docs reader.
 
 ### Panels, result cards, and reactions
 

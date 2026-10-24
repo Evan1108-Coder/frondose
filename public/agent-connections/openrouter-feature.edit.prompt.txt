@@ -1,0 +1,4 @@
+Use case: precise-object-edit
+Edit target: the attached original OpenRouter product demo illustration.
+Change only the bottom headline: remove the words "One conversation. Your model." completely and seamlessly restore the pale cool neutral ground beneath them. Keep the entire bottom quarter calm and blank for a native code-rendered caption.
+Preserve everything else exactly: landscape composition and dimensions, the dark charcoal chat and model-palette panes, the phrase "Choose your model", the three rows, the indigo active row, background accent field, soft shadows and precise spacing. No new text, no new objects, no logos, no watermark. This is illustrative staged product UI, not a live screenshot.

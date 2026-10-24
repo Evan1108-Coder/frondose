@@ -2,7 +2,7 @@ import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { ContextInspector } from '../components/ContextInspector.jsx';
 import { NativeToolActivity, NativeToolsChoice } from '../components/NativeToolActivity.jsx';
 import { useChatFollow } from '../lib/use-chat-follow.js';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Archive, BookOpen, MessageCircle, Ellipsis, Download, Folder, GitBranch, Info, Search, Paperclip, Pencil, Plus, Pin, X, Link, FileText, GitFork, Clock, Smile, SlidersHorizontal } from "../components/icons.jsx";
 import { frondoseActions, refreshFrondose } from '../data/useFrondose.js';
 import { apiRequest } from '../data/api.js';
@@ -29,6 +29,8 @@ import { containsDraggedFiles, readComposerFiles } from '../lib/composer-files.j
 import { prepareExplicitChatSend } from '../lib/chat-send-context.js';
 import { coordinationDraft, personalComposerDefaults } from '../lib/chat-coordination.js';
 import { coordinationRequest, coordinationDestination } from '../lib/run-coordination.js';
+import { providerMentionAtCaret, readyProviderMentions, providerMentionSelection, providerConversation } from '../lib/provider-mentions.js';
+import { AgentIdentity } from '../components/AgentIdentity.jsx';
 import './chats-page.css';
 const ReactionPicker = lazy(() => import('../components/ReactionPicker.jsx'));
 const ActivityFeed = lazy(() => import('../components/ActivityFeed.jsx').then(module => ({ default: module.ActivityFeed })));
@@ -109,6 +111,10 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const [selectionMode, setSelectionMode] = useState(false), [selectedIds, setSelectedIds] = useState(() => new Set());
   const [emojiPicker, setEmojiPicker] = useState(false);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const [mentionCaret, setMentionCaret] = useState(null), [mentionIndex, setMentionIndex] = useState(0), [mentionDismissed, setMentionDismissed] = useState(false);
+  const [providerDestination, setProviderDestination] = useState(null), [providerOpening, setProviderOpening] = useState(false), [providerOpenError, setProviderOpenError] = useState(null);
+  const providerOpeningRef = useRef(false), providerCreateUncertain = useRef(false);
+  const providerMentionId = useId();
   const [reactionMessage, setReactionMessage] = useState(null), [reactionPending, setReactionPending] = useState(null), [reactionError, setReactionError] = useState(null);
   const reacting = useRef(false);
   const [composeDialog, setComposeDialog] = useState(null), [actionTitle, setActionTitle] = useState(''), [destination, setDestination] = useState('');
@@ -152,6 +158,11 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   const connectedProviders = (data.connections || []).filter(item => item.status === 'connected' || item.connected).map(item => item.provider);
   const slashVisible = composer.text.trimStart().startsWith('/') && !composer.text.trimStart().startsWith('//') && !composer.text.includes('\n');
   const slashResults = slashVisible ? searchCommands(composer.text.trimStart().slice(1), { context: 'chat' }).slice(0, 10) : [];
+  const mention = !assistant && !mentionDismissed && !composer.turn && !composer.sending && !busy && !slashVisible ? providerMentionAtCaret(composer.text, mentionCaret ?? composer.text.length) : null;
+  const mentionProviders = mention ? readyProviderMentions(data, val(chat, 'workspace_id'), mention.query).slice(0, 8) : [];
+  useEffect(() => {
+    if (mention) document.getElementById(`${providerMentionId}-${Math.min(mentionIndex, mentionProviders.length - 1)}`)?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }, [mentionIndex, mention?.query, mentionProviders.length, providerMentionId]);
   const readOnlyProfile = !computerControls.bound && agent?.provider === 'claude' || val(agent, 'permission_policy') === 'read-only' || data.settings?.agentDefaults?.approvalMode === 'read_only';
   const effectivePermission = composer.permission === 'conversation' || readOnlyProfile ? 'read-only' : composer.permission;
   const includeMemory = composer.memory && val(agent, 'memory_policy') !== 'none';
@@ -271,6 +282,42 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
     render(version => version + 1);
     return true;
   }
+  function chooseProviderMention(provider) {
+    const current = readyProviderMentions(data, val(chat, 'workspace_id')).find(item => item.id === provider.id);
+    const selection = providerMentionSelection(chat, composer, current, mention);
+    if (selection.kind === 'blocked') { setError(new Error(selection.reason)); return; }
+    if (selection.kind === 'open') {
+      if (!persistComposer(chat.id, composer, draftStorage())) { setError(new Error('Your draft could not be saved in this browser. Keep this conversation open; remove large attachments or save your text before opening another.')); return; }
+      setProviderOpenError(null); setProviderDestination(current); return;
+    }
+    if (!change(selection.changes)) return;
+    setMentionDismissed(true); setMentionCaret(selection.caret);
+    requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(selection.caret, selection.caret); });
+    notify(`${current.name} selected. Review your draft, then send when ready.`);
+  }
+  async function openProviderConversation() {
+    if (providerOpeningRef.current || !providerDestination) return;
+    providerOpeningRef.current = true; setProviderOpening(true); setProviderOpenError(null);
+    try {
+      if (!persistComposer(chat.id, composer, draftStorage())) throw new Error('Your original draft could not be saved in this browser. Keep this conversation open and save your text before leaving.');
+      const fresh = await refreshFrondose();
+      if (!mounted.current) return;
+      const selected = readyProviderMentions(fresh, val(chat, 'workspace_id')).find(item => item.id === providerDestination.id);
+      if (!selected) throw new Error('This provider is no longer connected or available. Review its setup before opening a conversation.');
+      let destination = providerConversation(fresh.chats || [], val(chat, 'workspace_id'), selected.id);
+      if (!destination) {
+        if (providerCreateUncertain.current) throw new Error('The earlier conversation-creation response was unconfirmed. Check Conversations before trying to create another. Your original draft is preserved.');
+        providerCreateUncertain.current = true;
+        try {
+          destination = await frondoseActions.createChat({ workspace_id: val(chat, 'workspace_id'), title: `Chat with ${selected.name}`, participant_agent_ids: [selected.id] });
+          providerCreateUncertain.current = false;
+        } catch (cause) { if (cause.status && cause.status < 500) providerCreateUncertain.current = false; throw cause; }
+      }
+      // Never replace a target draft or copy project context/files into a new chat.
+      if (mounted.current) { setProviderDestination(null); navigate('chats', destination.id); notify('Provider conversation opened. Your original draft stays in its conversation. Nothing was sent.'); }
+    } catch (cause) { if (mounted.current) setProviderOpenError(cause); }
+    finally { providerOpeningRef.current = false; if (mounted.current) setProviderOpening(false); }
+  }
   async function collaborationAction(action, body = {}) {
     setActionBusy(true); setCollaborationError(null);
     try {
@@ -360,6 +407,7 @@ export function Conversation({ chat, index, composers, scope = {}, onComposerCha
   }
   async function send(event) {
     event.preventDefault();
+    if (mention) { setError(new Error('Choose a connected provider, or press Escape to keep this as ordinary message text. Nothing was sent.')); return; }
     if (sending.current || composer.sending || (!composer.text.trim() && !composer.files.length)) return;
     const slash = parseSlashCommand(composer.text);
     if (slash) {
@@ -606,7 +654,23 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
         {composer.context ? <div className="chat-context-tray"><FileText /><button type="button" onClick={() => contextPending ? setContextReload(value => value + 1) : setPreview({ name: 'Selected context snapshot', content: composer.context.content, type: 'text/markdown' })}>{contextPending ? contextLoadError ? 'Reload selected context' : 'Loading selected context…' : `${composer.context.sources?.length || 0} sources · inspect exact snapshot`}</button><IconButton label="Remove selected context" onClick={() => change({ context: null })}><X /></IconButton></div> : null}
         {composer.files.length ? <div className="chat-compose-files" aria-label="Attached files">{composer.files.map((file, index) => <span key={`${file.name}-${index}`}><Paperclip /><button type="button" onClick={() => setPreview(file)}>{file.name}</button><IconButton label={`Remove ${file.name}`} onClick={() => change({ files: composer.files.filter((_, i) => i !== index) })}><X /></IconButton></span>)}</div> : null}
         <SlashCommandMenu text={composer.text} context="chat" activeIndex={slashIndex} onActiveIndexChange={setSlashIndex} onSelect={selectSlash} executableCommandIds={CHAT_COMMANDS} connections={connectedProviders} />
-        <textarea ref={inputRef} aria-label="Message" data-field-default-key="conversation.compose.message" data-field-default-page="Conversation composer" data-field-default-label="Message" data-field-default-mode="create" value={composer.text} maxLength={100000} placeholder={agent ? `Ask ${agent.name}…` : 'Write a note or type / for commands…'} onChange={event => { setSlashIndex(0); change({ text: event.target.value }); }} onKeyDown={event => {
+        {mention ? <div className="provider-mention-picker" role="listbox" aria-label="Connected providers" id={providerMentionId} onKeyDown={event => {
+          if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && mentionProviders.length) {
+            event.preventDefault();
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? mentionProviders.length - 1 : (mentionIndex + (event.key === 'ArrowDown' ? 1 : -1) + mentionProviders.length) % mentionProviders.length;
+            setMentionIndex(next); document.getElementById(`${providerMentionId}-${next}`)?.focus();
+          } else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setMentionDismissed(true); inputRef.current?.focus(); }
+        }}>
+          <header><strong>Connected providers</strong><span>Choose a provider · nothing sends automatically</span></header>
+          {mentionProviders.map((provider, position) => <button type="button" role="option" aria-selected={position === Math.min(mentionIndex, mentionProviders.length - 1)} id={`${providerMentionId}-${position}`} key={provider.id} className={position === Math.min(mentionIndex, mentionProviders.length - 1) ? 'active' : ''} onPointerMove={() => setMentionIndex(position)} onPointerDown={event => event.preventDefault()} onClick={() => chooseProviderMention(provider)}><AgentIdentity agent={provider} compact /><span><strong>{provider.name}</strong><small>{respondingAgentId && respondingAgentId !== provider.id ? 'Open its own conversation · keep this draft here' : 'Select for this draft · send separately'}</small></span></button>)}
+          {!mentionProviders.length ? <p>No matching connected provider. Connect one in Your Agents, or press Escape to keep typing.</p> : null}
+        </div> : null}
+        <textarea ref={inputRef} aria-label="Message" aria-controls={mention ? providerMentionId : undefined} aria-activedescendant={mentionProviders.length ? `${providerMentionId}-${Math.min(mentionIndex, mentionProviders.length - 1)}` : undefined} data-field-default-key="conversation.compose.message" data-field-default-page="Conversation composer" data-field-default-label="Message" data-field-default-mode="create" value={composer.text} maxLength={100000} placeholder={agent ? `Ask ${agent.name}…` : 'Write a note, @ a connected provider, or type /…'} onSelect={event => setMentionCaret(event.currentTarget.selectionStart)} onChange={event => { setSlashIndex(0); setMentionIndex(0); setMentionDismissed(false); setMentionCaret(event.target.selectionStart); change({ text: event.target.value }); }} onKeyDown={event => {
+          if (event.nativeEvent.isComposing) return;
+          if (mention && ['ArrowDown', 'ArrowUp'].includes(event.key) && mentionProviders.length) { event.preventDefault(); setMentionIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + mentionProviders.length) % mentionProviders.length); return; }
+          if (mention && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setMentionDismissed(true); return; }
+          if (mention && mentionProviders.length && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); chooseProviderMention(mentionProviders[Math.min(mentionIndex, mentionProviders.length - 1)]); return; }
+          if (mention && event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); return; }
           if (slashVisible && slashResults.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) { event.preventDefault(); setSlashIndex(index => (index + (event.key === 'ArrowDown' ? 1 : -1) + slashResults.length) % slashResults.length); return; }
           if (slashVisible && event.key === 'Escape') { event.preventDefault(); change({ text: `/${composer.text.trimStart()}` }); return; }
           if (slashVisible && slashResults.length && (event.key === 'Tab' || event.key === 'Enter') && !event.shiftKey && !event.metaKey && !event.ctrlKey) { event.preventDefault(); selectSlash(slashResults[Math.min(slashIndex, slashResults.length - 1)]); return; }
@@ -685,5 +749,6 @@ const response = await frondoseActions.sendChatTurn(chat.id, { agent_id: val(run
     </div><footer className="dialog-footer"><Button onClick={() => setComposeDialog(null)} disabled={actionBusy}>Cancel</Button><Button type="submit" variant="primary" busy={actionBusy} disabled={composeDialog.type === 'document' && !destination || composeDialog.type === 'move' && Boolean(active)}>{composeDialog.type === 'move' ? 'Confirm move' : composeDialog.type === 'branch' ? 'Create branch' : 'Create'}</Button></footer></Form></Dialog> : null}
     {composeDialog?.type === 'drafts' ? <Dialog title="Follow-up drafts" subtitle="Nothing here runs automatically. Load a draft, review its recipient and access, then send it yourself." onClose={() => setComposeDialog(null)}><div className="dialog-body chat-followups"><ErrorMessage error={collaborationError} />{collaboration.drafts.map(draft => <section key={draft.id}><p>{draft.content}</p><small>{draft.recipient === 'note' ? 'Note' : agents.find(item => item.id === draft.recipient)?.name || 'Unavailable agent'} · {draft.permission === 'conversation' ? 'Discuss' : draft.permission === 'read-only' ? 'Inspect project' : 'Execute coding'}{draft.context_snapshot_id ? ' · selected context' : ''}</small><div><Button onClick={async () => { await loadDraft(draft); setComposeDialog(null); }}>Load into composer</Button><Button variant="ghost" disabled={actionBusy} onClick={() => perform(() => collaborationAction('remove-draft', { draft_id: draft.id }), 'Draft removed')}>Remove draft</Button></div></section>)}{!collaboration.drafts.length ? <p>No follow-up drafts saved.</p> : null}</div></Dialog> : null}
     {preview ? <Dialog title={preview.name} subtitle="Attachment preview" wide className="chat-attachment-dialog" onClose={() => setPreview(null)}><div className="dialog-body">{preview.type?.startsWith('image/') && /^data:image\/(png|jpeg|gif|webp);base64,/.test(preview.content) ? <img src={preview.content} alt={preview.name} /> : <pre>{typeof preview.content === 'string' ? preview.content : 'Content unavailable'}</pre>}</div><footer className="dialog-footer"><Button onClick={() => setPreview(null)}>Close</Button></footer></Dialog> : null}
+    {providerDestination ? <Dialog title={`Open ${providerDestination.name} conversation?`} closeDisabled={providerOpening} onClose={() => { if (!providerOpening) { setProviderDestination(null); setMentionDismissed(true); } }}>{closeDialog => <><div className="dialog-body provider-mention-confirm"><p>This conversation keeps its current responding agent. Your original draft, attachments, selected context and reply stay here.</p><p>Open {providerDestination.name} in its own conversation. Nothing will be copied or sent automatically.</p><ErrorMessage error={providerOpenError} /></div><footer className="dialog-footer"><Button disabled={providerOpening} onClick={() => closeDialog()}>Keep this conversation</Button><Button variant="primary" busy={providerOpening} onClick={openProviderConversation}>Open {providerDestination.name} conversation</Button></footer></>}</Dialog> : null}
   </section>;
 }

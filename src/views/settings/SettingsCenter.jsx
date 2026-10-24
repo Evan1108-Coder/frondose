@@ -32,6 +32,7 @@ import { CodeAppearanceSettings } from './CodeAppearanceSettings.jsx';
 import { GovernanceSettings } from './GovernanceSettings.jsx';
 import { ConnectionPlatformView } from '../ConnectionPlatform.jsx';
 import './settings-center.css';
+import { SIDEBAR_DEFAULT_WIDTH } from '../../lib/sidebar-size.js';
 import { SlidersHorizontal, Focus, Tag, Tags, ListChecks, PanelsTopLeft, Radio, Waypoints, Shapes, ScrollText, ChartNoAxesCombined, ReceiptText, BadgeCheck, ShieldUser, KeyRound, UserRound, UserRoundCog, Network, Cable, AppWindow, Webhook, Gauge, ClipboardCheck, ListOrdered, Route, TimerReset, Workflow, Target, Flag, NotebookPen, MessageSquareText, Package, LibraryBig, ArchiveRestore, History, FolderKanban, SquareStack, Smile, Terminal, Keyboard } from '../../components/icons.jsx';
 
 const ICONS = { Personal: Settings, Routes: FileText, Projects: FileText, 'Agents & work': Bot, Collaboration: Users, Plugins: Plug, Administration: ShieldCheck };
@@ -59,7 +60,7 @@ export function SettingsCenter() {
   const teams = visible(data.teams);
   return <main className={`settings-center ${sidebarSizing?.hidden ? 'settings-sidebar-hidden' : ''} ${sidebarSizing?.peek ? 'settings-sidebar-peek' : ''}`}>
     <aside className="settings-rail" inert={!isMobile && sidebarSizing?.hidden && !sidebarSizing?.peek ? true : undefined} onPointerLeave={() => { if (sidebarSizing?.hidden) sidebarSizing.setPeek(false); }}>
-      {!sidebarSizing?.hidden ? <SidebarResizeHandle width={sidebarSizing?.width ?? 280} preview={sidebarSizing?.preview} onResize={sidebarSizing?.resize} onHide={sidebarSizing?.hide} onRestore={sidebarSizing?.restore} /> : null}
+      {!sidebarSizing?.hidden ? <SidebarResizeHandle width={sidebarSizing?.width ?? SIDEBAR_DEFAULT_WIDTH} preview={sidebarSizing?.preview} onResize={sidebarSizing?.resize} onHide={sidebarSizing?.hide} onRestore={sidebarSizing?.restore} /> : null}
       <div className="settings-brand">{workspace.image_url ? <img className="workspace-picture" src={workspace.image_url} alt="" /> : <FrondoseSymbol size={34} decorative />}<strong>{workspace.name}</strong></div>
       <button className="settings-back" onClick={() => navigate('overview')}><ArrowLeft />Back to workspace</button>
       <div className="settings-search"><Search /><input aria-label="Search settings" placeholder="Search settings…" value={query} onChange={e => setQuery(e.target.value)} /></div>

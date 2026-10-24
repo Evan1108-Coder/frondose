@@ -54,6 +54,9 @@
 .dialog-backdrop { transition: opacity var(--motion-fade) var(--ease-out); }
 .dialog-backdrop[data-closing="true"] { opacity: 0; pointer-events: none; }
 .dialog-backdrop[data-closing="true"] .dialog:not(.command-dialog) { opacity: 0; transform: translateY(var(--motion-travel)) scale(var(--motion-scale)); }
+/* Shared Dialog owns its interruptible clipped reveal through WAAPI. Keep CSS
+   entrance/exit transforms off that panel so two motion systems cannot stack. */
+.dialog-backdrop[data-dialog-reveal="true"] .dialog:not(.command-dialog) { animation: none; transition: none; opacity: 1; transform: none; }
 .popover,
 .rumbo-select-panel,
 .rumbo-date-panel,
@@ -79,7 +82,7 @@
 }
 
 @starting-style {
-  .dialog:not(.command-dialog) { opacity: 0; transform: translateY(var(--motion-travel)) scale(var(--motion-scale)); }
+  .dialog-backdrop:not([data-dialog-reveal="true"]) .dialog:not(.command-dialog) { opacity: 0; transform: translateY(var(--motion-travel)) scale(var(--motion-scale)); }
   .dialog-backdrop:not(:has(.command-dialog)) { opacity: 0; }
   .popover, .rumbo-select-panel, .rumbo-date-panel, .agent-menu-panel, .rumbo-tooltip { opacity: 0; transform: scale(var(--motion-popover-scale)); }
   .toast { opacity: 0; transform: translate(-50%, var(--motion-travel)); }

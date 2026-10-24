@@ -1,9 +1,9 @@
 @import "./motion.css";
 
 /* Workspace-first navigation. All colors inherit Frondose's shared theme. */
-.rumbo-app { --sidebar: 280px; gap: 24px; }
+.rumbo-app { --sidebar-expanded: 240px; --sidebar: var(--sidebar-expanded); gap: 20px; }
 .sidebar.sidebar-v2 { padding: 12px 10px 10px; border-radius: 12px; background: linear-gradient(160deg, color-mix(in srgb, var(--nav) 99%, var(--accent) 1%) 0%, var(--nav) 56%, color-mix(in srgb, var(--nav) 99%, var(--surface) 1%) 100%); }
-.sidebar-v2 .sidebar-workspace-row { display: flex; align-items: center; gap: 2px; padding: 1px 0 20px; }
+.sidebar-v2 .sidebar-workspace-row { display: flex; align-items: center; gap: 2px; padding: 1px 0 16px; }
 .sidebar-v2 .workspace-picker { min-width: 0; flex: 1; }
 .sidebar-v2 .workspace-trigger { border: 0; border-radius: 6px; padding: 3px 2px; min-height: 40px; gap: 4px; font-size: 14px; font-weight: 570; }
 .sidebar-v2 .workspace-trigger .workspace-name { flex: 1; }
@@ -97,11 +97,9 @@
   .sidebar-v2.collapsed .workspace-options { left: 52px; top: 0; }
   .sidebar-v2.collapsed .create-options { left: 40px; right: auto; top: 0; }
 }
-@media (min-width: 1400px) { .rumbo-app { --sidebar: 292px; } }
-@media (min-width: 801px) and (max-width: 1100px) { .rumbo-app { --sidebar: 258px; gap: 20px; } }
 @media (max-width: 800px) {
   .sidebar-more-groups section > div { grid-template-columns: 1fr; }
-  .sidebar.sidebar-v2, .sidebar.sidebar-v2.collapsed { width: min(292px, calc(100vw - 28px)); padding: 12px 10px 10px; }
+  .sidebar.sidebar-v2, .sidebar.sidebar-v2.collapsed { width: min(260px, calc(100vw - 28px)); padding: 12px 10px 10px; }
   .sidebar.sidebar-v2:not(.mobile-open) { transform: translateX(calc(-100% - 24px)); }
   .sidebar.sidebar-v2.mobile-open { transform: translateX(0); }
   .sidebar-v2 .sidebar-workspace-row { flex-direction: row; }

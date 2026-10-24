@@ -1,0 +1,9 @@
+Use case: ui-mockup
+Asset type: original wide product-presentation illustration for Frondose's Claude Code connection gallery, not an interactive screen or actual execution screenshot.
+Primary request: a refined staged software product demo showing a project-understanding conversation with a compact clear planning pane. Make the subject unmistakably a polished chat-and-work interface, not abstract art.
+Scene/backdrop: an opaque pale warm neutral ground with a restrained terracotta accent field, soft natural depth. A generous open bottom quarter remains calm and nearly empty for a native caption added later.
+Subject: two layered, front-facing dark charcoal application panes in the central upper 65 percent. The main conversation has a user prompt above a clearly structured assistant response; a smaller plan pane slightly overlaps to the right, with three quiet ordered line-items drawn as short text-like strokes and small hollow circles, not progress metrics. Clean Inter-like sans-serif, subtle 1px separators, generous line spacing.
+Composition/framing: landscape 16:9, spacious, central composition, generous safe margins. The larger pane is offset slightly left, the smaller pane slightly right, balanced not cluttered. No overall card border, no outer browser frame, no device or desk.
+Text (verbatim): only "Understand the project" and "A clear plan, then the work". Render both exactly, clearly and once each. Do not add other readable words.
+Color palette: warm-neutral charcoal panes, off-white readable text, restrained terracotta and muted peach accents. No purple cast, rainbow, neon or glow.
+Constraints: original Frondose-style illustrative composition, not a reproduction of any provider's website. No logos, no brand monograms, no buttons or CTAs, no provider account status, no usage counts, no benchmark, no connected badge, no watermark. This is staged illustrative UI, never claimed as a live run.

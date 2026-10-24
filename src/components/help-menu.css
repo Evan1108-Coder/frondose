@@ -1,4 +1,14 @@
 .rumbo-help-trigger { flex: 0 0 30px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); font-size: 18px; font-weight: 600; background: transparent; }
+.rumbo-help-controls { min-width: 0; max-width: 100%; display: flex; align-items: center; gap: 4px; }
+.rumbo-help-controls.has-announcement { width: 100%; }
+.rumbo-help-trigger > svg { width: 15px; height: 15px; }
+.rumbo-release-trigger { min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px; min-height: 32px; text-align: left; padding: 6px 8px; border-radius: 7px; color: var(--secondary); font-size: 12px; }
+.rumbo-release-trigger:hover { background: var(--hover); color: var(--text); }
+.rumbo-release-trigger > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rumbo-release-unread { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.sidebar-v2.collapsed .rumbo-help-controls.has-announcement { width: 30px; flex-direction: column; }
+.sidebar-v2.collapsed .rumbo-release-trigger { width: 30px; padding-inline: 12px; }
+.sidebar-v2.collapsed .rumbo-release-trigger > span:last-child { display: none; }
 [data-sidebar-arrange][data-drop-target="true"] { box-shadow: inset 0 2px var(--focus); background: var(--hover); }
 .sidebar-editor-row[draggable="true"] { cursor: grab; }
 .sidebar-editor-row[draggable="true"]:active { cursor: grabbing; }
@@ -34,6 +44,18 @@
 .rumbo-help-menu button svg { width: 17px; height: 17px; color: var(--muted); flex-shrink: 0; }
 .rumbo-help-menu button small { margin-left: auto; color: var(--faint); font-size: 10px; }
 .rumbo-help-menu button:last-child { border-top: 1px solid var(--border-soft); border-radius: 0 0 7px 7px; margin-top: 4px; }
+.rumbo-update-timeline { position: relative; }
+.rumbo-update-timeline::before { content: ''; position: absolute; left: 17px; top: 19px; bottom: 19px; border-left: 2px dashed var(--border-strong); pointer-events: none; }
+.rumbo-update-timeline button { position: relative; gap: 13px; padding-left: 14px; }
+.rumbo-update-timeline .rumbo-update-dot { position: relative; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.rumbo-update-timeline button:last-child { margin-top: 0; border-top: 0; border-radius: 7px; }
+@media (max-width: 800px) {
+  .sidebar-v2.collapsed .rumbo-help-controls.has-announcement { width: 100%; flex-direction: row; }
+  .sidebar-v2.collapsed .rumbo-release-trigger { width: auto; padding-inline: 8px; }
+  .sidebar-v2.collapsed .rumbo-release-trigger > span:last-child { display: block; }
+  .rumbo-help-trigger { width: 40px; height: 40px; flex-basis: 40px; }
+  .rumbo-release-trigger { min-height: 40px; }
+}
 .rumbo-terms { min-height: 0; overflow-y: auto; margin: 0; padding: 8px 24px 24px; }
 .rumbo-terms > div { padding: 13px 0; border-bottom: 1px solid var(--border-soft); }
 .rumbo-terms > div:last-child { border-bottom: 0; }

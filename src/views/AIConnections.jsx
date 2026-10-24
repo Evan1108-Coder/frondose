@@ -8,6 +8,7 @@ import { ArrowRight, Check, ExternalLink, Plug, Terminal } from '../components/i
 import { ServiceLogo } from '../components/ServiceLogo.jsx';
 import { ConnectionDialog } from './Connections.jsx';
 import { ComputerConnections } from '../components/ComputerConnections.jsx';
+import { SlidingTabs } from '../components/SlidingTabs.jsx';
 import './ai-connections.css';
 
 const PROVIDERS = [
@@ -182,9 +183,7 @@ export function AIConnectionsView() {
     </section> : <>
       <PageHeader title="AI connections" description="Choose API credentials, supported account authorization, or a personal computer. Account access and agent permissions are separate."><Button onClick={() => navigate('docs', 'provider-connections')}>Connection guides</Button></PageHeader>
       <div className="ai-catalog-controls">
-        <div className="ai-filter-tabs" role="group" aria-label="Filter AI connections">
-          {[[ 'all', 'All' ], [ 'api', 'API key' ], [ 'sign-in', 'Sign in' ], [ 'local', 'Local' ]].map(([id, label]) => <button type="button" key={id} aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}
-        </div>
+        <SlidingTabs className="ai-filter-tabs" label="Filter AI connections" value={filter} onChange={setFilter} options={[{ value: 'all', label: 'All' }, { value: 'api', label: 'API key' }, { value: 'sign-in', label: 'Sign in' }, { value: 'local', label: 'Local' }]} />
         <SearchField value={query} onChange={setQuery} placeholder="Search providers…" />
       </div>
       <ErrorMessage error={error} />

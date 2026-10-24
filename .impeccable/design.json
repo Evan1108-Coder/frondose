@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-20T03:36:28Z",
+  "generatedAt": "2026-10-24T04:25:58Z",
   "title": "Design System: Frondose",
   "extensions": {
     "motion": [
@@ -9,16 +9,23 @@
       { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Mobile and auto-hidden navigation drawer movement." },
       { "name": "motion-feedback", "value": "100ms", "purpose": "Shared immediate-control feedback." },
       { "name": "motion-popover", "value": "160ms", "purpose": "Popover, select, tooltip, and toast transitions; zero in reduced motion." },
-      { "name": "motion-dialog", "value": "200ms", "purpose": "Dialog transform transition; zero in reduced motion." },
+      { "name": "motion-dialog", "value": "200ms", "purpose": "Incumbent fallback CSS dialog transform transition; zero in reduced motion. Shared Dialog clipped reveal uses its separate WAAPI durations below." },
       { "name": "motion-fade", "value": "160ms", "purpose": "Overlay/disclosure fade; 80ms in reduced motion." },
       { "name": "motion-disclosure", "value": "200ms", "purpose": "Bounded navigation tree expansion; zero in reduced motion." },
       { "name": "motion-chevron", "value": "160ms", "purpose": "Incumbent disclosure timing token; zero in reduced motion." },
       { "name": "motion-travel", "value": "4px", "purpose": "Overlay/disclosure travel; zero in reduced motion." },
-      { "name": "motion-scale", "value": ".98", "purpose": "Dialog starting/closing scale; one in reduced motion." },
+      { "name": "motion-scale", "value": ".98", "purpose": "Incumbent fallback CSS dialog starting/closing scale; one in reduced motion. Shared Dialog clipped reveal does not scale text." },
       { "name": "motion-popover-scale", "value": ".97", "purpose": "Popover starting scale; one in reduced motion." },
       { "name": "mobile-drawer", "value": "220ms var(--ease-drawer)", "purpose": "Observed mobile sidebar transition, disabled for keyboard and reduced motion." },
       { "name": "route-entrance", "value": "opacity 180ms var(--ease-out), transform 240ms var(--ease-out)", "purpose": "Existing keyed route entrance, with 8px starting travel and 25ms/45ms child delays. Recorded source behavior, not a new rule for page or live-data animation." },
-      { "name": "chat-work-pulse", "value": "1.5s ease-in-out infinite", "purpose": "Observed working dot opacity pulse; disabled by prefers-reduced-motion." }
+      { "name": "chat-work-pulse", "value": "1.5s ease-in-out infinite", "purpose": "Observed working dot opacity pulse; disabled by prefers-reduced-motion." },
+      { "name": "single-choice-plate", "value": "220ms cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "SlidingTabs selected indigo plate; selection updates immediately and only the plate changes geometry. Keyboard and OS/app reduced motion snap it; preference changes cancel in-flight movement." },
+      { "name": "dialog-reveal-open", "value": "240ms cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Shared Dialog actual-size content reveal via clipped shell near its opener; command palettes and keyboard actions are immediate." },
+      { "name": "dialog-reveal-close", "value": "160ms cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Shared guarded exit from the currently visible frame, including adopted render-prop footer controls; explicit navigation continuations run after exit. Dirty-close rejection restores the mounted dialog." },
+      { "name": "dialog-reveal-shell", "value": "min(56px, panel width, panel height); inset clip radius 14px", "purpose": "Initial clipped shell reveals actual-size text rather than scaling the panel contents." },
+      { "name": "dialog-reveal-travel-cap", "value": "96px per axis", "purpose": "Bounds translation from distant opening controls; missing openers use the panel center." },
+      { "name": "dialog-reduced-fade", "value": "80ms", "purpose": "OS/app reduced-motion alternative: opacity only, no clipped expansion or travel; keyboard modality uses zero duration. Preference changes cancel in-flight spatial movement." },
+      { "name": "featured-image-replacement", "value": "opacity .6 to 1 over 180ms ease-out", "purpose": "Local featured-provider image replacement fade; disabled by OS/app reduced motion, not a general content-refresh animation rule." }
     ],
     "breakpoints": [
       { "name": "shell-wide", "value": "min-width: 1400px" },
@@ -27,7 +34,10 @@
       { "name": "global-search-icon", "value": "max-width: 760px" },
       { "name": "reader-and-body-mobile", "value": "max-width: 600px" },
       { "name": "conversation-compact", "value": "max-width: 540px" },
-      { "name": "global-language-hidden", "value": "max-width: 400px" }
+      { "name": "global-language-hidden", "value": "max-width: 400px" },
+      { "name": "connection-library-two-columns", "value": "max-width: 1100px" },
+      { "name": "connection-library-one-column", "value": "max-width: 650px" },
+      { "name": "single-choice-compact-padding", "value": "max-width: 460px" }
     ]
   },
   "components": [
@@ -102,6 +112,22 @@
       "description": "Single bordered text-entry wrapper; this snippet previews anatomy, not provider execution.",
       "html": "<div class=\"ds-compose\"><textarea aria-label=\"Message\" placeholder=\"Write a note or type / for commands…\"></textarea><div class=\"ds-compose-controls\"><span>Note · only saved here</span><button type=\"button\">Save note</button></div></div>",
       "css": ".ds-compose{padding:18px 16px 12px;border:1px solid var(--border-strong,#3e3e44);border-radius:16px;background:var(--surface,#191a1b);box-shadow:0 12px 32px rgb(0 0 0 / .08);transition:border-color 150ms ease,box-shadow 150ms ease;font-family:'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text,#f7f8f8)}.ds-compose:focus-within{border-color:color-mix(in srgb,var(--text,#f7f8f8) 32%,var(--border-strong,#3e3e44))}.ds-compose>textarea{display:block;resize:none;width:100%;min-height:78px;max-height:220px;padding:0 3px 16px;border:0;border-radius:0;outline:0;box-shadow:none;background:transparent;color:inherit;font:16px/1.6 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.ds-compose>textarea::placeholder{color:var(--muted,#a1a6af)}.ds-compose-controls{display:flex;align-items:center;justify-content:space-between;gap:12px}.ds-compose-controls>span{font-size:12px;color:var(--muted,#a1a6af)}.ds-compose-controls>button{min-height:36px;padding:7px 12px;border:1px solid var(--accent,#6266d5);border-radius:7px;background:var(--accent,#6266d5);color:var(--accent-text,#ffffff);font:550 13px/1.35 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer}.ds-compose-controls>button:hover{background:var(--accent-hover,#585dc4);border-color:var(--accent-hover,#585dc4)}.ds-compose-controls>button:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}@media(max-width:540px){.ds-compose{padding:12px 10px 8px}.ds-compose>textarea{min-height:44px;max-height:140px;padding-bottom:8px}}"
+    },
+    {
+      "name": "Single-choice filter",
+      "kind": "nav",
+      "refersTo": "single-choice-filter",
+      "description": "Static anatomy preview of the shared radio-group filter. Production SlidingTabs moves only the selected plate, updates immediately, and supplies roving keyboard/RTL behavior.",
+      "html": "<div class=\"ds-choice\" role=\"radiogroup\" aria-label=\"Connection categories\"><span class=\"ds-choice-plate\" aria-hidden=\"true\"></span><button type=\"button\" role=\"radio\" aria-checked=\"true\" tabindex=\"0\">All connections</button><button type=\"button\" role=\"radio\" aria-checked=\"false\" tabindex=\"-1\">Coding agents</button></div>",
+      "css": ".ds-choice{position:relative;isolation:isolate;display:inline-flex;gap:2px;max-width:100%;padding:3px;border:1px solid var(--border,#2a2e33);border-radius:10px;background:var(--surface,#191a1b);font-family:'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}.ds-choice-plate{position:absolute;left:3px;top:3px;bottom:3px;width:calc((100% - 8px)/2);z-index:-1;border-radius:7px;background:var(--accent,#6266d5);pointer-events:none}.ds-choice>button{position:relative;flex:1 1 0;min-width:0;min-height:34px;padding:7px 16px;border:0;border-radius:7px;background:transparent;color:var(--secondary,#d0d6e0);font:550 13px/20px 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;transition:color 100ms}.ds-choice>button[aria-checked='true']{color:var(--accent-text,#fff)}.ds-choice>button:hover:not([aria-checked='true']):not(:disabled){color:var(--text,#f7f8f8);background:color-mix(in srgb,var(--hover,#232326) 65%,transparent)}.ds-choice>button:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:2px}.ds-choice>button:disabled{opacity:.5;cursor:not-allowed}@media(pointer:coarse){.ds-choice>button{min-height:44px}}@media(max-width:460px){.ds-choice>button{padding-inline:10px}}@media(forced-colors:active){.ds-choice-plate{background:Highlight}.ds-choice>button[aria-checked='true']{color:HighlightText;outline:1px solid Highlight}}"
+    },
+    {
+      "name": "Connection library card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Quiet neutral catalog card with honest setup-method metadata. Production uses the real provider mark; this text-only anatomy sample makes no account-readiness claim.",
+      "html": "<button type=\"button\" class=\"ds-connection\"><strong>Provider connection</strong><p>Choose a supported connection method and review its setup.</p><small>Computer (CLI)</small></button>",
+      "css": ".ds-connection{display:flex;flex-direction:column;min-width:0;min-height:208px;padding:24px;text-align:left;border:1px solid var(--border-soft,#202122);border-radius:12px;background:var(--surface,#191a1b);color:var(--text,#f7f8f8);font-family:'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer}.ds-connection>strong{font-size:16px;font-weight:550;overflow-wrap:anywhere}.ds-connection>p{font-size:14px;line-height:1.6;color:var(--secondary,#d0d6e0);margin:20px 0}.ds-connection>small{font-size:12px;line-height:1.5;color:var(--muted,#a1a6af);margin-top:auto}.ds-connection:hover{background:var(--hover,#232326)}.ds-connection:focus-visible{outline:2px solid var(--focus,#969aff);outline-offset:3px}@media(max-width:650px){.ds-connection{min-height:180px;padding:20px}}"
     },
     {
       "name": "Conversation identity frame",
