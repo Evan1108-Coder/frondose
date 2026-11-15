@@ -1,3 +1,4 @@
+import {localHostUpgradeProblem} from '../lib/local-host-compatibility.js';
 const API_ROOT = "/api";
 const DEFAULT_TIMEOUT_MS = 12_000;
 
@@ -94,7 +95,7 @@ export async function apiRequest(path, options = {}) {
     };
   } catch (error) {
     if (signal?.aborted) throw signal.reason ?? error;
-    if (error instanceof FrondoseApiError) throw error;
+    if (error instanceof FrondoseApiError) {const upgrade=localHostUpgradeProblem(path,error);if(upgrade)throw new FrondoseApiError(upgrade.message,{status:error.status,code:upgrade.code,cause:error});throw error;}
     throw new FrondoseApiError(timedOut
       ? "The server took too long to respond. Check the current state before retrying."
       : "Frondose could not reach the server. Your existing workspace has not been changed.", {

@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdir, mkdtemp, writeFile, chmod, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { tabAppUrl, existingTabApp, repositoryCheckSummary, repositorySourceKey } from '../src/lib/tab-apps.js';
+import { newWorkspaceTab, workspaceTabsReducer, initialWorkspaceTabs, persistedWorkspaceTabs, normalizeWorkspaceTabs, workspaceNavigationDisposition } from '../src/lib/workspace-tabs.js';
+const require = createRequire(import.meta.url), { setupCommand, nativeEditorRunning, vscodeWebSetup } = require('../desktop/editor-tab-setup.cjs');
+test('mixed runtime/app groups still review browser closure and release app leases', () => {
+  const source = readFileSync(new URL('../src/components/workspace/WorkspaceSurface.jsx', import.meta.url), 'utf8');
+  assert.match(source, /commitClose=useCallback\(\(target,browserReviewed=false\)/);
+  assert.match(source, /if\(!browserReviewed&&workspaceTabViews\(target\)\.some/);
+  assert.match(source, /commitClose\(browserClose,true\)/);
+});
+test('portal tabs allow HTTPS and loopback HTTP only', () => { assert.equal(tabAppUrl('https://gateway.example/guacamole/', 'guacamole'), 'https://gateway.example/guacamole/'); assert.equal(tabAppUrl('http://127.0.0.1:8080/', 'web-console'), 'http://127.0.0.1:8080/'); });
+for (const address of ['http://192.168.0.4/', 'file:///tmp/code', 'javascript:alert(1)', 'https://user:password@host/', 'https://host/?token=secret', 'https://host/#token']) test(`unsafe portal rejected ${address}`, () => assert.throws(() => tabAppUrl(address, 'guacamole')));
+test('VS Code runtime token URL is local and stays ephemeral', () => { assert.equal(tabAppUrl('http://localhost:8060/?tkn=secret', 'vscode'), 'http://localhost:8060/?tkn=secret'); assert.throws(() => tabAppUrl('https://cloud.example/?tkn=x', 'vscode')); assert.throws(() => tabAppUrl('http://localhost:8060/?bad=secret', 'vscode')); });
+test('unknown tab app IDs cannot become browser connections', () => assert.throws(() => tabAppUrl('https://example.com', 'desktop-app')));
+test('tab metadata saves app identity but never connection URLs or tokens', () => { const tab = newWorkspaceTab('web-app', { appId: 'vscode', label: 'VS Code Web', url: 'http://localhost/?tkn=secret', connectionToken: 'secret' }); const state = { ...initialWorkspaceTabs({ view: 'workspace' }), tabs: [tab], activeTabId: tab.id }; const saved = JSON.stringify(persistedWorkspaceTabs(state)); assert.match(saved, /vscode/); assert.doesNotMatch(saved, /secret|localhost|connectionToken/); assert.equal(normalizeWorkspaceTabs(JSON.parse(saved)).tabs[0].appId, 'vscode'); });
+test('only known web applications can be restored', () => assert.throws(() => newWorkspaceTab('web-app', { appId: 'native-executable' })));
+test('dashboard navigation never replaces terminals, files or running apps', () => { const dashboard = newWorkspaceTab('repository', { label: 'GitHub Dashboard' }); for (const kind of ['terminal', 'browser', 'editor', 'web-app']) assert.equal(workspaceNavigationDisposition(newWorkspaceTab(kind, kind === 'web-app' ? { appId: 'vscode' } : {}), dashboard), 'open'); });
+test('file selection consumes the editor landing tab without creating a second editor', () => assert.equal(workspaceNavigationDisposition(newWorkspaceTab('editor-home'), newWorkspaceTab('editor', { path: 'readme.md' })), 'replace'));
+test('single managed app identity works inside groups and cannot be duplicated', () => { const one = newWorkspaceTab('web-app', { appId: 'guacamole' }), other = newWorkspaceTab('terminal'); const group = newWorkspaceTab('group', { views: [other, one] }); assert.equal(existingTabApp([group], 'guacamole').view.entityId, one.entityId); const state = { ...initialWorkspaceTabs(), tabs: [group], activeTabId: group.id }; const next = workspaceTabsReducer(state, { type: 'open', tab: newWorkspaceTab('web-app', { appId: 'guacamole' }) }); assert.equal(next.tabs.length, 1); });
+test('remote results invalidate on connection and branch changes', () => { const value = { workspaceId: 'w', bindingVersion: 'r', github: { slug: 'a/b' }, connectionVersion: 'c', head: 'h', branch: 'main' }; assert.notEqual(repositorySourceKey(value), repositorySourceKey({ ...value, connectionVersion: 'd' })); assert.notEqual(repositorySourceKey(value), repositorySourceKey({ ...value, head: 'new' })); });
+test('CI summaries do not call missing or skipped checks passing', () => { assert.equal(repositoryCheckSummary({ total: 0 }), 'No checks reported'); assert.match(repositoryCheckSummary({ total: 4, failed: 1 }), /1 failed/); assert.match(repositoryCheckSummary({ total: 4, pending: 2 }), /2 pending/); assert.match(repositoryCheckSummary({ total: 4 }), /none failed or pending/); });
+test('setup commands are shell-quoted, loopback-bound and do not accept licenses', () => { const unix = setupCommand("/Applications/VS Code.app/bin/code-tunnel", "/tmp/it's $HOME; folder", 'darwin'); assert.match(unix, /127\.0\.0\.1/); assert.match(unix, /'--port' '0'/); assert.doesNotMatch(unix, /--accept-server-license-terms|--without-connection-token|0\.0\.0\.0/); assert.match(unix, /'"'"'/); const win = setupCommand('C:\\Apps\\Code\\code-tunnel.exe', "C:\\Work\\O'Brien", 'win32'); assert.ok(win.startsWith("& 'C:")); assert.match(win, /O''Brien/); });
+test('native running check distinguishes a desktop process from the server CLI', async () => { const app = { path: '/Applications/Visual Studio Code.app' }; assert.equal(await nativeEditorRunning(app, 'darwin', async () => ({ stdout: `${app.path}/Contents/MacOS/Electron\n` })), true); assert.equal(await nativeEditorRunning(app, 'darwin', async () => ({ stdout: `${app.path}/Contents/Resources/app/bin/code-tunnel serve-web\n` })), false); assert.equal(await nativeEditorRunning(app, 'darwin', async () => { throw Error('unavailable'); }), null); });
+test('setup validates installed CLI and refuses an already open or uncertain desktop', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'frondose-web-setup-')), path = join(root, 'Visual Studio Code.app');
+  await mkdir(join(path, 'Contents/Resources/app/bin'), { recursive: true }); const cli = join(path, 'Contents/Resources/app/bin/code-tunnel'); await writeFile(cli, 'fixture, never executed'); await chmod(cli, 0o700);
+  const input = { application: { id: 'vscode', path }, directory: root, platform: 'darwin' };
+  try { await assert.rejects(vscodeWebSetup({ ...input, running: async () => true }), /already open/); await assert.rejects(vscodeWebSetup({ ...input, running: async () => null }), /unavailable/); const result = await vscodeWebSetup({ ...input, running: async () => false }); assert.equal(result.startsAutomatically, false); assert.equal(result.licenseAccepted, false); assert.ok(result.command.includes(cli)); } finally { await rm(root, { recursive: true, force: true }); }
+});

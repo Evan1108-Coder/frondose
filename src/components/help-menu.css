@@ -26,9 +26,16 @@
 .sidebar-custom-group .section-title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-layout-editor-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border-soft); }
 .sidebar-layout-editor-row > span { flex: 1; min-width: 100px; }
+.sidebar-layout-editor-row > span:first-child { overflow-wrap: anywhere; }
 .sidebar-layout-editor-row .rumbo-select { width: 170px; }
 .sidebar-custom-editor { display: flex; gap: 8px; margin-block: 10px; flex-wrap: wrap; }
 .sidebar-custom-editor input { flex: 1; min-width: 130px; }
+.sidebar-custom-groups-disclosure { min-width: 0; margin-top: 18px; border-bottom: 1px solid var(--border-soft); padding-bottom: 8px; }
+.sidebar-custom-groups-disclosure > summary { cursor: pointer; padding: 8px 0; font-size: 13px; font-weight: 550; }
+.sidebar-custom-groups-disclosure > summary > span { margin-left: 7px; color: var(--muted); font-size: 12px; }
+.sidebar-custom-groups-disclosure > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
+.sidebar-editor .sidebar-layout-editor-row.sidebar-fixed-page { display: flex; align-items: center; gap: 12px; min-height: 34px; padding-block: 7px; }
+.sidebar-fixed-page > small { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .rumbo-help-trigger:hover, .rumbo-help-trigger[aria-expanded="true"] { color: var(--text); background: var(--hover); }
 .rumbo-help-menu { position: fixed; z-index: 300; width: 252px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 80px); overflow-y: auto; padding: 6px; background: var(--elevated); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 36px #0003; }
 .rumbo-help-menu { opacity: 1; transform: scale(1); transform-origin: left bottom; transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out); }
@@ -42,6 +49,7 @@
 .rumbo-help-menu button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 8px 10px; text-align: left; border-radius: 7px; font-size: 13px; }
 .rumbo-help-menu button:hover, .rumbo-help-menu button:focus-visible { background: var(--hover); }
 .rumbo-help-menu button svg { width: 17px; height: 17px; color: var(--muted); flex-shrink: 0; }
+.rumbo-help-menu button > span { min-width: 0; overflow-wrap: anywhere; }
 .rumbo-help-menu button small { margin-left: auto; color: var(--faint); font-size: 10px; }
 .rumbo-help-menu button:last-child { border-top: 1px solid var(--border-soft); border-radius: 0 0 7px 7px; margin-top: 4px; }
 .rumbo-update-timeline { position: relative; }
@@ -57,10 +65,10 @@
   .rumbo-release-trigger { min-height: 40px; }
 }
 .rumbo-terms { min-height: 0; overflow-y: auto; margin: 0; padding: 8px 24px 24px; }
-.rumbo-terms > div { padding: 13px 0; border-bottom: 1px solid var(--border-soft); }
+.rumbo-terms > div { display:block; padding: 13px 0; border-bottom: 1px solid var(--border-soft); }
 .rumbo-terms > div:last-child { border-bottom: 0; }
-.rumbo-terms dt { color: var(--text); font-size: 13px; font-weight: 600; }
-.rumbo-terms dd { margin: 4px 0 0; color: var(--secondary); font-size: 12px; line-height: 1.65; }
+.rumbo-terms dt { color: var(--text); font-size: 13px; font-weight: 600; min-width:0; overflow-wrap:normal; }
+.rumbo-terms dd { margin: 6px 0 0; color: var(--secondary); font-size: 12px; line-height: 1.65; text-align:left; min-width:0; overflow-wrap:break-word; }
 .rumbo-download-placeholder { padding: 24px; display: grid; justify-items: start; gap: 16px; }
 .rumbo-download-placeholder > svg { width: 32px; height: 32px; color: var(--muted); }
 .rumbo-download-placeholder p { margin: 0; color: var(--muted); line-height: 1.7; }
@@ -87,3 +95,21 @@
 .rumbo-feedback-footer > div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .rumbo-feedback-footer small { color: var(--faint); font-size: 11px; }
 @media (max-width: 520px) { .rumbo-feedback-body { padding-inline: 16px; } .rumbo-feedback-footer { padding: 16px; align-items: flex-end; } .rumbo-feedback-footer > div { align-items: flex-start; flex-direction: column; } .rumbo-feedback-footer .button { white-space: nowrap; } }
+/* Customization is a readable single-column editor on a phone, not a shrunken
+   desktop control table. Select triggers remain bounded to the dialog width. */
+@media (max-width: 600px) {
+  .sidebar-editor .sidebar-editor-body,
+  .sidebar-editor .sidebar-editor-body section { min-width: 0; }
+  .sidebar-editor .sidebar-editor-preferences { padding-inline: 12px; }
+  .sidebar-editor .sidebar-editor-preferences > label > span { min-width: 0; overflow-wrap: anywhere; }
+  .sidebar-editor .sidebar-editor-preferences .rumbo-select { width: 100%; min-width: 0; max-width: 100%; }
+  .sidebar-editor .sidebar-layout-editor-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 12px 0; }
+  .sidebar-editor .sidebar-layout-editor-row > span:first-child { min-width: 0; }
+  .sidebar-editor .sidebar-layout-editor-row > .sidebar-reorder { grid-column: 2; grid-row: 1; }
+  .sidebar-editor .sidebar-layout-editor-row > .rumbo-select { grid-column: 1 / -1; width: 100%; min-width: 0; max-width: 100%; }
+  .sidebar-editor .sidebar-layout-editor-row > .button { grid-column: 1 / -1; justify-self: start; min-width: 0; max-width: 100%; white-space: normal; }
+  .sidebar-editor .sidebar-layout-editor-row > .organization-note { grid-column: 1 / -1; min-width: 0; margin: 0; }
+  .sidebar-editor .sidebar-custom-editor input { min-width: 0; flex-basis: 100%; width: 100%; }
+  .sidebar-editor .sidebar-custom-editor > .button { min-width: 0; max-width: 100%; white-space: normal; }
+  .sidebar-editor .dialog-footer > .button { flex: 1 1 auto; }
+}

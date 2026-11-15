@@ -1,0 +1,45 @@
+import {useEffect,useState} from 'react';
+import {useInterfaceLanguage} from '../../components/InterfaceLanguage.jsx';
+import {interfaceText} from '../../lib/interface-language.js';
+import {Button,ErrorMessage,useApp} from '../../ui.jsx';
+import {Check,ChevronRight,RotateCw,Sparkles} from '../../components/icons.jsx';
+import {ServiceLogo} from '../../components/ServiceLogo.jsx';
+import {apiRequest} from '../../data/api.js';
+import {readWorkspaceOnboarding,saveWorkspaceOnboarding} from '../../lib/workspace-onboarding.js';
+import {CHECKLIST_STEPS,readChecklist,updateChecklist,retireChecklist} from '../../lib/onboarding-checklist.js';
+import {useUnsavedUpdate,requestUpdateNavigation} from '../../components/UnsavedUpdates.jsx';
+import {requestWorkspaceTool} from '../../lib/workspace-tool-intent.js';
+import './workspace-setup-settings.css';
+
+export function useChecklistNav(workspaceId){
+ const snapshot=()=>{const saved=readChecklist(workspaceId);return {id:workspaceId,complete:Boolean(saved.completedAt)&&!saved.retiredAt,hidden:Boolean(saved.retiredAt)};};
+ const [entry,setEntry]=useState(snapshot);
+ useEffect(()=>{setEntry(snapshot());},[workspaceId]);
+ useEffect(()=>{if(!entry.complete||entry.hidden)return;const reduced=document.documentElement.dataset.motion==='reduced'||matchMedia('(prefers-reduced-motion: reduce)').matches;const timer=setTimeout(()=>{try{retireChecklist(entry.id);setEntry(old=>({...old,hidden:true}));}catch(error){setEntry(old=>({...old,complete:false,error}));}},reduced?0:900);return()=>clearTimeout(timer);},[entry.id,entry.complete,entry.hidden]);
+ return entry.id===workspaceId?entry:{hidden:true,complete:false};
+}
+export function OnboardingChecklist(){
+ const {workspace,data,navigate}=useApp(),id=workspace.id;
+ const language=useInterfaceLanguage(),t=copy=>interfaceText(copy,language);
+ const [value,setValue]=useState(()=>readChecklist(id)),[error,setError]=useState(null);
+ useEffect(()=>{const controller=new AbortController();apiRequest('/api/directory-workspace?'+new URLSearchParams({workspace_id:id}),{signal:controller.signal}).then(({result})=>{
+   const next=updateChecklist(id,{observed:{directory:result.ready===true,cli:Boolean(readWorkspaceOnboarding(id).defaultCli),route:data.tasks.some(row=>row.workspace_id===id&&!row.archived_at)}});setValue(next);
+ }).catch(cause=>{if(!controller.signal.aborted)setError(cause);});return()=>controller.abort();},[id,data.tasks]);
+ function skip(step){try{setValue(updateChecklist(id,{skip:step}));}catch(cause){setError(cause);}}
+ const count=CHECKLIST_STEPS.filter(s=>value.observed[s.id]||value.skipped[s.id]).length;
+ return <section className="workspace-checklist"><header><div><h1>Onboarding Checklist</h1><p>A few small steps to make this workspace yours. Optional steps can wait.</p></div><strong>{count} / {CHECKLIST_STEPS.length}</strong></header><ErrorMessage error={error}/><progress aria-label="Workspace setup progress" max={CHECKLIST_STEPS.length} value={count}/><div className="workspace-checklist-steps">{CHECKLIST_STEPS.map((step,index)=>{const done=value.observed[step.id],skipped=value.skipped[step.id];return <section key={step.id} data-complete={done||skipped}><span className="checklist-step-mark">{done||skipped?<Check/>:index+1}</span><div><h2>{t(step.title)}</h2><p>{t(step.detail)}</p><small>{t(done?'Completed':skipped?'Skipped for now':'Ready when you are')}</small></div>{!done&&!skipped?<div className="checklist-step-actions"><Button onClick={()=>step.setting?navigate('settings',step.setting):navigate(step.view)}>{t(step.id==='browser'?'Open New Tab':'Continue')}<ChevronRight/></Button><button type="button" className="text-button" onClick={()=>skip(step.id)}>Skip for now</button></div>:null}</section>;})}</div>{value.completedAt?<p className="checklist-complete-copy"><Sparkles/>This workspace is ready. The checklist will retire the next time you open Settings.</p>:null}</section>;
+}
+export function CliAgentsSettings(){
+ const {workspace,navigate}=useApp(),id=workspace.id;
+ const language=useInterfaceLanguage(),t=copy=>interfaceText(copy,language);
+ const [inventory,setInventory]=useState(null),[query,setQuery]=useState(''),[revision,setRevision]=useState(0),[commands,setCommands]=useState({}),[defaultCli,setDefaultCli]=useState(()=>readWorkspaceOnboarding(id).defaultCli),[editing,setEditing]=useState(null),[executable,setExecutable]=useState(''),[args,setArgs]=useState('[]'),[busy,setBusy]=useState(false),[error,setError]=useState(null),[refresh,setRefresh]=useState(0),[confirmed,setConfirmed]=useState(false);
+ useUnsavedUpdate(Boolean(editing),busy);
+ const endpoint='/api/workbench/cli-settings?'+new URLSearchParams({workspace_id:id,host_scope:'workspace'});
+ useEffect(()=>{const c=new AbortController();setError(null);setInventory(null);setDefaultCli(readWorkspaceOnboarding(id).defaultCli);Promise.all([apiRequest('/api/workbench/terminal-providers?'+new URLSearchParams({workspace_id:id,host_scope:'workspace'}),{signal:c.signal}),apiRequest(endpoint,{signal:c.signal})]).then(([runtime,saved])=>{if(!c.signal.aborted){setInventory(runtime.result.providers);setRevision(saved.result.revision);setCommands(saved.result.commands);}}).catch(cause=>{if(!c.signal.aborted)setError(cause);});return()=>c.abort();},[id,refresh]);
+ async function save(event){event.preventDefault();if(busy||!confirmed)return;setBusy(true);setError(null);try{
+   const parsed=JSON.parse(args),next={...commands};if(executable.trim())next[editing.id]={executable:executable.trim(),args:parsed};else delete next[editing.id];
+   const {result}=await apiRequest(endpoint,{method:'PATCH',body:{workspace_id:id,host_scope:'workspace',commands:next,expected_revision:revision,confirmed:true}});setRevision(result.revision);setCommands(result.commands);setEditing(null);setRefresh(v=>v+1);
+ }catch(cause){setError(cause);}finally{setBusy(false);}}
+ function edit(provider){requestUpdateNavigation(()=>{setEditing(provider);setExecutable(commands[provider.id]?.executable||'');setArgs(JSON.stringify(commands[provider.id]?.args||[]));setConfirmed(false);setError(null);});}
+ return <section className="cli-agents-settings"><header><div><h1>CLI Agents</h1><p>Your installed command-line tools. Settings never start a session.</p></div><Button icon={RotateCw} disabled={busy} onClick={()=>setRefresh(v=>v+1)}>Refresh Detection</Button></header><div className="workstation-actions"><Button onClick={()=>requestUpdateNavigation(()=>requestWorkspaceTool(id,'workstation-tool',{toolId:'ai'},()=>navigate('workspace')))}>Open AI Sessions</Button></div><ErrorMessage error={error}/><label className="cli-agents-search">Find a CLI<input type="search" placeholder="Search CLI agents…" value={query} onChange={event=>setQuery(event.target.value)}/></label><p className="cli-agents-note">The default appears first in AI Sessions → Terminal. Command overrides apply only to manually opened new CLIs—not native Resume or reviewed scheduled tasks.</p>{editing?<form className="cli-command-editor" onSubmit={save} data-field-defaults-exclude="true"><h2>{editing.title} · {t('Launch command')}</h2><label>Executable<input value={executable} onChange={event=>setExecutable(event.target.value)} placeholder="Command name or absolute executable path; empty uses automatic detection" disabled={busy}/></label><label>Arguments (JSON array)<textarea value={args} onChange={event=>setArgs(event.target.value)} rows={3} disabled={busy}/></label><label className="cli-command-confirm"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} disabled={busy}/>Use these settings for future explicit launches. Existing sessions stay unchanged.</label><div><Button disabled={busy} onClick={()=>requestUpdateNavigation(()=>setEditing(null))}>Cancel</Button><Button type="submit" variant="primary" disabled={busy||!confirmed}>Save Command</Button></div></form>:null}<div className="cli-agents-list">{inventory?inventory.filter(provider=>provider.title.toLowerCase().includes(query.toLowerCase())).sort((a,b)=>Number(b.installed)-Number(a.installed)||a.title.localeCompare(b.title)).map(provider=><section key={provider.id}><ServiceLogo name={provider.id}/><div><strong>{provider.title}</strong><small>{t(provider.installed?'Detected on this computer':'Not detected')}{commands[provider.id]?` · ${t('Custom command')}`:''}</small></div><Button disabled={!provider.installed||busy} aria-pressed={defaultCli===provider.id} onClick={()=>{try{saveWorkspaceOnboarding(id,{defaultCli:provider.id});setDefaultCli(provider.id);updateChecklist(id,{observed:{cli:true}});}catch(cause){setError(cause);}}}>{t(defaultCli===provider.id?'Default':'Make Default')}</Button><Button disabled={busy} onClick={()=>edit(provider)}>Customize</Button></section>):<p role="status">Reading local CLI settings…</p>}</div><button type="button" className="text-button" onClick={()=>navigate('docs','workspace-setup')}>Go to Docs</button></section>;
+}

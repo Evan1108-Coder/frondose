@@ -2,11 +2,16 @@ import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, stat, lstat, writeFile, rename, unlink, chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { createConnection } from 'node:net';
 import { promisify } from 'node:util';
 import { validationError } from './validation.mjs';
 import { localComparison } from './local-comparison.mjs';
+import {cliCommandPreferences} from './cli-command-preferences.mjs';
+import { createTerminalLaunchPlan, detectTerminalProviders, terminalShells, TERMINAL_PROVIDER_CATALOG } from './terminal-launch-plan.mjs';
+import { composeNativeAgentPrompt, NATIVE_AGENT_PROVIDERS } from '../src/lib/native-agent-session.js';
+import { createTerminalOutputWake } from './terminal-output-wake.mjs';
+import { MAX_AUTOMATION_ACTIVITY_CONTEXT, MAX_NATIVE_ROUTE_PROMPT } from './automation-activity-context.mjs';
 
 const exec = promisify(execFile);
 const stamp = () => new Date().toISOString();
@@ -15,7 +20,12 @@ const blocked = /^(?:\.git|\.env(?:\..*)?|\.ssh|\.aws|\.config|\.codex|\.claude|
 const MAX_FILE = 512_000;
 const MAX_OUTPUT = 250_000;
 const DEFAULT_SETTINGS = { showFiles: true, wrapFiles: false, terminalFontSize: 14, showHiddenFiles: false, maxTerminals: 4 };
+// Fixed server-owned names, never derived from request fields. Workspace host
+// records deliberately do not create or point to a visible project.
+const PROJECT_TERMINAL_TABLES = Object.freeze({ environments: 'workbench_environments', commands: 'workbench_commands', preferences: 'workbench_preferences', terminals: 'workbench_terminals', launches: 'workbench_agent_terminal_launches', ownership: 'workbench_terminal_view_ownership', launchViews: 'workbench_terminal_launch_views' });
+const WORKSPACE_TERMINAL_TABLES = Object.freeze({ ...PROJECT_TERMINAL_TABLES, commands: 'local_workspace_terminal_commands', preferences: 'local_workspace_terminal_preferences', terminals: 'local_workspace_terminals', ownership: 'local_workspace_terminal_ownership' });
 const inside = (root, file) => file === root || file.startsWith(`${root}${sep}`);
+const stableIdentity = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(value);
 const requiredText = (value, label, max = 200) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw validationError(`${label} is required and must be under ${max} characters.`);
   return value.trim();
@@ -45,15 +55,62 @@ export function installWorkbench(db) {
     environment_id TEXT, name TEXT NOT NULL, cwd TEXT NOT NULL, command TEXT,
     status TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', output_offset INTEGER NOT NULL DEFAULT 0,
     exit_code INTEGER, created_at TEXT NOT NULL, ended_at TEXT);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS workbench_agent_terminal_launches (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL, actor_id TEXT NOT NULL, profile_version INTEGER NOT NULL,
+    snapshot_hash TEXT NOT NULL, snapshot_json TEXT NOT NULL, prompt_hash TEXT NOT NULL,
+    prompt_text TEXT NOT NULL, terminal_id TEXT REFERENCES workbench_terminals(id) ON DELETE SET NULL,
+    status TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,request_id));`);
+  db.exec(`CREATE TABLE IF NOT EXISTS workbench_terminal_view_ownership (
+    terminal_id TEXT PRIMARY KEY REFERENCES workbench_terminals(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    view_id TEXT NOT NULL,created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS workbench_terminal_view_scope ON workbench_terminal_view_ownership(workspace_id,project_id,view_id);
+    CREATE TABLE IF NOT EXISTS workbench_terminal_launch_views (
+    workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,project_id TEXT NOT NULL,view_id TEXT NOT NULL,
+    PRIMARY KEY(workspace_id,request_id),
+    FOREIGN KEY(workspace_id,request_id) REFERENCES workbench_agent_terminal_launches(workspace_id,request_id) ON DELETE CASCADE);`);
 }
 
-/** Explicitly scoped local execution. This is not a sandbox: shell launch requires
- * a human acknowledgement. File APIs never expose credentials or escape roots. */
-export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
-  installWorkbench(db);
-  db.prepare("UPDATE workbench_terminals SET status='interrupted',ended_at=? WHERE status IN ('running','stopping')").run(stamp());
+function installWorkspaceTerminals(db) {
+  db.exec(`CREATE TABLE IF NOT EXISTS local_workspace_terminal_commands (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, command TEXT NOT NULL, created_at TEXT NOT NULL,
+    CHECK(project_id=workspace_id));
+    CREATE TABLE IF NOT EXISTS local_workspace_terminal_preferences (
+    project_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    settings_json TEXT NOT NULL DEFAULT '{}', CHECK(project_id=workspace_id));
+    CREATE TABLE IF NOT EXISTS local_workspace_terminals (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    environment_id TEXT, name TEXT NOT NULL, cwd TEXT NOT NULL, command TEXT,
+    status TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', output_offset INTEGER NOT NULL DEFAULT 0,
+    exit_code INTEGER, created_at TEXT NOT NULL, ended_at TEXT, CHECK(project_id=workspace_id), CHECK(environment_id IS NULL));
+    CREATE TABLE IF NOT EXISTS local_workspace_terminal_ownership (
+    terminal_id TEXT PRIMARY KEY REFERENCES local_workspace_terminals(id) ON DELETE CASCADE,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    view_id TEXT NOT NULL,created_at TEXT NOT NULL, CHECK(project_id=workspace_id));
+    CREATE INDEX IF NOT EXISTS local_workspace_terminal_view_scope ON local_workspace_terminal_ownership(workspace_id,project_id,view_id);`);
+}
+
+/** Explicit local clicks start OS-user processes, not sandboxed jobs. File APIs
+ * still require their own linked project root and never gain a home fallback. */
+export function createWorkbenchService({ db, dataDir, ptyFactory, terminalPlatform = process.platform, terminalEnv = process.env, terminalResolveExecutable, authorizeNativeAgent, authorizeTerminalResume, assertDirectoryMutable, recordActivity, terminalHome = homedir, workspaceTerminalScope = false } = {}) {
+  const tables = workspaceTerminalScope ? WORKSPACE_TERMINAL_TABLES : PROJECT_TERMINAL_TABLES;
+  if (workspaceTerminalScope) installWorkspaceTerminals(db); else installWorkbench(db);
+  const workspaceTerminals = workspaceTerminalScope ? null : createWorkbenchService({ db, dataDir, ptyFactory, terminalPlatform, terminalEnv, terminalResolveExecutable, authorizeTerminalResume, assertDirectoryMutable, recordActivity, terminalHome, workspaceTerminalScope: true });
+  db.prepare(`UPDATE ${tables.terminals} SET status='interrupted',ended_at=? WHERE status IN ('running','stopping')`).run(stamp());
   const active = new Map();
+  const outputWake = createTerminalOutputWake();
   const pendingStarts = new Map();
+  const pendingViewStarts = new Map(), stoppingViews = new Set();
+  const viewKey = (project, viewId) => JSON.stringify([project.workspace_id, project.id, viewId]);
   let closed = false;
   let pendingPty;
   async function pty() {
@@ -62,15 +119,40 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     return pendingPty;
   }
   function scope(workspaceId, projectId) {
+    if (workspaceTerminalScope) {
+      if (projectId) throw validationError('Workspace terminals cannot select a project or environment.');
+      const workspace = db.prepare('SELECT id FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId || '');
+      if (!workspace) throw validationError('Choose an active workspace.');
+      return { id: workspace.id, workspace_id: workspace.id, local_path: null };
+    }
     const project = db.prepare('SELECT * FROM projects WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(projectId || '', workspaceId || '');
     const workspace = db.prepare('SELECT id FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId || '');
     if (!project || !workspace) throw validationError('Choose an active project in this workspace.');
     return project;
   }
+  async function workspaceTerminalRoot(project) {
+    const hasBindings = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='directory_workspaces'").get();
+    const binding = hasBindings ? db.prepare('SELECT * FROM directory_workspaces WHERE workspace_id=?').get(project.workspace_id) : null;
+    if (binding) {
+      const boundProject = db.prepare('SELECT * FROM projects WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(binding.project_id, project.workspace_id);
+      if (!boundProject || boundProject.local_path !== binding.path) throw validationError('The workspace directory changed. Confirm the folder again before opening a terminal.');
+      const root = await rootFor(boundProject, null), info = await stat(root, { bigint: true });
+      if (root !== binding.path || `${info.dev}:${info.ino}` !== binding.root_identity) throw validationError('The workspace directory changed. Confirm the folder again before opening a terminal.');
+      return root;
+    }
+    // Only the process-owned OS home is considered. Browser cwd/path/environment
+    // fields never select this fallback, and no directory binding is written.
+    const home = terminalHome();
+    if (typeof home !== 'string' || !isAbsolute(home) || /[\0\r\n]/u.test(home)) throw validationError('No safe OS home directory is available for this terminal.');
+    let root, info;
+    try { root = await realpath(home); info = await stat(root); } catch { throw validationError('The OS home directory is unavailable.'); }
+    if (!info.isDirectory() || root === parse(root).root) throw validationError('No safe OS home directory is available for this terminal.');
+    return root;
+  }
   async function rootFor(project, environmentId) {
     let target = project.local_path;
     if (environmentId) {
-      const environment = db.prepare('SELECT * FROM workbench_environments WHERE id=? AND project_id=? AND workspace_id=?').get(environmentId, project.id, project.workspace_id);
+      const environment = db.prepare(`SELECT * FROM ${tables.environments} WHERE id=? AND project_id=? AND workspace_id=?`).get(environmentId, project.id, project.workspace_id);
       if (!environment) throw validationError('Choose an environment belonging to this project.');
       target = environment.path;
     }
@@ -105,19 +187,38 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     const top = (await git(root, ['rev-parse', '--show-toplevel'])).trim();
     if (await realpath(top) !== root) throw validationError('Link the repository root to inspect Git. A nested project folder must not expose files outside its scope.');
   }
-  const prefs = project => ({ ...DEFAULT_SETTINGS, ...(decode(db.prepare('SELECT * FROM workbench_preferences WHERE project_id=?').get(project.id))?.settings ?? {}) });
+  const workspaceCliPrefs = workspaceId => {
+    const row=db.prepare('SELECT settings_json FROM local_workspace_terminal_preferences WHERE project_id=? AND workspace_id=?').get(workspaceId,workspaceId);
+    try{return JSON.parse(row?.settings_json||'{}');}catch{return {};}
+  };
+  const prefs = project => ({ ...DEFAULT_SETTINGS, ...(decode(db.prepare(`SELECT * FROM ${tables.preferences} WHERE project_id=?`).get(project.id))?.settings ?? {}) });
   function terminalFor(project, terminalId) {
-    const terminal = db.prepare('SELECT * FROM workbench_terminals WHERE id=? AND project_id=? AND workspace_id=?').get(terminalId, project.id, project.workspace_id);
+    const terminal = db.prepare(`SELECT * FROM ${tables.terminals} WHERE id=? AND project_id=? AND workspace_id=?`).get(terminalId, project.id, project.workspace_id);
     if (!terminal) throw validationError('This terminal does not belong to the selected project.');
-    return terminal;
+    const launch = workspaceTerminalScope ? null : db.prepare(`SELECT agent_id,profile_version,prompt_hash FROM ${tables.launches} WHERE terminal_id=? AND workspace_id=?`).get(terminalId, project.workspace_id);
+    const owner = db.prepare(`SELECT view_id FROM ${tables.ownership} WHERE terminal_id=? AND workspace_id=? AND project_id=?`).get(terminalId, project.workspace_id, project.id);
+    const live = active.get(terminalId);
+    return { ...terminal, ...(workspaceTerminalScope ? { project_id: null, host_scope: 'workspace' } : {}), ...(live ? { output: live.output, output_offset: live.outputOffset, ...(live.outputWarning ? { output_warning: live.outputWarning } : {}) } : {}), ...(launch ? { agent_id: launch.agent_id, agent_profile_version: launch.profile_version, prompt_hash: launch.prompt_hash } : {}), ...(owner ? { owner_view_id: owner.view_id } : {}) };
+  }
+  function flushOutput(id) {
+    const live = active.get(id);
+    if (!live) return;
+    clearTimeout(live.outputTimer); live.outputTimer = null;
+    if (!live.outputDirty) return;
+    try { db.prepare(`UPDATE ${tables.terminals} SET output=?,output_offset=? WHERE id=?`).run(live.output, live.outputOffset, id); live.outputDirty = false; live.outputWarning = null; }
+    catch { live.outputWarning = 'Live output is available, but terminal history could not be saved.'; }
   }
   function saveOutput(id, chunk) {
     if (closed) return;
-    const row = db.prepare('SELECT output,output_offset FROM workbench_terminals WHERE id=?').get(id);
-    if (!row) return;
-    const combined = row.output + chunk;
+    const live = active.get(id);
+    if (!live) return;
+    const combined = live.output + chunk;
     const removed = Math.max(0, combined.length - MAX_OUTPUT);
-    db.prepare('UPDATE workbench_terminals SET output=?,output_offset=? WHERE id=?').run(combined.slice(removed), row.output_offset + removed, id);
+    live.output = combined.slice(removed); live.outputOffset += removed; live.outputDirty = true;
+    // Echo reads see bounded in-memory output immediately. Disk persistence is
+    // coalesced instead of putting a synchronous SQLite write on every key.
+    if (!live.outputTimer) live.outputTimer = setTimeout(() => flushOutput(id), 40);
+    outputWake.wake(id);
   }
   async function listTree(root, path, showHidden) {
     const directory = await fileFor(root, path);
@@ -196,80 +297,307 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     if (!staged?.temporary) return;
     try { await unlink(staged.temporary); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
-  async function summary(project) {
+  async function summary(project, environmentId = null) {
     let root = null, folderError = null;
-    if (project.local_path) { try { root = await rootFor(project); } catch (error) { folderError = error.message; } }
+    if (project.local_path || environmentId) { try { root = await rootFor(project, environmentId); } catch (error) { folderError = error.message; } }
+    let terminalRoot = root;
+    if (workspaceTerminalScope) { try { terminalRoot = await workspaceTerminalRoot(project); } catch (error) { folderError = error.message; } }
     return {
-      project_id: project.id, root, folderError, settings: prefs(project),
-      environments: db.prepare('SELECT * FROM workbench_environments WHERE project_id=? AND workspace_id=? ORDER BY created_at').all(project.id, project.workspace_id),
-      commands: db.prepare('SELECT * FROM workbench_commands WHERE project_id=? AND workspace_id=? ORDER BY created_at').all(project.id, project.workspace_id),
-      terminals: db.prepare('SELECT id,name,cwd,environment_id,command,status,exit_code,created_at,ended_at FROM workbench_terminals WHERE project_id=? AND workspace_id=? ORDER BY created_at DESC LIMIT 40').all(project.id, project.workspace_id),
+      project_id: workspaceTerminalScope ? null : project.id, ...(workspaceTerminalScope ? { host_scope: 'workspace' } : {}), root, terminalRoot, folderError, settings: prefs(project),
+      environments: workspaceTerminalScope ? [] : db.prepare(`SELECT * FROM ${tables.environments} WHERE project_id=? AND workspace_id=? ORDER BY created_at`).all(project.id, project.workspace_id),
+      commands: db.prepare(`SELECT * FROM ${tables.commands} WHERE project_id=? AND workspace_id=? ORDER BY created_at`).all(project.id, project.workspace_id),
+      terminals: db.prepare(`SELECT id,name,cwd,environment_id,command,status,exit_code,created_at,ended_at FROM ${tables.terminals} WHERE project_id=? AND workspace_id=? ORDER BY CASE WHEN status IN ('running','stopping') THEN 0 ELSE 1 END,created_at DESC LIMIT 40`).all(project.id, project.workspace_id),
     };
   }
-  async function startTerminal(project, body) {
+  function nativeAgentSnapshot(project, agentId, providerId, actor, environmentId = null) {
+    if (typeof authorizeNativeAgent !== 'function') throw validationError('Personalized native agent sessions need a reviewed local agent binding. Instructions must not be silently omitted.');
+    if (typeof agentId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(agentId) || !NATIVE_AGENT_PROVIDERS.includes(providerId)) throw validationError('Native personalized first tasks are supported only for a selected Codex or Claude Code agent.');
+    if (!actor?.id) throw validationError('An authenticated local owner must review this native agent task.');
+    const agent = authorizeNativeAgent({ workspaceId: project.workspace_id, projectId: project.id, agentId, providerId, actor });
+    if (!agent || agent.then || agent.id !== agentId || agent.provider !== providerId || agent.workspace_id && agent.workspace_id !== project.workspace_id || agent.archived_at || agent.status === 'paused') throw validationError('The selected native agent is not currently available in this workspace.');
+    if (!Number.isSafeInteger(agent.version) || agent.version < 1) throw validationError('Reload the agent profile before launching.');
+    const maximum = agent.native_max_concurrent_sessions ?? 1;
+    if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 8) throw validationError('The native agent session limit is invalid.');
+    const environment = environmentId ? db.prepare(`SELECT path FROM ${tables.environments} WHERE id=? AND project_id=? AND workspace_id=?`).get(environmentId, project.id, project.workspace_id) : null;
+    if (environmentId && !environment) throw validationError('Choose a worktree belonging to this project.');
+    const snapshot = { agent_id: agent.id, name: agent.name, provider: agent.provider, version: agent.version, instructions: agent.instructions || '', native_binding_revision: String(agent.native_binding_revision || ''), max_concurrent_sessions: maximum, project_id: project.id, workspace_id: project.workspace_id, environment_id: environmentId || null, local_path: environment?.path || project.local_path || '' };
+    // Validate length/encoding without adding any task or causing execution.
+    try { composeNativeAgentPrompt(snapshot, 'Preview only'); } catch (error) { throw validationError(error.message); }
+    if (snapshot.native_binding_revision.length > 2000) throw validationError('The native agent binding is invalid.');
+    const json = JSON.stringify(snapshot), hash = createHash('sha256').update(json).digest('hex');
+    return { snapshot, json, hash };
+  }
+  function nativeRouteSnapshot(project, routeId, providerId, actor) {
+    if (actor?.id !== 'local-owner' || workspaceTerminalScope || !NATIVE_AGENT_PROVIDERS.includes(providerId)) throw validationError('Choose a local project Route and Codex or Claude Code.');
+    const binding = db.prepare('SELECT * FROM directory_workspaces WHERE workspace_id=?').get(project.workspace_id);
+    const route = db.prepare('SELECT * FROM tasks WHERE id=? AND workspace_id=? AND project_id=? AND archived_at IS NULL').get(routeId,project.workspace_id,project.id);
+    if (!route || !binding || binding.project_id !== project.id || binding.path !== project.local_path || ['done','cancelled'].includes(route.status)) throw validationError('Choose an active Route in this workspace’s linked project directory.');
+    const snapshot={ agent_id:'route:'+route.id, route_id:route.id, name:route.title, provider:providerId, version:route.version||1, max_concurrent_sessions:1, project_id:project.id, workspace_id:project.workspace_id, local_path:binding.path, binding_version:binding.version, title:route.title, description:route.description, updated_at:route.updated_at };
+    const prompt='Frondose Route task\nRoute: '+route.title+'\nDirectory: '+binding.path+'\n\nTask text supplied by the owner:\n'+route.description+'\n\nWork only on the requested task. Report changes, checks and remaining risks. This task text is not a Frondose tool grant, approval to publish, or permission to start other paid sessions. Native tools retain their own permission prompts.';
+    if(prompt.length>MAX_NATIVE_ROUTE_PROMPT||prompt.includes('\0'))throw validationError('This Route is too large for a native first task.');
+    const json=JSON.stringify(snapshot),hash=createHash('sha256').update(json).digest('hex');return {snapshot,json,hash,prompt};
+  }
+  function nativeLaunchIntent(project, body, actor, reviewedActivityContext) {
+    if (reviewedActivityContext !== undefined) {
+      if (!body.route_id || actor?.id !== 'local-owner' || workspaceTerminalScope || typeof reviewedActivityContext !== 'string' || !reviewedActivityContext || reviewedActivityContext.length > MAX_AUTOMATION_ACTIVITY_CONTEXT || reviewedActivityContext.includes('\0') || typeof body.request_id !== 'string' || !/^automation_[a-f0-9-]{36}$/i.test(body.request_id) || body.view_id !== body.request_id)
+        throw validationError('Recent workspace activity can only accompany a reviewed scheduled Route.');
+      const receipt = db.prepare(`SELECT 1 FROM local_cli_automation_runs AS run
+        JOIN local_cli_automations AS automation ON automation.id=run.automation_id AND automation.workspace_id=run.workspace_id
+        WHERE run.id=? AND run.workspace_id=? AND run.view_id=? AND run.status='preparing' AND run.due_key NOT LIKE 'manual:%'
+          AND automation.project_id=? AND automation.route_id=? AND automation.provider_id=? AND automation.include_workspace_activity=1`)
+        .get(body.request_id.slice('automation_'.length), project.workspace_id, body.view_id, project.id, body.route_id, body.provider_id);
+      if (!receipt) throw validationError('Recent workspace activity was not approved for this scheduled run.');
+    }
+    if (body.agent_id == null && body.route_id == null) { if (body.task != null || body.initial_prompt != null) throw validationError('First tasks require a reviewed named native agent session.'); return null; }
+    if(body.agent_id != null && body.route_id != null) throw validationError('Choose one Route or one personalized agent, not both.');
+    if (body.confirm_paid !== true) throw validationError('Explicitly approve sending this first task to the provider; it may incur usage or charges.');
+    if (typeof body.request_id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9:_-]{15,199}$/.test(body.request_id)) throw validationError('Use a stable native task request ID.');
+    const current = body.route_id ? nativeRouteSnapshot(project,body.route_id,body.provider_id,actor) : nativeAgentSnapshot(project, body.agent_id, body.provider_id, actor, body.environment_id || null);
+    const launchAgentId=current.snapshot.agent_id;
+    if(body.route_id && (body.environment_id || body.expected_binding_version!==current.snapshot.binding_version || body.task != null || body.initial_prompt != null)) throw validationError('Review the current Route and its workspace directory; custom prompts are not accepted.');
+    if (body.agent_version !== current.snapshot.version || body.agent_snapshot_hash !== current.hash) throw Object.assign(validationError('The agent profile or native binding changed. Review it again before launching.'), { statusCode: 409 });
+    let prompt;
+    try { prompt = body.route_id ? current.prompt : composeNativeAgentPrompt(current.snapshot, body.task); } catch (error) { throw validationError(error.message); }
+    const reviewedPrompt = prompt;
+    if (reviewedActivityContext !== undefined) {
+      prompt = reviewedPrompt + '\n\n' + reviewedActivityContext;
+      if (prompt.length > MAX_NATIVE_ROUTE_PROMPT) throw validationError('The Route and activity context are too large for a native first task.');
+    }
+    const promptHash = createHash('sha256').update(prompt).digest('hex');
+    const existing = db.prepare(`SELECT * FROM ${tables.launches} WHERE workspace_id=? AND request_id=?`).get(project.workspace_id, body.request_id);
+    if (existing) {
+      if (existing.project_id !== project.id || existing.agent_id !== launchAgentId || existing.snapshot_hash !== current.hash || existing.prompt_hash !== promptHash || existing.actor_id !== actor.id) throw Object.assign(validationError('This native task request ID already belongs to different reviewed work.'), { statusCode: 409 });
+      const view = db.prepare(`SELECT view_id FROM ${tables.launchViews} WHERE workspace_id=? AND request_id=?`).get(project.workspace_id, body.request_id);
+      if ((view?.view_id || null) !== (body.view_id || null)) throw Object.assign(validationError('This task belongs to a different terminal view. It cannot be silently adopted or replayed.'), { statusCode: 409 });
+      if (existing.terminal_id) return { ...current, prompt, promptHash, requestId: body.request_id, existingTerminal: terminalFor(project, existing.terminal_id) };
+      throw Object.assign(validationError('This task launch is pending or uncertain. Refresh existing sessions; it will not be replayed automatically.'), { statusCode: 409 });
+    }
+    const occupied = db.prepare(`SELECT count(*) AS n FROM ${tables.launches} AS launch LEFT JOIN ${tables.terminals} AS terminal ON terminal.id=launch.terminal_id WHERE launch.workspace_id=? AND launch.agent_id=? AND (launch.status IN ('preparing','uncertain') OR terminal.status IN ('running','stopping'))`).get(project.workspace_id, launchAgentId).n;
+    if (occupied >= current.snapshot.max_concurrent_sessions) throw validationError('This agent already has its allowed active or uncertain native work. Inspect or stop the existing session before launching another.');
+    // Keep activity in the launch argument only, not in a second persisted copy.
+    db.prepare(`INSERT INTO ${tables.launches}(workspace_id,request_id,project_id,agent_id,actor_id,profile_version,snapshot_hash,snapshot_json,prompt_hash,prompt_text,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(project.workspace_id, body.request_id, project.id, launchAgentId, actor.id, current.snapshot.version, current.hash, current.json, promptHash, reviewedPrompt, 'preparing', stamp());
+    if (body.view_id) db.prepare(`INSERT INTO ${tables.launchViews} VALUES (?,?,?,?)`).run(project.workspace_id, body.request_id, project.id, body.view_id);
+    return { ...current, prompt, promptHash, requestId: body.request_id };
+  }
+  async function startTerminal(project, body, actor, reviewedActivityContext) {
     if (body.confirm_execution !== true) throw validationError('Confirm that this terminal can run commands on your computer. It is not a sandbox.');
+    for (const key of ['cwd', 'env', 'executable', 'args', 'resumeSessionId', 'session_id']) if (Object.hasOwn(body, key)) throw validationError('Terminal working directories, executables and native session IDs are selected by the local server.');
+    if (Object.hasOwn(body, 'reviewedActivityContext') || Object.hasOwn(body, 'reviewed_activity_context')) throw validationError('Recent workspace activity is selected by an approved local schedule, not a launch request.');
+    assertDirectoryMutable?.(project.workspace_id);
+    const viewId = body.view_id == null ? null : body.view_id;
+    if (viewId !== null && !stableIdentity(viewId)) throw validationError('Choose a valid terminal view.');
+    const ownerKey = viewId ? viewKey(project, viewId) : null;
+    if (ownerKey && stoppingViews.has(ownerKey)) throw Object.assign(validationError('This terminal view is being stopped. Wait before starting another session.'), { statusCode: 409 });
+    // Returning an already-created exact request must not be blocked by the new
+    // process limit, and must never spawn a duplicate task after a lost response.
+    if ((body.agent_id != null || body.route_id != null) && typeof body.request_id === 'string' && db.prepare(`SELECT 1 FROM ${tables.launches} WHERE workspace_id=? AND request_id=?`).get(project.workspace_id, body.request_id)) {
+      const replay = nativeLaunchIntent(project, body, actor, reviewedActivityContext);
+      if (replay?.existingTerminal) return replay.existingTerminal;
+    }
     const settings = prefs(project);
-    if ([...active.values()].filter(item => item.projectId === project.id).length + (pendingStarts.get(project.id) || 0) >= settings.maxTerminals) throw validationError(`This project already has ${settings.maxTerminals} active terminals. Stop one or raise the limit in Workbench settings.`);
+    if ([...active.values()].filter(item => item.projectId === project.id).length + (pendingStarts.get(project.id) || 0) >= settings.maxTerminals) throw validationError(`This ${workspaceTerminalScope ? 'workspace' : 'project'} already has ${settings.maxTerminals} active terminals. Stop one or raise the terminal limit in Settings.`);
     pendingStarts.set(project.id, (pendingStarts.get(project.id) || 0) + 1);
+    if (ownerKey) pendingViewStarts.set(ownerKey, (pendingViewStarts.get(ownerKey) || 0) + 1);
+    let intent = null, spawnAttempted = false, resumeSelection = null, resumeSpawned = false, resumeReleased = false;
+    const releaseResume = () => { if (resumeReleased) return; resumeReleased = true; try { resumeSelection?.release?.(); } catch { /* Native exit must not be hidden by release bookkeeping. */ } };
     try {
-    const root = await rootFor(project, body.environment_id);
+    const root = workspaceTerminalScope ? await workspaceTerminalRoot(project) : await rootFor(project, body.environment_id);
+    const rootIdentity = await stat(root, { bigint: true });
     const name = requiredText(body.name || 'Terminal', 'Terminal name', 80);
     const command = body.command == null ? null : requiredText(body.command, 'Command', 4000);
+    intent = nativeLaunchIntent(project, body, actor, reviewedActivityContext);
+    if (intent?.existingTerminal) return intent.existingTerminal;
+    if (body.history_result_id != null) {
+      if (!stableIdentity(body.history_result_id) || !['codex', 'claude'].includes(body.provider_id) || body.resume !== true || intent || command !== null || typeof authorizeTerminalResume !== 'function') throw validationError('Choose an available native Session History result before resuming.');
+      resumeSelection = await authorizeTerminalResume({ workspaceId: project.workspace_id, projectId: workspaceTerminalScope ? null : project.id, providerId: body.provider_id, historyResultId: body.history_result_id, actor });
+      if (!resumeSelection || resumeSelection.providerId !== body.provider_id || !stableIdentity(resumeSelection.sessionId) || typeof resumeSelection.release !== 'function') throw validationError('The selected native session is no longer available. Search again.');
+    }
+    const plan = await createTerminalLaunchPlan({ providerId: body.provider_id, shellId: body.shell_id, command, resume: body.resume ?? false, ...(resumeSelection ? { resumeSessionId: resumeSelection.sessionId } : {}), ...(intent ? { initialPrompt: intent.prompt } : {}) }, { platform: terminalPlatform, env: terminalEnv, cliOverrides:workspaceCliPrefs(project.workspace_id).cliCommands || {}, ...(terminalResolveExecutable ? { resolveExecutable: terminalResolveExecutable } : {}) });
     const factory = await pty();
     if (closed) throw validationError('The server is closing. Reopen Workbench after it restarts.');
+    const freshRoot = await realpath(root), freshIdentity = await stat(freshRoot, { bigint: true });
+    if (freshRoot !== root || freshIdentity.dev !== rootIdentity.dev || freshIdentity.ino !== rootIdentity.ino) throw Object.assign(validationError('The terminal directory changed while opening. Choose it again; no process was started.'), { statusCode: 409 });
     const terminalId = uid('term');
-    // Do not pass app/API secrets into child environments or source user startup scripts.
-    const env = Object.fromEntries(['PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
-    env.TERM = 'xterm-256color';
-    env.COLORTERM = 'truecolor';
-    const shell = process.env.SHELL === '/bin/zsh' ? '/bin/zsh' : '/bin/bash';
-    const args = shell.endsWith('zsh') ? ['-f', ...(command ? ['-c', command] : [])] : ['--noprofile', '--norc', ...(command ? ['-c', command] : [])];
-    const terminal = factory.spawn(shell, args, { name: 'xterm-256color', cwd: root, env, cols: 100, rows: 28 });
-    db.prepare('INSERT INTO workbench_terminals (id,workspace_id,project_id,environment_id,name,cwd,command,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(terminalId, project.workspace_id, project.id, body.environment_id || null, name, root, command, 'running', stamp());
-    active.set(terminalId, { terminal, projectId: project.id });
+    if (intent && (body.route_id ? nativeRouteSnapshot(project,body.route_id,body.provider_id,actor) : nativeAgentSnapshot(project, body.agent_id, body.provider_id, actor, body.environment_id || null)).hash !== intent.hash) throw Object.assign(validationError('The native agent changed while its executable was being prepared. Review the task again.'), { statusCode: 409 });
+    // Reviewed provider IDs become server-selected argv, never a browser-supplied
+    // executable. No startup profile or operator API credentials are inherited.
+    spawnAttempted = true;
+    const terminal = factory.spawn(plan.command, plan.args, { name: 'xterm-256color', cwd: root, env: plan.env, cols: 100, rows: 28 });
+    // Keep a claimed native history session reserved even if saving its terminal
+    // row fails and process cleanup is uncertain. Only confirmed exit releases it.
+    resumeSpawned = true;
+    if (resumeSelection) terminal.onExit(releaseResume);
+    try {
+      db.exec('SAVEPOINT frondose_terminal_view_launch');
+      db.prepare(`INSERT INTO ${tables.terminals} (id,workspace_id,project_id,environment_id,name,cwd,command,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(terminalId, project.workspace_id, project.id, body.environment_id || null, intent ? intent.snapshot.name : name, root, plan.providerId ? `[${plan.providerId} CLI]` : command, 'running', stamp());
+      if (viewId) db.prepare(`INSERT INTO ${tables.ownership} VALUES (?,?,?,?,?)`).run(terminalId, project.workspace_id, project.id, viewId, stamp());
+      if (intent) db.prepare(`UPDATE ${tables.launches} SET terminal_id=?,status='launched' WHERE workspace_id=? AND request_id=?`).run(terminalId, project.workspace_id, intent.requestId);
+      db.exec('RELEASE SAVEPOINT frondose_terminal_view_launch');
+    } catch (error) { try { db.exec('ROLLBACK TO SAVEPOINT frondose_terminal_view_launch; RELEASE SAVEPOINT frondose_terminal_view_launch'); } catch { /* Preserve the original save failure. */ } try { terminal.kill(); } catch { /* The uncertain receipt prevents replay. */ } throw error; }
+    let exited;
+    const exitPromise = new Promise(resolveExit => { exited = resolveExit; });
+    active.set(terminalId, { terminal, projectId: project.id, exitPromise, output: '', outputOffset: 0, outputDirty: false, outputTimer: null, outputWarning: null });
+    recordActivity?.({ workspaceId: project.workspace_id, kind: 'terminal.started', entityId: terminalId });
     terminal.onData(chunk => saveOutput(terminalId, chunk));
     terminal.onExit(({ exitCode }) => {
+      flushOutput(terminalId);
       active.delete(terminalId);
-      if (!closed) db.prepare("UPDATE workbench_terminals SET status=CASE WHEN status='stopping' THEN 'stopped' ELSE 'exited' END,exit_code=?,ended_at=? WHERE id=?").run(exitCode ?? null, stamp(), terminalId);
+      if (!closed) db.prepare(`UPDATE ${tables.terminals} SET status=CASE WHEN status='stopping' THEN 'stopped' ELSE 'exited' END,exit_code=?,ended_at=? WHERE id=?`).run(exitCode ?? null, stamp(), terminalId);
+      if (!closed) recordActivity?.({ workspaceId: project.workspace_id, kind: 'terminal.stopped', entityId: terminalId });
+      outputWake.wake(terminalId);
+      releaseResume();
+      exited();
     });
     return terminalFor(project, terminalId);
-    } finally { pendingStarts.set(project.id, Math.max(0, (pendingStarts.get(project.id) || 1) - 1)); }
+    } catch (error) {
+      if (intent && !intent.existingTerminal) db.prepare(`UPDATE ${tables.launches} SET status=? WHERE workspace_id=? AND request_id=? AND terminal_id IS NULL`).run(spawnAttempted ? 'uncertain' : 'failed', project.workspace_id, intent.requestId);
+      throw error;
+    } finally { if (!resumeSpawned) releaseResume(); pendingStarts.set(project.id, Math.max(0, (pendingStarts.get(project.id) || 1) - 1)); if (ownerKey) pendingViewStarts.set(ownerKey, Math.max(0, (pendingViewStarts.get(ownerKey) || 1) - 1)); }
   }
-  async function dispatch(project, action, method, body, url) {
+
+  function visibleTerminalIds(value) {
+    let ids = value;
+    if (typeof ids === 'string') { if (ids.length > 4000) throw validationError('Terminal attachment evidence is too large.'); try { ids = JSON.parse(ids); } catch { throw validationError('Invalid terminal attachment evidence.'); } }
+    if (ids == null) return [];
+    if (!Array.isArray(ids) || ids.length > 8 || ids.some(id => !stableIdentity(id)) || new Set(ids).size !== ids.length) throw validationError('Invalid terminal attachment evidence.');
+    return [...ids].sort();
+  }
+  function terminalViewStatus(project, viewId, visibleIds = []) {
+    if (!stableIdentity(viewId)) throw validationError('Choose a valid terminal view.');
+    const key = viewKey(project, viewId);
+    const rows = db.prepare(`SELECT terminal.id,terminal.name,terminal.status,ownership.view_id AS owner_view_id FROM ${tables.ownership} AS ownership JOIN ${tables.terminals} AS terminal ON terminal.id=ownership.terminal_id AND terminal.workspace_id=ownership.workspace_id AND terminal.project_id=ownership.project_id WHERE ownership.workspace_id=? AND ownership.project_id=? AND ownership.view_id=? AND terminal.status IN ('running','stopping','interrupted') ORDER BY terminal.id LIMIT 201`).all(project.workspace_id, project.id, viewId);
+    const sessions = rows.slice(0, 200), stopIds = sessions.filter(row => ['running', 'stopping'].includes(row.status)).map(row => row.id).sort();
+    const reasons = [], unknownIds = [];
+    if (rows.length > 200) reasons.push('view_status_limited');
+    for (const row of sessions) if (row.status === 'interrupted' || !active.has(row.id)) { reasons.push('session_exit_unconfirmed'); unknownIds.push(row.id); }
+    for (const id of visibleIds) {
+      const row = db.prepare(`SELECT terminal.status,ownership.view_id FROM ${tables.terminals} AS terminal LEFT JOIN ${tables.ownership} AS ownership ON ownership.terminal_id=terminal.id AND ownership.workspace_id=terminal.workspace_id AND ownership.project_id=terminal.project_id WHERE terminal.id=? AND terminal.workspace_id=? AND terminal.project_id=?`).get(id, project.workspace_id, project.id);
+      if (!row) { reasons.push('attachment_unavailable'); unknownIds.push(id); }
+      else if (['running', 'stopping', 'interrupted'].includes(row.status) && row.view_id !== viewId) { reasons.push('session_not_owned_by_view'); unknownIds.push(id); }
+    }
+    const legacyCount = db.prepare(`SELECT count(*) AS n FROM ${tables.terminals} AS terminal LEFT JOIN ${tables.ownership} AS ownership ON ownership.terminal_id=terminal.id WHERE terminal.workspace_id=? AND terminal.project_id=? AND terminal.status IN ('running','stopping') AND ownership.terminal_id IS NULL`).get(project.workspace_id, project.id).n;
+    if (legacyCount) reasons.push('legacy_sessions_unattributed');
+    const pending = pendingViewStarts.get(key) || 0;
+    if (pending) reasons.push('session_start_pending');
+    let attributedPending = 0;
+    for (const [pendingKey, count] of pendingViewStarts) if (pendingKey.startsWith(JSON.stringify([project.workspace_id, project.id]).slice(0, -1) + ',')) attributedPending += count;
+    if ((pendingStarts.get(project.id) || 0) > attributedPending) reasons.push('legacy_session_start_pending');
+    const uncertain = workspaceTerminalScope ? [] : db.prepare(`SELECT launch.request_id,view.view_id FROM ${tables.launches} AS launch LEFT JOIN ${tables.launchViews} AS view ON view.workspace_id=launch.workspace_id AND view.request_id=launch.request_id WHERE launch.workspace_id=? AND launch.project_id=? AND launch.status='uncertain'`).all(project.workspace_id, project.id);
+    if (uncertain.some(row => !row.view_id || row.view_id === viewId)) reasons.push('session_launch_uncertain');
+    const state = reasons.length ? 'unknown' : stopIds.length ? 'running' : 'idle';
+    const result = { workspace_id: project.workspace_id, project_id: workspaceTerminalScope ? null : project.id, ...(workspaceTerminalScope ? { host_scope: 'workspace' } : {}), view_id: viewId, state, verified: state !== 'unknown', can_stop: state === 'running', sessions, stop_session_ids: stopIds, unknown_session_ids: [...new Set(unknownIds)].sort(), pending_count: pending, reason: [...new Set(reasons)].sort().join(',') || null };
+    return { ...result, fingerprint: createHash('sha256').update(JSON.stringify({ ...result, visible_ids: visibleIds })).digest('hex') };
+  }
+  async function stopTerminalView(project, viewId, body) {
+    if (body.confirmed !== true) throw validationError('Explicitly confirm stopping this tab’s owned sessions.');
+    const visibleIds = visibleTerminalIds(body.visible_ids), before = terminalViewStatus(project, viewId, visibleIds), expected = visibleTerminalIds(body.expected_session_ids);
+    if (!before.verified || body.fingerprint !== before.fingerprint || JSON.stringify(expected) !== JSON.stringify(before.stop_session_ids)) throw Object.assign(validationError('This tab’s sessions changed or ownership is uncertain. Nothing was stopped; refresh and review again.'), { statusCode: 409 });
+    const key = viewKey(project, viewId);
+    if (stoppingViews.has(key)) throw Object.assign(validationError('A stop request for this tab is already pending.'), { statusCode: 409 });
+    stoppingViews.add(key);
+    try {
+      const waits = [];
+      for (const id of expected) {
+        const live = active.get(id);
+        if (!live) throw Object.assign(validationError('Session exit is uncertain. Keep the tab open and refresh its status.'), { statusCode: 409 });
+        db.prepare(`UPDATE ${tables.terminals} SET status='stopping' WHERE id=?`).run(id);
+        try { live.terminal.kill(); } catch { throw Object.assign(validationError('A session could not be stopped. Keep the tab open and review the current status.'), { statusCode: 409 }); }
+        waits.push(new Promise(resolveWait => { let done = false; const finish = result => { if (done) return; done = true; clearTimeout(timer); resolveWait(result); }; const timer = setTimeout(() => finish(false), 2000); live.exitPromise.then(() => finish(true)); }));
+      }
+      if ((await Promise.all(waits)).some(exited => !exited)) throw Object.assign(validationError('Stop was requested, but session exit is not confirmed. Keep the tab open and refresh; nothing will be replayed.'), { statusCode: 409 });
+      const after = terminalViewStatus(project, viewId, visibleIds);
+      if (!after.verified || after.state !== 'idle') throw Object.assign(validationError('The tab still has active or uncertain work. Keep it open and refresh its status.'), { statusCode: 409 });
+      return { workspace_id: project.workspace_id, project_id: workspaceTerminalScope ? null : project.id, ...(workspaceTerminalScope ? { host_scope: 'workspace' } : {}), view_id: viewId, state: 'idle', stopped: true, stopped_session_ids: expected };
+    } finally { stoppingViews.delete(key); }
+  }
+  async function dispatch(project, action, method, body, url, { actor, reviewedActivityContext } = {}) {
+    if (workspaceTerminalScope) {
+      if (actor?.id !== 'local-owner') throw Object.assign(validationError('Workspace host terminals are available only to the local owner.'), { statusCode: 403 });
+      if (body.project_id || url.searchParams.get('project_id') || body.environment_id || url.searchParams.get('environment_id') || body.agent_id != null) throw validationError('Workspace host terminals cannot select project, environment or personalized-agent authority.');
+      if (!(!action || action === 'terminal-providers' || action === 'cli-settings' || action === 'terminals' || action === 'settings' || /^commands(?:\/[A-Za-z0-9_-]+)?$/.test(action) || /^terminals\/[A-Za-z0-9_-]+(?:\/(?:input|resize|stop))?$/.test(action) || /^terminal-views\/[A-Za-z0-9][A-Za-z0-9._:-]{0,199}(?:\/stop)?$/.test(action))) throw validationError('Workspace host scope supports terminals and Quick Commands only; choose a project directory for files or Git.');
+      for (const key of ['cwd', 'path', 'env', 'environment', 'root', 'local_path', 'executable', 'args']) if (Object.hasOwn(body, key) || url.searchParams.has(key)) throw validationError('Terminal working directories and executables are selected by the local server.');
+    }
     const environmentId = body.environment_id || url.searchParams.get('environment_id') || null;
     const path = url.searchParams.get('path') || '';
-    if (!action && method === 'GET') return summary(project);
+    if (!action && method === 'GET') return summary(project, environmentId);
+    const terminalView = /^terminal-views\/([A-Za-z0-9][A-Za-z0-9._:-]{0,199})(?:\/(stop))?$/.exec(action);
+    if (terminalView && method === 'GET' && !terminalView[2]) return terminalViewStatus(project, terminalView[1], visibleTerminalIds(url.searchParams.get('visible_ids')));
+    if (terminalView && method === 'POST' && terminalView[2] === 'stop') return stopTerminalView(project, terminalView[1], body);
+    if(action==='cli-settings'){
+      if(actor?.id!=='local-owner')throw Object.assign(validationError('CLI settings belong to the local owner.'),{statusCode:403});
+      const saved=workspaceCliPrefs(project.workspace_id);
+      if(method==='GET')return {revision:saved.cliRevision||0,commands:saved.cliCommands||{}};
+      if(method==='PATCH'){
+        if(body.confirmed!==true)throw validationError('Confirm changes to future CLI launches.');
+        if(body.expected_revision!==(saved.cliRevision||0))throw Object.assign(validationError('CLI settings changed. Reload before saving.'),{statusCode:409});
+        const commands=cliCommandPreferences(body.commands,TERMINAL_PROVIDER_CATALOG,terminalPlatform);
+        const next={...saved,cliCommands:commands,cliRevision:(saved.cliRevision||0)+1};
+        db.prepare('INSERT INTO local_workspace_terminal_preferences(project_id,workspace_id,settings_json) VALUES(?,?,?) ON CONFLICT(project_id) DO UPDATE SET settings_json=excluded.settings_json').run(project.workspace_id,project.workspace_id,JSON.stringify(next));
+        return {revision:next.cliRevision,commands};
+      }
+      throw validationError('Unsupported CLI settings action.');
+    }
+    if (action === 'terminal-providers' && method === 'GET') return { providers: await detectTerminalProviders({ platform: terminalPlatform, env: terminalEnv, cliOverrides:workspaceCliPrefs(project.workspace_id).cliCommands || {}, ...(terminalResolveExecutable ? { resolveExecutable: terminalResolveExecutable } : {}) }), shells: terminalShells(terminalPlatform) };
+    if(action === 'route-task-preview' && method === 'GET') { const current=nativeRouteSnapshot(project,url.searchParams.get('route_id'),url.searchParams.get('provider_id'),actor); return {route_id:current.snapshot.route_id,name:current.snapshot.name,provider_id:current.snapshot.provider,version:current.snapshot.version,snapshot_hash:current.hash,binding_version:current.snapshot.binding_version,prompt:current.prompt}; }
+    if (action === 'native-agent-preview' && method === 'GET') {
+      const current = nativeAgentSnapshot(project, url.searchParams.get('agent_id'), url.searchParams.get('provider_id'), actor, environmentId);
+      return { agent_id: current.snapshot.agent_id, name: current.snapshot.name, provider_id: current.snapshot.provider, instructions: current.snapshot.instructions, version: current.snapshot.version, snapshot_hash: current.hash };
+    }
     if (action === 'settings' && method === 'PATCH') {
+      if (Object.hasOwn(body, 'expected_binding_version')) {
+        const hasBindings = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='directory_workspaces'").get();
+        const binding = hasBindings ? db.prepare('SELECT project_id,version FROM directory_workspaces WHERE workspace_id=?').get(project.workspace_id) : null;
+        const expected = body.expected_binding_version;
+        if (expected === null ? Boolean(binding) : workspaceTerminalScope || !binding || expected !== binding.version || binding.project_id !== project.id) throw Object.assign(validationError('The workspace directory changed. Reload terminal settings before saving.'), { statusCode: 409, code: 'directory_conflict', errorCode: 'directory_conflict' });
+      }
       const next = prefs(project);
       for (const key of ['showFiles', 'wrapFiles', 'showHiddenFiles']) if (body[key] !== undefined) { if (typeof body[key] !== 'boolean') throw validationError('Display preferences must be true or false.'); next[key] = body[key]; }
       for (const [key, min, max] of [['terminalFontSize', 11, 22], ['maxTerminals', 1, 8]]) if (body[key] !== undefined) { if (!Number.isInteger(body[key]) || body[key] < min || body[key] > max) throw validationError(`${key} must be between ${min} and ${max}.`); next[key] = body[key]; }
-      db.prepare('INSERT INTO workbench_preferences (project_id,workspace_id,settings_json) VALUES (?,?,?) ON CONFLICT(project_id) DO UPDATE SET settings_json=excluded.settings_json').run(project.id, project.workspace_id, JSON.stringify(next));
+      db.prepare(`INSERT INTO ${tables.preferences} (project_id,workspace_id,settings_json) VALUES (?,?,?) ON CONFLICT(project_id) DO UPDATE SET settings_json=excluded.settings_json`).run(project.id, project.workspace_id, JSON.stringify(next));
       return { settings: next };
     }
     if (action === 'commands' && method === 'POST') {
+      if (db.prepare(`SELECT count(*) AS n FROM ${tables.commands} WHERE project_id=? AND workspace_id=?`).get(project.id, project.workspace_id).n >= 100) throw validationError('Keep at most 100 Quick Commands for this project.');
       const item = { id: uid('cmd'), name: requiredText(body.name, 'Command name', 80), command: requiredText(body.command, 'Command', 4000), created_at: stamp() };
-      db.prepare('INSERT INTO workbench_commands VALUES (?,?,?,?,?,?)').run(item.id, project.workspace_id, project.id, item.name, item.command, item.created_at);
+      db.prepare(`INSERT INTO ${tables.commands} VALUES (?,?,?,?,?,?)`).run(item.id, project.workspace_id, project.id, item.name, item.command, item.created_at);
       return item;
     }
     if (action.startsWith('commands/') && method === 'DELETE') {
-      db.prepare('DELETE FROM workbench_commands WHERE id=? AND project_id=? AND workspace_id=?').run(action.slice(9), project.id, project.workspace_id);
+      db.prepare(`DELETE FROM ${tables.commands} WHERE id=? AND project_id=? AND workspace_id=?`).run(action.slice(9), project.id, project.workspace_id);
       return { ok: true };
     }
-    if (action === 'terminals' && method === 'POST') return startTerminal(project, body);
+    if (action.startsWith('commands/') && method === 'PATCH') {
+      const id = action.slice(9);
+      if (!db.prepare(`SELECT id FROM ${tables.commands} WHERE id=? AND project_id=? AND workspace_id=?`).get(id, project.id, project.workspace_id)) throw validationError('This command is unavailable in the current project.');
+      db.prepare(`UPDATE ${tables.commands} SET name=?,command=? WHERE id=? AND project_id=? AND workspace_id=?`).run(requiredText(body.name, 'Command name', 80), requiredText(body.command, 'Command', 4000), id, project.id, project.workspace_id);
+      return { ok: true };
+    }
+    if (action === 'terminals' && method === 'POST') return startTerminal(project, body, actor, reviewedActivityContext);
     if (action.startsWith('terminals/')) {
       const [, terminalId, operation] = action.split('/');
-      const terminal = terminalFor(project, terminalId);
+      let terminal = terminalFor(project, terminalId);
       if (!operation && method === 'GET') {
         const cursor = Number(url.searchParams.get('cursor')) || 0;
+        const wait = Number(url.searchParams.get('wait_ms') || 0);
+        if (!Number.isInteger(wait) || wait < 0 || wait > 80) throw validationError('Terminal output wait must be between 0 and 80 milliseconds.');
+        if (wait && active.has(terminalId) && cursor === terminal.output_offset + terminal.output.length) {
+          await outputWake.wait(terminalId, wait, () => { const current = terminalFor(project, terminalId); return !active.has(terminalId) || cursor !== current.output_offset + current.output.length; });
+          terminal = terminalFor(project, terminalId);
+        }
         return { ...terminal, output: terminal.output.slice(Math.max(0, cursor - terminal.output_offset)), reset: cursor < terminal.output_offset, cursor: terminal.output_offset + terminal.output.length };
       }
       if (!operation && method === 'PATCH') {
-        db.prepare('UPDATE workbench_terminals SET name=? WHERE id=?').run(requiredText(body.name, 'Terminal name', 80), terminalId);
+        db.prepare(`UPDATE ${tables.terminals} SET name=? WHERE id=?`).run(requiredText(body.name, 'Terminal name', 80), terminalId);
         return { ok: true };
       }
       const live = active.get(terminalId);
       if (operation === 'resize' && method === 'POST' && !live) return { ok: true, ended: true };
-      if (operation === 'stop' && method === 'POST' && !live) return { ok: true, ended: true };
+      if (operation === 'stop' && method === 'POST' && !live) {
+        // This installation owns the PTY map. A record without an owned
+        // process cannot remain a permanent running/stopping blocker.
+        db.prepare(`UPDATE ${tables.terminals} SET status='interrupted',ended_at=? WHERE id=? AND status IN ('running','stopping')`).run(stamp(),terminalId);
+        return { ok: true, ended: true };
+      }
       if (!live) throw validationError('This terminal has ended. Its output is still available; start a new terminal to continue.');
       if (operation === 'input' && method === 'POST') {
         if (typeof body.data !== 'string' || body.data.length > 16_000) throw validationError('Terminal input must be under 16 KB.');
@@ -280,7 +608,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
         live.terminal.resize(body.cols, body.rows); return { ok: true };
       }
       if (operation === 'stop' && method === 'POST') {
-        db.prepare("UPDATE workbench_terminals SET status='stopping' WHERE id=?").run(terminalId);
+        db.prepare(`UPDATE ${tables.terminals} SET status='stopping' WHERE id=?`).run(terminalId);
         live.terminal.kill(); return { ok: true };
       }
     }
@@ -360,7 +688,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
       await mkdir(parent, { recursive: true, mode: 0o700 });
       environment.path = join(parent, environment.id);
       await git(root, ['worktree', 'add', '-b', branch, environment.path, commit]);
-      db.prepare('INSERT INTO workbench_environments VALUES (?,?,?,?,?,?,?)').run(environment.id, project.workspace_id, project.id, environment.name, environment.path, branch, environment.created_at);
+      db.prepare(`INSERT INTO ${tables.environments} VALUES (?,?,?,?,?,?,?)`).run(environment.id, project.workspace_id, project.id, environment.name, environment.path, branch, environment.created_at);
       return environment;
     }
     if (action === 'preview' && method === 'POST') {
@@ -376,25 +704,72 @@ export function createWorkbenchService({ db, dataDir, ptyFactory } = {}) {
     }
     throw validationError('This Workbench action is not available.');
   }
-  async function handle({ req, res, path, url, readBody, send }) {
+  async function handle({ req, res, path, url, readBody, send, actor }) {
     if (path !== '/workbench' && !path.startsWith('/workbench/')) return false;
     const body = ['POST', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req) : {};
+    const host = body.host_scope || url.searchParams.get('host_scope');
+    if (host && host !== 'workspace') throw validationError('Choose a supported local terminal host scope.');
+    if (host === 'workspace') {
+      if (body.project_id || url.searchParams.get('project_id') || body.environment_id || url.searchParams.get('environment_id')) throw validationError('Workspace terminals cannot select a project or environment.');
+      const service = workspaceTerminals || { scope, dispatch }, project = service.scope(body.workspace_id || url.searchParams.get('workspace_id'));
+      const result = await service.dispatch(project, path.slice('/workbench'.length).replace(/^\//, ''), req.method, body, url, { actor });
+      send(res, 200, { result }); return true;
+    }
     const project = scope(body.workspace_id || url.searchParams.get('workspace_id'), body.project_id || url.searchParams.get('project_id'));
-    const result = await dispatch(project, path.slice('/workbench'.length).replace(/^\//, ''), req.method, body, url);
+    const result = await dispatch(project, path.slice('/workbench'.length).replace(/^\//, ''), req.method, body, url, { actor });
     send(res, 200, { result }); return true;
   }
   function close() {
+    if (closed) return;
+    workspaceTerminals?.close();
+    for (const id of active.keys()) flushOutput(id);
+    closed = true;
+    outputWake.close();
     for (const [id, item] of active) {
-      db.prepare("UPDATE workbench_terminals SET status='interrupted',ended_at=? WHERE id=?").run(stamp(), id);
+      db.prepare(`UPDATE ${tables.terminals} SET status='interrupted',ended_at=? WHERE id=?`).run(stamp(), id);
       item.terminal.kill();
     }
-    closed = true; active.clear(); pendingStarts.clear();
+    active.clear(); pendingStarts.clear(); pendingViewStarts.clear(); stoppingViews.clear();
   }
   function activeSessionsFor(resource, itemId) {
     if (!['projects', 'workspaces'].includes(resource)) return [];
     const column = resource === 'projects' ? 'project_id' : 'workspace_id';
-    return db.prepare(`SELECT id,project_id,workspace_id,status FROM workbench_terminals WHERE ${column}=? AND status IN ('running','stopping')`).all(itemId);
+    if (workspaceTerminalScope && resource !== 'workspaces') return [];
+    const sessions = db.prepare(`SELECT id,project_id,workspace_id,status,name FROM ${tables.terminals} WHERE ${column}=? AND status IN ('running','stopping')`).all(itemId).map(row => workspaceTerminalScope ? { ...row, project_id: null, host_scope: 'workspace' } : row);
+    // A root cannot change while launch is awaiting filesystem/discovery/native
+    // setup, before its real terminal row exists. Reservations never grant access.
+    for (const [projectId, count] of pendingStarts) if (count > 0) {
+      const project = workspaceTerminalScope ? { id: projectId, workspace_id: projectId } : db.prepare('SELECT id,workspace_id FROM projects WHERE id=?').get(projectId);
+      if (project && (resource === 'projects' ? projectId === itemId : project.workspace_id === itemId)) sessions.push({ id: `pending-terminal:${projectId}`, project_id: workspaceTerminalScope ? null : projectId, workspace_id: project.workspace_id, status: 'starting', ...(workspaceTerminalScope ? { host_scope: 'workspace' } : {}) });
+    }
+    if (!workspaceTerminalScope) for (const receipt of db.prepare(`SELECT request_id,project_id,workspace_id FROM ${tables.launches} WHERE ${column}=? AND status='uncertain'`).all(itemId)) sessions.push({ id: `uncertain-native:${receipt.request_id}`, project_id: receipt.project_id, workspace_id: receipt.workspace_id, status: 'uncertain' });
+    return [...sessions, ...(workspaceTerminals?.activeSessionsFor(resource, itemId) || [])];
+  }
+  // Native updater only: capture an actual owned PTY, not a client PID,
+  // stale running row, pending launch or uncertain receipt.
+  function updaterTerminalTargets(limit = 24) {
+    if (closed || limit <= 0) return [];
+    const targets = [];
+    const select = db.prepare(`SELECT t.name,t.status,w.name AS workspace,p.name AS project FROM ${tables.terminals} t JOIN workspaces w ON w.id=t.workspace_id LEFT JOIN projects p ON p.id=t.project_id WHERE t.id=? AND t.project_id=?`);
+    const requestStop = db.prepare(`UPDATE ${tables.terminals} SET status='stopping' WHERE id=? AND status='running'`);
+    const undoStop = db.prepare(`UPDATE ${tables.terminals} SET status='running' WHERE id=? AND status='stopping'`);
+    for (const [id, live] of active) {
+      const row = select.get(id, live.projectId);
+      if (row?.status !== 'running') continue;
+      targets.push({ key: id, identity: live, item: { kind: 'terminal', label: row.name, workspace: row.workspace, project: workspaceTerminalScope ? null : row.project }, stop() {
+        if (closed || active.get(id) !== live || requestStop.run(id).changes !== 1) return false;
+        try { live.terminal.kill(); }
+        catch { if (active.get(id) === live) undoStop.run(id); return false; }
+        if (active.get(id) !== live) return true;
+        return new Promise(resolveExit => {
+          const timer = setTimeout(() => resolveExit(false), 2000);
+          void live.exitPromise.then(() => { clearTimeout(timer); resolveExit(true); });
+        });
+      } });
+      if (targets.length >= limit) break;
+    }
+    return [...targets, ...(workspaceTerminals?.updaterTerminalTargets(limit - targets.length) || [])];
   }
   const checkpointAdapter = { checkpointRoot, checkpointPaths, checkpointState, stageCheckpointState, applyCheckpointState, cleanupCheckpointStage };
-  return { handle, close, scope, dispatch, summary, activeSessionsFor, checkpointAdapter };
+  return { handle, close, scope, dispatch, summary, activeSessionsFor, updaterTerminalTargets, checkpointAdapter };
 }

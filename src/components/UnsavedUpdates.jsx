@@ -1,11 +1,20 @@
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { Button, Dialog } from '../ui.jsx';
 
 const editors = new Map();
 const announce = () => window.dispatchEvent(new Event('rumbo:update-editor-state'));
+export function unsavedUpdatesSafe() { return ![...editors.values()].some(value => value.dirty || value.pending); }
+export function unsavedUpdateBlockers() {
+  const values = [...editors.values()];
+  const dirty = values.filter(value => value.dirty && !value.pending).length;
+  const pending = values.filter(value => value.pending).length;
+  return [...(dirty ? [{ kind: 'update-draft', count: dirty }] : []), ...(pending ? [{ kind: 'workspace-save', count: pending }] : [])];
+}
 export function useUnsavedUpdate(dirty, pending) {
   const id = useId();
   useEffect(() => { editors.set(id, { dirty, pending }); announce(); return () => { editors.delete(id); announce(); }; }, [id, dirty, pending]);
+  // A saved editor can release its own guard before React unmounts it.
+  return useCallback(() => { if (editors.delete(id)) announce(); }, [id]);
 }
 export function useUpdateEditorsState() {
   const [state, setState] = useState({ dirty: false, pending: false });

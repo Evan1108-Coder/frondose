@@ -1,0 +1,2 @@
+import {localScheduleTime,nextScheduledTime} from './scheduled-time.js';
+export function initialLocalAutomationTime(seed,now,timezone){let instant=seed.next_due&&Date.parse(seed.next_due)>now?seed.next_due:new Date(now+3600000).toISOString();if(seed.recurrence==='weekdays')for(let n=0;n<7;n++){const weekday=new Intl.DateTimeFormat('en-US',{timeZone:timezone,weekday:'short'}).format(new Date(instant));if(!['Sat','Sun'].includes(weekday))break;instant=nextScheduledTime(instant,'daily',timezone);}return localScheduleTime(instant,timezone);}

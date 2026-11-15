@@ -1,0 +1,74 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
+import {mkdtemp,rm,readdir} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {createLocalApi} from '../server/local-api.mjs';
+import {installActivity} from '../server/activity-service.mjs';
+import {createActivityPolicy} from '../server/activity-policy.mjs';
+import {todoDropSource} from '../src/lib/todo-resource-drop.js';
+import {beginContextDrag,consumeContextDrag,tabContextSource} from '../src/lib/workspace-context-drop.js';
+import {loadContextPreview} from '../src/lib/context-preview.js';
+import {updateTargets,updateTargetLink,insertSavedUpdates} from '../src/lib/updates.js';
+const transfer=(plain='',files=[])=>{const values=new Map(plain?[['text/plain',plain]]:[]);return{files,get types(){return [...values.keys(),...(files.length?['Files']:[])]},setData:(key,value)=>values.set(key,value),getData:key=>values.get(key)||''};};
+test('Local workspace history records allowlisted saves, not drafts, retries, invalid writes, or another workspace',async t=>{
+ const {ws,call}=await fixture(t);
+ const todo={workspace_id:ws,title:'Verified task',description:'DO NOT INCLUDE THE DESCRIPTION',prompt:'DO NOT INCLUDE THE PROMPT',resources:[],priority:'important',request_id:crypto.randomUUID()};
+ assert.equal((await call('/local-todos',{...todo,priority:'invalid'})).status,400);
+ assert.equal((await call('/local-todos',todo)).status,200);
+ assert.equal((await call('/local-todos',todo)).status,200);
+ const project=await call('/projects',{workspace_id:ws,name:'Verified project'});
+ assert.equal(project.status,201);
+ const route=await call('/tasks',{workspace_id:ws,project_id:project.body.project.id,title:'Verified route'});
+ assert.equal(route.status,201);
+ const draft=await call('/activity',{workspace_id:ws,target_type:'area',target_id:'area-a',update_type:'progress',title:'Verified update',content:'DO NOT INCLUDE THE UPDATE CONTENT',publication_state:'draft'});
+ assert.equal(draft.status,201);
+ const list=async (id=ws)=>(await call('/workspace-activity?'+new URLSearchParams({workspace_id:id}))).body.result;
+ assert.equal((await list()).rows.filter(event=>event.kind==='todo.created').length,1);
+ assert.ok(!(await list()).rows.some(event=>event.kind==='update.published'));
+ assert.equal((await call('/activity/'+draft.body.result.id,{workspace_id:ws,version:draft.body.result.version,publication_state:'published'},'PATCH')).status,200);
+ const result=await list();
+ for(const kind of ['project.created','route.created','todo.created','update.published'])assert.ok(result.rows.some(event=>event.kind===kind),kind);
+ assert.match(result.text,/untrusted reference data/);
+ assert.doesNotMatch(JSON.stringify(result),/DO NOT INCLUDE|separate note/);
+ const other=await call('/workspaces',{name:'Other activity namespace'});
+ assert.equal(other.status,201);
+ assert.deepEqual(await list(other.body.workspace.id),{rows:[],text:''});
+ assert.equal((await call('/workspace-activity?workspace_id=unknown')).status,404);
+ assert.equal((await call('/workspace-activity',{workspace_id:ws,kind:'git.pushed'})).status,404);
+});
+async function fixture(t){const directory=await mkdtemp(join(tmpdir(),'frondose-drops-updates-'));const forbidden=()=>{throw Error('No provider execution in QA');};const api=createLocalApi({dataDir:directory,seedMode:'demo',productMode:'local',localDiscovery:async()=>[],integrationOptions:{env:{},execute:forbidden,spawnProcess:forbidden,fetchImpl:forbidden}}),db=new DatabaseSync(api.dbPath),server=createServer(api.middleware);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port+'/api',ws=api.snapshot().workspaces[0].id;const call=async(path,body,method=body?'POST':'GET')=>{const response=await fetch(base+path,{method,headers:body?{'content-type':'application/json'}:{},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};};const stamp=new Date().toISOString();for(const id of ['area-a','area-b'])db.prepare('INSERT INTO teams(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?)').run(id,ws,id,stamp,stamp);t.after(async()=>{await new Promise(resolve=>server.close(resolve));db.close();api.close();await rm(directory,{recursive:true,force:true});});return{db,ws,call,directory,api};}
+test('Area references reuse local To Do validation and do not consume upload storage',async t=>{
+ const {ws,call}=await fixture(t),base={workspace_id:ws,team_id:'area-a',kind:'reference',name:'Reference'};
+ const note={kind:'note',label:'Planning note',text:'Keep this nearby.'};
+ const created=await call('/team-resources',{...base,reference:note});
+ assert.equal(created.status,201);
+ assert.deepEqual(JSON.parse(created.body.result.ref_id),note);
+ assert.equal(created.body.result.byte_size,0);
+ const edited=await call('/team-resources/'+created.body.result.id,{...base,name:'New label',version:1,reference:{kind:'url',url:'https://example.com'}},'PATCH');
+ assert.equal(edited.status,200);
+ assert.deepEqual(JSON.parse(edited.body.result.ref_id),note);
+ assert.equal((await call('/team-resources',{...base,reference:{kind:'url',url:'file:///private/secret'}})).status,400);
+ const outside=await call('/team-resources',{workspace_id:ws,team_id:'area-b',kind:'url',url:'https://example.com',name:'Outside'});
+ assert.equal(outside.status,201);
+ assert.equal((await call('/team-resources',{...base,reference:{kind:'area-resource',id:outside.body.result.id,teamId:'area-b'}})).status,400);
+});
+test('Drop parsing accepts multiple Finder files, safe URLs and text, rejects executable URLs',()=>{
+ assert.equal(todoDropSource(transfer('',[{name:'a.txt'},{name:'b.png'}]),'ws').length,2);
+ assert.deepEqual(todoDropSource(transfer('https://example.com/a\nhttps://example.com/b'),'ws').map(item=>item.kind),['url','url']);
+ assert.equal(todoDropSource(transfer('A useful reference'),'ws')[0].kind,'note');
+ for(const value of ['javascript:alert(1)','file:///private/secret','https://name:password@example.com','x'.repeat(4001)])assert.throws(()=>todoDropSource(transfer(value),'ws'));
+});
+test('Internal Resources and task drops keep one-use same-workspace identities, not serialized text',()=>{
+ for(const source of [{kind:'area-resource',id:'r',teamId:'a'},{kind:'todo',id:'t'}]){const data=transfer();assert(beginContextDrag(data,'ws',source));assert.deepEqual(todoDropSource(data,'ws')[0],{...source,label:source.id});assert.ok(!consumeContextDrag(data,'ws'));}
+ assert.deepEqual(tabContextSource({contentType:'app',page:{view:'todos',id:'t'}}),{kind:'todo',id:'t'});
+ const data=transfer();beginContextDrag(data,'ws',{kind:'todo',id:'t'});assert.throws(()=>todoDropSource(data,'other'));
+});
+test('Finder bytes persist outside task JSON and can be downloaded only in the current workspace',async t=>{const{ws,call,api}=await fixture(t);const upload=await call('/local-todos/uploads?workspace_id='+ws,{file:{name:'notes.txt',data_base64:Buffer.from('Remember the release test').toString('base64')}});assert.equal(upload.status,200,JSON.stringify(upload.body));const resource=upload.body.result;assert.equal(resource.kind,'upload');const saved=await call('/local-todos?workspace_id='+ws,{title:'Review file',resources:[resource,{kind:'note',text:'Useful note',label:'Note'}],priority:'important',request_id:crypto.randomUUID()});assert.equal(saved.status,200,JSON.stringify(saved.body));assert.ok(!JSON.stringify(saved).includes('data_base64'));const read=await call('/local-todos/uploads/'+resource.id+'?workspace_id='+ws);assert.equal(Buffer.from(read.body.result.file.data_base64,'base64').toString(),'Remember the release test');const context=await call('/local-todos/context?'+new URLSearchParams({workspace_id:ws,id:saved.body.result.id}));assert.match(context.body.result.text,/Remember the release test/);assert.match(context.body.result.text,/Useful note/);const other=api.snapshot().workspaces.find(item=>item.id!==ws);if(other)assert.equal((await call('/local-todos/uploads/'+resource.id+'?workspace_id='+other.id)).status,404);const denied=await call('/local-todos/uploads?workspace_id='+ws,{file:{name:'empty.txt',data_base64:''}});assert.equal(denied.status,400);});
+test('To-do drag resolution reads fresh saved context without starting any provider',async t=>{const{ws,call}=await fixture(t);const saved=await call('/local-todos?workspace_id='+ws,{title:'Current task title',prompt:'Explain the release plan',resources:[],priority:'urgent',request_id:crypto.randomUUID()});const text=await loadContextPreview(async path=>{const result=await call(path.replace(/^\/api/,''));assert.equal(result.status,200);return result.body;},ws,{kind:'todo',id:saved.body.result.id});assert.match(text,/Current task title/);assert.match(text,/Explain the release plan/);});
+test('Area posts publish to the Area itself, appear in its feed, and retain author/version/reply checks',async t=>{const{db,ws,call}=await fixture(t);const post={workspace_id:ws,target_type:'area',target_id:'area-a',update_type:'progress',content:'Area launch update',idempotency_key:'area-post-retry-001'};const saved=await call('/activity',post);assert.equal(saved.status,201,JSON.stringify(saved.body));assert.equal(saved.body.result.target.team_id,'area-a');const again=await call('/activity',post);assert.equal(again.body.result.id,saved.body.result.id);assert.equal((await call('/activity/feed?'+new URLSearchParams({workspace_id:ws,team_id:'area-a'}))).body.result.items[0].id,saved.body.result.id);assert.equal((await call('/activity/feed?'+new URLSearchParams({workspace_id:ws,team_id:'area-b'}))).body.result.items.length,0);const reply=await call('/activity',{...post,parent_id:saved.body.result.id,content:'Area reply',idempotency_key:'area-reply-001'});assert.equal(reply.status,201);assert.equal((await call('/activity/'+saved.body.result.id,{workspace_id:ws,version:0,content:'Stale'},'PATCH')).status,409);const scopes=[];const policy=createActivityPolicy(db,(_ws,_actor,permission,scope)=>{scopes.push([permission,scope]);return false;});assert.equal(policy.visible(db.prepare('SELECT * FROM activity_entries WHERE id=?').get(saved.body.result.id),{id:'blocked'}),false);assert.deepEqual(scopes[0],['workspace.read',{scope_type:'team',scope_id:'area-a'}]);assert.equal(updateTargetLink(saved.body.result,{}),'#/areas/area-a?section=updates');});
+test('Area private drafts, wrong-workspace targets, work-field mutation and archived owners remain guarded',async t=>{const{db,ws,call}=await fixture(t);const common={workspace_id:ws,target_type:'area',target_id:'area-a',update_type:'progress',content:'Private draft'};const draft=await call('/activity',{...common,publication_state:'draft'});assert.equal(draft.status,201,JSON.stringify(draft.body));assert.equal((await call('/activity/feed?'+new URLSearchParams({workspace_id:ws,team_id:'area-a'}))).body.result.items.length,0);assert.equal((await call('/activity',{...common,target_id:'missing'})).status,404);assert.equal((await call('/activity',{...common,work_changes:{status:{before:'planned',after:'active'}}})).status,400);db.prepare('UPDATE teams SET archived_at=? WHERE id=?').run('now','area-a');assert.equal((await call('/activity',common)).status,404);});
+test('Existing activity table migration backs up and preserves replies, reactions, retry keys and FK enforcement',async t=>{const{db,ws,call,directory}=await fixture(t);const project=db.prepare('SELECT id FROM projects WHERE workspace_id=? LIMIT 1').get(ws);const root=await call('/activity',{workspace_id:ws,target_type:'project',target_id:project.id,update_type:'progress',content:'Keep this update',idempotency_key:'keep-root-001'});assert.equal(root.status,201);const reply=await call('/activity',{workspace_id:ws,target_type:'project',target_id:project.id,update_type:'comment',parent_id:root.body.result.id,content:'Keep this reply'});assert.equal(reply.status,201);db.prepare('INSERT INTO activity_reactions VALUES(?,?,?,?,?)').run(root.body.result.id,'local-owner','thumbs-up','','now');const before=db.prepare('SELECT * FROM activity_entries ORDER BY id').all();const sql=db.prepare("SELECT sql FROM sqlite_master WHERE name='activity_entries'").get().sql.replace("'area',",'').replace(/^CREATE TABLE activity_entries/,'CREATE TABLE legacy_activity_entries');db.exec('PRAGMA foreign_keys=OFF;PRAGMA legacy_alter_table=ON;BEGIN');db.exec(sql);db.exec('INSERT INTO legacy_activity_entries SELECT * FROM activity_entries;DROP TABLE activity_entries;ALTER TABLE legacy_activity_entries RENAME TO activity_entries;COMMIT;PRAGMA foreign_keys=ON;PRAGMA legacy_alter_table=OFF');installActivity(db);assert.deepEqual(db.prepare('SELECT * FROM activity_entries ORDER BY id').all(),before);assert.equal(db.prepare('SELECT COUNT(*) n FROM activity_reactions').get().n,1);assert.ok(db.prepare('SELECT COUNT(*) n FROM activity_requests').get().n>=1);assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);assert.equal(db.prepare('PRAGMA foreign_keys').get().foreign_keys,1);const backups=(await readdir(directory)).filter(name=>name.includes('.before-area-updates-'));assert.equal(backups.length,1);installActivity(db);assert.equal((await readdir(directory)).filter(name=>name.includes('.before-area-updates-')).length,1);});
+test('Area update picker and newly saved feed rows preserve Area membership',()=>{const data={teams:[{id:'a',workspace_id:'ws',name:'Design'},{id:'b',workspace_id:'other'}]};assert.deepEqual(updateTargets(data,'area','ws').map(x=>x.id),['a']);const entry={id:'update',workspace_id:'ws',target_type:'area',target_id:'a',target:{team_id:'a'},publication_state:'published'};assert.equal(insertSavedUpdates([], [entry],'ws',{publicationState:'published',teamId:'a'}).length,1);assert.equal(insertSavedUpdates([], [entry],'ws',{publicationState:'published',teamId:'b'}).length,0);});

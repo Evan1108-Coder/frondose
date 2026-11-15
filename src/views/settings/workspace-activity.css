@@ -1,0 +1,11 @@
+.workspace-recording { display: grid; gap: 16px; }
+.workspace-recording .settings-heading { margin-bottom: 0; }
+.workspace-recording h1 svg { height: .9em; width: .9em; vertical-align: -.05em; }
+.workspace-recording > p { margin: 0; color: var(--muted); }
+.workspace-recording ol { padding: 0; margin: 0; list-style: none; border: 1px solid var(--border); border-radius: 12px; }
+.workspace-recording li { display: flex; align-items: baseline; justify-content: space-between; padding: 12px 16px; gap: 6px 16px; flex-wrap: wrap; }
+.workspace-recording li + li { border-top: 1px solid var(--border); }
+.workspace-recording li div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 10px; min-width: 0; overflow-wrap: anywhere; }
+.workspace-recording li span, .workspace-recording time, .workspace-recording-retention { color: var(--muted); }
+.workspace-recording time, .workspace-recording-retention { font-size: .85rem; }
+.workspace-recording-empty { padding: 20px; border: 1px dashed var(--border); border-radius: 12px; }

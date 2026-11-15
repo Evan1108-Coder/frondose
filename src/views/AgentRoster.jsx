@@ -7,6 +7,7 @@ import { apiRequest } from "../data/api.js";
 import { AgentMemoryPanel } from "../components/AgentMemoryPanel.jsx";
 import { agentDefaultChoices, duplicateAgentDefinition, exportAgentDefinition, parseAgentDefinition } from "../lib/agent-editor.js";
 import { AGENT_PROVIDERS, agentReadiness, summarizeAgent } from "../lib/agents.js";
+import { isLocalProduct } from '../lib/local-product.js';
 import { isScopedAiProvider } from '../lib/ai-providers.js';
 import { hasAgentAccountRoute } from '../lib/computer-agent-controls.js';
 import { download, relative, val, visible } from "../lib/model.js";
@@ -93,7 +94,7 @@ function ArchiveAgentDialog({ agent, onClose }) {
 }
 
 function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) {
-  const { data, workspace, page, edit, navigate, startSession, organization, toggleFavorite } = useApp();
+  const { data, workspace, page, edit, navigate, startSession, organization, toggleFavorite, openAgentSession } = useApp();
   const computerSettingsRef = useRef(null);
   const [computerOpen, setComputerOpen] = useState(page.section === 'computer');
   useEffect(() => { if (page.section === 'computer') { setTab('overview'); setComputerOpen(true); requestAnimationFrame(() => computerSettingsRef.current?.scrollIntoView({ block: 'start' })); } }, [page.section, agent.id]);
@@ -111,11 +112,11 @@ function AgentDetail({ agent, summary, onConnect, onPause, onDuplicate, busy }) 
       <div className="agent-detail-title"><AgentIdentity agent={agent} /><div><h2>{agent.name}</h2><p>{provider.name}{agent.version ? ` · Profile v${agent.version}` : " · Version not recorded"}{!val(agent, "workspace_id") ? " · Shared across workspaces" : ""}{activeRuns.length ? ` · ${activeRuns.length} active ${activeRuns.length === 1 ? "session" : "sessions"}` : ""}</p></div></div>
       <IconButton label={`Edit ${agent.name}`} onClick={() => edit("agent", agent)}><Pencil /></IconButton>
     </header>
-    <div className="agent-detail-quick-actions"><Button icon={MessageCircle} busy={chatAction.busy} onClick={() => chatAction.execute(async () => {
+    <div className="agent-detail-quick-actions"><Button icon={MessageCircle} busy={chatAction.busy} onClick={() => isLocalProduct(data) ? openAgentSession(agent) : chatAction.execute(async () => {
       const existing = visible(data.chats).filter(chat => !val(chat, "project_id") && !val(chat, "task_id") && val(chat, 'responding_agent_id') === agent.id).sort((a, b) => String(val(b, "updated_at")).localeCompare(String(val(a, "updated_at"))))[0];
       const chat = existing ?? await frondoseActions.createChat({ workspace_id: workspace.id, title: `Chat with ${agent.name}`, participant_agent_ids: [agent.id] });
       navigate("chats", chat.id);
-    })}>Chat with agent</Button><Button icon={favorite ? PinOff : Pin} aria-pressed={favorite} onClick={() => toggleFavorite({ view: "agents", id: agent.id })}>{favorite ? "Unfavorite" : "Favorite"}</Button><ErrorMessage error={chatAction.error} /></div>
+    })}>{isLocalProduct(data) ? 'Open agent session' : 'Chat with agent'}</Button><Button icon={favorite ? PinOff : Pin} aria-pressed={favorite} onClick={() => toggleFavorite({ view: "agents", id: agent.id })}>{favorite ? "Unfavorite" : "Favorite"}</Button><ErrorMessage error={chatAction.error} /></div>
     <div className="agent-detail-tabs" role="tablist" aria-label="Agent details">
       {DETAIL_TABS.map(({ id: value, label }, index) => <button key={value} role="tab" id={`agent-tab-${value}`} aria-controls={`agent-panel-${value}`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={(event) => {
         if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); const next = DETAIL_TABS[event.key === "Home" ? 0 : event.key === "End" ? DETAIL_TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + DETAIL_TABS.length) % DETAIL_TABS.length].id; setTab(next); event.currentTarget.parentElement.querySelector(`#agent-tab-${next}`)?.focus(); }

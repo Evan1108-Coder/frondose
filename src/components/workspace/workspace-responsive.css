@@ -1,0 +1,20 @@
+/* A desktop window can contain a phone-width work pane. Shared page chrome
+   responds to that pane without shrinking the whole UI or hiding actions. */
+.local-workbench .workspace-tab-content { container-type: inline-size; container-name: workspace-body; }
+.local-workbench .workspace-tab-content .page { min-width: 0; max-width: 100%; }
+.local-workbench .workspace-tab-content .page-heading > div:first-child { min-width: 0; }
+.local-workbench .workspace-tab-content .page-heading h1 { overflow-wrap: anywhere; }
+@container workspace-body (max-width: 700px) {
+  .page > .page-heading { flex-direction: column; align-items: stretch; gap: 16px; }
+  .page > .page-heading > div:first-child { width: 100%; min-width: 0; flex: none; }
+  .page > .page-heading .page-actions { width: 100%; min-width: 0; max-width: 100%; flex-wrap: wrap; justify-content: flex-start; padding-top: 0; }
+  .page > .page-heading .page-actions .button { max-width: 100%; white-space: normal; }
+  .page .toolbar, .page .library-toolbar { flex-wrap: wrap; gap: 8px; }
+  .page .toolbar > *, .page .library-toolbar > * { min-width: 0; max-width: 100%; }
+  .page .toolbar .search-field, .page .library-toolbar .search-field { width: 100%; max-width: none; min-width: 0; flex: 1 1 100%; }
+  .page .output-layout, .page .output-comparison, .page .output-review-panel, .page .workflow-fields { grid-template-columns: minmax(0, 1fr); }
+  .page .output-layout > *, .page .output-review-panel > *, .page .output-comparison > * { min-width: 0; }
+  .page .output-comparison article + article { border-left: 0; border-top: 1px solid var(--border); }
+  .page .section-heading { flex-wrap: wrap; gap: 10px; }
+  .page .section-heading h2, .page .section-heading h3 { min-width: 0; overflow-wrap: anywhere; }
+}

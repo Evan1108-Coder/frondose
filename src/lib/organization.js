@@ -1,7 +1,10 @@
 import { val, visible } from "./model.js";
 import { normalizeSidebarLayout } from './sidebar-layout.js';
+import { isLocalProduct } from './local-product.js';
+import { isRetiredLocalPage } from './local-navigation.js';
 
 export const NAV_ITEMS = [
+  {id:"todos",label:"To Do List",key:"Q"},
   { id: "overview", label: "Today", key: "O" },
   { id: "rumbo-agent", label: "Frondose", key: "" },
   { id: "starred", label: "Starred", key: "Z" },
@@ -14,6 +17,7 @@ export const NAV_ITEMS = [
   { id: "workflows", label: "Workflows", key: "Y" },
   { id: "library", label: "Knowledge", key: "L" },
   { id: "documents", label: "Documents", key: "J" },
+  { id: "comments", label: "Comments", key: "E" },
   { id: "views", label: "Saved views", key: "V" },
   { id: "teams", label: "Areas", key: "T" },
   { id: "projects", label: "Projects", key: "P" },
@@ -28,13 +32,13 @@ export const NAV_ITEMS = [
 export const SIDEBAR_GROUPS = {
   primary: ["overview", "rumbo-agent", "starred", "focus", "inbox", "updates", "work", "workbench", "workflows", "operations"],
   sections: ["agents", "teams", "projects", "workspace", "views", "chats"],
-  tools: ["tasks", "skills", "library", "documents", "memory", "connections"],
+  tools: ["todos", "tasks", "skills", "library", "documents", "comments", "memory", "connections"],
 };
 export const SECTION_LABELS = { agents: "Your Agents", teams: "Areas", projects: "Projects", workspace: "Workspace", views: "Saved views", chats: "Conversations" };
 export const HEADER_QUICK_ACCESS = ['focus', 'inbox', 'starred', 'work', 'projects', 'chats', 'connections', 'settings'];
 export const FOCUSED_SIDEBAR_ROOT = new Set([
   'overview', 'rumbo-agent', 'starred', 'inbox', 'work', 'workbench',
-  'agents', 'teams', 'projects', 'tasks', 'chats', 'connections',
+  'agents', 'teams', 'projects', 'tasks', 'todos', 'chats', 'connections',
 ]);
 export function focusedSidebarHiddenKeys(organization) {
   if (organization.navigationMode !== 'focused') return [];
@@ -64,6 +68,7 @@ export function normalizeOrganization(value) {
   const pinnedLayout = [...new Set((Array.isArray(input.pinnedLayout) ? input.pinnedLayout : []).filter(id => NAV_ITEMS.some(item => item.id === id)))];
   const entityOrder = Object.fromEntries(['projects', 'teams', 'agents', 'chats'].map(view => [view, [...new Set((Array.isArray(input.entityOrder?.[view]) ? input.entityOrder[view] : []).filter(validString))].slice(0, 500)]));
   return { version: 1, order, visibility, favorites, hiddenItems, pinnedLayout, entityOrder, layout,
+    localSidebarCustomized: input.localSidebarCustomized === true,
     quickAccess: [...new Set((Array.isArray(input.quickAccess) ? input.quickAccess : ['focus', 'settings']).filter(id => HEADER_QUICK_ACCESS.includes(id)))].slice(0, 8),
     showPinnedInHeader: input.showPinnedInHeader !== false,
     dockPosition: Number.isFinite(input.dockPosition?.x) && Number.isFinite(input.dockPosition?.y) ? { x: Math.min(0.97, Math.max(0.03, input.dockPosition.x)), y: Math.min(0.95, Math.max(0.05, input.dockPosition.y)) } : { x: 0.5, y: 0.9 },
@@ -101,6 +106,7 @@ export function sortSidebarEntities(items, order = []) {
   return [...items].sort((a, b) => (positions.get(a.id) ?? Infinity) - (positions.get(b.id) ?? Infinity));
 }
 export function resolveFavorite(data, reference) {
+  if (isLocalProduct(data) && isRetiredLocalPage(reference)) return null;
   if (!FAVORITE_VIEWS.has(reference?.view)) return null;
   const collection = { memory: "memory_notes", library: "outputs", work: "runs", workbench: "projects", views: 'workspace_items' }[reference.view] ?? reference.view;
   const item = visible(data?.[collection]).find(item => item.id === reference.id && (reference.view !== 'views' || item.kind === 'saved_view'));

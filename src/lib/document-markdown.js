@@ -47,6 +47,9 @@ export function remarkWorkspaceEmojis({ byShortcode = new Map() } = {}) {
       if (!Array.isArray(parent.children)) return;
       parent.children = parent.children.flatMap(node => {
         if (node.type !== 'text') { walk(node); return [node]; }
+        // Retain exact parser positions for untouched text. Replacing all text
+        // nodes erased anchors even when no workspace emoji was present.
+        if(!byShortcode.size||!node.value.match(/:[a-z0-9_-]+:/g)?.some(value=>byShortcode.has(value)))return [node];
         return node.value.split(/(:[a-z0-9_-]+:)/g).filter(Boolean).map(value => {
           const emoji = byShortcode.get(value);
           return emoji ? { type: 'image', url: '', alt: value, title: emoji.name, data: { hProperties: { 'data-workspace-emoji': emoji.id } } } : { type: 'text', value };

@@ -1,0 +1,17 @@
+.project-lead-picker { position: relative; min-width: 0; }
+.project-lead-trigger { gap: 8px; padding: 0 8px 0 10px; cursor: text; }
+.project-lead-trigger > input { flex: 1; width: 0; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--text); box-shadow: none; }
+.project-lead-trigger > input:focus { outline: none; border: 0; box-shadow: none; }
+.project-lead-trigger:focus-within { border-color: var(--focus); }
+.project-lead-trigger > svg { width: 16px; height: 16px; flex: 0 0 16px; }
+.project-lead-trigger > button { display: grid; place-items: center; padding: 0; border: 0; width: 20px; height: 28px; flex: 0 0 20px; background: transparent; color: var(--muted); cursor: pointer; }
+.project-lead-trigger > button > svg { width: 16px; height: 16px; }
+.no-lead-icon { display: inline-block; width: 16px; height: 16px; flex: 0 0 16px; border: 1.5px dashed currentColor; border-radius: 50%; color: var(--muted); box-sizing: border-box; }
+.project-lead-panel { display: flex; flex-direction: column; gap: 3px; }
+.project-lead-panel > input { width: 100%; min-width: 0; flex-shrink: 0; margin-bottom: 5px; }
+.project-lead-option { display: flex; align-items: center; gap: 9px; width: 100%; flex-shrink: 0; min-height: 38px; border: 0; border-radius: 6px; padding: 8px 10px; background: transparent; color: var(--text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.project-lead-option > span:not(.no-lead-icon) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.project-lead-option > svg { width: 16px; height: 16px; flex: 0 0 16px; }
+.project-lead-option:hover, .project-lead-option:focus-visible { background: var(--selected); }
+.project-lead-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.custom-lead-option { border-top: 1px solid var(--border); border-radius: 0 0 6px 6px; }

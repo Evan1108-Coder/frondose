@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { House, Inbox, Folder, GitBranch, MessageCircle, Play, Bot, Plug, Settings, Compass, Search, ChevronDown, ChevronRight, Plus, Check, PanelLeft, ArrowRight, X, BookOpen, Keyboard, Users, SquarePen, Pin } from "./icons.jsx";
+import {useInterfaceLanguage} from './InterfaceLanguage.jsx';
+import {interfaceText} from '../lib/interface-language.js';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { ListChecks as ListTodo, House, RotateCw, Inbox, Folder, GitBranch, MessageCircle, Play, Bot, Plug, Settings, Compass, Search, ChevronDown, ChevronRight, Plus, Check, PanelLeft, ArrowRight, X, BookOpen, Keyboard, Users, SquarePen, Pin } from "./icons.jsx";
 import { Button, Dialog, IconButton, SearchField, useApp } from "../ui.jsx";
 import { byUpdated, initials, val, visible } from "../lib/model.js";
 import { FrondoseSymbol } from "./Brand.jsx";
@@ -7,7 +9,9 @@ import { AgentIdentity } from './AgentIdentity.jsx';
 import { agentVisibleInSidebar } from '../lib/agents.js';
 import { Tooltip } from "./Tooltip.jsx";
 import { readSidebarPreferences, saveSidebarPreferences } from "../lib/sidebar-preferences.js";
+import {useTodos} from '../lib/local-todos.js';
 import { SETTINGS_GROUPS } from '../lib/settings-catalog.js';
+import { isLocalProduct, localSettingsGroups } from '../lib/local-product.js';
 import { Collapse } from "./Collapse.jsx";
 import { UiIcon, ChevronUp, FolderOpen, PanelLeftOpen, PanelLeftClose, Terminal, GitFork, FileText } from "./icons.jsx";
 import { NAV_ITEMS, favoriteKey, organizationCounts, resolveFavorite, runningStatuses, showSidebarItem, isSidebarHidden, focusedSidebarHiddenKeys } from "../lib/organization.js";
@@ -30,17 +34,27 @@ import { sortSidebarEntities, SECTION_LABELS } from '../lib/organization.js';
 import { FrondoseAgentOrb } from './FrondoseAgentOrb.jsx';
 import { useFrondoseAgentAppearance } from '../lib/frondose-agent-appearance.js';
 import { SIDEBAR_DEFAULT_WIDTH } from '../lib/sidebar-size.js';
+import { LOCAL_PRIMARY_NAV, LOCAL_SIDEBAR_PAGES, isLocalSidebarItemAllowed, isRetiredLocalPage, isLocalNavigationItemAllowed, isLocalCreationAllowed, isLocalShortcutAllowed } from '../lib/local-navigation.js';
+import { usePopupMotion } from './usePopupMotion.js';
+import { localDocsCatalog } from '../lib/local-docs-catalog.js';
+import {requestWorkspaceTool} from '../lib/workspace-tool-intent.js';
+import { beginWorkspaceContextDrag, beginContextDrag, endWorkspaceContextDrag } from '../lib/workspace-context-drop.js';
 
 function FrondoseAgentNavIcon() {
   const { workspace } = useApp();
   const appearance = useFrondoseAgentAppearance(workspace?.id);
   return appearance.image_url ? <img src={appearance.image_url} alt="" draggable="false" style={{ width:20,height:20,objectFit:'contain',flexShrink:0 }} /> : <FrondoseAgentOrb color={appearance.orb_color} compact />;
 }
-const NAV_ICONS = { 'rumbo-agent': FrondoseAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
+const ProjectFolder = lazy(()=>import('./workspace/ProjectFolder.jsx').then(module=>({default:module.ProjectFolder})));
+const FileCommentsSidebar = lazy(() => import('./workspace/WorkspaceComments.jsx').then(module => ({ default: module.FileCommentsSidebar })));
+const NAV_ICONS = { todos:ListTodo, comments: MessageSquareText, workspace: PanelsTopLeft, docs: BookOpen, 'rumbo-agent': FrondoseAgentNavIcon, starred: Pin, skills: ScrollText, workflows: Workflow, overview: House, focus: Focus, inbox: Inbox, updates: MessageSquareText, teams: Users, projects: FolderKanban, tasks: Route, chats: MessageCircle, work: Play, memory: BookOpen, agents: Bot, connections: Plug, settings: Settings, workbench: Terminal, operations: Workflow, library: LibraryBig, documents: NotebookPen, views: PanelsTopLeft };
 export const NAV = NAV_ITEMS.map(item => ({ ...item, icon: NAV_ICONS[item.id] }));
+export function navigationForProduct(data) {
+  return isLocalProduct(data) ? [...LOCAL_PRIMARY_NAV, ...NAV.filter(item => isLocalNavigationItemAllowed(item) && !LOCAL_PRIMARY_NAV.some(primary => primary.id === item.id))].map(item => ({ ...item, icon: item.icon ?? NAV_ICONS[item.id] })) : NAV.filter(item => !['comments','todos'].includes(item.id));
+}
 const MORE_DESTINATIONS = [
   ['Work', 'focus', 'updates', 'tasks', 'work', 'workbench', 'workflows', 'operations'],
-  ['Organize', 'teams', 'agents', 'chats', 'skills', 'library', 'documents', 'memory', 'views'],
+  ['Organize', 'teams', 'agents', 'chats', 'skills', 'library', 'documents', 'comments', 'memory', 'views'],
   ['Connect', 'connections', 'settings'],
 ];
 
@@ -53,21 +67,26 @@ export function Sidebar({
   onHelp,
   overlayOpen,
   sidebarSizing,
+  workspaceDestination,
 }) {
   const {
     data,
     rawData,
     workspace,
     setWorkspace,
-    page,
+    page: routePage,
     navigate,
     edit,
     startSession,
     organization, customizeSidebar, toggleFavorite, updateOrganization, notify,
   } = useApp();
+  const local = isLocalProduct(data);
+  const page=local&&workspaceDestination?workspaceDestination:routePage;
+  const navigationItems = navigationForProduct(data);
+  const [commentRootVersion, setCommentRootVersion] = useState(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const { colorsFor } = useIconColors();
-  const agentAppearance = useFrondoseAgentAppearance(workspace?.id);
+  const agentAppearance = useFrondoseAgentAppearance(local ? null : workspace?.id);
   const [createOpen, setCreateOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [itemOptions, setItemOptions] = useState(null);
@@ -85,11 +104,12 @@ export function Sidebar({
   const recentChats = chats.slice(0, 8);
   const connectedAgent = agent => agentVisibleInSidebar(agent, data.connections);
   const agents = sidebarItems('agents').filter(connectedAgent);
+  const language=useInterfaceLanguage(),t=text=>interfaceText(text,language);
   const optionsButton = (view, item) => <IconButton className="icon-button sidebar-item-options" label={`Options for ${item.name || item.title}`} aria-haspopup="dialog" aria-expanded={itemOptions?.view === view && itemOptions.id === item.id} onClick={() => setItemOptions({ view, id: item.id, title: item.name || item.title })}><Ellipsis /></IconButton>;
   const favorites = organization.favorites.map(reference => resolveFavorite(data, reference)).filter(Boolean);
   const counts = organizationCounts(data, organization);
   const focusedNavigation = organization.navigationMode === 'focused';
-  const hiddenRootKeys = focusedSidebarHiddenKeys(organization);
+  const hiddenRootKeys = [...(local && organization.localSidebarCustomized ? [] : focusedSidebarHiddenKeys(organization)), ...(local ? organization.layout.root.filter(key => !isLocalSidebarItemAllowed(key) || LOCAL_PRIMARY_NAV.some(item => item.id === key)) : [])];
   const layoutOrder = group => organization.order[group];
   const sectionStyle = id => ({ order: layoutOrder('sections').indexOf(id) + 1, display: showSidebarItem(id, organization, counts) ? undefined : "none" });
   const badge = (id, label) => !counts[id] || organization.badges === "none" ? null : organization.badges === "dot" ? <i className="live-dot activity-badge" aria-label={`${counts[id]} ${label}`} /> : <small className="nav-count" aria-label={`${counts[id]} ${label}`}>{counts[id]}</small>;
@@ -124,6 +144,8 @@ export function Sidebar({
   const sidebarRef = useRef(null);
   const workspaceTriggerRef = useRef(null);
   const createTriggerRef = useRef(null);
+  const workspaceMenuRef = useRef(null), createMenuRef = useRef(null);
+  const workspaceMenu = usePopupMotion(workspaceOpen, workspaceMenuRef), createMenu = usePopupMotion(createOpen, createMenuRef);
   useEffect(() => {
     const media = matchMedia("(max-width: 800px)");
     const change = () => {
@@ -163,6 +185,7 @@ export function Sidebar({
     };
   }, [mobileOpen, isMobile, setMobileOpen]);
   const go = (view, id, options) => {
+    if (local && isRetiredLocalPage(view)) return;
     navigate(view, id, options);
     setMobileOpen(false);
     sidebarSizing?.setPeek(false);
@@ -191,6 +214,7 @@ export function Sidebar({
     };
   }, [workspaceOpen, createOpen]);
   const create = (kind, defaults = {}) => {
+    if (local && !isLocalCreationAllowed(kind)) return;
     setMobileOpen(false);
     setCreateOpen(false);
     setWorkspaceOpen(false);
@@ -202,20 +226,26 @@ export function Sidebar({
   }));
   const arrange = useSidebarArrange({ organization, updateOrganization, notify, create, toggleFavorite });
   const creationKind = id => ({ projects: 'project', teams: 'team', agents: 'agent', chats: 'chat', tasks: 'task', workspace: 'task', memory: 'memory' })[id];
-  const layoutBinding = (id, title) => arrange.bind({ id, title: title ?? SECTION_LABELS[id] ?? NAV.find(n => n.id === id)?.label, group: Object.keys(organization.order).find(group => organization.order[group].includes(id)), kind: creationKind(id) });
-  const entityBinding = (view, item) => arrange.bind({ entity: true, group: view, id: item.id, title: item.name || item.title, items: sidebarItems(view).map(i => i.id), kind: ['projects', 'teams'].includes(view) ? 'task' : creationKind(view), defaults: view === 'projects' ? { project_id: item.id } : view === 'teams' ? { team_id: item.id } : {} });
+  const withContextDrag = (binding, source) => ({ ...binding, onDragStart: event => { binding.onDragStart?.(event); if (local && !event.defaultPrevented) beginContextDrag(event.dataTransfer, workspace.id, source); }, onDragEnd: event => { binding.onDragEnd?.(event); endWorkspaceContextDrag(); } });
+  const layoutBinding = (id, title) => withContextDrag(arrange.bind({ id, title: title ?? SECTION_LABELS[id] ?? NAV.find(n => n.id === id)?.label, group: Object.keys(organization.order).find(group => organization.order[group].includes(id)), kind: creationKind(id) }), id === 'comments' && commentRootVersion ? { kind: 'comments', rootVersion: commentRootVersion } : { kind: 'page', view: id });
+  const entityBinding = (view, item) => withContextDrag(arrange.bind({ entity: true, group: view, id: item.id, title: item.name || item.title, items: sidebarItems(view).map(i => i.id), kind: ['projects', 'teams'].includes(view) ? 'task' : creationKind(view), defaults: view === 'projects' ? { project_id: item.id } : view === 'teams' ? { team_id: item.id } : {} }), { kind: 'page', view, id: item.id });
   const toggleProject = (id) => setPreferences((current) => ({ ...current,
     projects: { ...current.projects, [id]: !current.projects[id] },
   }));
   const navItem = (id, label) => {
-    if (!showSidebarItem(id, organization, counts)) return null;
-    const item = NAV.find((entry) => entry.id === id), Icon = item.icon;
-    const itemLabel = label ?? (id === 'rumbo-agent' ? agentAppearance.display_name : item.label);
+    if (local&&id==='projects')return null;
+    if (!showSidebarItem(id, organization, counts) || local && !isLocalSidebarItemAllowed(id)) return null;
+    const item = navigationItems.find((entry) => entry.id === id);
+    if (!item) return null;
+    const Icon = item.icon;
+    const itemLabel = label ?? (local ? LOCAL_SIDEBAR_PAGES.find(page => page.id === id)?.label ?? item.label : id === 'rumbo-agent' ? agentAppearance.display_name : item.label);
+    const displayLabel=id==='rumbo-agent'&&!local?itemLabel:t(itemLabel);
     const active = page.view === id && ((collapsed && !isMobile) || !activeProject);
-    return <Tooltip key={id} label={`${itemLabel}${organization.shortcuts ? ` · G ${item.key}` : ""}`}><ColorableNavItem compact={collapsed && !isMobile} colorId={`main:${id}`} icon={Icon} label={itemLabel} className={active ? 'active' : ''}
+    const entry = <Tooltip key={id} label={`${displayLabel}${organization.shortcuts ? ` · G ${item.key}` : ""}`}><ColorableNavItem compact={collapsed && !isMobile} colorId={`main:${id}`} icon={Icon} label={displayLabel} className={active ? 'active' : ''}
       {...layoutBinding(id, itemLabel)} aria-current={active ? "page" : undefined} onClick={() => go(id)}>
       {badge(id, `${itemLabel.toLowerCase()} items`)}
     </ColorableNavItem></Tooltip>;
+    return local && id === 'comments' ? <div key={id} className="sidebar-comments-navigation">{entry}{!collapsed || isMobile ? <Suspense fallback={null}><FileCommentsSidebar key={workspace.id} workspaceId={workspace.id} selectedId={page.view === 'comments' ? page.id : null} onRootVersion={setCommentRootVersion} onOpen={threadId => go('comments', threadId)} /></Suspense> : null}</div> : entry;
   };
   const sectionHeader = (section, label, target, onCreate) => <div className="sidebar-section-heading" {...layoutBinding(section, label)}>
     <button className="section-disclosure" aria-label={`${preferences.sections[section] ? "Collapse" : "Expand"} ${label.toLowerCase()}`}
@@ -224,8 +254,8 @@ export function Sidebar({
     </button>
     {target ? <Tooltip label={`All ${label.toLowerCase()}`}><button className={`section-title ${page.view === target && !page.id && !page.projectId ? "active" : ""}`}
       aria-current={page.view === target && !page.id && !page.projectId ? "page" : undefined}
-      onClick={() => go(target)}>{label}</button></Tooltip>
-      : <button className="section-title" onClick={() => toggleSection(section)} aria-expanded={preferences.sections[section]}>{label}</button>}
+      onClick={() => go(target)}>{t(label)}</button></Tooltip>
+      : <button className="section-title" onClick={() => toggleSection(section)} aria-expanded={preferences.sections[section]}>{t(label)}</button>}
     {!preferences.sections[section] ? badge(section, `${label.toLowerCase()} items`) : null}
     {onCreate ? <IconButton label={`New ${section === "projects" ? "project" : section === "teams" ? "Area" : section === "agents" ? "agent" : "chat"}`} onClick={onCreate}><Plus /></IconButton> : null}
   </div>;
@@ -251,6 +281,9 @@ export function Sidebar({
             className="workspace-trigger"
             ref={workspaceTriggerRef}
             aria-label="Switch workspace"
+            draggable={local}
+            onDragStart={event => { if (local) beginWorkspaceContextDrag(event.dataTransfer, workspace.id); }}
+            onDragEnd={endWorkspaceContextDrag}
             aria-expanded={workspaceOpen}
             onClick={() => { setWorkspaceOpen(!workspaceOpen); setCreateOpen(false); }}
           >
@@ -258,8 +291,8 @@ export function Sidebar({
             <span className="workspace-name">{workspace.name}</span>
             <ChevronDown morphTo={workspaceOpen ? ChevronUp : ChevronDown} interactive={false} />
           </button>
-          {workspaceOpen ? (
-            <div className="popover workspace-options">
+          {workspaceMenu.present ? (
+            <div {...workspaceMenu.motionProps} ref={workspaceMenuRef} className="popover workspace-options">
               <div className="popover-label">Your workspaces</div>
               {visible(rawData.workspaces).map((item) => (
                 <button
@@ -294,18 +327,21 @@ export function Sidebar({
             onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(!collapsed)}><UiIcon icon={isMobile ? X : collapsed ? PanelLeftOpen : PanelLeftClose} /></IconButton>
           <div className="sidebar-create">
             <IconButton ref={createTriggerRef} label="Create new" aria-expanded={createOpen} onClick={() => { setCreateOpen(!createOpen); setWorkspaceOpen(false); }}><SquarePen /></IconButton>
-            {createOpen ? <div className="popover create-options">
+            {createMenu.present ? <div {...createMenu.motionProps} ref={createMenuRef} className="popover create-options">
               <div className="popover-label">Create in {workspace.name}</div>
-              {[["task", "Route", GitBranch], ["project", "Project", Folder], ["team", "Area", Users], ["chat", "Chat", MessageCircle], ["memory", "Memory note", BookOpen], ["session", "Session", Play]].map(([kind, label, Icon]) =>
+              {[["task", "Route", GitBranch], ["project", "Project", Folder], ["team", "Area", Users], ["chat", "Chat", MessageCircle], ["memory", "Memory note", BookOpen], ["session", "Session", Play]].filter(([kind]) => !local || isLocalCreationAllowed(kind)).map(([kind, label, Icon]) =>
                 <button key={kind} onClick={() => create(kind, activeProject && !["project", "team"].includes(kind) ? { project_id: activeProject.id } : {})}><Icon /><span>{label}</span></button>)}
             </div> : null}
           </div>
         </div>
         </div>
         <nav aria-label="Main navigation">
+          {local ? <div className="nav-group main-nav local-primary-navigation">{LOCAL_PRIMARY_NAV.filter(item=>item.id!=='projects').map(item => { const Icon = NAV_ICONS[item.id]; return <ColorableNavItem key={item.id} colorId={`main:${item.id}`} compact={collapsed && !isMobile} icon={Icon} label={t(item.label)} className={page.view === item.id ? 'active' : ''} aria-current={page.view === item.id ? 'page' : undefined} draggable onDragStart={event => beginContextDrag(event.dataTransfer, workspace.id, item.id === 'workspace' ? { kind: 'workspace' } : { kind: 'page', view: item.id })} onDragEnd={endWorkspaceContextDrag} onClick={() => go(item.id)} />; })}<ColorableNavItem compact={collapsed&&!isMobile} icon={RotateCw} colorId="main:automations" label={t("Automations")} className={page.view==='automations'?'active':''} aria-current={page.view==='automations'?'page':undefined} data-workspace-automations="true" onClick={()=>requestWorkspaceTool(workspace.id,'automations',{},()=>go('workspace'))}/></div> : null}
+          {local?<Suspense fallback={null}><ProjectFolder compact={collapsed&&!isMobile} onCreate={()=>create('project')} onSelect={project=>{if(project.workspace_id===workspace.id)go('projects',project.id);}}/></Suspense>:null}
           <SidebarLayout organization={organization} hiddenRootKeys={hiddenRootKeys} arrange={arrange} renderTab={navItem} updateOrganization={updateOrganization} customizeSidebar={customizeSidebar} renderEntity={({ view, id }) => {
+            if (local && isRetiredLocalPage(view)) return null;
             const item = visible(data[view] ?? []).find(item => item.id === id);
-            if (!item || isSidebarHidden(organization, view, id) || view === 'agents' && !connectedAgent(item)) return null;
+            if (!item || isLocalProduct(data) && view === 'chats' || isSidebarHidden(organization, view, id) || view === 'agents' && !connectedAgent(item)) return null;
             const Icon = NAV_ICONS[view];
             if (view === 'teams') return <div className="project-nav-row" {...entityBinding(view, item)}><TeamIconButton team={item} size={19} /><button className="project-nav-name" style={{ color: colorsFor(`entity:teams:${id}`, item.tab_label_color === 'global' ? undefined : item).label || undefined }} onClick={() => go(view, id)}><span>{item.name}</span></button></div>;
             return <ColorableNavItem colorId={`entity:${view}:${id}`} icon={view === 'agents' ? () => <AgentIdentity agent={item} compact /> : Icon} label={item.name || item.title} team={data.teams.find(t => t.id === item.team_id)} {...entityBinding(view, item)} onClick={() => go(view, id)} />;
@@ -313,7 +349,7 @@ export function Sidebar({
           <div className="nav-group main-nav">
             {layoutOrder('primary').filter(id => showSidebarItem(id, organization, counts)).map((id) => navItem(id))}
           </div>
-          <section data-layout-id="agents" className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
+          {!local ? <section data-layout-id="agents" className="sidebar-section agents-navigation" style={sectionStyle("agents")}>
             <div className="collapsed-section-link">{navItem("agents")}</div>
             {sectionHeader("agents", "Your Agents", "agents", () => create("agent"))}
             <Collapse id="navigation-agents" className="sidebar-section-content nav-group" open={preferences.sections.agents}>
@@ -323,7 +359,7 @@ export function Sidebar({
               })}
               {!agents.length ? <button className="sidebar-empty-action" onClick={() => create("agent")}><Plus /><span>Create an agent</span></button> : null}
             </Collapse>
-          </section>
+          </section> : null}
           <section data-layout-id="teams" className="sidebar-section team-navigation" style={sectionStyle("teams")}>
             <div className="collapsed-section-link">{navItem("teams")}</div>
             {sectionHeader("teams", "Areas", "teams", () => create("team"))}
@@ -334,16 +370,16 @@ export function Sidebar({
                   <TeamIconButton team={team} size={19} /><Tooltip label={team.name}><button className="project-nav-name" style={{ color: colorsFor(`team:${team.id}:identity`, team).label || undefined }} onClick={() => go('teams', team.id)}><span>{team.name}</span></button></Tooltip>{optionsButton('teams', team)}
                 </div>
                 <Collapse className="project-nav-children" id={`team-navigation-${team.id}`} open={Boolean(preferences.teams[team.id])}>
-                  {[['overview', 'Overview', House], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['updates', 'Updates', NAV_ICONS.updates], ['people', 'Contacts', Users]].filter(([section]) => section !== 'people' || areaContactsVisible(data, team.id)).map(([section, label, Icon]) => {
+                  {[['overview', 'Overview', House], ['todos', 'To Do List', ListTodo], ['routes', 'Routes', GitBranch], ['projects', 'Projects', Folder], ['resources', 'Resources', FileText], ['documents', 'Documents', BookOpen], ['updates', 'Updates', NAV_ICONS.updates], ['people', 'Contacts', Users]].filter(([section]) => section !== 'people' || areaContactsVisible(data, team.id)).map(([section, label, Icon]) => {
                     const active = page.view === 'teams' && page.id === team.id && (page.section || 'overview') === section;
-                    return <ColorableNavItem key={section} colorId={`team:${team.id}:${section}`} team={team} icon={Icon} label={label} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} aria-label={`${team.name} · ${label}`} onClick={() => go('teams', team.id, { section })} />;
+                    return <ColorableNavItem key={section} colorId={`team:${team.id}:${section}`} team={team} icon={Icon} label={t(label)} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} aria-label={`${team.name} · ${t(label)}`} onClick={() => go('teams', team.id, { section })} />;
                   })}
                 </Collapse>
               </div>)}
               {!teams.length ? <button className="sidebar-empty-action" onClick={() => create("team")}><Plus /><span>Create your first Area</span></button> : null}
             </Collapse>
           </section>
-          <section data-layout-id="projects" className="sidebar-section project-navigation" style={sectionStyle("projects")}>
+          {!local?<section data-layout-id="projects" className="sidebar-section project-navigation" style={sectionStyle("projects")}>
             <div className="collapsed-section-link">{navItem("projects")}</div>
             {sectionHeader("projects", "Projects", "projects", () => create("project"))}
             <Collapse id="navigation-projects" className="sidebar-section-content" open={preferences.sections.projects}>
@@ -358,7 +394,7 @@ export function Sidebar({
                   {optionsButton('projects', project)}
                 </div>
                 <Collapse className="project-nav-children" id={`project-navigation-${project.id}`} open={Boolean(preferences.projects[project.id])}>
-                  {[["projects", "Overview", House], ["workbench", "Workbench", Terminal], ["tasks", "Routes", GitBranch], ["chats", "Chats", MessageCircle], ["library", "Outputs", FileText], ["memory", "Memory", BookOpen]].map(([view, label, Icon]) => {
+                  {[["projects", "Overview", House], ["workbench", "Workbench", Terminal], ["tasks", "Routes", GitBranch], ["chats", "Chats", MessageCircle], ["library", "Outputs", FileText], ["memory", "Memory", BookOpen]].filter(([view]) => !local || !isRetiredLocalPage(view)).map(([view, label, Icon]) => {
                     const active = activeProject?.id === project.id && page.view === view;
                     return <Tooltip key={view} label={`${project.name} · ${label}`}><ColorableNavItem colorId={`project:${project.id}:${view}`} team={data.teams.find(t => t.id === project.team_id)} icon={Icon} label={label} className={active ? 'active' : ''}
                       aria-label={`${project.name} · ${label}`}
@@ -370,7 +406,7 @@ export function Sidebar({
               </div>)}
               {!projects.length ? <button className="sidebar-empty-action" onClick={() => create("project")}><Plus /><span>Create your first project</span></button> : null}
             </Collapse>
-          </section>
+          </section>:null}
           <section className="sidebar-section workspace-navigation" style={sectionStyle("workspace")}>
             {sectionHeader("workspace", "Workspace")}
             <Collapse id="navigation-workspace" className="sidebar-section-content nav-group" open={(collapsed && !isMobile) || preferences.sections.workspace}>
@@ -380,7 +416,7 @@ export function Sidebar({
           <section className="sidebar-section saved-view-navigation" style={sectionStyle('views')}>
             {navItem('views')}
           </section>
-          <section data-layout-id="chats" className="sidebar-section chat-navigation" style={sectionStyle("chats")}>
+          {!local ? <section data-layout-id="chats" className="sidebar-section chat-navigation" style={sectionStyle("chats")}>
             <div className="collapsed-section-link">{navItem("chats")}</div>
             {sectionHeader("chats", "Conversations", "chats", () => create("chat"))}
             <Collapse id="navigation-chats" className="sidebar-section-content nav-group" open={preferences.sections.chats}>
@@ -391,16 +427,16 @@ export function Sidebar({
                 </ColorableNavItem></Tooltip>{optionsButton('chats', chat)}</div>)}
               {!chats.length ? <button className="sidebar-empty-action" onClick={() => create("chat")}><Plus /><span>Start a conversation</span></button> : null}
             </Collapse>
-          </section>
+          </section> : null}
           </SidebarLayout>
-          {focusedNavigation ? <button type="button" className={`sidebar-more-trigger nav-item ${hiddenRootKeys.includes(page.view) ? 'active' : ''}`} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={() => { setMobileOpen(false); setMoreOpen(true); }}><Ellipsis aria-hidden="true" /><span>More</span></button> : null}
+          {focusedNavigation || local ? <button type="button" className={`sidebar-more-trigger nav-item ${hiddenRootKeys.includes(page.view) ? 'active' : ''}`} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={() => { setMobileOpen(false); setMoreOpen(true); }}><Ellipsis aria-hidden="true" /><span>More</span></button> : null}
         </nav>
         <div className="sidebar-bottom">
           <HelpMenu onNavigate={go} onAction={() => setMobileOpen(false)} overlayOpen={overlayOpen} />
         </div>
       </aside>
       {arrange.dialog}
-      {moreOpen ? <Dialog title="More in Frondose" subtitle="Every page is still available. Choose All tools in sidebar settings to keep them visible." onClose={() => setMoreOpen(false)} className="sidebar-more-dialog"><div className="sidebar-more-groups">{MORE_DESTINATIONS.map(([title, ...ids]) => <section key={title}><h3>{title}</h3><div>{ids.map(id => { const item = NAV.find(entry => entry.id === id); const Icon = item.icon; return <button type="button" key={id} onClick={() => { setMoreOpen(false); go(id); }}><Icon aria-hidden="true" /><span>{item.label}</span><ArrowRight aria-hidden="true" /></button>; })}</div></section>)}<Button variant="ghost" icon={PanelLeft} onClick={() => { setMoreOpen(false); customizeSidebar(); }}>Customize navigation</Button></div></Dialog> : null}
+      {moreOpen ? <Dialog title="More in Frondose" subtitle={local ? undefined : 'Every page is still available. Choose All tools in sidebar settings to keep them visible.'} onClose={() => setMoreOpen(false)} className="sidebar-more-dialog"><div className="sidebar-more-groups">{MORE_DESTINATIONS.map(([title, ...allIds]) => <section key={title}><h3>{title}</h3><div>{allIds.filter(id => !local || isLocalNavigationItemAllowed(id)).map(id => { const item = navigationItems.find(entry => entry.id === id); const Icon = item.icon; return <button type="button" key={id} onClick={() => { setMoreOpen(false); go(id); }}><Icon aria-hidden="true" /><span>{item.label}</span><ArrowRight aria-hidden="true" /></button>; })}</div></section>)}<Button variant="ghost" icon={PanelLeft} onClick={() => { setMoreOpen(false); customizeSidebar(); }}>Customize navigation</Button></div></Dialog> : null}
       {itemOptions ? <Dialog title={itemOptions.title} subtitle="Sidebar options" onClose={() => setItemOptions(null)}><div className="sidebar-item-dialog">
         {itemOptions.view === 'teams' ? <Button icon={Settings} onClick={() => { const teamId = itemOptions.id; setItemOptions(null); go('settings', `team:${teamId}`); }}>Area settings</Button> : null}
         <Button icon={Pin} onClick={() => { toggleFavorite(itemOptions); setItemOptions(null); }}>{favorites.some(item => favoriteKey(item) === favoriteKey(itemOptions)) ? 'Remove from favorites' : 'Add to favorites'}</Button><Button icon={PanelLeftClose} onClick={() => { try { updateOrganization({ ...organization, hiddenItems: [...organization.hiddenItems, { view: itemOptions.view, id: itemOptions.id }] }); setItemOptions(null); notify('Hidden from sidebar. Restore it in Customize sidebar.'); } catch (error) { notify(error.message, 'error'); } }}>Hide from sidebar</Button><p className="organization-note">This does not archive anything or stop active work. You can still find it through search or its collection.</p></div></Dialog> : null}
@@ -409,9 +445,13 @@ export function Sidebar({
 }
 
 export function CommandPalette({ onClose }) {
-  const { data, navigate, edit, startSession, customizeSidebar, showShortcuts, organization, experience } = useApp();
-  const [docArticles, setDocArticles] = useState([]);
-  useEffect(() => { let active = true; import('../lib/docs-content.js').then(module => { if (active) setDocArticles(module.DOC_ARTICLES); }); return () => { active = false; }; }, []);
+  const { data, workspace, navigate, edit, startSession, customizeSidebar, showShortcuts, organization, experience } = useApp();
+  const language = useInterfaceLanguage();
+  const todoSearch=useTodos(workspace.id,null,false,isLocalProduct(data));
+  const local = isLocalProduct(data);
+  const [docs, setDocs] = useState({ groups: [], articles: [] });
+  useEffect(() => { let active = true; import('../lib/docs-content.js').then(module => { if (active) setDocs({ groups: module.DOC_GROUPS, articles: module.DOC_ARTICLES }); }); return () => { active = false; }; }, []);
+  const docArticles = useMemo(() => localDocsCatalog(docs.groups, docs.articles, data).articles, [docs, local]);
   const [query, setQuery] = useState(""),
     [index, setIndex] = useState(0);
   const resultsRef = useRef(null);
@@ -422,23 +462,23 @@ export function CommandPalette({ onClose }) {
   }, [index]);
   const catalog = useMemo(
     () => { const entities = new Map(['projects', 'tasks', 'chats', 'agents', 'outputs', 'runs', 'memory_notes', 'documents', 'messages', 'workspace_items'].flatMap(key => data[key] ?? []).map(row => [row.id, row]));
-      const chats = new Map(visible(data.chats).map(row => [row.id, row]));
+      const chats = new Map(visible(local ? [] : data.chats).map(row => [row.id, row]));
       const projects = new Map(data.projects.map(row => [row.id, row]));
       const versions = new Map((data.output_versions ?? []).map(row => [`${row.output_id}:${row.number}`, row]));
       return [
       ...organization.favorites.map(reference => resolveFavorite(data, reference)).filter(Boolean).map(item => ({ id: `favorite-${favoriteKey(item)}`, type: "Favorite", title: item.title, subtitle: NAV.find(entry => entry.id === item.view)?.label, icon: Pin, run: () => navigate(item.view, item.id) })),
-      ...(experience?.recent ?? []).slice(0, 6).flatMap(ref => { const page = parsePage(ref.hash), title = describePage(data, page); return title ? [{ id: `recent-${ref.hash}`, type: 'Recent', title, subtitle: NAV.find(item => item.id === page.view)?.label, icon: NAV_ICONS[page.view] || House, run: () => navigate(page.view, page.id, page) }] : []; }),
+      ...(experience?.recent ?? []).filter(ref => !local || !isRetiredLocalPage(parsePage(ref.hash))).slice(0, 6).flatMap(ref => { const page = parsePage(ref.hash), title = describePage(data, page); return title ? [{ id: `recent-${ref.hash}`, type: 'Recent', title, subtitle: navigationForProduct(data).find(item => item.id === page.view)?.label, icon: NAV_ICONS[page.view] || House, run: () => navigate(page.view, page.id, page) }] : []; }),
       { id: "customize-sidebar", type: "Action", title: "Customize sidebar", subtitle: "Visibility, order, spacing and badges", icon: PanelLeft, run: customizeSidebar },
-      { id: "start-session", type: "Action", title: "Start session", subtitle: "Choose an agent and review access before running", icon: Play, run: () => startSession() },
+      ...(!local ? [{ id: "start-session", type: "Action", title: "Start session", subtitle: "Choose an agent and review access before running", icon: Play, run: () => startSession() }] : []),
       { id: "keyboard-help", type: "Action", title: "Keyboard shortcuts", subtitle: "Find shortcuts or turn off letter keys", icon: Keyboard, run: showShortcuts },
-      ...NAV.map((item) => ({
+      ...navigationForProduct(data).map((item) => ({
         ...item,
         type: "Navigate",
         title: item.label,
         subtitle: `Open ${item.label.toLowerCase()}`,
         run: () => navigate(item.id),
       })),
-      ...["project", "team", "task", "chat", "agent", "memory"].map((kind) => ({
+      ...["project", "team", "task", "chat", "agent", "memory"].filter(kind => !local || isLocalCreationAllowed(kind)).map((kind) => ({
         id: `create-${kind}`,
         type: "Action",
         title: `New ${kind === "team" ? "Area" : kind === "task" ? "route" : kind === "memory" ? "memory note" : kind}`,
@@ -454,8 +494,8 @@ export function CommandPalette({ onClose }) {
         icon: Folder,
         run: () => navigate("projects", item.id),
       })),
-      ...SETTINGS_GROUPS.flatMap(([group, sections]) => sections.map(([id, label]) => ({ id: `setting-${id}`, type: 'Settings', title: `${group} · ${label}`, subtitle: 'Configure your workspace', icon: Settings, run: () => navigate('settings', id) }))),
-      ...docArticles.map(article => ({ id: `doc-${article.id}`, type: 'Documentation', title: article.title, subtitle: article.description, searchText: article.sections?.map(section => `${section.title} ${section.paragraphs?.join(' ') || ''}`).join(' '), icon: BookOpen, run: () => navigate('docs', article.id) })),
+      ...localSettingsGroups(SETTINGS_GROUPS, data).flatMap(([group, sections]) => sections.map(([id, label]) => ({ id: `setting-${id}`, type: 'Settings', title: `${interfaceText(group, language)} · ${interfaceText(label, language)}`, subtitle: interfaceText('Configure your workspace', language), searchText: `${group} ${label}`, icon: Settings, run: () => navigate('settings', id) }))),
+      ...docArticles.filter(article => !isLocalProduct(data) || article.group !== 'governance').map(article => ({ id: `doc-${article.id}`, type: 'Documentation', title: article.title, subtitle: article.description, searchText: article.sections?.map(section => `${section.title} ${section.paragraphs?.join(' ') || ''}`).join(' '), icon: BookOpen, run: () => navigate('docs', article.id) })),
       ...visible(data.teams ?? []).map((item) => ({
         id: item.id,
         type: "Area",
@@ -472,7 +512,7 @@ export function CommandPalette({ onClose }) {
         icon: GitBranch,
         run: () => navigate("tasks", item.id),
       })),
-      ...visible(data.chats).map((item) => ({
+      ...visible(local ? [] : data.chats).map((item) => ({
         id: item.id,
         type: "Chat",
         title: item.title,
@@ -480,7 +520,7 @@ export function CommandPalette({ onClose }) {
         icon: MessageCircle,
         run: () => navigate("chats", item.id),
       })),
-      ...visible(data.agents).map((item) => ({
+      ...visible(local ? [] : data.agents).map((item) => ({
         id: item.id,
         type: "Agent",
         title: item.name,
@@ -489,13 +529,14 @@ export function CommandPalette({ onClose }) {
         run: () => navigate("agents", item.id),
       })),
       ...visible(data.outputs ?? []).map(item => ({ id: item.id, type: 'Output', title: item.title, subtitle: `${item.kind} · ${item.state} · v${item.current_version}`, searchText: versions.get(`${item.id}:${item.current_version}`)?.content, icon: FileText, run: () => navigate('library', item.id) })),
-      ...visible(data.runs ?? []).map(item => ({ id: item.id, type: 'Session', title: item.title || 'Untitled session', subtitle: item.status, searchText: item.summary || '', icon: Play, run: () => navigate('work', item.id) })),
+      ...(isLocalProduct(data)?[]:visible(data.runs ?? [])).map(item => ({ id: item.id, type: 'Session', title: item.title || 'Untitled session', subtitle: item.status, searchText: item.summary || '', icon: Play, run: () => navigate('work', item.id) })),
       ...visible(data.memory_notes ?? []).map(item => ({ id: item.id, type: 'Memory', title: item.title, subtitle: item.content, icon: BookOpen, run: () => navigate('memory', item.id) })),
+      ...todoSearch.items.map(item=>({id:item.id,type:'To-do',title:item.title,subtitle:item.description,searchText:item.prompt+' '+item.resources.map(value=>value.label).join(' '),status:item.status,icon:ListTodo,run:()=>navigate('todos',item.id)})),
       ...visible(data.documents ?? []).map(item => ({ id: item.id, type: 'Document', title: item.title, subtitle: item.content, icon: FileText, run: () => navigate('documents', item.id) })),
       ...featureItems(data, 'saved_view').map(item => ({ id: item.id, type: 'View', title: item.name, subtitle: 'Saved route filters', icon: Compass, run: () => navigate('views', item.id) })),
       ...(data.messages ?? []).filter(item => chats.has(item.chat_id)).map(item => ({ id: item.id, type: 'Message', title: chats.get(item.chat_id).title, subtitle: `${item.sender_name || 'Message'} · ${item.content}`, searchText: item.content, searchOnly: true, icon: MessageCircle, run: () => navigate('chats', item.chat_id, { messageId: item.id }) })),
     ].map(item => { const entity = entities.get(item.id); const projectId = item.type === 'Project' ? item.id : entity?.project_id || chats.get(entity?.chat_id)?.project_id; return { ...item, id: `${item.type}:${item.id}`, projectName: projects.get(projectId)?.name || '', status: entity?.state || entity?.status || '' }; }); },
-    [data, navigate, edit, startSession, customizeSidebar, showShortcuts, organization.favorites, experience?.recent, docArticles],
+    [data, local, navigate, edit, startSession, customizeSidebar, showShortcuts, organization.favorites, experience?.recent, docArticles, todoSearch.items, language],
   );
   const results = searchCatalog(catalog, query);
   function execute(item) {
@@ -510,7 +551,7 @@ export function CommandPalette({ onClose }) {
         <Search />
         <input
           autoFocus
-          aria-label="Search projects, Areas, Routes, chats and actions"
+          aria-label={local ? 'Search projects, Routes, files, settings and actions' : 'Search projects, Areas, Routes, chats and actions'}
           placeholder="Search anything · try type:output or project:Atlas"
           value={query}
           onChange={(e) => {
@@ -540,7 +581,7 @@ export function CommandPalette({ onClose }) {
       </div>
       <div className="command-results" ref={resultsRef}>
         <div className="popover-label">
-          {query ? `${results.length} results` : "Quick access"}
+          {query ? `${results.length} results` : interfaceText('Quick access', language)}
         </div>
         {results.map((item, i) => (
           <button
@@ -553,7 +594,7 @@ export function CommandPalette({ onClose }) {
             <span>
               <strong>{item.title}</strong>
               <small>
-                {item.type}
+                {interfaceText(item.type, language)}
                 {item.subtitle ? ` · ${searchExcerpt(item.subtitle, query)}` : ""}
               </small>
             </span>
@@ -579,9 +620,11 @@ export function CommandPalette({ onClose }) {
   );
 }
 export function Shortcuts({ onClose }) {
-  const { organization, updateOrganization, notify } = useApp();
+  const { data, organization, updateOrganization, notify } = useApp();
+  const local = isLocalProduct(data);
   const [query, setQuery] = useState("");
-  const entries = SHORTCUTS.filter(item => `${item.label} ${item.keys} ${item.group}`.toLowerCase().includes(query.toLowerCase()));
+  const shortcuts = local ? [{ id: 'go:workspace', label: 'Go to workspace', keys: 'G O', group: 'Navigate' }, ...SHORTCUTS.filter(isLocalShortcutAllowed)] : SHORTCUTS;
+  const entries = shortcuts.filter(item => `${item.label} ${item.keys} ${item.group}`.toLowerCase().includes(query.toLowerCase()));
   return (
     <Dialog
       title="Keyboard shortcuts"

@@ -1,0 +1,13 @@
+// Range and review-rail rules adapted from stablyai/orca (MIT), revision
+// 00de405c5c0cffea06c2beb6eb0a0038b5d53fe6. See third-party/orca/NOTICE.md.
+export function parseGitStatusZ(text) {
+  const records=String(text).split('\0'), rows=[];
+  for(let i=0;i<records.length;i++){const entry=records[i];if(entry.length<4)continue;const status=entry.slice(0,2),path=entry.slice(3);let original=null;if(/[RC]/.test(status))original=records[++i]||null;rows.push({path,status,original,staged:status[0]!==' '&&status!=='??',unstaged:status[1]!==' '||status==='??',conflict:status.includes('U')||['AA','DD'].includes(status)});}
+  return rows;
+}
+export function parseWorktreesZ(text){return String(text).split('\0\0').filter(Boolean).flatMap(block=>{const fields=Object.fromEntries(block.split('\0').filter(Boolean).map(line=>{const space=line.indexOf(' ');return space<0?[line,true]:[line.slice(0,space),line.slice(space+1)];}));return typeof fields.worktree==='string'?[{path:fields.worktree,head:fields.HEAD||null,branch:typeof fields.branch==='string'?fields.branch.replace(/^refs\/heads\//,''):null,locked:Boolean(fields.locked),prunable:Boolean(fields.prunable),bare:Boolean(fields.bare)}]:[];});}
+export function diffRows(patch){let old=0,next=0;return String(patch).split('\n').map((text,index)=>{const h=/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);if(h){old=Number(h[1]);next=Number(h[2]);return {id:index,text,kind:'hunk'};}if(/^(?:diff |index |--- |\+\+\+ |new file |deleted file |similarity |rename )/.test(text))return {id:index,text,kind:'meta'};if(text.startsWith('+'))return {id:index,text,kind:'add',line:next++};if(text.startsWith('-'))return {id:index,text,kind:'remove',oldLine:old++};if(text.startsWith(' '))return {id:index,text,kind:'context',oldLine:old++,line:next++};return {id:index,text,kind:'meta'};});}
+export function orderReviewLines(anchor,focus){return {startLine:Math.min(anchor,focus),endLine:Math.max(anchor,focus)};}
+export function stackReviewCards(positions,heights=new Map()){let bottom=0;return [...positions].sort((a,b)=>a.top-b.top||a.startLine-b.startLine||String(a.id).localeCompare(String(b.id))).map(item=>{const top=Math.max(item.top,bottom);bottom=top+(heights.get(item.id)||100)+8;return {...item,top};});}
+export function renderedSelectionSource(content,text,start,end){if(typeof text!=='string'||!text.trim()||text.length>4000)return null;const region=content.slice(start,end),offset=region.indexOf(text);if(offset<0||region.indexOf(text,offset+1)>=0)return null;return {start:start+offset,end:start+offset+text.length};}
+export const repositoryWorkApi=(workspaceId,action='snapshot')=>`/api/local-git/work/${action}?workspace_id=${encodeURIComponent(workspaceId)}`;

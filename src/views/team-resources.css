@@ -3,7 +3,11 @@
 .team-resources-intro h2 { margin: 0 0 8px; }
 .team-resources-intro p, .team-resources-storage, .team-resources-loading { color: var(--muted); font-size: 13px; line-height: 1.65; }
 .team-resources-intro .button { flex-shrink: 0; }
-.team-resources-storage { margin: 22px 0 0; max-width: 760px; }
+.team-resources-storage { display: flex; align-items: center; gap: 10px; margin: 22px 0 0; }
+.team-resources-storage meter { width: min(92px, 30vw); height: 6px; appearance: none; border: 0; border-radius: 99px; overflow: hidden; background: var(--border); }
+.team-resources-storage meter::-webkit-meter-bar { height: 100%; border: 0; border-radius: 99px; background: var(--border); }
+.team-resources-storage meter::-webkit-meter-optimum-value { border-radius: 99px; background: var(--muted); }
+.team-resources-storage meter::-moz-meter-bar { border-radius: 99px; background: var(--muted); }
 .team-resource-list { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
 .team-resource-row { display: flex; align-items: center; gap: 18px; min-height: 78px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .team-resource-row:last-child { border-bottom: 0; }

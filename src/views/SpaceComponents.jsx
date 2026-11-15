@@ -1,3 +1,4 @@
+import {beginContextDrag,endWorkspaceContextDrag} from '../lib/workspace-context-drop.js';
 import { useEffect, useRef, useState } from "react";
 import { Archive, RotateCcw, ArrowRight, CircleCheck, Circle, CircleDot, Download, FileText, Pencil, Plus } from "../components/icons.jsx";
 import { Button, Dialog, Empty, IconButton, SearchField, Select, useApp } from "../ui.jsx";
@@ -12,7 +13,7 @@ import { House, Route, FolderKanban, LibraryBig, NotebookPen, Users, Target, Cal
 const TAB_ICONS = { overview: House, routes: Route, projects: FolderKanban, resources: LibraryBig, documents: NotebookPen, people: Users, strategy: Target, timeline: Calendar, chats: MessageSquareText, updates: MessageSquareText, activity: Activity, changes: GitBranch, milestones: Flag };
 
 export function SpaceTabs({ tabs, value, onChange, label }) {
-  const { page, data } = useApp();
+  const { page, data, workspace } = useApp();
   const { colorsFor } = useIconColors();
   const team = pageTeam(page, data);
   const ref = useRef(null);
@@ -39,7 +40,7 @@ export function SpaceTabs({ tabs, value, onChange, label }) {
     const section = page.view === 'projects' ? ({ overview: 'projects', routes: 'tasks' }[tab.id] || tab.id) : tab.id;
     const id = `${page.view === 'teams' ? 'team' : 'project'}:${page.id}:${section}`;
     const colors = colorsFor(id, team);
-    return <button key={tab.id} type="button" role="tab" aria-selected={value === tab.id} tabIndex={value === tab.id ? 0 : -1} className={value === tab.id ? 'active' : ''} onClick={() => onChange(tab.id)}>{Icon ? <span className="space-tab-color-icon" style={{ color: colors.icon || undefined }}><Icon size={16} aria-hidden="true" /></span> : null}<span className="space-tab-color-label" style={{ color: colors.label || undefined }}>{tab.label}</span>{tab.count ? <span>{tab.count}</span> : null}</button>;
+    return <button key={tab.id} type="button" role="tab" draggable={['overview','routes','projects','todos','resources','documents','updates'].includes(tab.id)} onDragStart={event=>{const source=page.view==='teams'?{kind:'page',view:'teams',id:page.id,section:tab.id}:tab.id==='routes'?{kind:'page',view:'tasks',projectId:page.id}:tab.id==='documents'?{kind:'page',view:'documents',projectId:page.id}:tab.id==='updates'?{kind:'page',view:'updates',projectId:page.id}:{kind:'page',view:'projects',id:page.id};if(!beginContextDrag(event.dataTransfer,workspace.id,source))event.preventDefault();}} onDragEnd={endWorkspaceContextDrag} aria-selected={value === tab.id} tabIndex={value === tab.id ? 0 : -1} className={value === tab.id ? 'active' : ''} onClick={() => onChange(tab.id)}>{Icon ? <span className="space-tab-color-icon" style={{ color: colors.icon || undefined }}><Icon size={16} aria-hidden="true" /></span> : null}<span className="space-tab-color-label" style={{ color: colors.label || undefined }}>{tab.label}</span>{tab.count ? <span>{tab.count}</span> : null}</button>;
   })}</div>;
 }
 

@@ -1,0 +1,5 @@
+// Adapted from Orca's MIT rich-markdown-slash-command-filter.ts; see third-party/orca/NOTICE.md.
+export const SLASH_QUERY_MAX_BYTES=2048;
+export function filterRichCommands(commands,rawQuery){if(new TextEncoder().encode(rawQuery).length>SLASH_QUERY_MAX_BYTES)return [];const query=rawQuery.trim().toLowerCase();return query?commands.filter(command=>[command.label,...(command.aliases||[])].join(' ').toLowerCase().includes(query)):[...commands];}
+// Write mode is deliberately a subset. Never silently discard unsupported syntax.
+export function richMarkdownBoundary(content){if(content.length>200000)return 'This document is too large for Write mode.';if(/^---\s*\n[\s\S]*?\n---(?:\s|$)/.test(content)||/^\+\+\+\s*$/m.test(content))return 'Front matter stays in Source mode.';if(/<\/?[A-Za-z][^>]*>|<!--|\[\^[^\]]+\]|^\s*\[[^\]]+\]:|!\[[^\]]*\]\(|\$\$|\\\(|\\\[|\{\{|^\s*:::/m.test(content))return 'This document contains formatting that Write mode cannot preserve yet. Use Source or Preview.';return null;}

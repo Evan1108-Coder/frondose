@@ -11,12 +11,16 @@ test('Updates keeps at most three newest entries and every shipped update opens 
   const entries = Array.from({ length: 5 }, (_, i) => ({ id: `${i}`, date: `2026-10-${String(i + 1).padStart(2, '0')}` }));
   assert.deepEqual(recentProductUpdates(entries).map(item => item.id), ['4', '3', '2']);
   for (const update of PRODUCT_UPDATES) assert.ok(DOC_ARTICLES.some(article => article.id === update.articleId && article.group === 'updates'));
-  assert.equal(PRODUCT_UPDATES[0].title, 'Your Agents, connected');
+  assert.equal(PRODUCT_UPDATES[0].id, 'release-candidate-fixes');
+  assert.equal(PRODUCT_UPDATES.find(item=>item.appVersion==='0.1.15')?.id, 'review-update-cleanup');
+  assert.equal(PRODUCT_UPDATES.find(item=>item.appVersion==='0.1.14')?.id, 'clearer-update-blockers');
+  assert.equal(PRODUCT_UPDATES.find(item=>item.appVersion==='0.1.13')?.id, 'language-and-workspace-controls');
+  assert.equal(PRODUCT_UPDATES.find(item=>item.appVersion==='0.1.3')?.title, 'Native tools, AI sessions & rich previews');
 });
 
-test('help has separate Resources and Updates groups and legacy conversation-index shortcut is removed', () => {
+test('help has separate Resources and What’s New groups and legacy conversation-index shortcut is removed', () => {
   const help = source('src/components/HelpMenu.jsx'), shell = source('src/components/Shell.jsx');
-  assert.match(help, /Frondose Resources/); assert.match(help, />Updates</);
+  assert.match(help, /Frondose Resources/); assert.match(help, />What’s New</);
   assert.match(help, /recentProductUpdates\(\)/);
   assert.match(help, /rumbo-update-timeline/);
   assert.match(help, /<ReleaseReader/);

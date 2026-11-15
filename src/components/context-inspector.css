@@ -12,8 +12,8 @@
 .context-inspector summary:focus-visible, .context-inspector pre:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .context-inspector-sources { display: grid; gap: 8px; }
 .context-inspector-source summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.context-inspector-source summary::before { content: '›'; color: var(--muted); }
-.context-inspector-source[open] summary::before { content: '⌄'; }
+.context-inspector-source summary::before { content: ''; color: var(--muted); }
+.context-inspector-source[open] summary::before { content: ''; }
 .context-inspector-source summary > span:first-of-type { flex: 1; min-width: 0; }
 .context-inspector-source summary strong { font-weight: 500; }
 .context-inspector-source summary small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }

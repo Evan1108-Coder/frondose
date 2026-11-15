@@ -1,6 +1,6 @@
 {
   "name": "frondose",
-  "version": "0.0.0",
+  "version": "0.1.16",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,13 @@
   "scripts": {
     "postinstall": "node scripts/prepare-pty.mjs",
     "dev": "vite",
-    "start": "node server/start.mjs",
+    "start": "node scripts/start-local.mjs",
+    "local": "node scripts/start-local.mjs",
+    "desktop": "node desktop/launch.mjs",
+    "desktop:pack": "node scripts/desktop-package.mjs --dir",
+    "desktop:dist": "node scripts/desktop-package.mjs",
+    "desktop:smoke": "node scripts/desktop-smoke.mjs",
+    "test:refresh": "node --test tests/workspace-tabs.test.mjs tests/workspace-settings.test.mjs tests/workspace-surface.test.mjs tests/directory-workspace.test.mjs tests/directory-files-ui.test.mjs tests/native-agent-authorization.test.mjs tests/native-agent-session.test.mjs tests/terminal-splits.test.mjs tests/terminal-launch-plan.test.mjs tests/terminal-native-workbench.test.mjs tests/desktop-browser.test.mjs tests/desktop-package.test.mjs tests/workspace-onboarding.test.mjs",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
@@ -19,6 +25,19 @@
     "test:runner": "node --test tests/runner-provider-catalog.test.mjs tests/runner-process.test.mjs tests/runner-events.test.mjs tests/runner-acp-runtime.test.mjs tests/runner-connections.test.mjs tests/runner-helper.test.mjs tests/runner-connections-api.test.mjs tests/runner-public.test.mjs tests/agent-runner-settings.test.mjs tests/runner-runtime.test.mjs tests/runner-runtime-events.test.mjs tests/runner-runtime-cleanup.test.mjs tests/runner-jobs.test.mjs tests/runner-execution-helper.test.mjs tests/runner-execution-api.test.mjs tests/runner-execution-sharing-api.test.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.322",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-css": "6.3.1",
+    "@codemirror/lang-html": "6.4.12",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/lang-python": "6.2.1",
+    "@codemirror/lang-sql": "6.10.0",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/anonymous-pro": "^5.3.0",
     "@fontsource/azeret-mono": "^5.3.0",
@@ -42,25 +61,43 @@
     "@fontsource/ubuntu-mono": "^5.3.0",
     "@github/copilot-sdk": "1.0.22",
     "@iconify-icons/logos": "^2.0.1",
+    "@lezer/highlight": "1.2.5",
+    "@tiptap/extension-bubble-menu": "3.31.3",
+    "@tiptap/extension-floating-menu": "3.31.3",
+    "@tiptap/extension-list": "3.31.3",
+    "@tiptap/extension-placeholder": "3.31.3",
+    "@tiptap/extension-table": "3.31.3",
+    "@tiptap/markdown": "3.31.3",
+    "@tiptap/react": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
     "@vitejs/plugin-react": "5.0.4",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-image": "0.9.0",
+    "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "^6.0.0",
+    "electron-updater": "6.8.11",
     "katex": "0.19.0",
     "lucide": "1.47.0",
+    "mermaid": "12.3.0",
     "morphicons": "1.7.1",
+    "node-diff3": "3.2.1",
     "node-pty": "^1.1.0",
+    "pdfjs-dist": "6.5.438",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-markdown": "10.1.0",
     "rehype-katex": "7.0.1",
     "remark-gfm": "4.0.1",
     "remark-math": "6.0.0",
-    "vite": "6.4.2"
+    "vite": "6.4.2",
+    "zod": "4.3.6"
   },
   "overrides": {
     "katex": "$katex"
   },
   "devDependencies": {
-    "@shikijs/themes": "^4.4.3"
+    "@shikijs/themes": "^4.4.3",
+    "electron": "43.8.1",
+    "electron-builder": "26.15.3"
   }
 }

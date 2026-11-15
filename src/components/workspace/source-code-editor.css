@@ -1,0 +1,34 @@
+.directory-code-editor { position:relative; display:flex; flex:1; min-height:0; min-width:0; width:100%; border:0; border-radius:0; padding:0; overflow:hidden; background:var(--cv-bg); color:var(--cv-fg); }
+.directory-code-mount { display:flex; flex:1; min-height:0; min-width:0; overflow:hidden; }
+.directory-code-editor .cm-editor { flex:1; height:100%; min-height:0; min-width:0; background:var(--cv-bg); color:var(--cv-fg); font-size:var(--code-size); }
+.directory-code-editor .cm-editor.cm-focused,.directory-code-editor .cm-content:focus,.directory-code-editor .cm-content:focus-visible { outline:none!important; box-shadow:none!important; }
+.directory-code-editor .cm-scroller { overflow:auto; overscroll-behavior:contain; font-family:var(--code-font); line-height:var(--code-height); }
+.directory-code-editor .cm-content { padding:14px 0 80px; caret-color:var(--cv-fg); }
+.directory-code-editor .cm-line { padding:0 16px 0 12px; }
+.directory-code-editor .cm-gutters { color:var(--cv-comment); background:var(--cv-bg); border-right:1px solid var(--border-soft); user-select:none; }
+.directory-code-editor .cm-lineNumbers .cm-gutterElement { min-width:3ch; padding:0 8px 0 12px; }
+.directory-code-editor .cm-foldGutter .cm-gutterElement { padding:0 4px; }
+.directory-code-editor .cm-activeLine,.directory-code-editor .cm-activeLineGutter { background:color-mix(in srgb,var(--cv-fg) 4%,transparent); }
+.directory-code-editor .cm-cursor,.directory-code-editor .cm-dropCursor { border-left-color:var(--cv-fg); }
+.directory-code-editor .cm-panels { color:var(--cv-fg); background:var(--surface); border-color:var(--border); }
+.directory-code-editor .cm-panel.cm-search { padding:8px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; font:12px var(--font,system-ui); }
+.directory-code-editor .cm-panel input { min-height:26px; max-width:100%; }
+.directory-code-editor .cm-panel button { padding:4px 8px; border:1px solid var(--border); border-radius:4px; }
+.directory-code-editor .cm-panel :is(button,input):focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.directory-code-fallback { margin:0; padding:14px 16px; overflow:auto; font:var(--code-size)/var(--code-height) var(--code-font); white-space:pre; }
+.directory-scroll-indicator { position:absolute; top:0; right:1px; height:100%; width:7px; z-index:3; pointer-events:none; background:color-mix(in srgb,var(--cv-fg) 6%,transparent); border-radius:8px; }
+.directory-scroll-indicator[hidden] { display:none; }
+.directory-scroll-thumb { position:absolute; top:0; left:0; width:100%; border-radius:8px; background:color-mix(in srgb,var(--cv-fg) 48%,var(--cv-bg)); }
+.directory-scroll-percent { position:absolute; right:11px; top:0; border:1px solid var(--border); border-radius:4px; padding:2px 5px; background:var(--cv-bg); color:var(--cv-fg); font:11px/16px system-ui,sans-serif; opacity:0; white-space:nowrap; }
+.directory-code-editor:is(:hover,:focus-within) .directory-scroll-percent { opacity:1; }
+@media (forced-colors:active) { .directory-scroll-indicator { background:Canvas; border-left:1px solid CanvasText; } .directory-scroll-thumb { background:Highlight; forced-color-adjust:none; } .directory-scroll-percent { background:Canvas; color:CanvasText; border-color:CanvasText; } }
+@media (forced-colors:active) { .directory-code-editor .cm-cursor { border-left-color:CanvasText; } .directory-code-editor .cm-gutters { border-right-color:CanvasText; } }
+
+.source-fold-chevron{display:inline-block;width:6px;height:6px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(-45deg);margin:0 4px 2px;transition:transform 160ms ease}
+.source-fold-chevron[data-open=true]{transform:rotate(45deg)}
+:root[data-motion=reduced] .source-fold-chevron,:root[data-input-modality=keyboard] .source-fold-chevron{transition:none}
+@media(prefers-reduced-motion:reduce){.source-fold-chevron{transition:none}}
+
+/* Reserve an independent note rail before line numbers, including when hidden. */
+.directory-code-editor[data-note-rail=true] .cm-editor{margin-left:28px;width:calc(100% - 28px)}
+.directory-code-editor[data-note-rail=true] .source-note-gutter{left:3px;width:22px;height:22px;line-height:20px;padding:0}

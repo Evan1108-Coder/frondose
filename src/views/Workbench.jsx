@@ -8,7 +8,8 @@ import { CodeViewer } from '../components/CodeViewer.jsx';
 import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { SlashCommandMenu } from '../components/SlashCommandMenu.jsx';
 import { readWorkbenchLayout, saveWorkbenchLayout, workbenchRequest } from '../lib/workbench.js';
-import { terminalArrivals } from '../lib/terminal-arrival.js';
+import { TerminalPane } from '../components/workspace/TerminalPane.jsx';
+export { TerminalPane } from '../components/workspace/TerminalPane.jsx';
 import { LinkHoverPreview } from '../components/LinkHoverPreview.jsx';
 import { visible } from '../lib/model.js';
 import { parseSlashCommand, searchCommands } from '../lib/commands.js';
@@ -170,65 +171,6 @@ function CommandRow({ item, onRun, onRemove }) {
   return <div className="wb-command-row"><span><strong>{item.name}</strong><code>{item.command}</code>{item.script ? <small>{item.script}</small> : null}</span><IconButton label={`Review and run ${item.name}`} onClick={onRun}><Play /></IconButton>{onRemove ? <IconButton label={`Remove saved command ${item.name}`} onClick={onRemove}><X /></IconButton> : null}</div>;
 }
 
-function TerminalPane({ scope, terminal, fontSize, onEnded }) {
-  const host = useRef(null), instance = useRef(null), cursor = useRef(0), ended = useRef(false);
-  const [error, setError] = useState(null);
-  const [arrivals, setArrivals] = useState(null);
-  const arrivalTimer = useRef(null);
-  useEffect(() => {
-    let cancelled = false, pollTimer, flushTimer, observer, input = '', inputBusy = false, disposeInput, initialPoll = true, pendingLine = '';
-    const pendingScope = scope;
-    const inputQueue = [];
-    async function sendInput() {
-      if (input) { inputQueue.push(input); input = ''; }
-      if (inputBusy || !inputQueue.length || cancelled) return;
-      inputBusy = true;
-      try { while (inputQueue.length && !cancelled) await workbenchRequest(pendingScope, `terminals/${terminal.id}/input`, { method: 'POST', body: { data: inputQueue.shift() } }); }
-      catch (cause) { setError(cause); inputQueue.length = 0; }
-      finally { inputBusy = false; }
-    }
-    async function setup() {
-      try {
-        const [{ Terminal: XTerminal }, { FitAddon }] = await Promise.all([import('@xterm/xterm'), import('@xterm/addon-fit'), import('@xterm/xterm/css/xterm.css')]);
-        if (cancelled) return;
-        const style = getComputedStyle(document.documentElement);
-        const xterm = new XTerminal({ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize, cursorBlink: true, scrollback: 5000, allowProposedApi: false, theme: { background: style.getPropertyValue('--input').trim(), foreground: style.getPropertyValue('--text').trim(), cursor: style.getPropertyValue('--text').trim(), selectionBackground: style.getPropertyValue('--selection').trim() } });
-        const fit = new FitAddon(); xterm.loadAddon(fit); xterm.open(host.current); instance.current = xterm; cursor.current = 0;
-        const resize = () => { if (cancelled || !host.current?.clientWidth) return; fit.fit(); workbenchRequest(pendingScope, `terminals/${terminal.id}/resize`, { method: 'POST', body: { cols: xterm.cols, rows: xterm.rows } }).catch(() => {}); };
-        resize(); observer = new ResizeObserver(resize); observer.observe(host.current);
-        disposeInput = xterm.onData(value => { input += value; clearTimeout(flushTimer); flushTimer = setTimeout(sendInput, 15); });
-        async function poll() {
-          try {
-            const result = await workbenchRequest(pendingScope, `terminals/${terminal.id}`, { body: { cursor: cursor.current } });
-            if (cancelled) return;
-            if (result.reset) { xterm.reset(); pendingLine = ''; initialPoll = true; }
-            if (result.output) {
-              xterm.write(result.output);
-              const next = terminalArrivals(pendingLine, result.output, { initial: initialPoll });
-              pendingLine = next.pending;
-              if (next.lines.length) {
-                setArrivals({ lines: next.lines, cursor: result.cursor });
-                clearTimeout(arrivalTimer.current);
-                arrivalTimer.current = setTimeout(() => setArrivals(null), 1400);
-              }
-            }
-            initialPoll = false;
-            cursor.current = result.cursor;
-            const running = ['running', 'stopping'].includes(result.status);
-            xterm.options.disableStdin = !running;
-            if (!running) { if (!ended.current) { ended.current = true; onEnded(); } return; }
-            pollTimer = setTimeout(poll, 300);
-          } catch (cause) { if (!cancelled) { setError(cause); pollTimer = setTimeout(poll, 2000); } }
-        }
-        poll();
-      } catch (cause) { if (!cancelled) setError(cause); }
-    }
-    setup();
-    return () => { cancelled = true; clearTimeout(pollTimer); clearTimeout(flushTimer); clearTimeout(arrivalTimer.current); observer?.disconnect(); disposeInput?.dispose(); instance.current?.dispose(); instance.current = null; };
-  }, [terminal.id]);
-  useEffect(() => { if (instance.current) instance.current.options.fontSize = fontSize; }, [fontSize]);
-  return <><ErrorMessage error={error} /><div className="wb-terminal-canvas" data-field-defaults-exclude="true"><div ref={host} className="wb-xterm" aria-label={`Interactive terminal ${terminal.name}`} />{arrivals ? <div className="wb-terminal-arrivals" aria-hidden="true" key={arrivals.cursor}>{arrivals.lines.map((line, index) => <span key={`${index}:${line}`}>{line}</span>)}</div> : null}</div></>;
-}
 
 function WorkbenchDialog({ dialog, scope, root, settings, branches, onClose, onSaved, onSettings }) {
   const { busy, error, execute } = useAsync();

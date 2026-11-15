@@ -6,10 +6,11 @@ import { groupColorDefaults, pageTeam, resolveNavColors, resolveEmptyIconColor }
 import { ColorPolicyChoice } from './ColorPolicyChoice.jsx';
 import { NAV_ITEMS } from '../lib/organization.js';
 import { SETTINGS_GROUPS } from '../lib/settings-catalog.js';
+import { isLocalProduct, localSettingsGroups } from '../lib/local-product.js';
 import './team-appearance.css';
 
 const IconColorsContext = createContext(null);
-export const TEAM_TABS = [['overview', 'Overview'], ['routes', 'Routes'], ['projects', 'Projects'], ['resources', 'Resources'], ['documents', 'Documents'], ['updates', 'Updates'], ['people', 'Contacts']];
+export const TEAM_TABS = [['todos', 'To Do List'],['overview', 'Overview'], ['routes', 'Routes'], ['projects', 'Projects'], ['resources', 'Resources'], ['documents', 'Documents'], ['updates', 'Updates'], ['people', 'Contacts']];
 export const PROJECT_TABS = [['projects', 'Overview'], ['workbench', 'Workbench'], ['tasks', 'Routes'], ['chats', 'Chats'], ['library', 'Outputs'], ['memory', 'Memory'], ['strategy', 'Strategy & risks'], ['timeline', 'Timeline'], ['documents', 'Documents'], ['updates', 'Updates'], ['changes', 'Changes'], ['activity', 'Activity']];
 export function useIconColors() { return useContext(IconColorsContext); }
 
@@ -27,7 +28,7 @@ export function IconColorsProvider({ children }) {
     if (!group) return undefined;
     return groupColorDefaults(getOverride(group.id));
   };
-  const colorsFor = (id, team) => resolveNavColors(settings, inheritedTeam(id, id.endsWith(':identity') && team ? { ...team, tab_icon_color: team.icon_color || 'global' } : team), getOverride(id));
+  const colorsFor = (id, team) => isLocalProduct(data) ? {} : resolveNavColors(settings, inheritedTeam(id, id.endsWith(':identity') && team ? { ...team, tab_icon_color: team.icon_color || 'global' } : team), getOverride(id));
   function update(id, patch) {
     try {
       const current = readDisplayPreferences().tabColors;
@@ -35,7 +36,7 @@ export function IconColorsProvider({ children }) {
     } catch { setError(new Error('Could not save colors in this browser. Check available storage and try again.')); }
   }
   const team = pageTeam(page, data);
-  const emptyColor = resolveEmptyIconColor(settings, team);
+  const emptyColor = resolveEmptyIconColor(isLocalProduct(data) ? { ...settings, emptyIconFollowArea: false } : settings, isLocalProduct(data) ? undefined : team);
   const editingTeam = data.teams.find(team => team.id === editing?.team?.id);
   const editingGroup = editing && groupFor(editing.id);
   const preview = editing ? colorsFor(editing.id, editingTeam) : {};
@@ -62,7 +63,7 @@ export function TabColorsSettings() {
     ...['agents', 'chats', 'projects'].flatMap(view => data[view].filter(item => !item.archived_at).map(item => ({ id: `entity:${view}:${item.id}`, label: `${view} · ${item.name || item.title}`, team: data.teams.find(t => t.id === item.team_id) }))),
     ...data.teams.filter(t => !t.archived_at).flatMap(team => TEAM_TABS.map(([id, label]) => ({ id: `team:${team.id}:${id}`, label: `${team.name} · ${label}`, team }))),
     ...data.projects.filter(p => !p.archived_at).flatMap(project => PROJECT_TABS.map(([id, label]) => ({ id: `project:${project.id}:${id}`, label: `${project.name} · ${label}`, team: data.teams.find(t => t.id === project.team_id) }))),
-    ...SETTINGS_GROUPS.flatMap(([group, items]) => items.map(([id, label]) => ({ id: `settings:${id}`, label: `Settings · ${group} · ${label}` }))),
+    ...localSettingsGroups(SETTINGS_GROUPS, data).flatMap(([group, items]) => items.map(([id, label]) => ({ id: `settings:${id}`, label: `Settings · ${group} · ${label}` }))),
   ];
   return <section className="tab-colors-settings"><h3>Individual tabs</h3><p>Tabs follow their team or global colors by default. Choose a tab here to customize it. Overrides apply only to this workspace in your browser.</p><input aria-label="Find a tab color setting" placeholder="Find a tab…" value={query} onChange={e => setQuery(e.target.value)} /><div className="tab-colors-list">{entries.filter(e => e.label.toLowerCase().includes(query.toLowerCase())).map(entry => { const colors = colorsFor(entry.id, entry.team); return <button type="button" key={entry.id} onClick={() => editColors(entry)}><i style={{ background: colors.icon || 'var(--secondary)' }} /><span style={{ color: colors.label || undefined }}>{entry.label}</span><small>Edit colors</small></button>; })}</div></section>;
 }

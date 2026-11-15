@@ -68,6 +68,10 @@
   transition: transform var(--motion-popover) var(--ease-out), opacity var(--motion-fade) var(--ease-out);
 }
 .create-options, .agent-menu-panel { transform-origin: top right; }
+/* Presence-managed popups use interruptible WAAPI enter/exit. CSS starting
+   styles must not compete with the measured panel or replay on reposition. */
+[data-popup-motion="true"] { animation: none !important; transition: none !important; }
+[data-popup-closing="true"] { pointer-events: none !important; }
 .toast {
   opacity: 1;
   transform: translate(-50%, 0);
@@ -161,3 +165,17 @@
 :root[data-motion="reduced"] .spin { animation: none; }
 :root[data-motion="reduced"] .view-entrance > *,
 :root[data-motion="reduced"] .view-entrance > * > * { transform: none !important; transition: opacity 80ms !important; transition-delay: 0ms !important; }
+
+/* Native disclosures share the same open-chevron, never a filled triangle. */
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+details>summary::marker{content:''}
+details>summary::before{content:'';display:inline-block;width:6px;height:6px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(-45deg);margin:0 10px 2px 3px;flex:none;transition:transform var(--motion-chevron) var(--ease-out)}
+details[open]>summary::before{transform:rotate(45deg)}
+@supports selector(details::details-content){
+ details::details-content{interpolate-size:allow-keywords;block-size:0;overflow:clip;opacity:0;transition:block-size var(--motion-disclosure) var(--ease-out),opacity var(--motion-fade) ease,content-visibility var(--motion-disclosure);transition-behavior:allow-discrete}
+ details[open]::details-content{block-size:auto;opacity:1}
+}
+:root[data-motion=reduced] details::details-content,:root[data-input-modality=keyboard] details::details-content{transition:none}
+:root[data-motion=reduced] details>summary::before,:root[data-input-modality=keyboard] details>summary::before{transition:none}
+@media(prefers-reduced-motion:reduce){details::details-content,details>summary::before{transition:none}}

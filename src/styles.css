@@ -13,7 +13,7 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  /* Neutral product surfaces and indigo, informed by Linear's public palette.
+  /* Neutral product surfaces and white product accent, per November 7 direction.
      Elevation, selection, and focus have separate roles, not lavender tints. */
   --bg: #0f1011;
   --nav: #090a0b;
@@ -29,10 +29,10 @@
   --secondary: #d0d6e0;
   --muted: #a1a6af;
   --faint: #8a8f98;
-  --accent: #6266d5;
-  --accent-hover: #585dc4;
-  --accent-text: #ffffff;
-  --focus: #969aff;
+  --accent: #eeeeee;
+  --accent-hover: #ffffff;
+  --accent-text: #111111;
+  --focus: #ffffff;
   --success: #4cb782;
   --warning: #e4b85a;
   --danger: #f06b6b;
@@ -41,7 +41,8 @@
   --brand-logo-fallback: #34383d;
   --backdrop: #000000a8;
   --scrim: #00000099;
-  --selection: #4653ae;
+  --selection: #ffffff;
+  --selection-text: #111111;
   /* Theme thumbnails intentionally keep their own palette in either theme. */
   --preview-dark: #0f1011;
   --preview-dark-nav: #090a0b;
@@ -69,10 +70,12 @@
   --secondary: #3e4148;
   --muted: #60646c;
   --faint: #62666d;
-  --accent: #6266d5;
-  --accent-hover: #585dc4;
+  --accent: #181818;
+  --accent-hover: #333333;
   --accent-text: #ffffff;
-  --focus: #6266d5;
+  --focus: #181818;
+  --selection: #181818;
+  --selection-text: #ffffff;
   --success: #19784b;
   --warning: #886400;
   --danger: #c02f3d;
@@ -265,7 +268,7 @@ input[type="checkbox"] {
 }
 ::selection {
   background: var(--selection);
-  color: var(--accent-text);
+  color: var(--selection-text);
 }
 ::-webkit-scrollbar {
   width: 7px;
@@ -747,7 +750,7 @@ input[type="checkbox"] {
 .collapsed .workspace-trigger > svg,
 .collapsed .sidebar-search span,
 .collapsed .sidebar-search kbd,
-.collapsed .nav-item span,
+.collapsed .nav-item > span:not(.nav-color-trigger),
 .collapsed .nav-count,
 .collapsed .nav-label,
 .collapsed .shortcut-help,
@@ -965,7 +968,7 @@ input[type="checkbox"] {
   box-shadow: none;
 }
 @media (forced-colors: active) {
-  :root, :root[data-theme] { --focus: Highlight; }
+  :root, :root[data-theme] { --focus: Highlight; --selection: Highlight; --selection-text: HighlightText; }
 }
 .select-wrap {
   position: relative;
@@ -3985,7 +3988,7 @@ dd {
   .sidebar.collapsed .workspace-name,
   .sidebar.collapsed .workspace-trigger > svg,
   .sidebar.collapsed .sidebar-search span,
-  .sidebar.collapsed .nav-item span,
+  .sidebar.collapsed .nav-item > span:not(.nav-color-trigger),
   .sidebar.collapsed .profile-button > span:nth-child(2),
   .sidebar.collapsed .profile-button > svg,
   .sidebar.collapsed .nav-label,

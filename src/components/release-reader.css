@@ -24,3 +24,16 @@
   .release-reader-lead { font-size: 16px; }
   .release-reader-footer { padding: 14px 16px; }
 }
+.release-tab{height:100%;min-height:0;overflow:auto;box-sizing:border-box;padding:clamp(18px,4vw,46px);max-width:1100px;margin:auto}.release-tab>header{display:flex;align-items:start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:30px}.release-tab h1{font-size:clamp(24px,3vw,36px);line-height:1.2;margin:8px 0 12px}.release-tab time,.release-tab small{color:var(--text-muted)}.release-tab-actions{display:flex;gap:8px;flex-wrap:wrap}.release-tab-cover{width:100%;height:auto;border-radius:12px;margin:16px 0 28px}.workspace-tour-shade{position:fixed;inset:0;z-index:1190;pointer-events:none}.workspace-tour-shade>div{position:fixed;background:rgba(0,0,0,.65);transition:top 160ms,left 160ms,width 160ms,height 160ms}.workspace-feature-tour{z-index:1200!important}@media(prefers-reduced-motion:reduce){.workspace-tour-shade>div{transition:none}}[data-motion=reduced] .workspace-tour-shade>div{transition:none}
+
+/* The tab uses the same article anatomy and prose styles as standalone Docs. */
+.workspace-view-body>.release-tab{width:100%;max-width:none;flex:1;min-height:0;margin:0;padding:0;container-type:inline-size}
+.release-tab .release-tab-layout{width:100%;box-sizing:border-box;max-width:1200px;grid-template-columns:minmax(0,780px) 180px;padding:62px 52px 80px;gap:48px}
+.release-tab-article>header{display:grid;gap:22px;margin-bottom:28px}
+.release-tab-article h1{font-size:clamp(28px,3vw,42px);line-height:1.2;letter-spacing:-1px;margin:14px 0 20px;overflow-wrap:anywhere}
+.release-tab-article time,.release-tab-article small{font-size:12px;color:var(--muted)}
+.release-tab-article .release-reader-lead{margin:0 0 32px;font-size:16px;line-height:1.8}
+.release-tab .release-tab-actions{gap:10px}
+.release-tab .release-tab-toc{display:grid;gap:12px}
+@container(max-width:900px){.release-tab .release-tab-layout{grid-template-columns:minmax(0,780px);padding:44px 32px 64px}.release-tab .release-tab-toc{display:none}}
+@container(max-width:500px){.release-tab .release-tab-layout{padding:32px 22px 48px}.release-tab-article{font-size:14px}.release-tab-article h1{font-size:28px}.release-tab-article section{margin-block:32px}}

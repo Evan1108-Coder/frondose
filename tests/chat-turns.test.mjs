@@ -42,10 +42,14 @@ async function withApi(callback) {
   const server = createServer((req, res) => api.middleware(req, res));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${server.address().port}/api`;
-  const call = async (path, body, method = body === undefined ? 'GET' : 'POST', expected = method === 'POST' ? 201 : 200) => {
+  const request = async (path, body, method = body === undefined ? 'GET' : 'POST') => {
     const res = await fetch(origin + path, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     const result = await res.json();
-    assert.equal(res.status, expected, JSON.stringify(result));
+    return { status: res.status, result };
+  };
+  const call = async (path, body, method = body === undefined ? 'GET' : 'POST', expected = method === 'POST' ? 201 : 200) => {
+    const { status, result } = await request(path, body, method);
+    assert.equal(status, expected, JSON.stringify(result));
     return result;
   };
   try {
@@ -55,7 +59,7 @@ async function withApi(callback) {
     const chat = (await call('/chats', { workspace_id: workspace.id, project_id: project.id, title: 'Review', participant_agent_ids: [agent.id] })).chat;
     const turn = (overrides = {}) => ({ agent_id: agent.id, content: 'Please review the project.', client_turn_id: 'fixture-turn-001', work_mode: 'project', ...overrides });
     const connectFixture = () => call('/connections/codex/connect', { method: 'existing' }, 'POST', 200);
-    await callback({ call, api, fake, workspace, project, agent, chat, turn, dataDir, integrationOptions, connectFixture });
+    await callback({ call, request, api, fake, workspace, project, agent, chat, turn, dataDir, integrationOptions, connectFixture });
   } finally { api.close(); await new Promise((resolve) => server.close(resolve)); await rm(dataDir, { recursive: true, force: true }); }
 }
 
@@ -247,16 +251,21 @@ test('concurrent first legacy sends select one identity without rewriting histor
 });
 
 test('concurrent identical first sends recover one receipt rather than launching twice',async()=>{
-  await withApi(async({call,api,fake,chat,turn,connectFixture})=>{
+  await withApi(async({call,request,api,fake,chat,turn,connectFixture})=>{
     await connectFixture();fake.mode='hold';
     const input=turn({work_mode:'conversation'});
     const responses=await Promise.all([
-      call(`/chats/${chat.id}/turns`,input),
-      call(`/chats/${chat.id}/turns`,input,'POST',200),
+      request(`/chats/${chat.id}/turns`,input),
+      request(`/chats/${chat.id}/turns`,input),
     ]);
-    assert.equal(responses[0].run.id,responses[1].run.id);assert.equal(fake.launches,1);
+    // HTTP arrival order is not Promise.all input order. Exactly one creates the
+    // receipt and the other replays it, regardless of which request reaches first.
+    assert.deepEqual(responses.map(response=>response.status).sort((left,right)=>left-right),[200,201]);
+    const [first,second]=responses.map(response=>response.result);
+    assert.equal(first.run.id,second.run.id);assert.equal(first.message.id,second.message.id);
+    assert.equal(fake.launches,1);assert.equal(api.snapshot().runs.length,1);
     assert.equal(api.snapshot().messages.length,1);
-    await call(`/runs/${responses[0].run.id}/stop`,{},'POST',200);
+    await call(`/runs/${first.run.id}/stop`,{},'POST',200);
   });
 });
 

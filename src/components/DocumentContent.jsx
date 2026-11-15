@@ -3,6 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { documentLink, emojiLookup, hasMathSyntax, normalizeMathDelimiters, remarkWorkspaceEmojis } from '../lib/document-markdown.js';
 import './document-content.css';
+import {rehypeSourceText} from '../lib/document-source-map.js';
 import { ServiceLogo } from './ServiceLogo.jsx';
 import { FileText } from './icons.jsx';
 import { CodeViewer } from './CodeViewer.jsx';
@@ -38,8 +39,8 @@ function InternalLink({ link, children, title, onInternalLink }) {
 }
 
 /** CommonMark + GFM, with escaped HTML, blocked image embeds and strict links. */
-export function DocumentContent({ content, className = '', emojis = EMPTY_EMOJIS, onInternalLink }) {
-  const source = String(content ?? '').replaceAll('\r\n', '\n');
+export function DocumentContent({ content, className = '', emojis = EMPTY_EMOJIS, onInternalLink, showLinkIcons = true, sourcePositions = false }) {
+  const source = sourcePositions ? String(content ?? '') : String(content ?? '').replaceAll('\r\n', '\n');
   const lookup = useMemo(() => emojiLookup(emojis), [emojis]);
   const remarkPlugins = useMemo(() => [[remarkGfm, GFM_OPTIONS], [remarkWorkspaceEmojis, lookup]], [lookup]);
   const components = useMemo(() => ({
@@ -55,7 +56,7 @@ export function DocumentContent({ content, className = '', emojis = EMPTY_EMOJIS
       if (!link) return <>{children}</>;
       if (link.kind === 'internal') return <InternalLink link={link} title={title} onInternalLink={onInternalLink}>{children}</InternalLink>;
       if (link.kind === 'anchor') return <a href={link.href} title={title}>{children}</a>;
-      return <a href={link.href} title={title} target="_blank" rel="noreferrer noopener"><ServiceLogo url={link.href} className="inline-service-logo" />{children}</a>;
+      return <a href={link.href} title={title} target="_blank" rel="noreferrer noopener">{showLinkIcons ? <ServiceLogo url={link.href} className="inline-service-logo" /> : null}{children}</a>;
     },
     img: ({ node, alt }) => {
       const emoji = lookup.byId.get(node?.properties?.['data-workspace-emoji']);
@@ -63,8 +64,17 @@ export function DocumentContent({ content, className = '', emojis = EMPTY_EMOJIS
     },
     table: ({ children }) => <div className="document-table-scroll" role="region" aria-label="Table" tabIndex={0}><table>{children}</table></div>,
     input: ({ checked }) => <span className="document-task-mark" role="img" aria-label={checked ? 'Checked' : 'Unchecked'}>{checked ? '☑' : '☐'}</span>,
-  }), [lookup, onInternalLink]);
-  const props = { components, remarkPlugins, urlTransform: documentUrlTransform };
+  }), [lookup, onInternalLink, showLinkIcons]);
+  const positioned = useMemo(() => {
+    if (!sourcePositions) return components;
+    const result = {...components};
+    for (const tag of ['p','li','blockquote','h1','h2','h3','h4','h5','h6','pre']) {
+      const Tag = /^h[1-6]$/.test(tag) ? 'h'+Math.min(6,Number(tag[1])+1) : tag === 'pre' ? 'div' : tag;
+      result[tag] = ({node,children,...rest}) => <Tag {...rest} data-source-start={node?.position?.start?.offset} data-source-end={node?.position?.end?.offset}>{tag === 'pre' ? <QuotedCode node={node}>{children}</QuotedCode> : children}</Tag>;
+    }
+    return result;
+  },[components,sourcePositions]);
+  const props = { components: positioned, remarkPlugins, ...(sourcePositions?{rehypePlugins:[rehypeSourceText]}:{}), urlTransform: documentUrlTransform };
   const fallback = <Markdown {...props}>{source}</Markdown>;
-  return <div className={`document-content ${className}`}>{hasMathSyntax(source) ? <Suspense fallback={fallback}><MathDocument {...props} content={normalizeMathDelimiters(source)} /></Suspense> : fallback}</div>;
+  return <div className={`document-content ${className}`}>{hasMathSyntax(source) ? <Suspense fallback={fallback}><MathDocument {...props} content={sourcePositions?source:normalizeMathDelimiters(source)} /></Suspense> : fallback}</div>;
 }

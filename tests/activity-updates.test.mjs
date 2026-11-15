@@ -93,6 +93,37 @@ test('route activity includes child creation and timeline cursors cannot cross t
   assert.equal((await call('GET', `/timeline?workspace_id=${ws}&target_type=project&target_id=${project.id}&cursor=${encodeURIComponent(first.next_cursor)}`)).status, 400);
 });
 
+test('workspace-level Routes have readable activity without a project or Area', async t => {
+  const { ws, call } = await fixture(t);
+  const created = await call('POST', '/tasks', { workspace_id: ws, title: 'Workspace-only activity' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const task = created.body.task;
+  assert.equal(task.project_id, null);
+  assert.equal(task.team_id, null);
+  const timeline = workspace => `/timeline?workspace_id=${workspace}&target_type=route&target_id=${task.id}`;
+  const response = await call('GET', timeline(ws));
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.ok(response.body.result.items.some(item => item.title === task.title && item.action === 'created'));
+  const other = (await call('POST', '/workspaces', { name: 'Other activity workspace' })).body.workspace;
+  assert.equal((await call('GET', timeline(other.id))).status, 404);
+  assert.equal((await call('GET', `/timeline?workspace_id=${ws}&target_type=route&target_id=missing-route`)).status, 404);
+});
+
+test('a Route in a restricted Area does not fall back to workspace-level activity access', async t => {
+  const { ws, db, governance, call } = await fixture(t);
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO teams(id, workspace_id, name, created_at, updated_at) VALUES(?,?,?,?,?)').run('restricted-timeline-area', ws, 'Restricted area', now, now);
+  const task = (await call('POST', '/tasks', { workspace_id: ws, team_id: 'restricted-timeline-area', title: 'Private Area route' })).body.task;
+  const reader = governance.command(ws, 'local-owner', 'create_member', { name: 'Area reader', email: 'area-timeline-reader@example.com' });
+  governance.command(ws, 'local-owner', 'grant', { member_id: reader.id, permission: 'routes.read', effect: 'deny', scope_type: 'team', scope_id: task.team_id, reason: 'Private Area' });
+  const owner = await call('POST', '/identity/setup', { name: 'Owner', email: 'owner@example.com', password: 'long owner password 123' });
+  const invite = await call('POST', '/identity/invite', { workspace_id: ws, member_id: reader.id }, owner.cookie);
+  const account = await call('POST', '/identity/accept', { token: invite.body.result.invitation_token, password: 'long reader password 123' });
+  const response = await call('GET', `/timeline?workspace_id=${ws}&target_type=route&target_id=${task.id}`, undefined, account.cookie);
+  assert.equal(response.status, 404, JSON.stringify(response.body));
+  assert.doesNotMatch(JSON.stringify(response.body), /Private Area route/);
+});
+
 test('timeline excludes old restricted document scope after a move', async t => {
   const { ws, project, db, governance, call } = await fixture(t);
   const other = (await call('POST', '/projects', { workspace_id: ws, name: 'Restricted source' })).body.project;

@@ -1,0 +1,50 @@
+import {useEffect,useId,useLayoutEffect,useRef,useState} from 'react';
+import {Button,ErrorMessage} from '../../ui.jsx';
+import {DocumentContent} from '../DocumentContent.jsx';
+import {FileCommentComposer,FileCommentThread,FileCommentHandoff} from './FileComments.jsx';
+import {apiRequest} from '../../data/api.js';
+import {fileCommentsApiPath,commentDragProps} from '../../lib/file-comments.js';
+import {stackReviewCards} from '../../lib/repository-work.js';
+import './review-notes.css';
+import {selectedDocumentRange,documentRangeForSource} from '../../lib/document-source-map.js';
+import {Plus} from '../icons.jsx';
+import {requestUpdateNavigation} from '../UnsavedUpdates.jsx';
+
+/** Source-version-bound notes in a nonmodal margin rail, inspired by Orca's
+ * RichMarkdownReviewNoteLayer. Ambiguous formatted selections fail closed. */
+export function MarkdownReviewNotes({workspaceId,bindingVersion,path,fileVersion,content,dirty}){
+ const owner=useRef(null),article=useRef(null),rail=useRef(null),selectedRange=useRef(null);
+ const highlightName=`frondose-note-${useId().replace(/[^a-zA-Z0-9]/g,'')}`;
+ const [selection,setSelection]=useState(null),[hovered,setHovered]=useState(null),[draft,setDraft]=useState(null),[listing,setListing]=useState(null),[error,setError]=useState(null),[revision,setRevision]=useState(0),[positions,setPositions]=useState([]),[expanded,setExpanded]=useState(null),[selectionError,setSelectionError]=useState('');
+ const identity=`${workspaceId}:${bindingVersion}:${path}`,current=useRef(identity);current.current=identity;
+ useEffect(()=>{setError(null);if(!fileVersion){setListing(null);return;}const controller=new AbortController();apiRequest(fileCommentsApiPath(workspaceId,'',{expected_binding_version:bindingVersion,path}),{signal:controller.signal}).then(({result})=>{if(!controller.signal.aborted)setListing(result);}).catch(cause=>{if(!controller.signal.aborted){setListing(null);setError(cause);}});return()=>controller.abort();},[identity,revision,fileVersion]);
+ useEffect(()=>{setListing(null);},[identity]);
+ useEffect(()=>{setSelection(null);selectedRange.current=null;setSelectionError('');return()=>{globalThis.CSS?.highlights?.delete(highlightName);globalThis.CSS?.highlights?.delete(highlightName+'-saved');};},[identity,fileVersion,content,highlightName]);
+ useEffect(()=>{const changed=event=>{if(event.detail?.workspaceId===workspaceId)setRevision(v=>v+1);};window.addEventListener('frondose:file-comments-changed',changed);return()=>window.removeEventListener('frondose:file-comments-changed',changed);},[workspaceId]);
+ useLayoutEffect(()=>{if(!article.current||!globalThis.CSS?.highlights||!globalThis.Highlight)return;const paint=()=>{const ranges=(listing?.threads||[]).filter(thread=>thread.file_version===fileVersion&&thread.anchor.status==='current').map(thread=>documentRangeForSource(article.current,content,thread.start_offset,thread.end_offset)).filter(Boolean);CSS.highlights.set(highlightName+'-saved',new Highlight(...ranges));};paint();const observer=new MutationObserver(paint);observer.observe(article.current,{subtree:true,childList:true,characterData:true});return()=>{observer.disconnect();CSS.highlights.delete(highlightName+'-saved');};},[listing,fileVersion,content,highlightName]);
+ const measure=()=>{
+  if(!owner.current||!article.current)return;
+  const top=owner.current.getBoundingClientRect().top+24,heights=new Map(),all=[];
+  for(const card of rail.current?.querySelectorAll('[data-review-card]')||[])heights.set(card.dataset.reviewCard,card.getBoundingClientRect().height);
+  for(const thread of listing?.threads||[]){const block=[...article.current.querySelectorAll('[data-source-start]')].find(node=>Number(node.dataset.sourceStart)<=thread.start_offset&&Number(node.dataset.sourceEnd)>=thread.end_offset);const y=block&&thread.anchor.status==='current'&&thread.file_version===fileVersion?block.getBoundingClientRect().top-top+owner.current.scrollTop:0;all.push({id:thread.id,top:Math.max(0,y),startLine:thread.start_line});}
+  if(draft)all.push({id:'draft',top:draft.top||0,startLine:0});
+  const next=stackReviewCards(all,heights);setPositions(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);
+ };
+ useLayoutEffect(()=>{measure();const observer=new ResizeObserver(measure);if(owner.current)observer.observe(owner.current);if(rail.current)observer.observe(rail.current);window.addEventListener('resize',measure);return()=>{observer.disconnect();window.removeEventListener('resize',measure);};},[listing,draft,expanded,content]);
+ function pick(){
+  if(draft||dirty)return;const selected=window.getSelection();if(!selected||selected.isCollapsed||!selected.rangeCount||!article.current?.contains(selected.anchorNode)||!article.current.contains(selected.focusNode)){setSelection(null);return;}
+  const range=selected.getRangeAt(0),parent=node=>(node.nodeType===1?node:node.parentElement)?.closest('[data-source-start]'),startNode=parent(range.startContainer),endNode=parent(range.endContainer);if(!startNode||!endNode)return;
+  const start=Number(startNode.dataset.sourceStart),end=Number(endNode.dataset.sourceEnd),mapped=selectedDocumentRange(article.current,range,content);
+  if(!mapped){setSelection(null);setSelectionError('This formatted selection cannot be anchored exactly. Use Source to comment on its exact text.');return;}
+  const box=range.getBoundingClientRect(),bounds=owner.current.getBoundingClientRect(),value={...mapped,top:box.top-bounds.top+owner.current.scrollTop-24,content,fileVersion};selectedRange.current=range.cloneRange();setSelection(value);setSelectionError('');return value;
+ }
+ function begin(value=selection){if(!value?.fileVersion)return;setDraft(value);if(globalThis.CSS?.highlights&&globalThis.Highlight&&selectedRange.current)CSS.highlights.set(highlightName,new Highlight(selectedRange.current));setSelection(null);}
+ const threads=listing?.threads||[],last=positions.at(-1),height=last?(last.top+Math.max(200,rail.current?.querySelector(`[data-review-card="${last.id}"]`)?.offsetHeight||0)):0;
+ return <section ref={owner} className={`markdown-review-notes ${threads.length||draft?'has-notes':''}`} aria-label="Markdown preview and review notes" onMouseLeave={()=>{if(!selection&&!draft)setHovered(null);}} onKeyDown={event=>{if((event.metaKey||event.ctrlKey)&&event.shiftKey&&event.key.toLowerCase()==='m'&&!event.nativeEvent.isComposing){event.preventDefault();begin(pick());}}}>
+  <style>{`::highlight(${highlightName}){background:rgba(225,182,56,.3);color:inherit}::highlight(${highlightName}-saved){background:rgba(225,182,56,.17);color:inherit}`}</style>
+  <article ref={article} className="markdown-review-article" onMouseMove={event=>{if(selection||draft||dirty)return;const block=event.target.closest('[data-source-start]');if(!block||!article.current.contains(block))return;const leaves=[...block.querySelectorAll('[data-source-text-start]')].filter(leaf=>content.slice(Number(leaf.dataset.sourceTextStart),Number(leaf.dataset.sourceTextEnd))===leaf.textContent);if(!leaves.length)return;const start=Number(leaves[0].dataset.sourceTextStart),end=Number(leaves.at(-1).dataset.sourceTextEnd),top=block.getBoundingClientRect().top-owner.current.getBoundingClientRect().top+owner.current.scrollTop-24;if(end>start&&end-start<=4000)setHovered(old=>old?.start===start&&Math.abs(old.top-top)<1?old:{start,end,top,content,fileVersion});}} onMouseUp={pick} onKeyUp={event=>{if(event.key==='Shift'||event.key.startsWith('Arrow'))pick();}}><DocumentContent content={content} showLinkIcons={false} sourcePositions/></article>
+  {!draft&&!dirty&&(selection||hovered)?<button type="button" className="markdown-note-gutter" aria-label={selection?'Add note to selected text':'Add note to paragraph'} style={{top:(selection||hovered).top+24}} onMouseDown={event=>event.preventDefault()} onClick={()=>{if(!selection){const value=hovered;const range=documentRangeForSource(article.current,content,value.start,value.end);if(range){selectedRange.current=range;begin(value);}else setSelectionError('Use Source to attach a note to this generated or formatted content.');}else begin();}}><Plus/></button>:null}
+  {dirty?<p className="markdown-note-status">Save this file to attach notes to its exact source.</p>:null}{selectionError?<p className="markdown-note-status" role="status">{selectionError}</p>:null}
+  <aside ref={rail} className="markdown-review-rail" style={{minHeight:height}} aria-label="Review notes"><ErrorMessage error={error}/>{error?<Button onClick={()=>setRevision(v=>v+1)}>Retry notes</Button>:null}{threads.map(thread=><section {...commentDragProps(workspaceId,thread,bindingVersion)} data-review-card={thread.id} key={thread.id} className={`markdown-review-card ${expanded===thread.id?'expanded':''}`} style={{top:positions.find(p=>p.id===thread.id)?.top||0}}><button className="markdown-review-card-heading" type="button" aria-expanded={expanded===thread.id} onClick={()=>requestUpdateNavigation(()=>setExpanded(expanded===thread.id?null:thread.id))}>Lines {thread.start_line}–{thread.end_line} · {thread.resolved?'Resolved':'Note'}{thread.anchor.status!=='current'||thread.file_version!==fileVersion?' · Outdated':''}</button>{expanded===thread.id?<FileCommentThread workspaceId={workspaceId} bindingVersion={bindingVersion} threadId={thread.id} onChanged={()=>setRevision(v=>v+1)}/>:<><blockquote>{thread.quote}</blockquote><p>{thread.body}</p><FileCommentHandoff workspaceId={workspaceId} bindingVersion={bindingVersion} thread={thread}/></>}</section>)}{draft?<section data-review-card="draft" className="markdown-review-card" style={{top:positions.find(p=>p.id==='draft')?.top||0}}><FileCommentComposer workspaceId={workspaceId} bindingVersion={bindingVersion} path={path} fileVersion={draft.fileVersion} content={draft.content} compact start={draft.start} end={draft.end} dirty={dirty} onClose={()=>{setDraft(null);globalThis.CSS?.highlights?.delete(highlightName);}} onCreated={()=>setRevision(v=>v+1)}/></section>:null}{listing?.next_offset!==null&&listing?.next_offset!==undefined?<p>More notes are available from Comments.</p>:null}</aside>
+ </section>;
+}

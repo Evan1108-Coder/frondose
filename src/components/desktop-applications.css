@@ -1,0 +1,8 @@
+.desktop-open-in{position:relative;font-size:12px;margin-inline:6px}
+.desktop-open-in>summary{cursor:pointer;padding:6px 10px;border:1px solid var(--border);border-radius:7px;white-space:nowrap}
+/* Body portal: never inherit the clipped/contained main surface or its
+   transformed toolbar. usePopupPosition provides viewport-clamped placement. */
+.desktop-app-menu{position:fixed;z-index:500;box-sizing:border-box;min-width:0;overflow:auto;overscroll-behavior:contain;background:var(--elevated);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:0 12px 35px #0004;font-size:12px}
+.desktop-app-menu button{display:block;width:100%;min-width:0;text-align:left;padding:8px;border-radius:6px;white-space:normal;overflow-wrap:break-word}
+.desktop-app-menu button:hover{background:var(--hover)}
+.desktop-app-menu button:focus-visible,.desktop-open-in>summary:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}

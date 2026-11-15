@@ -1,0 +1,21 @@
+.session-history-dialog.dialog { width:min(920px,calc(100vw - 28px));max-height:min(850px,calc(100dvh - 32px)); }
+.session-history-content { padding:20px 24px;overflow:auto;min-height:0;font-size:13px;line-height:1.55; }
+.session-history-content > p,.session-history-settings > p { margin:10px 0;color:var(--secondary); }
+.session-history-toolbar { display:grid;grid-template-columns:minmax(180px,1fr) minmax(130px,180px) minmax(130px,180px);gap:12px;align-items:end;margin-bottom:12px; }
+.session-history-toolbar > input { width:100%;min-width:0;min-height:36px; }
+.session-history-actions { display:flex;gap:8px;flex-wrap:wrap;margin:14px 0; }
+.session-history-note { font-size:12px;color:var(--muted);line-height:1.6; }
+.session-history-consent { padding:14px 16px;border:1px solid var(--border-soft);border-radius:8px;margin-bottom:16px; }
+.session-history-consent > p:first-child { margin-top:0; }
+.session-history-consent > label { display:flex;gap:9px;align-items:flex-start; }
+.session-history-consent input { margin-top:4px;flex:none; }
+.session-history-results { display:flex;flex-direction:column;margin-top:16px; }
+.session-history-result { display:flex;align-items:flex-start;gap:16px;padding:15px 0;border-top:1px solid var(--border-soft); }
+.session-history-result > div { flex:1;min-width:0; }
+.session-history-result h3 { margin:0 0 6px;font-size:14px;font-weight:600;overflow-wrap:anywhere; }
+.session-history-meta { display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:var(--muted);margin:0; }
+.session-history-directory { overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--muted);margin:6px 0; }
+.session-history-snippet { margin:7px 0 0;color:var(--secondary);font-size:12px;overflow-wrap:anywhere; }
+.session-history-settings { min-width:0; }
+@media(max-width:650px) { .session-history-content { padding:16px; }.session-history-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }.session-history-toolbar > input { grid-column:1/-1; }.session-history-result { gap:8px; } }
+@container(max-width:600px) { .session-history-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }.session-history-toolbar > input { grid-column:1/-1; } }

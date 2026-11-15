@@ -35,6 +35,8 @@ import { FrondoseAgentEntryButton } from '../components/FrondoseAgentEntry.jsx';
 import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import { routeForestRows } from '../lib/sub-routes.js';
 import './route-hierarchy-list.css';
+import './planning-responsive.css';
+import { isLocalProduct } from '../lib/local-product.js';
 
 export function ProjectsView() {
   const { data, page, navigate, edit } = useApp();
@@ -43,7 +45,7 @@ export function ProjectsView() {
   const project = visible(data.projects).find((item) => item.id === page.id);
   if (page.id && project) return <ProjectHub key={project.id} project={project} />;
   if (page.id) return (
-    <main className="page">
+    <main className="page planning-page projects-page">
       <Empty kind="projects" title="Project unavailable"
         description="This project may be archived or belong to another workspace."
         action="All projects" onAction={() => navigate("projects")} />
@@ -58,7 +60,7 @@ export function ProjectsView() {
   );
   const isBlank = !projects.length && !query && status === "all" && labelFilter === 'all';
   return (
-    <main className="page">
+    <main className="page planning-page projects-page">
       {!isBlank ? <>
       <PageHeader
         title="Projects"
@@ -115,7 +117,7 @@ export function ProjectsView() {
           description={
             query || status !== "all" || labelFilter !== "all"
               ? "Try another search or status."
-              : "Create a project to connect your plans, conversations, and agents."
+              : isLocalProduct(data) ? 'Keep the brief, Routes, documents and results together.' : "Create a project to connect your plans, conversations, and agents."
           }
           action={
             query || status !== "all" || labelFilter !== "all" ? "Clear filters" : "Create project"
@@ -203,7 +205,7 @@ export function RoutesView() {
   const defaults = project ? { project_id: project.id } : {};
   const createRoute = () => edit("task", null, defaults);
   if (page.projectId && !project) return (
-    <main className="page">
+    <main className="page planning-page routes-page">
       <Empty kind="projects" title="Project unavailable"
         description="This project may be archived or belong to another workspace. Choose an available project to see its routes."
         action="All projects" onAction={() => navigate("projects")}
@@ -215,7 +217,7 @@ export function RoutesView() {
   );
   if (selected) return <RouteDetail route={selected} />;
   if (page.id) return (
-    <main className="page">
+    <main className="page planning-page routes-page">
       <Empty kind="routes" title="Route unavailable"
         description="This route may be archived or outside this project."
         action={project ? "Project routes" : "All routes"}
@@ -248,12 +250,12 @@ export function RoutesView() {
     );
   const isBlank = !routes.length && !query && status === "all" && labelFilter === 'all';
   return (
-    <main className="page">
+    <main className="page planning-page routes-page">
       {!isBlank ? <>
       {project ? <button className="back-link" onClick={() => navigate("projects", project.id)}><ArrowLeft />{project.name}</button> : null}
       <PageHeader
         title="Routes"
-        description={project ? `Goals and agent work for ${project.name}.` : "Turn an intention into a conversation, a session, and a result."}
+        description={isLocalProduct(data) ? project ? `Plans and results for ${project.name}.` : 'Turn an intention into a clear plan and a reviewed result.' : project ? `Goals and agent work for ${project.name}.` : "Turn an intention into a conversation, a session, and a result."}
       >
         <Button variant="primary" icon={Plus} onClick={createRoute}>
           New route
@@ -392,7 +394,7 @@ export function RoutesView() {
               ? "No routes match these filters"
               : project ? "Give this project a direction" : "Give your work a direction"
           }
-          description={query || status !== "all" || labelFilter !== "all" ? "Try another search or status to find the routes you need." : project ? "Create a route to connect a goal with its conversations, agent sessions, and results." : "A route holds the goal, project, conversation, and agent work in one place."}
+          description={query || status !== "all" || labelFilter !== "all" ? "Try another search or status to find the routes you need." : isLocalProduct(data) ? 'Keep the goal, project, progress and result in one place.' : project ? "Create a route to connect a goal with its conversations, agent sessions, and results." : "A route holds the goal, project, conversation, and agent work in one place."}
           action={
             query || status !== "all" || labelFilter !== "all"
               ? "Clear filters"
@@ -414,6 +416,7 @@ export function RoutesView() {
 function RouteDetail({ route }) {
   const { data, page, edit, navigate, archive, perform, startSession, notify } =
     useApp();
+  const local = isLocalProduct(data);
   const project = data.projects.find(
     (item) => item.id === val(route, "project_id"),
   );
@@ -425,7 +428,7 @@ function RouteDetail({ route }) {
     .filter((run) => val(run, "task_id") === route.id)
     .toSorted(byUpdated);
   return (
-    <main className="page">
+    <main className="page planning-page route-detail-page">
       <button className="back-link" onClick={() => navigate("tasks", null, { projectId: page.projectId })}>
         <ArrowLeft />
         {page.projectId ? "Project routes" : "All routes"}
@@ -438,7 +441,7 @@ function RouteDetail({ route }) {
           Edit route
         </Button>
         <FrondoseAgentEntryButton source={{ type: 'task', id: route.id }} />
-        <Button
+        {!local ? <Button
           variant="primary"
           icon={Play}
           onClick={() =>
@@ -450,14 +453,14 @@ function RouteDetail({ route }) {
           }
         >
           Start session
-        </Button>
+        </Button> : <Button variant="primary" onClick={() => navigate('workspace')}>Open workspace</Button>}
       </PageHeader>
       <div className="route-flow">
         <span className="active">
           <GitBranch />
           Intent
         </span>
-        <ArrowRight />
+        {!local ? <><ArrowRight />
         <button
           onClick={() =>
             chats[0]
@@ -472,16 +475,16 @@ function RouteDetail({ route }) {
           <MessageCircle />
           Conversation
         </button>
-        <ArrowRight />
+        <ArrowRight /></> : <ArrowRight />}
         <button
           onClick={() =>
-            runs[0]
+            local ? navigate('workspace') : runs[0]
               ? navigate("work", runs[0].id)
               : startSession({ task_id: route.id })
           }
         >
           <Play />
-          Agent work
+          {local ? 'Workspace' : 'Agent work'}
         </button>
         <ArrowRight />
         <span className={route.status === "done" ? "active" : ""}>
@@ -496,7 +499,7 @@ function RouteDetail({ route }) {
             <h2>What needs to happen</h2>
             <p className="prose">
               {route.description ||
-                "Add a description, context, or acceptance criteria to help your agents understand this route."}
+                (local ? 'Add a description, context or acceptance criteria for this Route.' : "Add a description, context, or acceptance criteria to help your agents understand this route.")}
             </p>
             {!route.description ? (
               <button
@@ -508,7 +511,7 @@ function RouteDetail({ route }) {
             ) : null}
           </section>
           <TemplateInstanceDetails workspaceId={route.workspace_id} entityType="tasks" entityId={route.id} />
-          <section>
+          {!local ? <section>
             <div className="section-heading">
               <h2>Conversations</h2>
               <button
@@ -544,10 +547,10 @@ function RouteDetail({ route }) {
                 No conversation yet. Start a chat to discuss this route.
               </p>
             )}
-          </section>
+          </section> : null}
           <section>
             <div className="section-heading">
-              <h2>Work sessions</h2>
+              <h2>{local ? 'Recorded sessions' : 'Work sessions'}</h2>
               <span className="muted">{runs.length}</span>
             </div>
             {runs.length ? (
@@ -571,8 +574,7 @@ function RouteDetail({ route }) {
               ))
             ) : (
               <p className="section-empty">
-                No sessions yet. Choose an agent and review the context before
-                starting.
+                {local ? 'No recorded sessions. Open a new CLI tab in the workspace to start local work.' : 'No sessions yet. Choose an agent and review the context before starting.'}
               </p>
             )}
           </section>
@@ -601,7 +603,7 @@ function RouteDetail({ route }) {
                 </option>
               ))}
             </Select>
-            <AgentLinks targetType="route" targetId={route.id} existingAgentIds={val(route, 'assignee_agent_ids') || []} />
+            {!local ? <AgentLinks targetType="route" targetId={route.id} existingAgentIds={val(route, 'assignee_agent_ids') || []} /> : null}
             <dl>
               <div>
                 <dt>Due date</dt>

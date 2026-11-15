@@ -1,6 +1,6 @@
 import { pageHash } from './navigation.js';
 
-export const UPDATE_TARGETS = [['project', 'Projects', 'projects'], ['route', 'Routes', 'tasks'], ['request', 'Requests', 'workspace_items'], ['document', 'Documents', 'documents'], ['output', 'Outputs', 'outputs'], ['milestone', 'Milestones', 'milestones'], ['chat', 'Chats', 'chats']];
+export const UPDATE_TARGETS = [['area', 'Areas', 'teams'], ['project', 'Projects', 'projects'], ['route', 'Routes', 'tasks'], ['request', 'Requests', 'workspace_items'], ['document', 'Documents', 'documents'], ['output', 'Outputs', 'outputs'], ['milestone', 'Milestones', 'milestones'], ['chat', 'Chats', 'chats']];
 export const UPDATE_HEALTH = [['none', 'No health assessment'], ['on_track', 'On track'], ['at_risk', 'At risk'], ['blocked', 'Blocked']];
 
 export function updateTargets(data, type, workspaceId) {
@@ -10,6 +10,7 @@ export function updateTargets(data, type, workspaceId) {
 
 export function updateTargetLink(entry, data) {
   const type = entry.target_type, id = entry.target_id;
+  if (type === 'area') return pageHash('teams', id, {section:'updates'});
   if (type === 'project') return pageHash('projects', id);
   if (type === 'route') return pageHash('tasks', id);
   if (type === 'document') return pageHash('documents', id);
@@ -39,7 +40,7 @@ export function insertSavedUpdates(entries, saved, workspaceId, filters) {
     && (!filters.updateType || entry.update_type === filters.updateType)
     && (!filters.health || entry.health === filters.health)
     && (!filters.projectId || entry.target?.project_ids?.includes(filters.projectId))
-    && (!filters.teamId || ['project', 'route'].includes(entry.target_type) && entry.target?.team_id === filters.teamId)
+    && (!filters.teamId || ['area', 'project', 'route'].includes(entry.target_type) && entry.target?.team_id === filters.teamId)
     && (!query || `${entry.title || ''}`.toLowerCase().includes(query) || `${entry.content || ''}`.toLowerCase().includes(query)));
   return mergeUpdatePages([...matching].reverse(), entries);
 }

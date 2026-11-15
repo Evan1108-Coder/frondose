@@ -3,7 +3,7 @@
 .chat-message-avatar .human-profile-photo { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .dialog.input-dialog:not(.command-dialog) { width: min(100%, 840px); border-radius: 16px; }
 .dialog.input-dialog .dialog-heading { align-items: center; padding: 16px 20px 12px 24px; border-bottom: 0; }
-.dialog.input-dialog .dialog-heading h2 { font-size: 15px; font-weight: 550; letter-spacing: -.02em; }
+.dialog.input-dialog .dialog-heading h2 { font-size: 18px; font-weight: 650; letter-spacing: -.02em; }
 .dialog.input-dialog .dialog-heading p { margin-top: 3px; max-width: 68ch; line-height: 1.5; }
 .dialog.input-dialog .dialog-heading-actions .icon-button { width: 32px; height: 32px; }
 .dialog.input-dialog .dialog-heading-actions svg { width: 16px; height: 16px; }
@@ -20,20 +20,20 @@
 .dialog.input-dialog .form-fields > .editor-details { flex-basis: 100%; }
 .dialog.input-dialog .editor-name-field { flex-basis: 100%; }
 .dialog.input-dialog .editor-name-field > label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.dialog.input-dialog .editor-name-field > input { font-size: 23px; font-weight: 550; letter-spacing: -.025em; padding: 8px 0; height: auto; background: transparent; border: 1px solid transparent; border-radius: 0; }
+.dialog.input-dialog .editor-name-field > input { font-size: 23px; font-weight: 550; letter-spacing: -.025em; padding: 8px 12px; height: auto; background: transparent; border: 1px solid transparent; border-radius: 0; }
 .dialog.input-dialog .editor-name-field > input:focus { border-color: transparent transparent var(--focus); outline: none; box-shadow: none; }
 .dialog.input-dialog .form-fields > .field:has(textarea) > textarea { background: transparent; min-height: 116px; resize: vertical; }
 .dialog.input-dialog .editor-description-field > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .dialog.input-dialog .editor-description-field > textarea { border-color: transparent; padding-left: 0; padding-right: 0; }
 .dialog.input-dialog .editor-description-field > textarea:focus { border-color: transparent transparent var(--focus); outline: none; box-shadow: none; }
-.dialog.input-dialog .dialog-footer { background: var(--elevated); border-top: 0; padding: 16px 24px 20px; gap: 10px; border-radius: 0 0 16px 16px; }
-.dialog.input-dialog .dialog-footer .button.primary { border-radius: 9999px; }
+.dialog.input-dialog .dialog-footer { background: var(--dialog-surface); border-top: 0; padding: 16px 24px 20px; gap: 10px; border-radius: 0 0 16px 16px; }
+.dialog.input-dialog .dialog-footer .button.primary { border-radius: 8px; }
 .dialog.input-dialog .dialog-footer .button.ghost { background: transparent; }
 .dialog.input-dialog .form-grid { min-width: 0; }
-.dialog.input-dialog > form:not(.entity-form):not(.agent-editor-form) { display: flex; flex-direction: row; flex-wrap: wrap; align-content: start; gap: 20px 16px; }
-.dialog.input-dialog > form:not(.entity-form):not(.agent-editor-form) > * { flex: 1 1 280px; min-width: 0; }
-.dialog.input-dialog > form:not(.entity-form):not(.agent-editor-form) > :is(.editor-name-field, .form-fields, footer, fieldset, .form-validation-error, .form-submit-row),
-.dialog.input-dialog > form:not(.entity-form):not(.agent-editor-form) > .field:has(textarea) { flex-basis: 100%; }
+.dialog.input-dialog > form:not([class]) { display: flex; flex-direction: row; flex-wrap: wrap; align-content: start; gap: 20px 16px; }
+.dialog.input-dialog > form:not([class]) > * { flex: 1 1 280px; min-width: 0; }
+.dialog.input-dialog > form:not([class]) > :is(.editor-name-field, .form-fields, footer, fieldset, .form-validation-error, .form-submit-row),
+.dialog.input-dialog > form:not([class]) > .field:has(textarea) { flex-basis: 100%; }
 .dialog.input-dialog.dialog-expanded { width: calc(100vw - 48px); height: calc(100dvh - 48px); max-height: calc(100dvh - 48px); }
 .dialog.input-dialog.dialog-expanded > form { flex: 1; }
 .dialog.input-dialog.dialog-expanded .writing-form { display: flex; flex-direction: column; }
@@ -42,15 +42,26 @@
 .dialog.writing-editor-task .form-fields > .rumbo-select,
 .dialog.writing-editor-task .form-fields > .form-grid > .rumbo-select { flex: 0 1 auto; max-width: 100%; }
 .dialog.writing-editor-task .rumbo-select > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.dialog.writing-editor-task .rumbo-select-trigger { min-height: 34px; border-radius: 9999px; background: var(--selected); padding: 6px 12px; width: auto; max-width: 100%; }
+.dialog.writing-editor-task .rumbo-select-trigger { min-height: 34px; border-radius: 8px; background: var(--selected); padding: 6px 12px; width: auto; max-width: 100%; }
 .dialog.writing-editor-task .rumbo-select-trigger > span { overflow: hidden; text-overflow: ellipsis; }
 .dialog.writing-editor-task .form-fields > .form-grid > .field { flex: 0 1 170px; }
 .dialog.writing-editor-task .form-grid > .field:has(.rumbo-date-input) > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.dialog.writing-editor-task .rumbo-date-input { border-radius: 9999px; background: var(--selected); }
+.dialog.writing-editor-task .rumbo-date-input { border-radius: 8px; background: var(--selected); }
 .dialog.writing-editor-task .rumbo-date-input input { min-height: 34px; padding-top: 6px; padding-bottom: 6px; }
 .dialog.writing-editor-task .form-note { flex-basis: 100%; }
-.dialog.writing-editor-project .form-fields > .form-grid { display: contents; }
-.dialog.writing-editor-project .form-fields > .rumbo-select { flex: 0 1 180px; }
+.dialog.input-dialog.writing-editor-project:not(.dialog-expanded) { width: min(100%, 1000px); }
+.dialog.writing-editor-project .form-fields > .project-metadata-row { flex-basis: 100%; display: grid; grid-template-columns: minmax(90px, 1fr) minmax(110px, 1fr) minmax(90px, 1fr) minmax(130px, 1.3fr) repeat(2, minmax(148px, 1.4fr)); gap: 12px; align-items: end; }
+.project-metadata-row > * { min-width: 0; }
+.project-label-field, .project-metadata-row > .field, .project-metadata-row > .rumbo-select { display: flex; flex-direction: column; gap: 8px; }
+.project-label-field > span { color: var(--text); font-size: 13px; font-weight: 500; }
+.project-metadata-row .editor-property-trigger { width: 100%; height: 40px; min-height: 40px; border-radius: 6px; background: var(--input); border-color: var(--border-strong); white-space: nowrap; }
+.project-metadata-row .rumbo-select-trigger, .project-metadata-row .rumbo-date-input input { height: 40px; min-height: 40px; }
+.project-metadata-row .editor-property-trigger svg { flex-shrink: 0; }
+.project-metadata-row .rumbo-date-input { min-width: 0; }
+.project-metadata-row .rumbo-date-input input { min-width: 0; font-size: 13px; }
+@media (max-width: 850px) {
+  .dialog.writing-editor-project .form-fields > .project-metadata-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .dialog.writing-editor-task .work-label-picker { flex: 1 1 100%; }
 .dialog.input-dialog .image-dropzone { background: transparent; }
 .editor-create-more { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; color: var(--muted); font-size: 13px; }
@@ -67,19 +78,20 @@
 .dialog.input-dialog .agent-provider-grid { max-height: 280px; overflow-y: auto; padding: 4px; margin: -4px; }
 .dialog.input-dialog .agent-editor-fields > .agent-confirm-actions { flex-basis: 100%; justify-content: flex-start; flex-wrap: wrap; }
 .dialog.input-dialog .agent-editor-fields > .agent-confirm-actions [aria-pressed="true"] { background: var(--selected); color: var(--text); }
-.dialog.input-dialog .agent-editor-footer { border-top: 0; justify-content: flex-end; background: var(--elevated); }
-.dialog.input-dialog .agent-editor-footer .button.primary { border-radius: 9999px; }
+.dialog.input-dialog .agent-editor-footer { border-top: 0; justify-content: flex-end; background: var(--dialog-surface); }
+.dialog.input-dialog .agent-editor-footer .button.primary { border-radius: 8px; }
 .dialog.input-dialog .team-resource-dropzone { background: transparent; }
 .dialog.input-dialog .form-fields > .editor-property,
 .dialog.input-dialog .form-grid > .editor-property { flex: 0 1 auto; }
 .editor-property { position: relative; min-width: 0; }
-.editor-property-trigger { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 9999px; padding: 6px 12px; min-height: 34px; background: var(--selected); color: var(--secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.editor-property-trigger { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; min-height: 34px; background: var(--selected); color: var(--secondary); font: inherit; font-size: 13px; cursor: pointer; }
 .editor-property-trigger:hover { background: var(--hover); color: var(--text); }
 .editor-property-trigger svg { width: 16px; height: 16px; }
 .editor-property-trigger:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.editor-property-panel { position: fixed; z-index: 95; padding: 16px; max-width: calc(100vw - 32px); max-height: 280px; overflow: auto; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--elevated); color: var(--text); }
+.editor-property-panel { position: fixed; z-index: 95; padding: 16px; max-width: calc(100vw - 32px); max-height: 280px; overflow: auto; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--dialog-surface); color: var(--text); }
 .editor-property-panel .work-label-picker { min-width: 0; margin: 0; }
 @media (max-width: 600px) {
+  .dialog.writing-editor-project .form-fields > .project-metadata-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dialog-backdrop:has(> .input-dialog) { padding: 12px; }
   .dialog.input-dialog { max-height: calc(100dvh - 24px); }
   .dialog.input-dialog .dialog-heading { padding: 14px 12px 10px 18px; gap: 8px; }

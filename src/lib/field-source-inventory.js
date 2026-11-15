@@ -2,6 +2,14 @@
 // Semantic file/component/form/field identities; never DOM IDs, source line numbers or row indexes.
 export const SOURCE_FIELD_DEFINITIONS = [
   {
+    "key": "ai-session.new.title",
+    "page": "AI sessions",
+    "label": "Conversation title",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "area-resource.new.description",
     "page": "Add Area resource",
     "label": "Description",
@@ -370,14 +378,6 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.components-entity-dialog.entity-dialog.project-lead.c7efd8481a21",
-    "page": "Workspaces, Projects & Routes · New / Edit",
-    "label": "Project lead",
-    "type": "text",
-    "eligible": true,
-    "reason": null
-  },
-  {
     "key": "source.components-entity-dialog.entity-dialog.start-date.a831074d4a78",
     "page": "Workspaces, Projects & Routes · New / Edit",
     "label": "Start date",
@@ -462,6 +462,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "Knowledge · Report conflict",
     "label": "Why does this pair need review?",
     "type": "textarea",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-project-lead-picker.project-lead-picker.project-lead.cdde63c25cdd",
+    "page": "Project Lead Picker",
+    "label": "Project lead",
+    "type": "text",
     "eligible": true,
     "reason": null
   },
@@ -674,9 +682,9 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.components-shell.command-palette.search-projects-areas-routes-cha.d6db29bc6af0",
+    "key": "source.components-shell.command-palette.search-anything-try-type-output-.469cc77c622f",
     "page": "Search Frondose",
-    "label": "Search projects, Areas, Routes, chats and actions",
+    "label": "Search projects, Routes, files, settings and actions / Search projects, Areas, Routes, chats and actions",
     "type": "text",
     "eligible": true,
     "reason": null
@@ -778,6 +786,14 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "source.components-todo-checklist.todo-checklist.what-needs-to-be-done.8251ddaac0a7",
+    "page": "Todo Checklist",
+    "label": "What needs to be done?",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "source.components-update-extras.update-work-changes.reported-progress.f8573b3f84af",
     "page": "Updates · Report work changes",
     "label": "Reported progress (%)",
@@ -798,6 +814,22 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "Workbench · Checkpoint details / Recorded paths",
     "label": "Filter recorded paths",
     "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-directory-f.directory-binding-dialog.project-name.4d1a33fa75cf",
+    "page": "Workspace directory",
+    "label": "Project name",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-editor-chan.editor-changes-settings.recent-changes-interval-minutes.a0bd21238bba",
+    "page": "Editor Changes Settings",
+    "label": "Recent changes interval (minutes)",
+    "type": "number",
     "eligible": true,
     "reason": null
   },
@@ -845,6 +877,102 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "key": "source.components-workspace-editor.workspace-editor.title.ab89ca9562bb",
     "page": "Areas, documents, milestones & contacts · New / Edit",
     "label": "Name / Title",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-git-reposit.git-repository-bar.search-git-hub-issues.ccf17a1df011",
+    "page": "GitHub · Issues",
+    "label": "Search GitHub issues",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-historical-.historical-conversations.search-historical-conversations.6b04eedae3cd",
+    "page": "Historical conversations",
+    "label": "Search historical conversations",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-local-autom.automation-form.task.91b0f049e393",
+    "page": "Review local automation / New local automation",
+    "label": "Task",
+    "type": "textarea",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-local-autom.automation-form.title.4fab14392dfd",
+    "page": "Review local automation / New local automation",
+    "label": "Title",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-local-autom.local-automations.search-automations.e48a50c81189",
+    "page": "Automations",
+    "label": "Search automations",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-new-tab-but.new-tab-button.search-actions-and-open-tabs.741ec28548ea",
+    "page": "Workspace · Quick create",
+    "label": "Search actions and open tabs",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-repository-.repository-dashboard.filter-changed-files.b0d4ed314829",
+    "page": "GitHub Dashboard",
+    "label": "Filter changed files",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-repository-.repository-work.filter-source-control-files.65d4349d686d",
+    "page": "Repository tasks / Worktrees / Source control",
+    "label": "Filter source-control files",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-repository-.repository-work.search-git-hub-issues.ab0cd78172a6",
+    "page": "Repository tasks / Worktrees / Source control",
+    "label": "Search GitHub issues",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-rich-markdo.rich-markdown-canvas.text-link-url.847c219496fc",
+    "page": "Edit link",
+    "label": "Text link URL",
+    "type": "url",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-terminal-qu.terminal-quick-commands.search-commands-or-prompts.c62b2eb9ca33",
+    "page": "Quick Commands",
+    "label": "Search Quick Commands",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.components-workspace-workspace-s.workspace-surface.tab-name.13c343ed20e7",
+    "page": "Rename tab",
+    "label": "Tab name",
     "type": "text",
     "eligible": true,
     "reason": null
@@ -1058,7 +1186,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.views-project-hub.project-hub.search-project-routes.aa63a700071c",
+    "key": "source.views-project-hub.project-hub.search-project-routes.93975e046e40",
     "page": "Projects · Routes",
     "label": "Search project routes…",
     "type": "search",
@@ -1083,7 +1211,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-code-appearance-s.code-appearance-settings.find-a-font.6f53f5c35304",
-    "page": "Code & reviews",
+    "page": "Code appearance / Code & reviews",
     "label": "Find code fonts",
     "type": "search",
     "eligible": true,
@@ -1091,7 +1219,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-code-appearance-s.code-appearance-settings.find-a-theme.df1cf12e3dd8",
-    "page": "Code & reviews",
+    "page": "Code appearance / Code & reviews",
     "label": "Find code themes",
     "type": "search",
     "eligible": true,
@@ -1099,7 +1227,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-code-appearance-s.code-appearance-settings.font-size.75d8b5893feb",
-    "page": "Code & reviews",
+    "page": "Code appearance / Code & reviews",
     "label": "Font size",
     "type": "number",
     "eligible": true,
@@ -1107,7 +1235,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
   },
   {
     "key": "source.views-settings-code-appearance-s.code-appearance-settings.line-height.6d5313e4af25",
-    "page": "Code & reviews",
+    "page": "Code appearance / Code & reviews",
     "label": "Line height",
     "type": "number",
     "eligible": true,
@@ -1118,6 +1246,22 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "People & permissions · Search members, roles & audit history",
     "label": "Search members, roles and audit history",
     "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-settings-language-settings.language-settings.query.2400cb0e7797",
+    "page": "Language Settings",
+    "label": "Query",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-settings-native-integratio.native-integrations.search-integrations.1071099956f7",
+    "page": "Integrations",
+    "label": "Search integrations",
+    "type": "text",
     "eligible": true,
     "reason": null
   },
@@ -1290,6 +1434,38 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
+    "key": "source.views-settings-terminal-preferen.number.value-key-14.4ec72d51adac",
+    "page": "Terminal Preferences",
+    "label": "Text value",
+    "type": "number",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-settings-terminal-preferen.terminal-preferences.search-terminal-themes.4a5eeb227964",
+    "page": "Terminal Preferences · Terminal themes",
+    "label": "Search terminal themes",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-settings-terminal-preferen.terminal-preferences.word-separators.109943571917",
+    "page": "Terminal Preferences · Advanced",
+    "label": "Word separators",
+    "type": "text",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-settings-workspace-setup-s.cli-agents-settings.find-a-cli.2b5c9dd3d59c",
+    "page": "CLI Agents",
+    "label": "Find a CLI",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
     "key": "source.views-settings.profile.display-name-you.c176df10f0ff",
     "page": "Your profile",
     "label": "Display name (You)",
@@ -1442,7 +1618,7 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.views-team-resources.resource-editor.url.3cc6d354dccd",
+    "key": "source.views-team-resources.resource-editor.url.84d3d7dc4e46",
     "page": "Area resources · New / Edit resource",
     "label": "GitHub branch URL / Website URL",
     "type": "url",
@@ -1478,6 +1654,54 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "page": "Areas",
     "label": "Search Areas…",
     "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-todo-board.todo-board.search-to-dos.2c31ebe27d39",
+    "page": "To Do List",
+    "label": "Search to-dos…",
+    "type": "search",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-todo-board.todo-editor.to-do-deadline.72bd37a0271d",
+    "page": "To-do details / New to-do",
+    "label": "To-do deadline",
+    "type": "date",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-todo-board.todo-editor.to-do-description.ab98f2d5e2c2",
+    "page": "To-do details / New to-do",
+    "label": "To-do description",
+    "type": "textarea",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-todo-board.todo-editor.to-do-prompt.15499ae87744",
+    "page": "To-do details / New to-do",
+    "label": "To-do prompt",
+    "type": "textarea",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-todo-board.todo-editor.to-do-start-date.7fbc590e2034",
+    "page": "To-do details / New to-do",
+    "label": "To-do start date",
+    "type": "date",
+    "eligible": true,
+    "reason": null
+  },
+  {
+    "key": "source.views-todo-board.todo-editor.to-do-title.2615ddeebba9",
+    "page": "To-do details / New to-do",
+    "label": "To-do title",
+    "type": "text",
     "eligible": true,
     "reason": null
   },

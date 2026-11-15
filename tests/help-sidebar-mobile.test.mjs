@@ -1,0 +1,80 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { buildSync } from 'esbuild';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { LOCAL_PRIMARY_NAV, LOCAL_SIDEBAR_PAGES, isLocalSidebarItemAllowed, RETIRED_LOCAL_VIEWS } from '../src/lib/local-navigation.js';
+import { normalizeOrganization, showSidebarItem } from '../src/lib/organization.js';
+import { localSidebarEditorDraft, savedLocalSidebarDraft } from '../src/lib/local-sidebar-customization.js';
+import { recentProductUpdates } from '../src/lib/product-updates.js';
+import { localWorkspaceQuickAccess } from '../src/lib/local-settings-catalog.js';
+
+const source = name => readFileSync(new URL(`../${name}`,import.meta.url),'utf8');
+test('all useful local pages are offered without Docs or retired agent surfaces', () => {
+  assert.deepEqual(LOCAL_SIDEBAR_PAGES.map(page=>page.id),['workspace','projects','tasks','todos','starred','updates','library','documents','comments','views','memory','teams']);
+  assert.equal(new Set(LOCAL_SIDEBAR_PAGES.map(page=>page.id)).size,12);
+  for(const id of RETIRED_LOCAL_VIEWS)assert.equal(isLocalSidebarItemAllowed(id),false,id);
+  for(const id of ['docs','settings','focus'])assert.equal(isLocalSidebarItemAllowed(id),false,id);
+  for(const id of ['custom:research','entity:projects:p1','entity:teams:t1'])assert.equal(isLocalSidebarItemAllowed(id),true,id);
+});
+test('editor reflects compact defaults but an explicit Show choice survives save/reload without focused filtering', () => {
+  const original=normalizeOrganization(null),before=JSON.stringify(original);
+  const draft=localSidebarEditorDraft(original);
+  assert.equal(original.localSidebarCustomized,false);
+  assert.equal(draft.visibility.memory,'hidden');
+  assert.equal(draft.visibility.library,'hidden');
+  const saved=savedLocalSidebarDraft({...draft,visibility:{...draft.visibility,memory:'always',library:'always',work:'hidden'}});
+  const restored=localSidebarEditorDraft(normalizeOrganization(saved));
+  assert.equal(restored.localSidebarCustomized,true);
+  assert.equal(showSidebarItem('memory',restored,{}),true);
+  assert.equal(showSidebarItem('library',restored,{}),true);
+  assert.equal(showSidebarItem('work',restored,{}),false);
+  assert.equal(JSON.stringify(original),before);
+  for(const item of LOCAL_PRIMARY_NAV)assert.equal(saved.visibility[item.id],'always');
+  assert.match(source('src/components/Shell.jsx'),/local && organization\.localSidebarCustomized \? \[\] : focusedSidebarHiddenKeys/);
+});
+test('local layout changes preserve old inert preferences and custom placements', () => {
+  const existing=normalizeOrganization({version:1,visibility:{agents:'hidden'},favorites:[{view:'agents',id:'old_profile'}],layout:{root:['custom:work'],groups:[{id:'custom:work',name:'Research',items:['memory','entity:projects:p1']}]}});
+  const saved=savedLocalSidebarDraft(localSidebarEditorDraft(existing));
+  assert.equal(saved.visibility.agents,'hidden');
+  assert.deepEqual(saved.favorites,existing.favorites);
+  assert.deepEqual(saved.layout.groups,existing.layout.groups);
+  assert.equal(saved.layout.root.includes('memory'),false);
+});
+test('every offered local page pin survives the real header/dock filter', () => {
+  const pages=LOCAL_SIDEBAR_PAGES.map(page=>page.id);
+  const local={meta:{product:{edition:'local'}}};
+  assert.deepEqual(localWorkspaceQuickAccess([...pages,'settings','agents','docs','inbox','workbench'],local),[...pages,'settings']);
+  const original=['focus','agents','docs'];
+  assert.equal(localWorkspaceQuickAccess(original,{}),original);
+});
+test('help contains at most three dated updates; changelog is a resource, not a fourth timeline dot', () => {
+  const updates=Array.from({length:10},(_,i)=>({id:`update${i}`,date:`2026-10-${String(i+1).padStart(2,'0')}`}));
+  assert.deepEqual(recentProductUpdates(updates,new Date('2026-10-26')).map(item=>item.id),['update9','update8','update7']);
+  const help=source('src/components/HelpMenu.jsx');
+  assert.doesNotMatch(help,/\['Workspace introduction'|\['Feature tour'/);
+  assert.match(help,/\['Full changelog', BookOpen/);
+  const timeline=help.slice(help.indexOf('<div className="rumbo-update-timeline">'),help.indexOf('<div role="separator"',help.indexOf('<div className="rumbo-update-timeline">')));
+  assert.match(timeline,/updates\.map/);assert.doesNotMatch(timeline,/Full changelog/);
+});
+test('local editor renders all current real page controls with no retired visible options', () => {
+  const require=createRequire(import.meta.url);
+  const bundle=buildSync({stdin:{contents:"export {SidebarEditor} from './src/components/SidebarEditor.jsx';export {AppContext} from './src/app-context.js';",resolveDir:fileURLToPath(new URL('..',import.meta.url)),loader:'jsx'},bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react-dom'],loader:{'.css':'empty'}});
+  const module={exports:{}};new Function('module','exports','require',bundle.outputFiles[0].text)(module,module.exports,require);
+  const {SidebarEditor,AppContext}=module.exports;
+  const html=renderToStaticMarkup(React.createElement(AppContext.Provider,{value:{organization:normalizeOrganization(null),updateOrganization(){},workspace:{id:'fixture',name:'Fixture'},data:{meta:{product:{edition:'local'}},projects:[],teams:[],agents:[],chats:[]}}},React.createElement(SidebarEditor,{onClose(){}})));
+  for(const item of LOCAL_SIDEBAR_PAGES)assert.ok(html.includes(`data-sidebar-page="${item.id}"`),item.id);
+  for(const id of [...RETIRED_LOCAL_VIEWS,'docs'])assert.equal(html.includes(`data-sidebar-page="${id}"`),false,id);
+  assert.match(html,/Outputs visibility/);assert.match(html,/Memory visibility/);
+  assert.match(html,/<details class="sidebar-custom-groups-disclosure">/);
+  assert.doesNotMatch(html,/<details[^>]*\bopen(?:=|>| )/);
+  assert.match(html,/<summary>Custom groups/);
+  assert.equal((html.match(/sidebar-fixed-page/g)||[]).length,LOCAL_PRIMARY_NAV.length);
+  assert.doesNotMatch(html,/Move Workspace up|Workspace visibility/);
+  const css=source('src/components/help-menu.css');
+  assert.match(css,/@media \(max-width: 600px\)[\s\S]*\.sidebar-editor \.sidebar-layout-editor-row \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(css,/\.sidebar-editor \.sidebar-layout-editor-row > \.rumbo-select[^\n]*width: 100%/);
+});

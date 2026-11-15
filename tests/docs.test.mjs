@@ -15,7 +15,8 @@ test('documentation has unique, navigable articles and valid related links', () 
     assert.equal(parsePage(pageHash('docs', article.id)).id, article.id);
     assert.ok(article.sections.length >= 2, article.id);
     assert.equal(new Set(article.sections.map(s => s.id)).size, article.sections.length, article.id);
-    assert.ok(articleText(article).split(/\s+/).length >= 100, `${article.id} should be substantive`);
+    if (article.comingSoon) assert.match(article.description, /^Coming soon\. Not available in this release\./, article.id);
+    assert.ok(articleText(article).split(/\s+/).length >= (article.comingSoon ? 35 : 100), `${article.id} should be substantive`);
     for (const related of article.related ?? []) assert.ok(ids.has(related), `${article.id}: ${related}`);
     if (article.image) for (const theme of ['light','dark']) assert.ok(existsSync(new URL(`../public/docs/${article.image}-${theme}.png`, import.meta.url)), article.id);
     if (article.appLink) assert.equal(parsePage(pageHash(article.appLink.view, article.appLink.id ?? null)).view, article.appLink.view);

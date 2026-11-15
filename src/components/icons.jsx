@@ -1,7 +1,8 @@
 import { useId, useLayoutEffect, useRef } from "react";
 import { MorphIcon } from "morphicons/react";
 import {
-  Activity as ActivityNode, Archive as ArchiveNode, RotateCw as RotateCwNode,
+  Bold as BoldNode, Italic as ItalicNode, Heading as HeadingNode, List as ListNode, Quote as QuoteNode, MessageSquare as MessageSquareNode, GripVertical as GripVerticalNode,
+  Send as SendNode, Activity as ActivityNode, Archive as ArchiveNode, RotateCw as RotateCwNode, Trash2 as Trash2Node,
   Sun as SunNode, Moon as MoonNode,
   RotateCcw as RotateCcwNode, ArrowDown as ArrowDownNode, ArrowLeft as ArrowLeftNode,
   ArrowRight as ArrowRightNode, ExternalLink as ExternalLinkNode, ArrowUp as ArrowUpNode,
@@ -11,6 +12,7 @@ import {
   MessageCircle as MessageCircleNode, Check as CheckNode, CircleCheck as CircleCheckNode,
   Circle as CircleNode, CircleDot as CircleDotNode, Clock as ClockNode, Code as CodeNode,
   Compass as CompassNode, Copy as CopyNode, Ellipsis as EllipsisNode, Download as DownloadNode,
+  File as FileNode, FileCode as FileCodeNode, FileJson as FileJsonNode, FileCog as FileCogNode, FileKey as FileKeyNode, FileLock as FileLockNode, FileBox as FileBoxNode, FileImage as FileImageNode, FileArchive as FileArchiveNode, FileAudio as FileAudioNode, FileVideo as FileVideoNode, FileSpreadsheet as FileSpreadsheetNode, FileType as FileTypeNode, FileTerminal as FileTerminalNode,
   FileText as FileTextNode, FlaskConical as FlaskConicalNode, Folder as FolderNode,
   FolderOpen as FolderOpenNode, Settings as SettingsNode, GitBranch as GitBranchNode,
   GitFork as GitForkNode, HardDrive as HardDriveNode, Hammer as HammerNode,
@@ -19,7 +21,7 @@ import {
   SquarePen as SquarePenNode, Paintbrush as PaintbrushNode, Paperclip as PaperclipNode,
   Pause as PauseNode, Pencil as PencilNode, Play as PlayNode, Plug as PlugNode,
   Plus as PlusNode, Pin as PinNode, PinOff as PinOffNode, Bot as BotNode,
-  ShieldCheck as ShieldCheckNode, PanelLeft as PanelLeftNode, PanelLeftOpen as PanelLeftOpenNode,
+  ShieldCheck as ShieldCheckNode, PanelLeft as PanelLeftNode, PanelRight as PanelRightNode, PanelLeftOpen as PanelLeftOpenNode,
   PanelLeftClose as PanelLeftCloseNode, Sparkles as SparklesNode, LoaderCircle as LoaderCircleNode,
   LayoutGrid as LayoutGridNode, Square as SquareNode, Terminal as TerminalNode,
   Inbox as InboxNode, CircleUser as CircleUserNode, UserPlus as UserPlusNode,
@@ -97,6 +99,7 @@ export const Activity = defineIcon("Activity", ActivityNode);
 export const Sun = defineIcon("Sun", SunNode);
 export const Moon = defineIcon("Moon", MoonNode);
 export const Archive = defineIcon("Archive", ArchiveNode);
+export const Trash2 = defineIcon("Trash2", Trash2Node);
 export const RotateCw = defineIcon("RotateCw", RotateCwNode);
 export const RotateCcw = defineIcon("RotateCcw", RotateCcwNode);
 export const ArrowDown = defineIcon("ArrowDown", ArrowDownNode);
@@ -146,6 +149,7 @@ export const Search = defineIcon("Search", SearchNode);
 export const Minus = defineIcon("Minus", MinusNode);
 export const SquarePen = defineIcon("SquarePen", SquarePenNode);
 export const Paintbrush = defineIcon("Paintbrush", PaintbrushNode);
+export const Send = defineIcon("Send", SendNode);
 export const Paperclip = defineIcon("Paperclip", PaperclipNode);
 export const Pause = defineIcon("Pause", PauseNode);
 export const Pencil = defineIcon("Pencil", PencilNode);
@@ -157,6 +161,7 @@ export const PinOff = defineIcon("PinOff", PinOffNode);
 export const Bot = defineIcon("Bot", BotNode);
 export const ShieldCheck = defineIcon("ShieldCheck", ShieldCheckNode);
 export const PanelLeft = defineIcon("PanelLeft", PanelLeftNode);
+export const PanelRight = defineIcon("PanelRight", PanelRightNode);
 export const PanelLeftOpen = defineIcon("PanelLeftOpen", PanelLeftOpenNode);
 export const PanelLeftClose = defineIcon("PanelLeftClose", PanelLeftCloseNode);
 export const Sparkles = defineIcon("Sparkles", SparklesNode);
@@ -200,6 +205,13 @@ export const Workflow = defineIcon("Workflow", WorkflowNode);
 export const Target = defineIcon("Target", TargetNode);
 export const Flag = defineIcon("Flag", FlagNode);
 export const NotebookPen = defineIcon("NotebookPen", NotebookPenNode);
+export const Bold=defineIcon("Bold",BoldNode);
+export const Italic=defineIcon("Italic",ItalicNode);
+export const Heading=defineIcon("Heading",HeadingNode);
+export const List=defineIcon("List",ListNode);
+export const Quote=defineIcon("Quote",QuoteNode);
+export const MessageSquare=defineIcon("MessageSquare",MessageSquareNode);
+export const GripVertical=defineIcon("GripVertical",GripVerticalNode);
 export const MessageSquareText = defineIcon("MessageSquareText", MessageSquareTextNode);
 export const Package = defineIcon("Package", PackageNode);
 export const LibraryBig = defineIcon("LibraryBig", LibraryBigNode);
@@ -211,3 +223,18 @@ export const FolderKanban = defineIcon("FolderKanban", FolderKanbanNode);
 export const SquareStack = defineIcon("SquareStack", SquareStackNode);
 export const Maximize2 = defineIcon("Maximize2", Maximize2Node);
 export const Minimize2 = defineIcon("Minimize2", Minimize2Node);
+
+export const File = defineIcon("File", FileNode);
+export const FileCode = defineIcon("FileCode", FileCodeNode);
+export const FileJson = defineIcon("FileJson", FileJsonNode);
+export const FileCog = defineIcon("FileCog", FileCogNode);
+export const FileKey = defineIcon("FileKey", FileKeyNode);
+export const FileLock = defineIcon("FileLock", FileLockNode);
+export const FileBox = defineIcon("FileBox", FileBoxNode);
+export const FileImage = defineIcon("FileImage", FileImageNode);
+export const FileArchive = defineIcon("FileArchive", FileArchiveNode);
+export const FileAudio = defineIcon("FileAudio", FileAudioNode);
+export const FileVideo = defineIcon("FileVideo", FileVideoNode);
+export const FileSpreadsheet = defineIcon("FileSpreadsheet", FileSpreadsheetNode);
+export const FileType = defineIcon("FileType", FileTypeNode);
+export const FileTerminal = defineIcon("FileTerminal", FileTerminalNode);

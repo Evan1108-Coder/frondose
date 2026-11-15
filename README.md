@@ -1,5 +1,139 @@
 # Frondose
 
+Settings opens as a separate screen with its own navigation, never as a workspace
+tab. Back to workspace restores the prior view/session. Unsaved changes are
+guarded before leaving the current view.
+
+**Current direction: completely local, single owner.** Normal `npm start` and
+`npm run dev` enforce the local edition: no human memberships, invitations,
+hosted signup or billing UI. Existing content, attribution and optional local
+passwords remain intact. Cloud AI calls still require the provider's network.
+See [the full local product scope and implementation ledger](docs/local-first-roadmap.md).
+Older hosted/team checkpoints below are historical and do not describe the current default product.
+
+After the normal install/build, `npm run local -- --open` starts the local
+edition and opens its loopback URL. Omitting `--open` never launches a browser.
+It does not install agents, authenticate providers or start inference. The
+launcher does not kill a process already using its configured port.
+
+## Local desktop refresh
+
+### Current local tool availability
+
+Generic embedded Apps, Open App and Open in Apps are retired. Their old tab
+metadata is retained only to explain retirement; it never launches an app.
+Browser, Editor, Source control and Worktrees remain purpose-built tools.
+Open **Settings → CLI Agents → Open AI Sessions** for structured Chat, Terminal,
+and shortcuts to installed AI desktop apps. Computer Use, Dictation, and
+Emulators & environments are labelled **Coming Soon**, with no launch controls.
+There is no Plugins tab or extension host in this release.
+
+Structured Codex uses its supported installed runtime; structured Claude Chat
+requires `FRONDOSE_CLAUDE_API_KEY` on the local
+host. Terminal CLIs and external apps retain their own sign-in. AI requests and
+native actions are never launched by restoring a tab. SDKs, device images and
+container images are not automatically installed or downloaded.
+
+Rich Previews supports bounded images, PDF pages, isolated HTML/Mermaid, media,
+CSV/TSV and saved notebooks. Versions distinguishes local checkpoints from
+local Git history and explicit GitHub actions. Current in-app Docs describe each
+tool's setup and limits. Source/build tests are not evidence of real provider,
+device, microphone or public-release acceptance; the installed owner build is
+not updated by a source build.
+
+The current refresh implements a directory-bound workspace and browser-style
+mixed-content tabs while keeping Frondose's project planning, Routes, progress
+and result review. Normal sidebar/file navigation replaces the active tab,
+except an AI CLI always stays open and navigation opens beside it. New tab
+explicitly opens another view. Existing multi-project data
+and conversations are retained rather than silently moved or deleted.
+
+- The far-right file explorer supports filename/content search, source/Markdown
+  views and conflict-aware saves. Unsaved changes are guarded before navigation.
+- Terminal views use Orca-derived split-tree algorithms over Frondose's real
+  xterm/PTY service. Installed CLI choices are discovered without starting login
+  or inference. An explicit Terminal/AI CLI choice opens directly, with no runtime
+  form or extra execution confirmation. It starts in the linked workspace folder,
+  or the server's OS home when no folder is linked; this does not bind home as a
+  project or expose it in file/Git APIs. Direct CLIs use their own login and native history; Codex and
+  Claude Code have explicit resume pickers. Quick Commands save text until an
+  explicit Insert/Run/Send. See [native CLI behavior](docs/native-cli-sessions.md).
+- Tabs support persistent names, safe refresh, vertical orientation and up to
+  eight resizable views, including live drag previews and pane docking. Moving
+  or refreshing a saved CLI view never replays a launch or prompt.
+- The Electron host provides isolated Chromium browser tabs through a typed
+  bridge. Native file selection and onboarding's automatic welcome notification
+  use platform interfaces, not imitation OS dialogs. Native notification
+  delivery reports actual acceptance/failure, not just API availability.
+  Browser downloads, popups, media grants,
+  Design Mode and remote browser control are not enabled in this slice.
+- Skippable/replayable setup, right-corner tips and short feature introductions
+  have local preferences. Opt-in notifications observe canonical run transitions
+  and an observed live terminal exit/error; arbitrary terminal/TUI reply completion
+  is not inferred.
+- Optional GitHub controls detect the linked directory's local remote and use
+  explicit GitHub CLI authorization. Branch changes reject active work and dirty
+  files; Frondose never automatically stashes, resets, pushes or initializes a
+  repository. See [local Git/GitHub](docs/local-git-github.md).
+
+After building the client, `npm run desktop` starts its own local server.
+If the port is already in use, close the other server when it is safe or set
+`PORT` to a free loopback port; the desktop will not trust an existing listener.
+`npm run desktop:pack` builds an unpacked app for the
+current operating system; `npm run desktop:dist` requests its installer targets.
+Packaging uses private no-spaces staging, installs/rebuilds production native
+dependencies only there, includes third-party notices and checks that checkout
+node-pty binaries were not modified. Run packaging through npm; developers whose
+temporary path contains spaces can set `FRONDOSE_DESKTOP_STAGING_ROOT` to a private
+writable no-spaces location. No workspace database or `.env` is a packaging input.
+
+macOS source and unpacked-application fixture checks have exercised isolated
+Chromium and an actual packaged native PTY. Windows/Linux test/build/smoke jobs
+are defined in `.github/workflows/local-desktop.yml`, but defining a matrix is not
+evidence that those jobs passed. Local Mac packaging requests a sealed ad-hoc
+signature for notification identity. This is not Developer ID signing or
+notarization; distribution signing requires the owner's release configuration.
+
+### Install a local Mac update from Frondose
+
+An updater-enabled packaged Mac build with no public feed can offer an
+owner-staged `Frondose.app`. Build a newer stable version with
+`FRONDOSE_DESKTOP_BUILD_VERSION` and a separate `FRONDOSE_DESKTOP_OUTPUT_DIR`,
+then run `node scripts/stage-local-update.mjs /path/to/Frondose.app`. This
+registers a verified copy, not a download URL. Click **Update** in the
+bottom-right popup, or check **Settings → App updates**. Frondose checks for
+drafts, other windows, and running work before it quits, installs, and reopens.
+If blocked, it names the remaining work. **Review items to close** can stop only
+explicitly confirmed owned terminals and close unused blank Browser pages. It
+does not discard drafts, close loaded pages, or start the installation itself.
+It keeps the old app and a workspace backup in a private `.frondose-local-update-*`
+folder next to the installed app. Same-version builds and downgrades are not
+offered. Ad-hoc signing checks local bundle integrity, not publisher identity;
+stage only builds you trust. Public signed updates are a separate channel.
+
+This is selective licensed reuse, **not a complete Orca port**. Terminals survive
+view replacement but not a server/OS shutdown; Orca's independent persistent PTY
+daemon, full terminal add-on suite, secure phone pairing/transport, visual browser
+tools and broader local-product work remain unfinished. Native terminals/CLIs
+run as the OS user: a project directory is not a sandbox. Cloud AI still needs
+network access and receives the prompts the owner explicitly sends.
+
+**The workspace JSON archive is a partial export**, not a full backup. It can
+restore supported workspace records into a new workspace. It does not contain
+project files, uploaded file contents, To Do List items, local Automations,
+AI Sessions Chat transcripts, native CLI history, workspace activity, or credentials. Keep separate
+protected backups of the project directory and Frondose data as appropriate.
+
+See the [implemented and remaining local-product ledger](docs/local-first-roadmap.md),
+[Orca source review](docs/orca-reuse-review.md) and
+[exact source hashes and adaptation ledger](third-party/orca/NOTICE.md).
+
+## Earlier product checkpoints
+
+The following records preserve previous capabilities and setup notes. Where they
+conflict with the local desktop refresh above, use the current implementation
+ledger rather than treating the older UI descriptions as the new navigation.
+
 Personal agent status: [current capabilities, Your dot comparison and required setup](docs/personal-agent-capabilities.md).
 
 Formerly Talvori and Rumbo. See the [rebrand and provider-consent checklist](docs/frondose-rebrand.md)

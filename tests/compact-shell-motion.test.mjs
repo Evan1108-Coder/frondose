@@ -14,7 +14,7 @@ test('compact default does not rewrite a saved explicit sidebar width or hidden 
   const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
   const sidebar = readFileSync(new URL('../src/components/sidebar-v2.css', import.meta.url), 'utf8');
   const settings = readFileSync(new URL('../src/views/settings/settings-center.css', import.meta.url), 'utf8');
-  assert.match(app, /sidebarSize\.width \?\? clampSidebarWidth\(SIDEBAR_DEFAULT_WIDTH/);
+  assert.match(app, /sidebarSize\.width \?\? clampSidebarWidth\(localEdition \? 224 : SIDEBAR_DEFAULT_WIDTH/);
   assert.match(sidebar, /--sidebar-expanded: 240px/);
   assert.match(settings, /--sidebar: var\(--sidebar-expanded, 240px\)/);
   assert.doesNotMatch(sidebar, /--sidebar: (280|292|258)px/);
@@ -46,14 +46,14 @@ test('dialog expansion clips actual-size content and bounds off-panel trigger tr
 });
 
 test('dialog movement has a faster exit, reduced motion fades only and keyboard is immediate', () => {
-  assert.equal(dialogMotionDuration(motionPreference()), 240);
-  assert.equal(dialogMotionDuration(motionPreference(), true), 160);
+  assert.equal(dialogMotionDuration(motionPreference()), 280);
+  assert.equal(dialogMotionDuration(motionPreference(), true), 180);
   assert.equal(dialogMotionDuration(motionPreference({ reduced: true })), 80);
   assert.equal(dialogMotionDuration(motionPreference({ keyboard: true })), 0);
   const ui = readFileSync(new URL('../src/ui.jsx', import.meta.url), 'utf8');
   assert.match(ui, /closingRef\.current \|\| closeDisabled/);
   assert.match(ui, /animationRef\.current\?\.cancel\(\)/);
-  assert.match(ui, /setClosing\(false\)/);
+  assert.match(ui, /retainDialogExit\(panel, openerRef\.current\)/);
   assert.match(ui, /registerDialog\(ref\.current\)/);
   assert.match(ui, /\[data-rumbo-popup\]/);
   assert.match(ui, /attributeFilter: \['data-motion', 'data-input-modality'\]/);
@@ -63,8 +63,8 @@ test('extension footer dismissals use the shared exit while retaining explicit c
   const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
   const ui = read('src/ui.jsx'), release = read('src/components/ReleaseReader.jsx'), editor = read('src/components/AgentEditor.jsx'), chats = read('src/views/Chats.jsx');
   assert.match(ui, /typeof children === 'function' \? children\(requestClose\)/);
-  assert.match(ui, /pendingCloseRef\.current = finishClose/);
-  assert.match(ui, /const finish = pendingCloseRef\.current;[\s\S]*?pendingCloseRef\.current = null;[\s\S]*?finish\?\.\(\)/);
+  assert.match(ui, /try \{ finishClose\(\); \}/);
+  assert.doesNotMatch(ui.slice(ui.indexOf('const requestClose ='), ui.indexOf('requestCloseRef.current =')), /setTimeout/);
   assert.match(release, /closeDialog\(\)\}>Back to work/);
   assert.match(release, /closeDialog\(onOpenDocs\)/);
   assert.match(editor, /closeDialog\(close\)\}>Discard changes/);

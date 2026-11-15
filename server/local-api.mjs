@@ -37,7 +37,19 @@ import { createIntegrationService } from './integration-service.mjs';
 import { installWorkspaceFeatures, featureSnapshot, featureRoute, recordChange, validateCustomFields } from './workspace-features.mjs';
 import { templateInstanceFor } from './structured-templates.mjs';
 import { importWorkspace } from './workspace-import.mjs';
+import { createLocalSessionHistoryService } from './local-session-history.mjs';
+import { createWorkstationTools } from './workstation-tools.mjs';
+import { createWorkspaceAgentChat } from './workspace-agent-chat.mjs';
 import { createWorkbenchService } from './workbench-service.mjs';
+import { createDirectoryWorkspaceService } from './directory-workspace.mjs';
+import { createLocalGitService } from './local-git.mjs';
+import { createGitHubRouteSyncService } from './github-route-sync.mjs';
+import {createLocalAutomationService} from './local-cli-automations.mjs';
+import {createTodoService} from './local-todos.mjs';
+import { installWorkspaceActivity, recordWorkspaceActivity, readWorkspaceActivity, formatWorkspaceActivity } from './workspace-activity.mjs';
+import { createFileCommentsService } from './file-comments.mjs';
+import { createDesktopUpdateGate } from './desktop-update-gate.mjs';
+import { authorizeNativeAgentBinding } from './native-agent-authorization.mjs';
 import { installWorkbenchCheckpoints, createWorkbenchCheckpointService } from './workbench-checkpoint-service.mjs';
 import { createChangeReviewService } from './change-review-service.mjs';
 import { installWorkflow, workflowSnapshot, workflowRoute } from './workflow-service.mjs';
@@ -63,6 +75,8 @@ import { installActivity, activitySnapshot, activityRoute } from './activity-ser
 import { createIdentityService } from './identity-service.mjs';
 import { createGovernanceService, governanceRoute } from './governance-service.mjs';
 import { createAccessBoundary } from './access-boundary.mjs';
+import { createLocalProductPolicy } from './local-product.mjs';
+import { detectTerminalProviders, TERMINAL_PROVIDER_CATALOG } from './terminal-launch-plan.mjs';
 import { createConnectionPlatform } from './connection-platform.mjs';
 import { installAiConnections, createAiConnectionsService } from './ai-connections-service.mjs';
 import { CONNECTOR_CATALOG } from './connectors/catalog.mjs';
@@ -548,17 +562,18 @@ function snapshot(db) {
   };
 }
 
-export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {}, copilotOptions = {} } = {}) {
+export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {}, copilotOptions = {}, productMode = 'compatible', localDiscovery = detectTerminalProviders, localGitOptions = {}, localSessionHistoryOptions = {}, githubRouteOptions = {} } = {}) {
   integrationOptions = { ...integrationOptions, env: frondoseEnvironment(integrationOptions.env || process.env) };
   dataDir ||= integrationOptions.env.FRONDOSE_DATA_DIR;
   const deployment = createDeploymentPolicy(integrationOptions.env || process.env);
+  const product = createLocalProductPolicy({ mode: productMode, hosted: deployment.hosted });
   const externalConnectionsPaused = deployment.hosted || integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
   let identity, governance, access, connectionPlatform, aiConnections, copilotBridge, hostedCopilot, runnerConnections, agentRunnerSettings;
   function installAccess() {
     installPersonalProfiles(store.db);
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
-    identity = createIdentityService({ db: store.db });
+    identity = createIdentityService({ db: store.db, ownerOnly: product.local });
     governance = createGovernanceService({ db: store.db });
     for (const workspace of store.db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
     access = createAccessBoundary({ db: store.db, governance });
@@ -649,7 +664,28 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     if (existing?.status === 'approved') { governance.consumeApproval(workspaceId, actor.id, existing.id, { action, target_id: target, payload }); return null; }
     return existing || governance.requestProtectedAction(workspaceId, actor.id, { permission, scope, action, target_id: target, payload });
   }
-  let workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
+  function authorizeNativeAgent(context) {
+    return authorizeNativeAgentBinding({ ...context, db: getDb(), local: product.local, allowed: access.allowed, providerState,
+      assertAssistantBinding: agent => assertFrondoseAgentBinding(getDb(), context.workspaceId, agent, context.actor, access.allowed) });
+  }
+  let localGit, localSessionHistory, githubRoutes, localAutomations, workspaceAgentChats, workstationTools;
+  if (product.local) installWorkspaceActivity(store.db);
+  function recordActivity(event) {
+    if (!product.local) return;
+    try { recordWorkspaceActivity(store.db, event); }
+    catch { /* The primary action's own result remains authoritative. */ }
+  }
+  const activityContext = workspaceId => formatWorkspaceActivity(readWorkspaceActivity(store.db, workspaceId, { limit: 15 }));
+  let workbench = createWorkbenchService({ db: store.db, dataDir: store.directory, terminalEnv: integrationOptions.env, authorizeNativeAgent, authorizeTerminalResume: product.local ? request => localSessionHistory.resolveResume(request) : undefined, assertDirectoryMutable: workspaceId => localGit?.assertNoMutation(workspaceId), recordActivity });
+  let directoryWorkspace = product.local ? createDirectoryWorkspaceService({ db: store.db, dataDir: store.directory, allowed: access.allowed, activeSessionsFor: workspaceId => activeRunsFor('workspaces', workspaceId), recordActivity }) : null;
+  workspaceAgentChats = product.local ? createWorkspaceAgentChat({ db: store.db, roots: directoryWorkspace, env: integrationOptions.env, recordActivity }) : null;
+  workstationTools = product.local ? createWorkstationTools({ db: store.db, roots: directoryWorkspace, env: integrationOptions.env }) : null;
+  localSessionHistory = product.local ? createLocalSessionHistoryService({ ...localSessionHistoryOptions, dataDir: store.directory, roots: directoryWorkspace, env: integrationOptions.env }) : null;
+  localGit = product.local ? createLocalGitService({ ...localGitOptions, db: store.db, dataDir: store.directory, roots: directoryWorkspace, env: integrationOptions.env, activeSessionsFor: workspaceId => activeRunsFor('workspaces', workspaceId), recordActivity }) : null;
+  githubRoutes = product.local ? createGitHubRouteSyncService({ ...githubRouteOptions, db: store.db, roots: directoryWorkspace, git: localGit, allowed: access.allowed, record: recordChange }) : null;
+  localAutomations=product.local?createLocalAutomationService({db:store.db,roots:directoryWorkspace,workbench,activeSessionsFor:workspaceId=>activeRunsFor('workspaces',workspaceId),activityContext,recordActivity,getStructuredSessionService:()=>workspaceAgentChats}):null;
+  let fileComments = product.local ? createFileCommentsService({ db: store.db, roots: directoryWorkspace }) : null;
+  let todos=product.local?createTodoService({db:store.db,roots:directoryWorkspace,comments:fileComments,recordActivity}):null;
   let workbenchCheckpoints = createWorkbenchCheckpointService({ db: store.db, workbench, allowed: access.allowed, activeSessionsFor: activeRunsFor });
   const makeReviews = () => createChangeReviewService({ db: store.db, workbench, platform: connectionPlatform, authorize: (...args) => governance.authorize(...args) });
   let changeReviews = makeReviews();
@@ -657,6 +693,29 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   const listeners = new Map();
   const runTimers = new Map();
   const liveRuns = new Map();
+  const desktopUpdateGate = createDesktopUpdateGate({ inspect: () => {
+    const db = getDb();
+    const projects = new Map(db.prepare('SELECT id,name FROM projects').all().map(({ id, name }) => [id, name]));
+    const work = [];
+    let activeWork = 0;
+    const add = (kind, row, workspace) => {
+      activeWork++;
+      if (work.length < 24) work.push({ kind, label: row.name, workspace, project: projects.get(row.project_id) });
+    };
+    for (const { id, name } of db.prepare('SELECT id,name FROM workspaces ORDER BY name,id').all()) {
+      for (const row of workbench.activeSessionsFor('workspaces', id)) {
+        const kind = ['starting', 'stopping', 'uncertain'].includes(row.status) ? `terminal-${row.status}` : 'terminal';
+        add(kind, row, name);
+      }
+      for (const row of workspaceAgentChats?.activeSessionsFor('workspaces', id) || []) add('agent-chat', row, name);
+      for (const row of workstationTools?.activeSessionsFor('workspaces', id) || []) add('environment', row, name);
+    }
+    const runStatuses = "('queued','starting','running','needs_input','paused')";
+    const runCount = db.prepare(`SELECT count(*) AS n FROM runs WHERE status IN ${runStatuses}`).get().n;
+    for (const row of db.prepare(`SELECT r.title AS name,r.project_id,w.name AS workspace FROM runs r LEFT JOIN workspaces w ON w.id=r.workspace_id WHERE r.status IN ${runStatuses} ORDER BY r.id LIMIT ?`).all(24 - work.length)) add('agent-run', row, row.workspace);
+    activeWork += runCount - work.filter(row => row.kind === 'agent-run').length;
+    return { activeWork, work, clients: [...listeners.values()].reduce((sum, entries) => sum + entries.size, 0) };
+  } });
   const makeRunnerJobs = () => createRunnerJobsService({ db: store.db, connections: runnerConnections, settings: agentRunnerSettings,
     authorizeJob(job) {
       const run = getDb().prepare('SELECT * FROM runs WHERE id=?').get(job.run_id);
@@ -672,7 +731,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     },
   });
   let runnerJobs = makeRunnerJobs();
-  const runnerJobTimer = setInterval(() => { if (!closed) runnerJobs.sweep(); }, 5000); runnerJobTimer.unref();
+  const runnerJobTimer = setInterval(() => { if (!closed && !desktopUpdateGate.isPreparing()) runnerJobs.sweep(); }, 5000); runnerJobTimer.unref();
   function runnerConnection(agent, actor, workspaceId = agent.workspace_id) {
     if (!workspaceId || !agent?.id) return null;
     const settings = getDb().prepare('SELECT * FROM agent_runner_settings WHERE workspace_id=? AND agent_id=?').get(workspaceId,agent.id);
@@ -754,7 +813,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     if (resource === 'teams') return getDb().prepare("SELECT runs.id FROM runs LEFT JOIN projects ON projects.id=runs.project_id LEFT JOIN tasks ON tasks.id=runs.task_id WHERE (projects.team_id=? OR tasks.team_id=?) AND runs.status IN ('queued','starting','running','needs_input','paused')").all(itemId, itemId);
     const column = { workspaces: 'workspace_id', projects: 'project_id', tasks: 'task_id', chats: 'chat_id', agents: 'agent_id' }[resource];
     if (!column) return [];
-    return [...getDb().prepare(`SELECT id FROM runs WHERE ${column}=? AND status IN ('queued','starting','running','needs_input','paused')`).all(itemId), ...workbench.activeSessionsFor(resource, itemId)];
+    return [...getDb().prepare(`SELECT id FROM runs WHERE ${column}=? AND status IN ('queued','starting','running','needs_input','paused')`).all(itemId), ...workbench.activeSessionsFor(resource, itemId), ...(workspaceAgentChats?.activeSessionsFor(resource,itemId) || []), ...(workstationTools?.activeSessionsFor(resource,itemId) || [])];
   }
   function contextInput(body, resolved, agent, turn) {
     const db = getDb();
@@ -957,6 +1016,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const current = db.prepare(`SELECT * FROM ${resource} WHERE id=?`).get(itemId);
       if (!current) throw Object.assign(validationError(`${resource.slice(0, -1)} not found.`), { statusCode: 404 });
       if (resource === 'chats' && body.kind !== undefined && body.kind !== current.kind && isFrondoseAgentChat(db, current)) throw validationError('A Frondose Agent conversation keeps its dedicated chat type. Rename or archive it instead.');
+      if(resource==='documents'&&Object.hasOwn(body,'expected_updated_at')){if(typeof body.expected_updated_at!=='string'||body.expected_updated_at!==current.updated_at||current.archived_at)throw Object.assign(Error('This document changed elsewhere. Your draft is retained; compare it before saving again.'),{statusCode:409,errorCode:'stale_document'});delete body.expected_updated_at;}
       if (resource === 'agents' && body.version !== undefined && (!Number.isSafeInteger(body.version) || body.version !== current.version)) throw Object.assign(new Error('This agent profile changed. Reload it before saving.'), { statusCode: 409, errorCode: 'stale_profile' });
       if (resource === 'agents' && body.identity_kind !== undefined && body.identity_kind !== current.identity_kind) throw validationError('A saved identity keeps its agent or provider type. Create a separate identity instead.');
       if (resource === 'agents' && current.identity_kind === 'provider' && body.provider !== undefined && body.provider !== current.provider) throw validationError('A provider identity keeps its provider. Add a separate provider instead.');
@@ -993,7 +1053,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const fields = config.fields.filter((field) => body[field] !== undefined);
       if (!fields.length) return fail(res, 400, 'validation_error', 'No supported fields were supplied.');
       if (body.archived_at && activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop the active sessions linked to this item before archiving it.');
-      if (resource === 'projects' && body.local_path !== undefined && body.local_path !== current.local_path && workbench.activeSessionsFor(resource,itemId).length) return fail(res,409,'active_terminals','Stop this project’s Workbench terminals before changing its working folder.');
+      if (resource === 'projects' && body.local_path !== undefined && body.local_path !== current.local_path && activeRunsFor(resource,itemId).length) return fail(res,409,'active_terminals','Stop this project’s Workbench terminals before changing its working folder.');
       if (resource === 'agents' && body.provider !== undefined && body.provider !== current.provider && activeRunsFor(resource, itemId).length) return fail(res, 409, 'active_sessions', 'Stop this agent’s active sessions before changing its provider.');
       const record = validateRecord(db, resource, { ...normalizeInput(resource, present(current)), ...body }, config.required, config.fields);
       if (resource === 'chats') validateConversationAgent(db, record, current);
@@ -1005,7 +1065,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         const graph = routeGraph(db, current.workspace_id), visited = new Set();
         for (const task of graph.values()) if (task.project_id === itemId && !visited.has(task.id)) { const nodes = inspectRouteGraph(graph, task); authorizeRouteNodes(nodes, { actor, allowed: access.allowed, write: true }); nodes.forEach(node => visited.add(node.id)); }
       }
-      const stamp = now();
+      const stamp = resource==='documents'?new Date(Math.max(Date.now(),Date.parse(current.updated_at)+1)).toISOString():now();
       db.prepare(`UPDATE ${resource} SET ${fields.map((field) => `${field}=?`).join(',')},updated_at=? WHERE id=?`)
         .run(...fields.map((field) => dbValue(field, record[field])), stamp, itemId);
       if (resource === 'agents') bumpAgentProfileVersion(db, itemId, fields, stamp);
@@ -1455,11 +1515,15 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     });
   }
   let eventWork = makeEventWork();
-  const scheduledWorkTimer = setInterval(() => { if (!closed) scheduledWork.dispatchDue().then(() => eventWork.dispatchEvents()).catch(() => {}); }, scheduledWorkOptions.scheduleIntervalMs ?? 15000);
+  const scheduledWorkTimer = setInterval(() => { if (!closed && !desktopUpdateGate.isPreparing()) scheduledWork.dispatchDue().then(() => eventWork.dispatchEvents()).catch(() => {}); }, scheduledWorkOptions.scheduleIntervalMs ?? 15000);
   scheduledWorkTimer.unref?.();
 
   function middleware(req, res, next = () => {}) {
-    return changeContext.run({}, () => handleRequest(req, res, next));
+    let end;
+    try {
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && /^\/api(?:\/|$)/.test(req.url || '') && !/^\/api\/desktop-updates(?:\/|\?|$)/.test(req.url || '')) end = desktopUpdateGate.beginMutation();
+    } catch (error) { return fail(res, error.statusCode || 423, error.code, error.message); }
+    return changeContext.run({}, async () => { try { return await handleRequest(req, res, next); } finally { end?.(); } });
   }
   async function handleRequest(req, res, next = () => {}) {
     let url;
@@ -1480,6 +1544,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const requestedPath = url.pathname.slice(API_PREFIX.length) || '/';
       // Public Area CRUD shares legacy storage and exactly the same access checks.
       const path = /^\/areas(?:\/[^/]+)?$/.test(requestedPath) ? requestedPath.replace(/^\/areas/, '/teams') : requestedPath;
+      product.checkPath(path, req.method);
       deployment.throttleIdentity(req, path);
       if (deployment.hosted && (path === '/identity/setup' || /^\/(workbench|change-reviews)(?:\/|$)/.test(path) || path.startsWith('/connections/'))) return fail(res, 403, 'host_capability_disabled', 'Host filesystem, terminal and shared CLI account management are disabled in public mode.');
       if (path.startsWith('/runner-transport/')) {
@@ -1503,7 +1568,18 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return fail(res, 404, 'not_found', 'Computer transport endpoint not found.');
       }
       const actor = identity.resolve(req);
-      Object.assign(changeContext.getStore(), { actor, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Frondose' });
+      product.checkOwner(actor);
+      Object.assign(changeContext.getStore(), { actor, recordActivity: product.local && actor?.id === 'local-owner' ? recordActivity : undefined, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Frondose' });
+      if (path === '/workspace-activity' && req.method === 'GET') {
+        if (!product.local) return fail(res, 404, 'not_found', 'Workspace activity is local-only.');
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = url.searchParams.get('workspace_id');
+        if (actor?.id !== 'local-owner') return fail(res, 403, 'access_denied', 'Workspace activity is available only to the local owner.');
+        if (!getDb().prepare('SELECT 1 FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId)) return fail(res, 404, 'not_found', 'Workspace not found.');
+        if (!access.allowed(workspaceId, actor, 'workspace.read', {})) return fail(res, 403, 'access_denied', 'Workspace activity is unavailable.');
+        const rows = readWorkspaceActivity(getDb(), workspaceId, { limit: url.searchParams.get('limit') });
+        return send(res, 200, { result: { rows, text: formatWorkspaceActivity(rows) } });
+      }
       const aiCallback = path.match(/^\/ai-connections\/openrouter\/callback\/([A-Za-z0-9_-]+)$/);
       if (aiCallback && req.method === 'GET') {
         await aiConnections.complete(aiCallback[1], url.searchParams.get('code'), actor, req.headers.host);
@@ -1526,7 +1602,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         await connectionPlatform.handle({ method: req.method, path, query: Object.fromEntries(url.searchParams), actor });
         res.statusCode = 303; res.setHeader('Location', '/#/connections'); res.setHeader('Cache-Control', 'no-store'); res.end(); return;
       }
-      if (path === '/identity' && req.method === 'GET') return send(res, 200, { result: { configured: identity.configured(), user: actor && { id: actor.id, name: actor.name, email: actor.email, mode: actor.mode } } });
+      if (path === '/identity' && req.method === 'GET') return send(res, 200, { result: { configured: identity.configured(), product: product.descriptor, user: actor && { id: actor.id, name: actor.name, email: actor.email, mode: actor.mode } } });
       if (path.startsWith('/identity/')) {
         const body = req.method === 'GET' ? {} : await readBody(req);
         if (['/identity/setup', '/identity/login', '/identity/accept'].includes(path) && req.method === 'POST') {
@@ -1549,12 +1625,22 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return fail(res, 404, 'not_found', 'Identity action not found.');
       }
       if (!actor) return fail(res, 401, 'sign_in_required', 'Sign in to continue.');
+      if (path === '/desktop-updates/status' || path === '/desktop-updates/prepare' || path === '/desktop-updates/renew' || path === '/desktop-updates/release') {
+        if (!product.local || actor.id !== 'local-owner') return fail(res, 403, 'access_denied', 'App updates belong to this installation’s owner.');
+        res.setHeader('Cache-Control', 'no-store');
+        if (path.endsWith('/status') && req.method === 'GET') return send(res, 200, { result: desktopUpdateGate.status() });
+        if (req.method !== 'POST') return fail(res, 405, 'method_not_allowed', 'Use POST for update safety changes.');
+        const input = await readBody(req);
+        const result = path.endsWith('/prepare') ? desktopUpdateGate.acquire() : path.endsWith('/renew') ? desktopUpdateGate.renew(input.token) : desktopUpdateGate.release(input.token);
+        return send(res, 200, { result });
+      }
       // New workspaces gain the installation owner exactly once, never the caller of a read request.
       for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
       res.filterFrondoseData = data => {
         for (const workspace of db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
         const filtered = access.filter(data, actor);
         const enrichConnections = snapshot => {
+          if (snapshot?.meta) snapshot.meta = { ...snapshot.meta, product: product.descriptor };
           if (Array.isArray(snapshot?.agents)) snapshot.agents = snapshot.agents.map(agent => {
             const bindings = agent.workspace_id ? null : Object.fromEntries(db.prepare('SELECT workspace_id FROM agent_runner_settings WHERE agent_id=?').all(agent.id).flatMap(({workspace_id:workspaceId}) => access.allowed(workspaceId,actor,'connections.view') ? [[workspaceId,runnerConnection(agent,actor,workspaceId)]] : []));
             return {...agent,runner_connection:runnerConnection(agent,actor,agent.workspace_id || data.workspace_id || null),...(bindings && Object.keys(bindings).length ? {runner_connections_by_workspace:bindings} : {})};
@@ -1571,7 +1657,66 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         enrichConnections(filtered.bootstrap);
         return filtered;
       };
-      const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : 1_000_000) : {};
+      const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : path === '/local-todos/uploads' ? 35_000_000 : path === '/workspace-agent-chat/decision' ? 18_000_000 : 1_000_000) : {};
+      if (path === '/local-session-history' || path.startsWith('/local-session-history/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'Native history search is available only in the local edition.');
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = body.workspace_id || url.searchParams.get('workspace_id');
+        const result = await localSessionHistory.dispatch({ workspaceId, actor, action: path.slice('/local-session-history'.length).replace(/^\//, ''), method: req.method, input: body, query: url.searchParams });
+        return send(res, 200, { result });
+      }
+      if(path==='/local-automations'||path.startsWith('/local-automations/')){if(!product.local)return fail(res,404,'not_found','Automations require the local edition.');res.setHeader('Cache-Control','no-store');const result=await localAutomations.dispatch({workspaceId:body.workspace_id||url.searchParams.get('workspace_id'),actor,action:path.slice('/local-automations'.length).replace(/^\//,''),method:req.method,input:body});return send(res,200,{result});}
+      if(path==='/local-todos'||path.startsWith('/local-todos/')){if(!product.local)return fail(res,404,'not_found','To Do List requires the local edition.');res.setHeader('Cache-Control','no-store');const result=await todos.dispatch({workspaceId:body.workspace_id||url.searchParams.get('workspace_id'),actor,action:path.slice('/local-todos'.length).replace(/^\//,''),method:req.method,input:body,query:url.searchParams});return send(res,200,{result});}
+      if (path === '/file-comments' || path.startsWith('/file-comments/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'File comments are available only in the local edition.');
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = body.workspace_id || url.searchParams.get('workspace_id');
+        const result = await fileComments.dispatch({ workspaceId, actor, action: path.slice('/file-comments'.length).replace(/^\//, ''), method: req.method, input: body, query: url.searchParams });
+        return send(res, 200, { result });
+      }
+      if (path === '/github-routes' || path.startsWith('/github-routes/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'Local GitHub issue imports are available only in the local edition.');
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = body.workspace_id || url.searchParams.get('workspace_id');
+        const result = await githubRoutes.dispatch({ workspaceId, actor, action: path.slice('/github-routes'.length).replace(/^\//, ''), method: req.method, input: body });
+        return send(res, 200, { result });
+      }
+      if (path === '/local-git' || path.startsWith('/local-git/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'Local repository controls are available only in the local edition.');
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = body.workspace_id || url.searchParams.get('workspace_id');
+        const result = await localGit.dispatch({ workspaceId, actor, action: path.slice('/local-git'.length).replace(/^\//, ''), method: req.method, input: body });
+        return send(res, 200, { result });
+      }
+      if (path === '/workspace-agent-chat' || path.startsWith('/workspace-agent-chat/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'Workspace AI sessions are local-only.');
+        if (body.computer_enabled === true || (path === '/workspace-agent-chat/decision' && body.result)) return fail(res, 409, 'coming_soon', 'Computer Use is coming soon.');
+        res.setHeader('Cache-Control', 'no-store');
+        return send(res, 200, { result: await workspaceAgentChats.dispatch({ workspaceId: body.workspace_id || url.searchParams.get('workspace_id'), actor, method: req.method, action: path.slice('/workspace-agent-chat'.length).replace(/^\//, ''), input: body, query: url.searchParams }) });
+      }
+      if (path === '/workstation-tools' || path.startsWith('/workstation-tools/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'These tools are local-only.');
+        res.setHeader('Cache-Control', 'no-store');
+        return send(res, 200, { result: await workstationTools.releaseDispatch({ workspaceId: body.workspace_id || url.searchParams.get('workspace_id'), actor, method: req.method, action: path.slice('/workstation-tools'.length).replace(/^\//, ''), input: body }) });
+      }
+      if (path === '/directory-workspace' || path.startsWith('/directory-workspace/')) {
+        if (!product.local) return fail(res, 404, 'not_found', 'Directory workspaces are available only in the local edition.');
+        res.setHeader('Cache-Control', 'no-store');
+        const workspaceId = body.workspace_id || url.searchParams.get('workspace_id');
+        const result = await directoryWorkspace.dispatch({ workspaceId, actor, action: path.slice('/directory-workspace'.length).replace(/^\//, ''), method: req.method, input: body, query: url.searchParams });
+        return send(res, 200, { result });
+      }
+      if (path === '/local-runtime' && req.method === 'GET') {
+        if (!product.local) return fail(res, 404, 'not_found', 'Local runtime discovery is available in the local edition.');
+        res.setHeader('Cache-Control', 'no-store');
+        const terminalEnv = integrationOptions.env || process.env;
+        const inventory = await localDiscovery({ platform: process.platform, env: terminalEnv });
+        const byId = new Map(inventory.map(item => [item.id || item.providerId, item]));
+        const shell = process.platform === 'win32' ? { id: 'cmd', title: 'Command Prompt' } : terminalEnv.SHELL === '/bin/zsh' ? { id: 'zsh', title: 'Zsh' } : { id: 'bash', title: 'Bash' };
+        return send(res, 200, { result: { product: product.descriptor, platform: process.platform, node: process.versions.node,
+          host: { platform: process.platform, architecture: process.arch, node: process.versions.node, defaultShell: shell },
+          runtimes: TERMINAL_PROVIDER_CATALOG.map(provider => ({ id: provider.id, title: provider.title, state: byId.get(provider.id)?.installed === true ? 'installed' : 'not_found', installed: byId.get(provider.id)?.installed === true, authenticated: null, modelAccess: null, liveVerified: false })) } });
+      }
       if (path === '/runner-connections' || path.startsWith('/runner-connections/')) {
         res.setHeader('Cache-Control', 'no-store');
         const workspaceId = req.method === 'GET' ? url.searchParams.get('workspace_id') : body.workspace_id;
@@ -1590,6 +1735,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         if (req.method === 'GET') return send(res, 200, { result: agentRunnerSettings.read(context) });
         if (req.method === 'PUT') {
           const { workspace_id: ignored, ...input } = body;
+          product.checkRunnerSettings(input);
           if (input.connection_method && !['computer', 'unselected'].includes(input.connection_method)) return fail(res, 409, 'agent_connection_method_unsupported', 'Manage API and sign-in connections in AI connections. This surface configures paired computers.');
           return send(res, 200, { result: agentRunnerSettings.update({ ...context, input }) });
         }
@@ -1794,7 +1940,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         }
       }
       if (await integration.handle(req, res, { path, url })) return;
-      if (await workbench.handle({ req, res, path, url, readBody, send })) return;
+      if (await workbench.handle({ req, res, path, url, readBody, send, actor })) return;
       if (await agentAwarenessRoute({ db, req, res, path, url, readBody, send, activeRunsFor, actor, allowed: access.allowed, filter: data => access.filter(data, actor),
         authorizeProposal: ({ run, proposal, action }) => {
           authorizeAgentProposal(run, proposal, actor);
@@ -1810,7 +1956,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await subRoutesRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await workflowRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (await chatCollaborationRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
-      if (await teamResourcesRoute({ db, req, res, path, url, readBody, send })) return;
+      if (await teamResourcesRoute({ db, req, res, path, url, readBody, send, validateReference: todos && ((workspaceId,teamId,value)=>todos.validateResource(workspaceId,actor,value,{area_scope:'selected',team_ids:[teamId]})) })) return;
       if (manualWorkflows.manualWorkflowRoute && await manualWorkflows.manualWorkflowRoute({ db, req, res, path, url, body, actor, allowed: access.allowed, filter: data => access.filter(data, actor), send: (response, status, payload) => {
         for (const runId of payload?.result?.canonical_run_ids || []) stopRun(runId, 'Workflow cancelled by user');
         return send(response, status, payload);
@@ -1821,7 +1967,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (await featureRoute({ db, req, res, path, url, readBody, send, snapshot, actor, allowed: access.allowed })) return;
       if (req.method === 'POST' && path === '/import') return send(res, 201, { result: importWorkspace(db, await readBody(req, 25_000_000), TABLE_CONFIG, normalizeInput, dbValue, validateCustomFields), bootstrap: snapshot(db) });
       if (req.method === 'GET' && (path === '/bootstrap' || path === '/snapshot')) return send(res, 200, snapshot(db));
-      if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true, localOnly: !deployment.hosted, database: 'ready' });
+      if (req.method === 'GET' && path === '/health') return send(res, 200, { ok: true, localOnly: !deployment.hosted, database: 'ready', ...(product.local ? { product: product.descriptor } : {}) });
       if (req.method === 'GET' && path === '/export') {
         const data = snapshot(db);
         const workspaceId = url.searchParams.get('workspace_id');
@@ -2029,13 +2175,22 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
 
       return fail(res, 404, 'not_found', `Unknown API route: ${path}`);
     } catch (error) {
-      if (error?.code?.startsWith('SQLITE_CONSTRAINT') || error?.errcode === 19 || /UNIQUE constraint failed/.test(error?.message || '')) return fail(res, 409, 'conflict', 'A record with those details already exists. Choose a different name or identifier.');
-      return fail(res, error?.statusCode || 500, error?.errorCode || error?.code || 'local_api_error', error?.message || 'Unexpected API error.');
+      // Native subprocess exit codes are numbers, unlike filesystem/SQLite
+      // error codes. Classifying one must never throw inside the error handler
+      // and turn an ordinary failed probe into an unhandled request rejection.
+      const nativeCode = typeof error?.code === 'string' ? error.code : null;
+      const message = typeof error?.message === 'string' && error.message ? error.message : 'Unexpected API error.';
+      if (nativeCode?.startsWith('SQLITE_CONSTRAINT') || error?.errcode === 19 || /UNIQUE constraint failed/.test(message)) return fail(res, 409, 'conflict', 'A record with those details already exists. Choose a different name or identifier.');
+      const status = Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode <= 599 ? error.statusCode : 500;
+      const code = typeof error?.errorCode === 'string' && error.errorCode ? error.errorCode : nativeCode || 'local_api_error';
+      return fail(res, status, code, message);
     }
   }
 
   function close() {
     if (closed) return;
+    workspaceAgentChats?.close();
+    desktopUpdateGate.close();
     runnerJobs.close(); clearInterval(runnerJobTimer);
     finalizeInterruptedRunUsage(store.db, 'server_interrupted');
     closed = true;
@@ -2045,7 +2200,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     copilotBridge.close();
     hostedCopilot.close(); aiConnections.close();
     connectionPlatform.close();
-    workbench.close();
+    localAutomations?.close(); workbench.close(); localSessionHistory?.close(); githubRoutes?.close();
     liveRuns.clear();
     for (const runId of runTimers.keys()) clearRunTimers(runId);
     for (const responses of listeners.values()) for (const res of responses) if (!res.writableEnded) res.end();
@@ -2053,13 +2208,15 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     store.db.close();
   }
   function reset() {
+    workspaceAgentChats?.close();
+    desktopUpdateGate.close();
     const directory = store.directory;
     runnerJobs.close();
     copilotBridge.close();
     hostedCopilot.close(); aiConnections.close();
     for (const runId of nativeBridges.keys()) revokeNativeBridge(runId);
     connectionPlatform.close();
-    workbench.close();
+    localAutomations?.close(); workbench.close(); localSessionHistory?.close(); githubRoutes?.close();
     for (const controller of liveRuns.values()) controller.stop();
     liveRuns.clear();
     for (const runId of runTimers.keys()) clearRunTimers(runId);
@@ -2080,7 +2237,17 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     installAccess();
     runnerJobs = makeRunnerJobs();
     nativeToolService = makeNativeTools();
-    workbench = createWorkbenchService({ db: store.db, dataDir: store.directory });
+    if (product.local) installWorkspaceActivity(store.db);
+    workbench = createWorkbenchService({ db: store.db, dataDir: store.directory, terminalEnv: integrationOptions.env, authorizeNativeAgent, authorizeTerminalResume: product.local ? request => localSessionHistory.resolveResume(request) : undefined, assertDirectoryMutable: workspaceId => localGit?.assertNoMutation(workspaceId), recordActivity });
+    directoryWorkspace = product.local ? createDirectoryWorkspaceService({ db: store.db, dataDir: store.directory, allowed: access.allowed, activeSessionsFor: workspaceId => activeRunsFor('workspaces', workspaceId), recordActivity }) : null;
+    workspaceAgentChats = product.local ? createWorkspaceAgentChat({ db: store.db, roots: directoryWorkspace, env: integrationOptions.env, recordActivity }) : null;
+    workstationTools = product.local ? createWorkstationTools({ db: store.db, roots: directoryWorkspace, env: integrationOptions.env }) : null;
+    localSessionHistory = product.local ? createLocalSessionHistoryService({ ...localSessionHistoryOptions, dataDir: store.directory, roots: directoryWorkspace, env: integrationOptions.env }) : null;
+    localGit = product.local ? createLocalGitService({ ...localGitOptions, db: store.db, dataDir: store.directory, roots: directoryWorkspace, env: integrationOptions.env, activeSessionsFor: workspaceId => activeRunsFor('workspaces', workspaceId), recordActivity }) : null;
+    githubRoutes = product.local ? createGitHubRouteSyncService({ ...githubRouteOptions, db: store.db, roots: directoryWorkspace, git: localGit, allowed: access.allowed, record: recordChange }) : null;
+    localAutomations=product.local?createLocalAutomationService({db:store.db,roots:directoryWorkspace,workbench,activeSessionsFor:workspaceId=>activeRunsFor('workspaces',workspaceId),activityContext,recordActivity,getStructuredSessionService:()=>workspaceAgentChats}):null;
+    fileComments = product.local ? createFileCommentsService({ db: store.db, roots: directoryWorkspace }) : null;
+    todos=product.local?createTodoService({db:store.db,roots:directoryWorkspace,comments:fileComments,recordActivity}):null;
     workbenchCheckpoints = createWorkbenchCheckpointService({ db: store.db, workbench, allowed: access.allowed, activeSessionsFor: activeRunsFor });
     changeReviews = makeReviews();
     scheduledWork = makeScheduledWork();
@@ -2089,7 +2256,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     return snapshot(store.db);
   }
 
-  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), dbPath: store.dbPath };
+  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), updaterTerminalTargets: () => product.local && !closed && !desktopUpdateGate.isPreparing() ? workbench.updaterTerminalTargets() : [], dbPath: store.dbPath };
 }
 
 export default createLocalApi;

@@ -1,0 +1,77 @@
+/* A project can be narrow inside a wide desktop window (navigation + Files).
+   Reflow against the available work pane, rather than squeezing desktop columns
+   until a viewport media query happens to match. Never hide planning content. */
+.planning-page { width: 100%; min-width: 0; container-type: inline-size; container-name: frondose-planning; }
+:is(.planning-page, .space-page) > * { min-width: 0; max-width: 100%; }
+:is(.planning-page, .space-page) .page-heading > div:first-child { min-width: 0; }
+:is(.planning-page, .space-page) .page-heading h1 { overflow-wrap: anywhere; word-break: normal; }
+.space-page .space-tab-content { min-width: 0; max-width: 100%; }
+.space-page .space-tabs { max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; scroll-padding-inline: 4px; scrollbar-width: thin; }
+:is(.planning-page, .space-page) .toolbar > *, .space-page .space-section-toolbar > * { min-width: 0; max-width: 100%; }
+.planning-page .route-board { max-width: 100%; min-width: 0; overscroll-behavior-inline: contain; }
+.planning-page .board-column { flex: 0 0 260px; }
+.planning-page .board-card { overflow-wrap: anywhere; }
+
+@container frondose-planning (max-width: 900px) {
+  .space-page .space-overview-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .space-page .space-properties { border-left: 0; padding-left: 0; padding-top: 24px; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .space-page .space-properties > section { margin: 0; min-width: 0; }
+  .route-detail-page .project-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .route-detail-page .detail-aside { border-left: 0; padding-left: 0; padding-top: 24px; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 0; min-width: 0; }
+  .route-detail-page .detail-aside > * { min-width: 0; max-width: 100%; }
+}
+
+@container frondose-planning (max-width: 700px) {
+  :is(.planning-page, .space-page) .page-heading { flex-direction: column; align-items: stretch; gap: 16px; }
+  :is(.planning-page, .space-page) .page-heading > div:first-child { width: 100%; min-width: 0; flex: none; }
+  :is(.planning-page, .space-page) .page-heading h1 { font-size: 24px; line-height: 1.25; }
+  :is(.planning-page, .space-page) .page-heading p { max-width: none; font-size: 13px; line-height: 1.65; }
+  :is(.planning-page, .space-page) .page-actions { width: 100%; max-width: 100%; min-width: 0; flex-wrap: wrap; justify-content: flex-start; gap: 8px; padding-top: 0; }
+  :is(.planning-page, .space-page) .page-actions .button { flex: 0 1 auto; max-width: 100%; white-space: normal; min-height: 38px; font-size: 13px; }
+  .space-page .space-properties, .route-detail-page .detail-aside { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .space-page .space-tabs { gap: 20px; margin-bottom: 22px; }
+  .space-page .space-tabs > button { font-size: 13px; min-height: 44px; }
+  .space-page .space-section-toolbar { gap: 10px; }
+  .space-page .space-section-toolbar > .button:last-child { margin-left: 0; }
+  .space-page .space-section-toolbar > .button { flex-shrink: 1; max-width: 100%; white-space: normal; }
+  .space-page .space-section-toolbar .search-field { width: 100%; flex: 1 1 100%; }
+  .space-page .space-section-toolbar > .rumbo-select { flex: 1 1 140px; }
+  .space-page .space-overview-main .section-heading, .project-strategy .section-heading { flex-wrap: wrap; gap: 10px; }
+  .space-page .space-overview-main .section-heading h2, .space-page .space-overview-main .section-heading h3 { min-width: 0; }
+  .space-page .space-inline-actions { flex-wrap: wrap; justify-content: flex-start; }
+  .space-page .space-properties dd button { max-width: 100%; overflow-wrap: anywhere; }
+  .space-page .space-properties dl > div { grid-template-columns: minmax(72px, .4fr) minmax(0, 1fr); }
+  .space-page .space-progress-label { flex-wrap: wrap; }
+  .project-strategy .strategy-brief-grid { grid-template-columns: minmax(0, 1fr); }
+  .project-strategy .strategy-concern { flex-wrap: wrap; }
+  .project-strategy .strategy-concern > div { flex-basis: 100%; overflow-wrap: anywhere; }
+  .space-page .space-document-row { flex-wrap: wrap; gap: 8px; padding: 10px 0; }
+  .space-page .space-document-row .space-row-main { flex-basis: calc(100% - 48px); }
+  .space-page .space-document-row > time { order: 3; width: 100%; padding-left: 40px; }
+  .space-page .space-document-row > .icon-button { margin-left: auto; }
+  .space-page .milestone-row { flex-wrap: wrap; gap: 8px; }
+  .space-page .milestone-title { min-width: min(160px, 100%); }
+  .route-detail-page .route-flow { flex-wrap: wrap; gap: 8px; }
+  .route-detail-page .detail-aside section + section { margin-top: 0; }
+  .planning-page .toolbar { gap: 8px; }
+  .planning-page .toolbar .search-field { width: 100%; flex: 1 1 100%; }
+  .planning-page .toolbar > .rumbo-select { flex: 1 1 140px; }
+  .planning-page .toolbar-spacer { display: none; }
+  .planning-page .project-table-heading { grid-template-columns: minmax(0, 1fr) 55px 82px; }
+  .planning-page .project-list .project-row { gap: 10px; padding-inline: 4px; }
+  .planning-page .project-list .project-progress { width: 75px; min-width: 0; margin: 0; }
+  .planning-page .project-list .row-copy strong { white-space: normal; overflow-wrap: anywhere; }
+  .planning-page .project-list .project-row .row-meta { font-size: 11px; }
+}
+
+@container frondose-planning (max-width: 550px) {
+  :is(.planning-page, .space-page) .route-table-heading { display: none; }
+  :is(.planning-page, .space-page) .route-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 6px 8px; padding: 12px 2px; }
+  :is(.planning-page, .space-page) .route-row .route-complete { grid-column: 1; grid-row: 1 / span 3; }
+  :is(.planning-page, .space-page) .route-tree-title { grid-column: 2 / -1; padding-inline-start: calc(var(--route-depth, 0) * 8px); }
+  :is(.planning-page, .space-page) .route-title strong { white-space: normal; overflow-wrap: anywhere; }
+  :is(.planning-page, .space-page) .route-title small { white-space: normal; overflow-wrap: anywhere; }
+  :is(.planning-page, .space-page) .route-row .route-status { display: flex; grid-column: 2; width: auto; }
+  :is(.planning-page, .space-page) .route-row > .priority { display: flex; grid-column: 3; width: auto; }
+  :is(.planning-page, .space-page) .route-date { display: block; grid-column: 2 / -1; width: auto; font-size: 11px; }
+}

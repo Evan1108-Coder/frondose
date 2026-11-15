@@ -129,6 +129,8 @@ export function mergeSettings(current, input) {
   const preferenceFields = { home: ['overview', 'focus', 'inbox', 'projects', 'tasks', 'chats', 'agents'], sendKey: ['enter', 'modifier'], weekStart: ['monday', 'sunday'] };
   for (const [key, value] of Object.entries(result.preferences ?? {})) if (!preferenceFields[key]?.includes(value)) throw validationError(`Invalid preference: ${key}.`);
   if (appearance.textSize !== undefined && !['standard', 'large'].includes(appearance.textSize)) throw validationError('Choose standard or large text.');
+  if (appearance.workspaceTabSize !== undefined && !['compact', 'comfortable'].includes(appearance.workspaceTabSize)) throw validationError('Choose compact or comfortable workspace tabs.');
+  if (appearance.workspaceTabCloseButtons !== undefined && !['always', 'hover'].includes(appearance.workspaceTabCloseButtons)) throw validationError('Choose always or hover for workspace tab close buttons.');
   if (appearance.underlineLinks !== undefined && typeof appearance.underlineLinks !== 'boolean') throw validationError('Underline links must be true or false.');
   for (const [key, value] of Object.entries(result.codeReview ?? {})) if (key !== 'wrap' || typeof value !== 'boolean') throw validationError('Invalid code review setting.');
   for (const [key, value] of Object.entries(result.personalization ?? {})) if (key !== 'instructions' || typeof value !== 'string' || value.length > 10000) throw validationError('Personal instructions must be text under 10,000 characters.');

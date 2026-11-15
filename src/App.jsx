@@ -1,5 +1,21 @@
+import {ContextInputDrops} from './components/ContextInputDrops.jsx';
+import {useInterfaceLanguage} from './components/InterfaceLanguage.jsx';
+import {interfaceText} from './lib/interface-language.js';
+import {TodoBoard} from './views/TodoBoard.jsx';
+import {ChecklistCelebration} from './components/ChecklistCelebration.jsx';
 import { requestUpdateNavigation, UnsavedUpdatesDialog } from './components/UnsavedUpdates.jsx';
+import { useGlobalWorkstationAppearance } from './lib/workstation-appearance.js';
+import './components/workstation-appearance.css';
+import { DesktopUpdates } from './components/DesktopUpdates.jsx';
+import { nativeUpdateCritical, useDesktopUpdates } from './lib/desktop-updates.js';
 import { notify } from './lib/notifications.js';
+import { WorkspaceSurface } from './components/workspace/WorkspaceSurface.jsx';
+import { rememberWorkspaceReturnPage, workspaceSettingsReturnPage } from './lib/workspace-settings.js';
+import { requestWorkspaceNavigation } from './lib/workspace-navigation.js';
+import { isLocalProduct } from './lib/local-product.js';
+import { isWorkspaceStandalonePage } from './lib/workspace-screens.js';
+import { isRetiredLocalPage, isLocalCreationAllowed } from './lib/local-navigation.js';
+import { HistoricalConversations } from './components/workspace/HistoricalConversations.jsx';
 import { useGlobalDisplayPreferences } from './lib/display-preferences.js';
 import { IconColorsProvider } from './components/IconColors.jsx';
 import { FieldDefaultsProvider } from './components/FieldDefaultsProvider.jsx';
@@ -56,7 +72,6 @@ import { favoriteForPage, favoriteKey, normalizeOrganization, readOrganization, 
 import { resolveShortcut } from "./lib/shortcuts.js";
 import { SidebarEditor } from "./components/SidebarEditor.jsx";
 import { NavigationHistory } from './components/NavigationHistory.jsx';
-import { Breadcrumbs } from './components/Breadcrumbs.jsx';
 import { GlobalToolbar } from './components/GlobalToolbar.jsx';
 import './components/sidebar-resize.css';
 import { canShowSidebarPreview, clampPagePreview, clampSidebarWidth, normalizeSidebarSize, shouldEnterSidebarPreview, sidebarWidthFromPointer, SIDEBAR_DEFAULT_WIDTH } from './lib/sidebar-size.js';
@@ -66,6 +81,7 @@ import { StarredView } from "./views/Starred.jsx";
 import { Home } from './views/Home.jsx';
 const OperationsView = lazy(() => import('./views/Operations.jsx').then(module => ({ default: module.OperationsView })));
 const DocumentsView = lazy(() => import('./views/WorkspaceContent.jsx').then(m => ({ default: m.DocumentsView })));
+const WorkspaceCommentsView = lazy(() => import('./components/workspace/WorkspaceComments.jsx').then(m => ({ default: m.WorkspaceCommentsView })));
 const SavedViews = lazy(() => import('./views/WorkspaceContent.jsx').then(m => ({ default: m.SavedViews })));
 import { normalizeExperience, readExperience, rememberPage } from './lib/workspace-experience.js';
 const Workbench = lazy(() => import('./views/Workbench.jsx').then(module => ({ default: module.Workbench })));
@@ -102,13 +118,31 @@ function usePreference(key, fallback) {
   return [value, update];
 }
 
+function WorkspaceConnectionHealth({status}) {
+  const language = useInterfaceLanguage();
+  const t = text => interfaceText(text, language);
+  const offline = status.error || status.syncError;
+  return <div className="connection-health" role="status"
+    aria-label={t(offline ? 'Workspace connection needs attention' : status.pendingMutations ? 'Saving workspace changes' : 'Workspace connected')}
+    title={t(offline ? 'Connection needs attention' : 'Connected')}>
+    <i className={`live-dot ${offline ? 'offline' : ''}`} />
+    <span className="connection-health-label">{t(status.pendingMutations ? 'Saving…' : status.syncError ? 'Sync interrupted' : status.error ? 'Action failed' : 'Connected')}</span>
+  </div>;
+}
+
 export function App() {
+  useGlobalWorkstationAppearance();
+  const desktopUpdateState = useDesktopUpdates();
   useGlobalDisplayPreferences();
   // Include onboarding and error/loading screens, not only the workspace sidebar.
   useEffect(trackInputModality, []);
   const rawData = useFrondoseData(),
     status = useFrondoseStatus();
+  const localEdition = isLocalProduct(rawData);
+  const localPage = useCallback(target => localEdition && isRetiredLocalPage(target) ? parsePage('#/workspace') : target, [localEdition]);
+  useEffect(() => { document.documentElement.dataset.productEdition = rawData?.meta?.product?.edition || 'compatible'; }, [rawData?.meta?.product?.edition]);
   const [page, setPage] = useState(readPage);
+  const [workspaceDestination,setWorkspaceDestination]=useState(null);
   const [workspaceId, setWorkspaceId] = usePreference("rumbo.workspace", null),
     [collapsed, setCollapsed] = usePreference("rumbo.sidebar.collapsed", false);
   const [savedSidebarSize, setSavedSidebarSize] = usePreference('rumbo.sidebar.size', null);
@@ -160,11 +194,27 @@ export function App() {
   const [shortcutPrefix, setShortcutPrefix] = useState(null);
   const chordRef = useRef(null);
   const lastConnectionError = useRef('');
+  const pageLocation = useRef(location.hash);
   const navigate = useCallback((view, id = null, options = {}) => {
-    const next = pageHash(view, id, options);
-    if (location.hash !== next) location.hash = next;
-    else setPage(parsePage(next));
-  }, []);
+    const target = localPage(parsePage(pageHash(view, id, options)));
+    const next = pageHash(target.view, target.id, target);
+    requestUpdateNavigation(() => requestWorkspaceNavigation(parsePage(next), () => {
+      if (location.hash !== next) history.pushState(null, '', next);
+      pageLocation.current = next;
+      setPage(parsePage(next));
+    }));
+  }, [localPage]);
+  const activateWorkspacePage = useCallback(next => {
+    next = localPage(next);
+    history.replaceState(null, '', pageHash(next.view, next.id, next));
+    pageLocation.current = location.hash;
+    setPage(next);
+  }, [localPage]);
+  useEffect(() => {
+    if (!localEdition || !isRetiredLocalPage(page)) return;
+    const target = parsePage('#/workspace');
+    history.replaceState(null, '', '#/workspace'); pageLocation.current = '#/workspace'; setPage(target);
+  }, [localEdition, page]);
   useEffect(() => {
     const message = (status.error || status.syncError)?.message || '';
     if (message && message !== lastConnectionError.current) notify(message, 'error', undefined, {
@@ -187,24 +237,38 @@ export function App() {
     [notify],
   );
   const edit = useCallback(
-    (kind, item = null, defaults = {}) => setEditor({ kind, item, defaults }),
-    [],
+    (kind, item = null, defaults = {}) => {
+      if (isLocalProduct(rawData) && !isLocalCreationAllowed(kind)) { window.dispatchEvent(new Event('frondose:new-workspace-tab')); return; }
+      setEditor({ kind, item, defaults });
+    },
+    [rawData?.meta?.product?.edition],
   );
-  const startSession = useCallback((defaults = {}) => setSession(defaults), []);
+  const startSession = useCallback((defaults = {}) => { if(localEdition){window.dispatchEvent(new Event('frondose:new-workspace-tab'));return;}setSession(defaults); }, [localEdition]);
   const setWorkspace = useCallback(
-    (id) => {
-      requestUpdateNavigation(() => {
+    (id, onSelected) => {
+      requestWorkspaceNavigation(null, () => requestUpdateNavigation(() => {
         setWorkspaceId(id);
-        navigate("overview");
+        const home = localEdition ? '#/workspace' : '#/overview';
+        history.replaceState(null, '', home); pageLocation.current = home; setPage(parsePage(home));
         setEditor(null);
         setSession(null);
-      });
+        if(typeof onSelected==='function')requestAnimationFrame(onSelected);
+      }));
     },
-    [navigate, setWorkspaceId],
+    [localEdition, setWorkspaceId],
   );
   const workspace =
     visible(rawData?.workspaces).find((item) => item.id === workspaceId) ??
     visible(rawData?.workspaces)[0];
+  useEffect(() => {
+    if (!workspace) return;
+    if (!isWorkspaceStandalonePage(page)) rememberWorkspaceReturnPage(localStorage, workspace.id, page);
+  }, [workspace?.id, page]);
+  const closeSettings = useCallback(() => requestUpdateNavigation(() => {
+    const target = localPage(workspaceSettingsReturnPage(localStorage, workspace?.id));
+    const hash = pageHash(target.view, target.id, target);
+    history.pushState(null, '', hash); pageLocation.current = hash; setPage(target);
+  }), [workspace?.id, localPage]);
   const organization = useMemo(() => organizationState && organizationState.workspaceId === workspace?.id ? organizationState.value : readOrganization(localStorage, workspace?.id), [workspace?.id, organizationState]);
   const experience = useMemo(() => experienceState && experienceState.workspaceId === workspace?.id ? experienceState.value : readExperience(localStorage, workspace?.id), [workspace?.id, experienceState]);
   const updateExperience = useCallback(value => {
@@ -214,7 +278,7 @@ export function App() {
     catch { notify('Your browser could not save this preference.', 'error'); }
   }, [workspace?.id, notify]);
   useEffect(() => {
-    if (!workspace || page.view === 'settings') return;
+    if (!workspace || isWorkspaceStandalonePage(page)) return;
     setExperienceState(current => {
       const previous = current?.workspaceId === workspace.id ? current.value : readExperience(localStorage, workspace.id);
       const next = rememberPage(previous, page);
@@ -322,11 +386,10 @@ export function App() {
     [navigate, notify, page, perform],
   );
   useEffect(() => {
-    let previous = location.hash;
-    const change = () => { const next = location.hash; history.replaceState(null, '', previous || '#/'); requestUpdateNavigation(() => { previous = next; history.replaceState(null, '', next); setPage(readPage()); }); };
+    const change = () => { const target=localPage(parsePage(location.hash)); const next=pageHash(target.view,target.id,target); history.replaceState(null, '', pageLocation.current || '#/'); requestUpdateNavigation(() => requestWorkspaceNavigation(target, () => { pageLocation.current = next; history.replaceState(null, '', next); setPage(target); })); };
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
-  }, []);
+  }, [localPage]);
   useEffect(() => {
     const appearance = rawData?.settings?.appearance ?? {};
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -354,7 +417,7 @@ export function App() {
   useEffect(() => {
     if (!rawData || homeApplied.current) return;
     homeApplied.current = true;
-    if (!location.hash || location.hash === '#/') navigate(rawData.settings?.preferences?.home ?? 'overview');
+    if (!location.hash || location.hash === '#/') navigate(localEdition ? 'workspace' : rawData.settings?.preferences?.home ?? 'overview');
   }, [rawData, navigate]);
   useEffect(() => {
     function keydown(event) {
@@ -423,6 +486,8 @@ export function App() {
     setWorkspace,
     page,
     navigate,
+    closeSettings,
+    closeDocs: closeSettings,
     edit,
     archive,
     perform,
@@ -433,7 +498,8 @@ export function App() {
     showFeedback: () => { setMobileOpen(false); setFeedbackOpen(true); },
     customizeSidebar: () => { setMobileOpen(false); setSidebarEditorOpen(true); },
     organization, updateOrganization, toggleFavorite, experience, updateExperience,
-    sidebarSizing: { width: previewActive ? viewport.width - 24 : sidebarSize.width ?? clampSidebarWidth(SIDEBAR_DEFAULT_WIDTH, window.innerWidth), preview: previewActive, hidden: sidebarSize.hidden, peek: sidebarPeek, setPeek: setSidebarPeek, resize: resizeSidebar, hide: hideSidebar, restore: restoreSidebar },
+    openAgentSession: agent => window.dispatchEvent(new CustomEvent('frondose:open-agent-session', { detail: { agentId: agent.id, providerId: agent.provider, label: agent.name } })),
+    sidebarSizing: { width: previewActive ? viewport.width - 24 : sidebarSize.width ?? clampSidebarWidth(localEdition ? 224 : SIDEBAR_DEFAULT_WIDTH, window.innerWidth), preview: previewActive, hidden: sidebarSize.hidden, peek: sidebarPeek, setPeek: setSidebarPeek, resize: resizeSidebar, hide: hideSidebar, restore: restoreSidebar },
   };
   if (!workspace)
     return (
@@ -441,7 +507,9 @@ export function App() {
         <FirstRun onCreated={setWorkspace} />
       </AppContext.Provider>
     );
-  const view = {
+  const renderView = viewPage => localEdition && isRetiredLocalPage(viewPage) ? null : {
+    workspace: null,
+    todos: localEdition ? <TodoBoard/> : null,
     overview: <Home />,
     focus: <FocusView />,
     starred: <StarredView />,
@@ -451,25 +519,31 @@ export function App() {
     projects: <ProjectsView />,
     teams: <TeamsView />,
     tasks: <RoutesView />,
-    chats: <Suspense fallback={<div className="app-loading" role="status">Opening chats…</div>}><ChatsView /></Suspense>,
-    'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Frondose…</div>}><FrondoseAgent /></Suspense>,
+    chats: localEdition ? <HistoricalConversations /> : <Suspense fallback={<div className="app-loading" role="status">Opening chats…</div>}><ChatsView /></Suspense>,
+    'rumbo-agent': <Suspense fallback={<div className="app-loading" role="status">Opening Frondose…</div>}>{localEdition ? <AgentsView /> : <FrondoseAgent />}</Suspense>,
     work: <WorkView />,
-    workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={page.id ?? page.projectId} /></Suspense>,
-    library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={page.id} /></Suspense>,
+    workbench: <Suspense fallback={<div className="app-loading" role="status">Opening workbench…</div>}><Workbench projectId={viewPage.id ?? viewPage.projectId} /></Suspense>,
+    library: <Suspense fallback={<div className="app-loading" role="status">Opening library…</div>}><LibraryView selectedId={viewPage.id} /></Suspense>,
     operations: <OperationsView />,
     workflows: <Suspense fallback={<p role="status">Opening Workflows…</p>}><WorkflowsView /></Suspense>,
     documents: <Suspense fallback={<p role="status">Opening documents…</p>}><DocumentsView /></Suspense>,
+    comments: localEdition ? <Suspense fallback={<p role="status">Opening comments…</p>}><WorkspaceCommentsView /></Suspense> : null,
     views: <Suspense fallback={<p role="status">Opening saved views…</p>}><SavedViews /></Suspense>,
     memory: <MemoryView />,
     agents: <Suspense fallback={<div className="app-loading" role="status">Opening agents…</div>}><AgentsView /></Suspense>,
     connections: <Suspense fallback={<div className="app-loading" role="status">Opening connections…</div>}><ConnectionsView /></Suspense>,
     settings: <Suspense fallback={<div className="app-loading" role="status">Opening settings…</div>}><SettingsCenter /></Suspense>,
-  }[page.view];
+    docs: <Suspense fallback={<p role="status">Opening Docs…</p>}><DocsView /></Suspense>,
+    reader: <Suspense fallback={<p role="status">Opening document…</p>}><Reader /></Suspense>,
+  }[viewPage.view];
+  const view = renderView(page);
   const fieldDefinitions = fieldDefinitionsForWorkspace(data);
   return (
     <AppContext.Provider value={context}>
-      <FieldDefaultsProvider workspaceId={workspace.id} definitions={fieldDefinitions}><IconColorsProvider><UnsavedUpdatesDialog />
-      <div className={`rumbo-app ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${sidebarSize.hidden ? 'sidebar-auto-hidden' : ''} ${sidebarPeek ? 'sidebar-peek' : ''} ${previewActive ? 'sidebar-preview-mode' : ''} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''} ${page.view === 'reader' ? 'in-reader' : ''}`} style={previewGeometry ? { '--sidebar': `${viewport.width - 24}px`, '--preview-x': `${previewGeometry.x}px`, '--preview-y': `${previewGeometry.y}px`, '--preview-scale': previewGeometry.scale } : sidebarSize.width != null && (!collapsed || page.view === 'settings') ? { '--sidebar': `${sidebarSize.width}px` } : undefined}>
+      {localEdition?<ChecklistCelebration workspaceId={workspace.id}/>:null}
+      <FieldDefaultsProvider workspaceId={workspace.id} definitions={fieldDefinitions}><IconColorsProvider><UnsavedUpdatesDialog />{localEdition?<ContextInputDrops/>:null}
+      {localEdition ? <DesktopUpdates hasOpenEditor={Boolean(editor || session || sidebarEditorOpen)} pendingMutations={Boolean(status.pendingMutations)}/> : null}
+      <div inert={nativeUpdateCritical(desktopUpdateState.phase) || undefined} className={`rumbo-app ${localEdition ? 'local-workbench' : ''} ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${sidebarSize.hidden ? 'sidebar-auto-hidden' : ''} ${sidebarPeek ? 'sidebar-peek' : ''} ${previewActive ? 'sidebar-preview-mode' : ''} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''} ${!localEdition && page.view === 'reader' ? 'in-reader' : ''}`} style={previewGeometry ? { '--sidebar': `${viewport.width - 24}px`, '--preview-x': `${previewGeometry.x}px`, '--preview-y': `${previewGeometry.y}px`, '--preview-scale': previewGeometry.scale } : sidebarSize.width != null && (!collapsed || page.view === 'settings') ? { '--sidebar': `${sidebarSize.width}px` } : undefined}>
         <a
           href="#main-content"
           className="skip-link"
@@ -480,7 +554,7 @@ export function App() {
         >
           Skip to content
         </a>
-        {['docs', 'reader'].includes(page.view) ? <ScreenBoundary key={`${page.view}-${workspace.id}`}><Suspense fallback={<div className="app-loading" role="status">Opening documentation…</div>}>{page.view === 'reader' ? <Reader /> : <DocsView />}</Suspense></ScreenBoundary> : <><Sidebar
+        {page.view === 'docs' || !localEdition && page.view === 'reader' ? <ScreenBoundary key={`${page.view}-${workspace.id}`}><Suspense fallback={<div className="app-loading" role="status">Opening documentation…</div>}>{page.view === 'reader' ? <Reader /> : <DocsView />}</Suspense></ScreenBoundary> : <><Sidebar
           key={workspace.id}
           collapsed={collapsed}
           setCollapsed={setCollapsed}
@@ -490,6 +564,7 @@ export function App() {
           onHelp={() => setHelpOpen(true)}
           overlayOpen={Boolean(commandOpen || helpOpen || feedbackOpen || editor || session || sidebarEditorOpen)}
           sidebarSizing={context.sidebarSizing}
+          workspaceDestination={workspaceDestination?.workspaceId===workspace.id?workspaceDestination.page:null}
         />
         {sidebarSize.hidden ? <button type="button" className="sidebar-edge-reveal" aria-label="Show navigation" onPointerEnter={() => setSidebarPeek(true)} onFocus={() => setSidebarPeek(true)} onClick={restoreSidebar} /> : null}
         <div className="app-main" inert={mobileOpen || previewActive && page.view !== 'settings' ? true : undefined}>
@@ -501,30 +576,19 @@ export function App() {
             >
               <Menu morphTo={mobileOpen ? X : Menu} />
             </IconButton>
-            <Breadcrumbs page={page} workspace={workspace} data={data} navigate={navigate} labels={Object.fromEntries(NAV.map(item => [item.id, item.label]))} />
-            <NavigationHistory key={workspace.id} />
+            <NavigationHistory key={workspace.id} showControls={false} />
             {currentFavorite ? <IconButton label={isFavorite ? "Remove from favorites" : "Add to favorites"} className={`icon-button favorite-toggle ${isFavorite ? "is-favorite" : ""}`} aria-pressed={Boolean(isFavorite)} onClick={() => toggleFavorite(currentFavorite)}><Pin morphTo={isFavorite ? PinOff : Pin} /></IconButton> : null}
+            <div data-workspace-git-toolbar="true" />
             <GlobalToolbar onSearch={() => setCommandOpen(true)} />
-            <div className="connection-health" role="status" aria-label={status.error || status.syncError ? 'Workspace connection needs attention' : status.pendingMutations ? 'Saving workspace changes' : 'Workspace connected'} title={status.error || status.syncError ? 'Connection needs attention' : 'Connected'}>
-              <i
-                className={`live-dot ${status.error || status.syncError ? "offline" : ""}`}
-              />
-              <span className="connection-health-label">{status.pendingMutations
-                ? "Saving…"
-                : status.syncError
-                  ? "Sync interrupted"
-                  : status.error
-                    ? "Action failed"
-                  : "Connected"}</span>
-            </div>
+            <WorkspaceConnectionHealth status={status} />
           </header>
-          <div id="main-content" className="main-scroll" tabIndex={-1}>
+          {localEdition && !isWorkspaceStandalonePage(page) ? <WorkspaceSurface key={workspace.id} page={page} onActivatePage={activateWorkspacePage} onWorkspaceDestination={setWorkspaceDestination} renderPage={targetPage => <AppContext.Provider value={{ ...context, page: targetPage }}><div className="main-scroll"><ScreenBoundary key={`${workspace.id}:${targetPage.view}:${targetPage.id || ''}`}><Suspense fallback={<div role="status">Opening page…</div>}>{renderView(targetPage)}</Suspense></ScreenBoundary></div></AppContext.Provider>}><div className="main-scroll"><ScreenBoundary key={`${workspace.id}:${page.view}:${page.id || ''}`}><Suspense fallback={<div role="status">Opening page…</div>}>{view}</Suspense></ScreenBoundary></div></WorkspaceSurface> : <div id="main-content" className="main-scroll" tabIndex={-1}>
             <div className="view-entrance" key={`${page.view}-${page.id ?? 'all'}-${page.section ?? ''}-${workspace.id}-${page.projectId ?? "all"}`}><ScreenBoundary>
               <Suspense fallback={<div className="app-loading" role="status">Opening {NAV.find(item => item.id === page.view)?.label?.toLowerCase() || 'page'}…</div>}>
                 {view}
               </Suspense>
             </ScreenBoundary></div>
-          </div>
+          </div>}
         </div>
         {previewGeometry ? <SidebarPagePreview geometry={previewGeometry} onChange={next => setPreviewPlacement(clampPagePreview(next, window.innerWidth, window.innerHeight))} onOpen={() => { restoreSidebar(); requestAnimationFrame(() => document.getElementById('main-content')?.focus()); }} onExit={restoreSidebar} /> : null}
         </>}

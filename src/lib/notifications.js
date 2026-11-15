@@ -26,7 +26,7 @@ export function createNotificationStore() {
     show(message, type = 'success', undo, options = {}) {
       if (!message) return null;
       const text = String(message);
-      const duplicate = items.find(item => !item.closing && item.message === text && item.type === type);
+      const duplicate = !undo && !options.action && items.find(item => !item.closing && !item.undo && !item.action && item.message === text && item.type === type);
       if (duplicate) {
         items = items.map(item => item === duplicate ? { ...item, revision: item.revision + 1, undo, ...options } : item);
         emit(); return duplicate.id;

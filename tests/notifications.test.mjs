@@ -57,3 +57,9 @@ test('spring enters from above, overshoots gently, and settles precisely', () =>
   assert.ok(Math.max(...y) > 0 && Math.max(...y) < 15);
   assert.equal(notificationSpring.at(-1).opacity, 1);
 });
+test('identical Undo messages retain separate inverse actions', () => {
+  const store = createNotificationStore();
+  const first = () => 'first', second = () => 'second';
+  assert.notEqual(store.show('Finished: Draft', 'success', first), store.show('Finished: Draft', 'success', second));
+  assert.deepEqual(store.getSnapshot().map(item => item.undo()), ['first','second']);
+});

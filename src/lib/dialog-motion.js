@@ -19,5 +19,5 @@ export function dialogRevealFrame(panel, opener) {
 export const DIALOG_REVEALED_FRAME = Object.freeze({ clipPath: 'inset(0% 0% 0% 0% round 14px)', transform: 'translate(0px, 0px)', opacity: 1 });
 
 export function dialogMotionDuration(preference, closing = false) {
-  return preference.movement ? closing ? 160 : 240 : preference.fadeMs ? MOTION.reducedFadeMs : 0;
+  return preference.movement ? closing ? 180 : 280 : preference.fadeMs ? MOTION.reducedFadeMs : 0;
 }

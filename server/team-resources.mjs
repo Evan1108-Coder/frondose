@@ -5,7 +5,7 @@ import { recordChange } from './workspace-features.mjs';
 export const TEAM_RESOURCE_LIMITS = Object.freeze({ fileBytes: 25 * 1024 * 1024, workspaceBytes: 250 * 1024 * 1024, resourcesPerTeam: 500 });
 const FIELDS = 'id,workspace_id,team_id,kind,name,description,url,ref_id,file_name,mime_type,byte_size,version,archived_at,created_at,updated_at';
 const REFERENCES = { route: 'tasks', project: 'projects', chat: 'chats', document: 'documents' };
-const KINDS = new Set(['file', 'url', 'branch', ...Object.keys(REFERENCES)]);
+const KINDS = new Set(['file', 'url', 'branch', 'reference', ...Object.keys(REFERENCES)]);
 const stamp = () => new Date().toISOString();
 const invalid = (message, statusCode = 400) => Object.assign(validationError(message), { statusCode });
 const clean = (value, label, maximum, optional = false) => {
@@ -30,6 +30,14 @@ export function installTeamResources(db) {
 function scope(db, workspaceId, teamId) {
   if (typeof workspaceId !== 'string' || typeof teamId !== 'string' ||
     !db.prepare('SELECT 1 FROM teams t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=? AND t.workspace_id=? AND t.archived_at IS NULL AND w.archived_at IS NULL').get(teamId, workspaceId)) throw invalid('Choose an active team in this workspace.', 404);
+}
+
+// Reused by owner-only To Do references; IDs never bypass the canonical Area scope.
+export function readTeamResource(db, workspaceId, teamId, resourceId) {
+  scope(db, workspaceId, teamId);
+  const item = db.prepare(`SELECT ${FIELDS} FROM team_resources WHERE id=? AND workspace_id=? AND team_id=? AND archived_at IS NULL`).get(resourceId, workspaceId, teamId);
+  if (!item) throw invalid('This resource is no longer available in this Area.', 404);
+  return item;
 }
 
 function safeUrl(value, kind) {
@@ -103,7 +111,7 @@ function contentResponse(req, res, url, item, content) {
   res.writeHead(status, headers); res.end(req.method === 'HEAD' ? undefined : content.subarray(start, end + 1));
 }
 
-export async function teamResourcesRoute({ db, req, res, path, url, readBody, send }) {
+export async function teamResourcesRoute({ db, req, res, path, url, readBody, send, validateReference }) {
   const match = /^\/team-resources(?:\/([^/]+))?(?:\/(content))?$/.exec(path);
   if (!match) return false;
   const [, encodedId, content] = match;
@@ -147,6 +155,17 @@ export async function teamResourcesRoute({ db, req, res, path, url, readBody, se
   if (current && Object.hasOwn(body, 'archived_at') && ![null, true].includes(body.archived_at)) throw invalid('Choose whether to archive or restore this resource.');
   if (current?.archived_at && body.archived_at !== null) throw invalid('Restore this resource before editing it.');
   const data = current && Object.hasOwn(body, 'archived_at') ? current : fields(db, body, workspaceId, current);
+  if (data.kind === 'reference') {
+    if (!validateReference) throw invalid('Workspace references require the local app.', 403);
+    if (current) data.ref_id = current.ref_id;
+    else {
+      if (!isRecord(body.reference)) throw invalid('Choose a saved workspace reference.');
+      const reference = await validateReference(workspaceId, teamId, body.reference);
+      scope(db, workspaceId, teamId);
+      if (reference.kind === 'area-resource') readTeamResource(db,workspaceId,reference.teamId,reference.id);
+      data.ref_id = JSON.stringify(reference);
+    }
+  }
   const file = !current && data.kind === 'file' ? fileFor(body.file) : null;
   if (current && body.file !== undefined) throw invalid('Add a new resource to upload another file.');
   const now = stamp();
@@ -166,3 +185,5 @@ export async function teamResourcesRoute({ db, req, res, path, url, readBody, se
     db.exec('COMMIT'); send(res, current ? 200 : 201, { result }); return true;
   } catch (error) { db.exec('ROLLBACK'); throw error; }
 }
+
+export {fileFor as validateResourceFile};

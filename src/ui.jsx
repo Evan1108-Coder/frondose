@@ -10,7 +10,10 @@ import { useApp as useAppContext } from './app-context.js';
 import { ErrorNotification } from './components/Notifications.jsx';
 import { currentMotionPreference, MOTION } from './lib/motion.js';
 import { dialogRevealFrame, dialogMotionDuration, DIALOG_REVEALED_FRAME } from './lib/dialog-motion.js';
+import { retainDialogExit } from './lib/dialog-exit.js';
 import './components/editor-dialog.css';
+import { layoutDialogContent } from './lib/dialog-content.jsx';
+import './components/dialog-layout.css';
 
 export { AppContext, useApp } from "./app-context.js";
 export { EmptyState as Empty } from "./components/EmptyState.jsx";
@@ -150,16 +153,14 @@ export function Dialog({
   wide = false,
   className = "",
   closeDisabled = false,
+  hideCloseButton = false,
   editor = false,
 }) {
   const ref = useRef(null);
   const originRef = useRef(null);
   const backdropStart = useRef(false);
-  const closeTimer = useRef(null);
-  const pendingCloseRef = useRef(null);
   const animationRef = useRef(null);
   const closingRef = useRef(false);
-  const [closing, setClosing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [hasInput, setHasInput] = useState(editor);
   useLayoutEffect(() => {
@@ -178,37 +179,20 @@ export function Dialog({
   closeRef.current = onClose;
   const requestClose = (action) => {
     if (closingRef.current || closeDisabled) return;
-    // A render-prop footer can use the same guarded exit as the header/backdrop.
-    // An explicit continuation is for navigation/discard, never implicit approval.
+    // Real guards, saves, stops and navigation must not wait for decoration.
+    // The layout cleanup retains only a sanitized inert exit picture when this
+    // callback actually unmounts the panel; a refused dirty-close stays visible.
     const finishClose = typeof action === 'function' ? action : () => closeRef.current();
-    pendingCloseRef.current = finishClose;
-    const preference = currentMotionPreference();
-    const duration = dialogMotionDuration(preference, true);
-    if (!duration || className.includes('command-dialog')) { animationRef.current?.cancel(); pendingCloseRef.current = null; finishClose(); return; }
     closingRef.current = true;
-    setClosing(true);
-    const panel = ref.current;
-    if (panel?.animate) {
-      const computed = getComputedStyle(panel);
-      const from = { clipPath: computed.clipPath === 'none' ? DIALOG_REVEALED_FRAME.clipPath : computed.clipPath, transform: computed.transform, opacity: computed.opacity };
-      animationRef.current?.cancel();
-      const to = preference.movement ? dialogRevealFrame(panel.getBoundingClientRect(), openerRef.current?.isConnected ? openerRef.current.getBoundingClientRect() : null) : { ...DIALOG_REVEALED_FRAME, opacity: 0 };
-      animationRef.current = panel.animate([from, to], { duration, easing: MOTION.easeOut, fill: 'forwards' });
-    }
-    closeTimer.current = window.setTimeout(() => {
-      const finish = pendingCloseRef.current;
-      pendingCloseRef.current = null;
-      finish?.();
-      // A guarded close may keep this same dialog mounted for a discard step.
-      // Reset its exit state even when the handler did not explicitly return false.
-      closingRef.current = false;
-      setClosing(false);
-      animationRef.current?.cancel();
-      animationRef.current = null;
-    }, duration);
+    try { finishClose(); }
+    finally { closingRef.current = false; }
   };
   requestCloseRef.current = requestClose;
-  useEffect(() => () => { window.clearTimeout(closeTimer.current); animationRef.current?.cancel(); }, []);
+  useEffect(() => () => { animationRef.current?.cancel(); }, []);
+  useLayoutEffect(() => {
+    const panel = ref.current;
+    return () => retainDialogExit(panel, openerRef.current);
+  }, []);
   useLayoutEffect(() => {
     const origin = originRef.current, backdrop = ref.current?.closest('.dialog-backdrop');
     if (!origin || !backdrop) return;
@@ -234,21 +218,19 @@ export function Dialog({
     const preference = currentMotionPreference(), duration = dialogMotionDuration(preference);
     if (duration) {
       const from = preference.movement ? dialogRevealFrame(panel.getBoundingClientRect(), openerRef.current?.isConnected ? openerRef.current.getBoundingClientRect() : null) : { ...DIALOG_REVEALED_FRAME, opacity: 0 };
-      animationRef.current = panel.animate([from, DIALOG_REVEALED_FRAME], { duration, easing: MOTION.easeOut });
+      const animation = panel.animate([from, DIALOG_REVEALED_FRAME], { duration, easing: MOTION.easeOut, fill: 'both' });
+      animationRef.current = animation;
+      // The settled panel must regain normal overflow/shadows (including an
+      // anchored save arrow). A filled clip-path would keep clipping them.
+      animation.finished.then(() => {
+        if (animationRef.current === animation) { animation.cancel(); animationRef.current = null; }
+      }).catch(() => {});
     }
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const stopSpatial = () => {
       if (currentMotionPreference().movement) return;
       animationRef.current?.cancel();
       animationRef.current = null;
-      if (closingRef.current) {
-        window.clearTimeout(closeTimer.current);
-        const finish = pendingCloseRef.current;
-        pendingCloseRef.current = null;
-        finish?.();
-        closingRef.current = false;
-        setClosing(false);
-      }
     };
     const observer = new MutationObserver(stopSpatial);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion', 'data-input-modality'] });
@@ -310,7 +292,6 @@ export function Dialog({
   const dialog = (
     <div
       className="dialog-backdrop"
-      data-closing={closing ? 'true' : undefined}
       data-dialog-reveal="true"
       onPointerDown={(event) => {
         backdropStart.current = event.target === event.currentTarget;
@@ -345,12 +326,12 @@ export function Dialog({
           </div>
           <div className="dialog-heading-actions">
           {hasInput ? <IconButton label={expanded ? 'Restore dialog size' : 'Expand dialog'} aria-pressed={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? <Minimize2 /> : <Maximize2 />}</IconButton> : null}
-          <IconButton label="Close dialog" disabled={closeDisabled} onClick={requestClose}>
+          {hideCloseButton ? null : <IconButton label="Close dialog" disabled={closeDisabled} onClick={requestClose}>
             <X />
-          </IconButton>
+          </IconButton>}
           </div>
         </header>
-        {typeof children === 'function' ? children(requestClose) : children}
+        {layoutDialogContent(typeof children === 'function' ? children(requestClose) : children, { Field, Button, ErrorMessage })}
       </section>
     </div>
   );

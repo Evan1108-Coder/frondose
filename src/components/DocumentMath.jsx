@@ -8,6 +8,6 @@ const MATH_OPTIONS = { trust: false, strict: 'warn', maxExpand: 500, maxSize: 20
 const REHYPE_PLUGINS = [[rehypeKatex, MATH_OPTIONS]];
 
 /** Separate chunk: ordinary conversation text does not load TeX or its fonts. */
-export default function DocumentMath({ content, remarkPlugins, ...props }) {
-  return <Markdown {...props} remarkPlugins={[...remarkPlugins, remarkMath, remarkBoundMath]} rehypePlugins={REHYPE_PLUGINS}>{content}</Markdown>;
+export default function DocumentMath({ content, remarkPlugins, rehypePlugins = [], ...props }) {
+  return <Markdown {...props} remarkPlugins={[...remarkPlugins, remarkMath, remarkBoundMath]} rehypePlugins={[...rehypePlugins, ...REHYPE_PLUGINS]}>{content}</Markdown>;
 }

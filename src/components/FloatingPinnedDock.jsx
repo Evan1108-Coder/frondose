@@ -5,6 +5,9 @@ import { useApp } from '../ui.jsx';
 import { NAV } from './Shell.jsx';
 import { favoriteKey, resolveFavorite } from '../lib/organization.js';
 import { useFrondoseAgentAppearance } from '../lib/frondose-agent-appearance.js';
+import { isLocalProduct } from '../lib/local-product.js';
+import { isLocalNavigationItemAllowed } from '../lib/local-navigation.js';
+import { localWorkspaceQuickAccess } from '../lib/local-settings-catalog.js';
 import './floating-pinned-dock.css';
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -12,7 +15,7 @@ const snap = position => ({ x: position.x < 0.08 ? 0.035 : position.x > 0.92 ? 0
 
 export function FloatingPinnedDock() {
   const { data, navigate, organization, updateOrganization, workspace } = useApp();
-  const agentAppearance = useFrondoseAgentAppearance(workspace?.id);
+  const agentAppearance = useFrondoseAgentAppearance(isLocalProduct(data) ? null : workspace?.id);
   const positionFromPreferences = organization.dockPosition ?? { x: 0.5, y: 0.9 };
   const [position, setPosition] = useState(positionFromPreferences);
   const [hoverIndex, setHoverIndex] = useState(-1);
@@ -21,7 +24,7 @@ export function FloatingPinnedDock() {
   const dock = useRef(null);
   useEffect(() => setPosition(positionFromPreferences), [positionFromPreferences.x, positionFromPreferences.y]);
   const entries = useMemo(() => [
-    ...(organization.pinnedLayout ?? []).map(id => {
+    ...localWorkspaceQuickAccess(organization.pinnedLayout ?? [], data).filter(id => !isLocalProduct(data) || isLocalNavigationItemAllowed(id)).map(id => {
       const item = NAV.find(tab => tab.id === id);
       return item ? { key: `tab:${id}`, label: id === 'rumbo-agent' ? agentAppearance.display_name : item.label, icon: item.icon || Focus, view: id, id: null } : null;
     }).filter(Boolean),

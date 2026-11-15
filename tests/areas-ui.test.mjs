@@ -4,6 +4,7 @@ import { pageHash, parsePage } from '../src/lib/navigation.js';
 import { normalizeExperience } from '../src/lib/workspace-experience.js';
 import { areaContactsVisible, areaSettingsFields, areaSettingsPatch, AREA_READ_TOOLS } from '../src/lib/areas.js';
 import { readFileSync } from 'node:fs';
+import { isLocalCreationAllowed, isLocalNavigationItemAllowed } from '../src/lib/local-navigation.js';
 
 test('canonical Areas routes preserve legacy IDs, section deep links and query validation', () => {
   for (const section of ['overview', 'projects', 'routes', 'resources', 'documents', 'updates', 'settings', 'people']) {
@@ -70,6 +71,12 @@ test('Area creation controls and search expose Area names while retaining legacy
   const arrange = readFileSync(new URL('../src/components/SidebarArrange.jsx', import.meta.url), 'utf8');
   assert.match(shell, /section === "teams" \? "Area"/);
   assert.match(shell, /kind === "team" \? "Area"/);
-  assert.match(shell, /aria-label="Search projects, Areas, Routes, chats and actions"/);
+  assert.match(shell, /aria-label=\{local \? 'Search projects, Routes, files, settings and actions' : 'Search projects, Areas, Routes, chats and actions'\}/);
+  assert.match(shell, /\["project", "team", "task", "chat", "agent", "memory"\]\.filter\(kind => !local \|\| isLocalCreationAllowed\(kind\)\)/);
+  assert.match(shell, /visible\(local \? \[\] : data\.chats\)/);
+  assert.equal(isLocalCreationAllowed('team'), true);
+  assert.equal(isLocalNavigationItemAllowed('teams'), true);
+  assert.equal(isLocalCreationAllowed('chat'), false);
+  assert.equal(isLocalCreationAllowed('agent'), false);
   assert.match(arrange, /options.kind === 'team' \? 'Area'/);
 });

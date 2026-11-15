@@ -1,0 +1,58 @@
+[
+  {
+    "id": "github",
+    "name": "GitHub",
+    "group": "Code",
+    "description": "Read repositories, issues and pull requests.",
+    "docs": "https://docs.github.com/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens",
+    "scopes": "Fine-grained token: selected repositories, Metadata, Issues and Pull requests — read only."
+  },
+  {
+    "id": "gitlab",
+    "name": "GitLab",
+    "group": "Code",
+    "description": "Browse projects, issues and merge requests.",
+    "docs": "https://docs.gitlab.com/user/profile/personal_access_tokens/",
+    "scopes": "Personal access token with read_api. GitLab.com or a public HTTPS GitLab host."
+  },
+  {
+    "id": "bitbucket",
+    "name": "Bitbucket",
+    "group": "Code",
+    "description": "Read Bitbucket Cloud repositories and pull requests.",
+    "docs": "https://support.atlassian.com/bitbucket-cloud/docs/using-api-tokens/",
+    "scopes": "Scoped API token: read:user:bitbucket, read:workspace:bitbucket, read:repository:bitbucket and read:pullrequest:bitbucket. Use your Atlassian email, not an app password. Discovery checks up to 10 workspaces."
+  },
+  {
+    "id": "azure-devops",
+    "name": "Azure DevOps",
+    "group": "Code",
+    "description": "Browse projects, repositories and pull requests.",
+    "docs": "https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate",
+    "scopes": "Personal access token scoped to your organization: Project and Team read, Code read."
+  },
+  {
+    "id": "gitea",
+    "name": "Gitea",
+    "group": "Code",
+    "description": "Read repositories, issues and pull requests on Gitea.",
+    "docs": "https://docs.gitea.com/development/api-usage",
+    "scopes": "Personal token: read:user and read:repository. Gitea.com or a public HTTPS Gitea host."
+  },
+  {
+    "id": "linear",
+    "name": "Linear",
+    "group": "Tasks",
+    "description": "Browse teams and their issues.",
+    "docs": "https://linear.app/developers/graphql",
+    "scopes": "Personal API key with read access to the teams you select."
+  },
+  {
+    "id": "jira",
+    "name": "Jira",
+    "group": "Tasks",
+    "description": "Browse Jira Cloud projects and their issues.",
+    "docs": "https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/",
+    "scopes": "Atlassian email and Jira Cloud API token. Your account needs Browse projects. Scoped tokens use your Cloud ID."
+  }
+]

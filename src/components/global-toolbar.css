@@ -14,7 +14,7 @@
 .global-tool, .global-language { display: grid; place-items: center; width: 30px; height: 30px; flex: none; }
 .global-tool svg { width: 17px; height: 17px; }
 .global-tool[aria-current="page"] { color: var(--text); background: var(--selected); }
-.global-language { font-size: 11px; font-weight: 600; }
+.global-language { width: auto; min-width: 30px; padding-inline: 6px; font-size: 11px; font-weight: 600; }
 .global-profile { width: 30px; height: 30px; flex: none; overflow: hidden; display: grid; place-items: center; border-radius: 50% !important; background: var(--selected) !important; font-size: 11px; font-weight: 650; }
 .global-toolbar .global-profile { padding: 0; }
 .global-profile img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }

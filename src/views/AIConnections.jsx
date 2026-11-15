@@ -4,11 +4,13 @@ import { Button, Dialog, ErrorMessage, Field, PageHeader, SearchField, Select, u
 import { API_PROVIDERS, apiProviderDefinition } from '../lib/ai-provider-catalog.js';
 import { aiProviderName } from '../lib/ai-providers.js';
 import { refreshFrondose } from '../data/useFrondose.js';
-import { ArrowRight, Check, ExternalLink, Plug, Terminal } from '../components/icons.jsx';
+import { ArrowRight, Check, ExternalLink, Terminal } from '../components/icons.jsx';
 import { ServiceLogo } from '../components/ServiceLogo.jsx';
 import { ConnectionDialog } from './Connections.jsx';
 import { ComputerConnections } from '../components/ComputerConnections.jsx';
 import { SlidingTabs } from '../components/SlidingTabs.jsx';
+import { isLocalProduct } from '../lib/local-product.js';
+import { LocalRuntimePanel } from '../components/LocalInstallation.jsx';
 import './ai-connections.css';
 
 const PROVIDERS = [
@@ -181,7 +183,8 @@ export function AIConnectionsView() {
         </div>
       </div>
     </section> : <>
-      <PageHeader title="AI connections" description="Choose API credentials, supported account authorization, or a personal computer. Account access and agent permissions are separate."><Button onClick={() => navigate('docs', 'provider-connections')}>Connection guides</Button></PageHeader>
+      <PageHeader title="AI connections" description={isLocalProduct(data) ? 'Run agents on your computer, or optionally connect your own provider API.' : 'Choose API credentials, supported account authorization, or a personal computer. Account access and agent permissions are separate.'}><Button onClick={() => navigate('docs', 'provider-connections')}>Connection guides</Button></PageHeader>
+      {isLocalProduct(data) ? <LocalRuntimePanel /> : null}
       <div className="ai-catalog-controls">
         <SlidingTabs className="ai-filter-tabs" label="Filter AI connections" value={filter} onChange={setFilter} options={[{ value: 'all', label: 'All' }, { value: 'api', label: 'API key' }, { value: 'sign-in', label: 'Sign in' }, { value: 'local', label: 'Local' }]} />
         <SearchField value={query} onChange={setQuery} placeholder="Search providers…" />
@@ -205,7 +208,6 @@ export function AIConnectionsView() {
       </div>
       <details className="ai-direct-note"><summary>About connection methods and credits</summary><p>API keys use your provider API billing. OpenRouter, configured Hugging Face, and configured GitHub Copilot offer browser authorization. A paired computer uses the owner’s locally authorized runtimes and account. Public mode never borrows the server owner’s CLI login. Each computer and agent policy must explicitly allow execution; connecting never starts a request.</p></details>
       <ComputerConnections key={workspace.id} workspaceId={workspace.id} />
-      <div className="ai-plugin-note"><Plug /><span>Service integrations are now called <strong>Plugins</strong>. They remain Coming soon and are separate from AI connections.</span><button type="button" onClick={() => navigate('settings', 'integrations')}>View Plugins <ArrowRight /></button></div>
     </>}
     {runnerDialog ? <ConnectionDialog provider={runnerDialog.provider} setup={runnerDialog.setup} onClose={() => setRunnerDialog(null)} /> : null}
     {keyDialog ? <ApiKeyDialog key={`${workspace.id}:${keyDialog.id}`} provider={keyDialog} saved={state?.[keyDialog.id]} busy={busy} onClose={() => { if (!busy) setKeyDialog(null); }} onSave={async input => { setBusy(true); try { await post(keyDialog.id, 'api-key', input); await load(); setKeyDialog(null); } finally { setBusy(false); } }} /> : null}

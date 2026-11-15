@@ -40,10 +40,15 @@ test('corrupt or unavailable browser storage cannot break reading', () => {
   assert.deepEqual(recordProductUpdateRead(broken, 'key', 'opened').read, ['opened']);
   assert.deepEqual(normalizeProductUpdateReads({ version: 1, read: [null, '', {}, 'ok', 'ok', 'x'.repeat(129)] }).read, ['ok']);
 });
-test('release popup reads authored Docs content without navigating until Go to Docs', () => {
+test('local release article opens in a workspace tab while ordinary Docs remains standalone', () => {
   const help = readFileSync(new URL('../src/components/HelpMenu.jsx', import.meta.url), 'utf8');
   const reader = readFileSync(new URL('../src/components/ReleaseReader.jsx', import.meta.url), 'utf8');
-  assert.match(help, /const openRelease = update => setRelease/);
+  assert.match(help, /requestWorkspaceTool\(workspace.id,'release-notes'/);
+  const tab=readFileSync(new URL('../src/components/workspace/ReleaseTab.jsx',import.meta.url),'utf8');
+  assert.match(tab,/recordProductUpdateRead/);
+  assert.match(tab,/navigate\('docs'/);
+  assert.match(help,/Check for updates/);
+  assert.match(help,/result\?\.release/);
   assert.match(help, /onOpenDocs=\{\(\) =>/);
   assert.match(reader, /<DocsArticleSections article=\{article\}/);
   assert.match(reader, /Go to Docs/);

@@ -1,12 +1,21 @@
 import { apiRequest } from '../data/api.js';
 
+export function workbenchScopeFields(scope) {
+  if (scope.host === 'workspace') {
+    if (scope.projectId != null || scope.environmentId) throw new Error('A workspace terminal cannot adopt project authority.');
+    return { workspace_id: scope.workspaceId, host_scope: 'workspace' };
+  }
+  return { workspace_id: scope.workspaceId, project_id: scope.projectId, environment_id: scope.environmentId || null };
+}
+
 export async function workbenchRequest(scope, action = '', { method = 'GET', body, signal } = {}) {
-  const query = new URLSearchParams({ workspace_id: scope.workspaceId, project_id: scope.projectId });
-  if (scope.environmentId) query.set('environment_id', scope.environmentId);
-  if (method === 'GET') for (const [key, value] of Object.entries(body || {})) if (value !== undefined) query.set(key, String(value));
+  const authority = workbenchScopeFields(scope);
+  const payload = Object.fromEntries(Object.entries(body || {}).filter(([key]) => !['workspace_id', 'project_id', 'environment_id', 'host_scope'].includes(key)));
+  const query = new URLSearchParams(Object.entries(authority).filter(([, value]) => value != null));
+  if (method === 'GET') for (const [key, value] of Object.entries(body || {})) if (value !== undefined && !['workspace_id', 'project_id', 'environment_id', 'host_scope'].includes(key)) query.set(key, String(value));
   const result = await apiRequest(`/api/workbench${action ? `/${action}` : ''}?${query}`, {
     method, signal, timeoutMs: action === 'worktrees' ? 25_000 : 12_000,
-    ...(method !== 'GET' ? { body: { ...body, workspace_id: scope.workspaceId, project_id: scope.projectId, environment_id: scope.environmentId || null } } : {}),
+    ...(method !== 'GET' ? { body: { ...payload, ...authority } } : {}),
   });
   return result.result;
 }

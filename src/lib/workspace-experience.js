@@ -42,8 +42,10 @@ export function attentionItems(data, seenFailures = [], now = Date.now()) {
   return items;
 }
 export function describePage(data, page) {
+  if (page.view === 'todos') return 'To Do List';
+  if (page.view === 'comments') return page.id ? 'Comment discussion' : 'Comments';
   const collection = { 'rumbo-agent': 'chats', workflows: 'manual_workflows', updates: 'activity_entries', memory: 'memory_notes', library: 'outputs', workbench: 'projects', work: 'runs', views: 'workspace_items' }[page.view] ?? page.view;
   const item = page.id && (data[collection] ?? []).find(i => i.id === page.id && !i.archived_at);
   if (page.id && !item && !['operations', 'library', 'workflows'].includes(page.view)) return null;
-  return item?.title || item?.name || { 'rumbo-agent': 'Frondose', teams: 'Areas', overview: 'Today', work: 'Runs', chats: 'Conversations', tasks: 'Routes', workbench: 'Workbench', library: 'Knowledge', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());
+  return item?.title || item?.name || { 'rumbo-agent': 'Frondose', todos:'To Do List', teams: 'Areas', overview: 'Today', work: 'Runs', chats: 'Conversations', tasks: 'Routes', workbench: 'Workbench', library: 'Knowledge', operations: 'Coordination' }[page.view] || page.view.replace(/^./, c => c.toUpperCase());
 }

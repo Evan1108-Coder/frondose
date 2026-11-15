@@ -4,6 +4,7 @@ import { Button, Dialog, ErrorMessage, Field, Select, Toggle, useApp } from '../
 import { refreshFrondose } from '../data/useFrondose.js';
 import { Form } from './Form.jsx';
 import { useUnsavedUpdate } from './UnsavedUpdates.jsx';
+import { isLocalProduct } from '../lib/local-product.js';
 import './agent-runner-settings.css';
 
 function editableSettings(saved) {
@@ -19,6 +20,8 @@ function editableSettings(saved) {
 }
 
 function AgentRunnerSettingsContent({ agentId, workspaceId, providerId, members: suppliedMembers, onSaved }) {
+  const { data } = useApp();
+  const local = isLocalProduct(data);
   const [saved, setSaved] = useState(null);
   const [draft, setDraft] = useState(null);
   const [runners, setRunners] = useState([]);
@@ -40,7 +43,7 @@ function AgentRunnerSettingsContent({ agentId, workspaceId, providerId, members:
     const controller = new AbortController();
     setLoading(true); setError(null); setNotice('');
     const query = `workspace_id=${encodeURIComponent(workspaceId)}`;
-    const memberRequest = apiRequest(`/api/governance?${query}`, { signal: controller.signal }).then(response => response.result).catch(() => null);
+    const memberRequest = local ? Promise.resolve({ members: [], current_user: { id: 'local-owner' } }) : apiRequest(`/api/governance?${query}`, { signal: controller.signal }).then(response => response.result).catch(() => null);
     Promise.all([
       apiRequest(`/api/agent-runner-settings/${encodeURIComponent(agentId)}?${query}`, { signal: controller.signal }),
       apiRequest(`/api/runner-connections?${query}`, { signal: controller.signal }),
@@ -49,7 +52,7 @@ function AgentRunnerSettingsContent({ agentId, workspaceId, providerId, members:
       if (controller.signal.aborted || !active.current) return;
       const value = settingsResponse.result || settingsResponse;
       const connections = connectionsResponse.result || connectionsResponse;
-      setSaved(value); setDraft(editableSettings(value));
+      setSaved(value); setDraft({ ...editableSettings(value), ...(local ? { usage_scope: 'private', usage_member_ids: [] } : {}) });
       setRunners((connections.runners || []).filter(runner => !['approval_required', 'revoked'].includes(runner.state)));
       setCatalog(connections.catalog || []);
       setMembers((suppliedMembers || governance?.members || []).filter(member => member.status === 'active'));
@@ -58,7 +61,7 @@ function AgentRunnerSettingsContent({ agentId, workspaceId, providerId, members:
     }).catch(cause => { if (!controller.signal.aborted && active.current) setError(cause); })
       .finally(() => { if (!controller.signal.aborted && active.current) setLoading(false); });
     return () => { active.current = false; controller.abort(); };
-  }, [workspaceId, agentId, refresh, suppliedMembers]);
+  }, [workspaceId, agentId, refresh, suppliedMembers, local]);
 
   const update = (field, value) => { setNotice(''); setDraft(current => ({ ...current, [field]: value })); };
   const currentComputer = draft && runners.find(runner => runner.id === draft.runner_id);
@@ -123,9 +126,9 @@ function AgentRunnerSettingsContent({ agentId, workspaceId, providerId, members:
         <Toggle label="Allow provider-native tools" description="Permits this profile to request the runtime’s own file, shell or other tools when the local policy and reviewed project allow it. These tools run as the OS user, not inside a Frondose sandbox." checked={draft.native_tools_allowed} disabled={disabled || !policy?.native_tools_approved && !draft.native_tools_allowed} onChange={allowed => update('native_tools_allowed', allowed)} />
         {draft.native_tools_allowed ? <p>Native tools can change files or have external effects. Review the runtime’s own extensions, hooks and credentials on the computer. This switch does not make unsafe actions reversible.</p> : null}
       </> : null}
-      <Field label="Who can use this agent" hint="The computer owner’s local member-sharing policy and current execution grants must also allow access. Provider account-sharing rules still apply."><Select value={draft.usage_scope} onChange={value => setDraft(current => ({ ...current, usage_scope: value, usage_member_ids: [] }))} disabled={disabled}><option value="private">Only me</option><option value="members">Selected workspace members</option><option value="workspace">Workspace members with execution permission</option></Select></Field>
+      {!local ? <><Field label="Who can use this agent" hint="The computer owner’s local member-sharing policy and current execution grants must also allow access. Provider account-sharing rules still apply."><Select value={draft.usage_scope} onChange={value => setDraft(current => ({ ...current, usage_scope: value, usage_member_ids: [] }))} disabled={disabled}><option value="private">Only me</option><option value="members">Selected workspace members</option><option value="workspace">Workspace members with execution permission</option></Select></Field>
       {draft.usage_scope !== 'private' && !policy?.allow_workspace_members ? <p>Member execution is not authorized on this computer. The owner must allow it locally before enabling a shared binding.</p> : null}
-      {draft.usage_scope === 'members' ? <fieldset className="agent-computer-member-picker" disabled={disabled}><legend>Selected members</legend>{memberWarning ? <p>Member choices could not be loaded. Check your membership permissions and reload.</p> : members.length ? members.map(member => <label key={member.id}><input type="checkbox" checked={draft.usage_member_ids.includes(member.id)} onChange={event => update('usage_member_ids', event.target.checked ? [...draft.usage_member_ids, member.id] : draft.usage_member_ids.filter(id => id !== member.id))} /><span>{member.name}{member.id === currentActorId && member.name !== 'You' ? ' · You' : ''}</span></label>) : <p>No active members are available to select.</p>}</fieldset> : null}
+      {draft.usage_scope === 'members' ? <fieldset className="agent-computer-member-picker" disabled={disabled}><legend>Selected members</legend>{memberWarning ? <p>Member choices could not be loaded. Check your membership permissions and reload.</p> : members.length ? members.map(member => <label key={member.id}><input type="checkbox" checked={draft.usage_member_ids.includes(member.id)} onChange={event => update('usage_member_ids', event.target.checked ? [...draft.usage_member_ids, member.id] : draft.usage_member_ids.filter(id => id !== member.id))} /><span>{member.name}{member.id === currentActorId && member.name !== 'You' ? ' · You' : ''}</span></label>) : <p>No active members are available to select.</p>}</fieldset> : null}</> : null}
       <div className="agent-computer-setting-pair">
         <Field label="Maximum simultaneous sessions" hint={`The computer policy also applies${policy ? ` (maximum ${policy.max_concurrent_sessions})` : ''}; account rate limits remain separate.`}><Select value={String(draft.max_concurrent_sessions)} onChange={value => update('max_concurrent_sessions', Number(value))} disabled={disabled}>{[1, 2, 3, 4, 5, 6, 7, 8].map(value => <option key={value} value={String(value)}>{value}</option>)}</Select></Field>
         <Field label="Conversation grouping" hint="Each request receives freshly reviewed context. Grouping is not opaque native-thread resume or automatic history import."><Select value={draft.session_policy} onChange={value => update('session_policy', value)} disabled={disabled}><option value="conversation">Group turns by conversation</option><option value="new-session">Separate group for each request</option></Select></Field>

@@ -8,7 +8,7 @@ import { relative, resolve } from 'node:path';
 import { fieldHintMetadata, normalizeFieldDefinition } from '../src/lib/field-defaults.js';
 
 const CONTROL_NAMES = new Set(['input', 'textarea', 'DateField', 'SearchField']);
-const OMIT_FILES = /(?:^|\/)(?:FieldDefaultsProvider|FieldDefaultsSettings|DateField|SelectField|Playbooks)\.jsx$/;
+const OMIT_FILES = /(?:^|\/)(?:FieldDefaultsProvider|FieldDefaultsSettings|DateField|SelectField|Playbooks|TabApps|DesktopApplications)\.jsx$/;
 const SENSITIVE_FORM = /password|passcode|credential|api.?key|private.?key|secret|authentication|sign.?in|sign.?up|payment|billing|credit.?card|cc[-_]|one.?time.?code|(?:pairing|recovery|verification|connection)[._ -]?code|security/i;
 const slug = value => value.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'field';
 const words = value => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
@@ -230,7 +230,7 @@ export function analyzeFieldSource(source, filename) {
     const search = type === 'search' || /search|filter|query/i.test(`${label} ${expression(node, 'value', source)}`);
     const localDraft = /^(?:\{)?(?:query|search|filter)(?:\})?$/.test(expression(node, 'value', source));
     const auto = search && (localDraft || !/settings\//.test(path)) || /(?:New|Create)/.test(component) && !/settings\//.test(path);
-    fields.push({ ...definition, directKey, start: node.start, end: node.end, explicit: Boolean(explicit), auto: Boolean(auto), hasAuto: Boolean(attr(node, 'data-field-default-auto')), excluded: !definition?.eligible });
+    fields.push({ ...definition, directKey, start: node.start, end: node.end, explicit: Boolean(explicit), auto: Boolean(auto), hasAuto: Boolean(attr(node, 'data-field-default-auto')), hasExclude: Boolean(attr(node, 'data-field-defaults-exclude')), excluded: !definition?.eligible });
   });
   return fields;
 }
@@ -239,6 +239,9 @@ export function instrumentFieldSource(source, filename) {
   const fields = analyzeFieldSource(source, filename);
   let code = source;
   for (const field of [...fields].sort((a, b) => b.end - a.end)) {
+    // Authored exclusions already reach the DOM. Repeating them produces
+    // duplicate JSX attributes (including when the original is boolean).
+    if (field.excluded && field.hasExclude) continue;
     const end = field.end - (source[field.end - 2] === '/' ? 2 : 1);
     const attributes = field.excluded ? ' data-field-defaults-exclude="true"' : ` data-field-default-source=${JSON.stringify(field.key)} data-field-default-source-page=${JSON.stringify(field.page)} data-field-default-source-label=${JSON.stringify(field.label)}${field.hasAuto ? '' : ` data-field-default-auto=${JSON.stringify(String(field.auto))}`}`;
     code = code.slice(0, end) + attributes + code.slice(end);
@@ -254,7 +257,7 @@ export function discoverSourceFields(root) {
       if (entry.isDirectory()) visit(path);
       else if (entry.name.endsWith('.jsx')) for (const field of analyzeFieldSource(readFileSync(path, 'utf8'), relative(root, path))) {
         if (!field.excluded) {
-          const { start, end, explicit, directKey, auto, hasAuto, excluded, ...sourceDefinition } = field;
+          const { start, end, explicit, directKey, auto, hasAuto, hasExclude, excluded, ...sourceDefinition } = field;
           const definition = directKey ? normalizeFieldDefinition({ ...sourceDefinition, key: directKey }) : sourceDefinition;
           if (!definition?.eligible) continue;
           fields.set(definition.key, definition);

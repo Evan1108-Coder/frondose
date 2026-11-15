@@ -1,10 +1,19 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { registerDesktopUpdateGuard } from '../lib/desktop-updates.js';
+import { updateFormFingerprint } from '../lib/update-form-safety.js';
 
 // Browser constraints are useful; browser validation bubbles are not our UI.
 export function Form({ children, onSubmit, onInput, ...props }) {
   const [error, setError] = useState(null);
   const errorId = useId();
-  return <form {...props} noValidate onInput={(event) => { setError(null); onInput?.(event); }}
+  const formRef = useRef(null), baseline = useRef(null), touched = useRef(false), passwordTouched = useRef(false);
+  useEffect(() => { if (!touched.current && formRef.current) baseline.current = updateFormFingerprint(formRef.current); });
+  useEffect(() => registerDesktopUpdateGuard(() => {
+    const form = formRef.current;
+    if (!passwordTouched.current && (!touched.current || Boolean(form && updateFormFingerprint(form) === baseline.current))) return true;
+    return [{ kind: 'form-draft', label: form?.closest('[role="dialog"]')?.getAttribute('aria-label') || form?.closest('.settings-panel')?.querySelector('h2, h3')?.textContent }];
+  }), []);
+  return <form {...props} ref={formRef} noValidate onInput={(event) => { touched.current = true; if (event.target.type === 'password') passwordTouched.current = Boolean(event.target.value); setError(null); onInput?.(event); }}
     onSubmit={(event) => {
       const form = event.currentTarget;
       const invalid = [...form.elements].find((field) => field.willValidate && !field.validity.valid)

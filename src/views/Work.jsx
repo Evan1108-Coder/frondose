@@ -34,6 +34,7 @@ import {
   visible,
 } from "../lib/model.js";
 const RunUsageButton = lazy(() => import('../components/RunUsage.jsx').then(module => ({ default: module.RunUsageButton })));
+import { isLocalProduct } from '../lib/local-product.js';
 
 export function SessionDialog({ defaults = {}, onClose }) {
   const { data, workspace, navigate, notify } = useApp();
@@ -354,6 +355,7 @@ function Approval({ approval, run }) {
 
 export function WorkView() {
   const { data, workspace, page, navigate, startSession, perform, notify, organization, toggleFavorite } = useApp();
+  const local = isLocalProduct(data);
   const [filter, setFilter] = useState("all");
   const [rename, setRename] = useState(null);
   const [archive, setArchive] = useState(null);
@@ -393,9 +395,9 @@ export function WorkView() {
     <main className="page work-page">
       <PageHeader
         title="Active work"
-        description="Recorded progress, tool activity and reviewed follow-ups. Conversations stay open while agents work."
+        description={local ? 'Recorded results and activity. New CLI work opens in workspace tabs.' : 'Recorded progress, tool activity and reviewed follow-ups. Conversations stay open while agents work.'}
       >
-        {data.runs.length ? (
+        {!local && data.runs.length ? (
           <Button variant="primary" icon={Play} onClick={() => startSession()}>
             Start session
           </Button>
@@ -453,7 +455,7 @@ export function WorkView() {
                     <h2>{run.title}</h2>
                   </div>
                   <div>
-                    <SkillFromRunButton run={run} />
+                    {!local ? <SkillFromRunButton run={run} /> : null}
                     <CapturedRunContextButton run={run} />
                     <Suspense fallback={<span>Loading usage control…</span>}><RunUsageButton key={run.id} run={run} /></Suspense>
                     <Button
@@ -480,7 +482,7 @@ export function WorkView() {
                       >
                         Stop
                       </Button>
-                    ) : (
+                    ) : !local ? (
                       <Button
                         icon={Play}
                         onClick={() =>
@@ -494,7 +496,7 @@ export function WorkView() {
                       >
                         Run again
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
                 <div className="session-properties">
@@ -515,7 +517,7 @@ export function WorkView() {
                     </strong>
                   </div>
                 </div>
-                {val(run, "chat_id") ? (
+                {!local && val(run, "chat_id") ? (
                   <button
                     className="text-button"
                     onClick={() => navigate("chats", val(run, "chat_id"))}
@@ -570,7 +572,7 @@ export function WorkView() {
                 </div>
                 {events.length > 300 ? <p className="muted">Showing the latest 300 public activity records. Export retains recorded history.</p> : null}
                 <p className="muted">This timeline contains observed events and public progress messages—not private model reasoning. Tools and subtasks appear only when the provider actually reports them.</p>
-                {run.mode === 'live' ? <RunCoordination key={`coordination:${run.id}`} run={run} /> : null}
+                {!local && run.mode === 'live' ? <RunCoordination key={`coordination:${run.id}`} run={run} /> : null}
                 {output ? (
                   <section className="session-output">
                     <h3>Agent output</h3>
@@ -624,12 +626,12 @@ export function WorkView() {
         <Empty
           kind="work"
           icon={Terminal}
-          title="Your agents’ work, in the open"
-          description="Start a session to see its activity, output, and approval requests. Try a simulation first or connect a live agent."
-          action="Start session"
-          onAction={() => startSession()}
-          secondaryAction="Connect an agent"
-          onSecondaryAction={() => navigate("connections")}
+          title={local ? 'No recorded sessions yet' : 'Your agents’ work, in the open'}
+          description={local ? 'New terminal and AI CLI sessions open in workspace tabs. Existing recorded results remain here for review.' : 'Start a session to see its activity, output, and approval requests. Try a simulation first or connect a live agent.'}
+          action={local ? 'Open workspace' : 'Start session'}
+          onAction={() => local ? navigate('workspace') : startSession()}
+          secondaryAction={local ? undefined : 'Connect an agent'}
+          onSecondaryAction={local ? undefined : () => navigate('connections')}
         />
       )}
       {rename ? <Dialog title="Rename run" onClose={() => setRename(null)}><Field label="Run name"><input autoFocus maxLength={200} value={draftTitle} onChange={event => setDraftTitle(event.target.value)} /></Field><div className="dialog-footer"><Button onClick={() => setRename(null)}>Cancel</Button><Button variant="primary" disabled={!draftTitle.trim()} onClick={async () => { if (await updateRun(rename, { title: draftTitle.trim() }, 'Run renamed')) setRename(null); }}>Save name</Button></div></Dialog> : null}

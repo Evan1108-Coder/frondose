@@ -92,7 +92,7 @@ export function createRuntimeTransport(child, { signal, timeoutMs, platform = pr
     try { frame = JSON.parse(line); } catch { fail(runtimeError('runtime_protocol', 'The provider returned invalid JSONL.')); return; }
     if (!frame || typeof frame !== 'object' || Array.isArray(frame)) { fail(runtimeError('runtime_protocol', 'The provider returned an invalid record.')); return; }
     try {
-      if (frame.id !== undefined && pending.has(String(frame.id)) && !frame.method) {
+      if (frame.id !== undefined && pending.has(String(frame.id)) && !frame.method && (frame.type === undefined || frame.type === 'response')) {
         const request = pending.get(String(frame.id)); pending.delete(String(frame.id));
         if (frame.error || frame.success === false) request.reject(runtimeError('runtime_rejected', typeof frame.error === 'string' ? frame.error : frame.error?.message || 'The provider rejected the request.'));
         else request.resolve(frame.result ?? frame.data ?? {});
@@ -134,12 +134,13 @@ export function createRuntimeTransport(child, { signal, timeoutMs, platform = pr
       return Promise.race([result, failed]);
     },
     race: promise => Promise.race([promise, failed]),
-    async dispose() {
+    async dispose({graceful=false}={}) {
       if (disposed) return terminationPromises.get(child);
       disposed = true; clearTimeout(timer); signal?.removeEventListener('abort', stop);
       for (const request of pending.values()) request.reject(runtimeError('runtime_closed', 'The runtime was closed.'));
       pending.clear(); waiters.clear();
-      await terminateRuntimeChild(child, { platform, env });
+      if(graceful) child.stdin.end();
+      await terminateRuntimeChild(child, { platform, env, graceful });
     },
   };
 }

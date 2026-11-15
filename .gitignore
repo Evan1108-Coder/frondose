@@ -9,3 +9,8 @@ dist/
 *.log
 npm-debug.log*
 .impeccable/review/
+dist-desktop/
+dist-desktop-next/
+dist-desktop-updater/
+dist-desktop-windows-updater/
+dist-updater-client/

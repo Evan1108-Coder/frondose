@@ -5,6 +5,7 @@ import { Button, ErrorMessage, Field, useApp } from '../ui.jsx';
 import { useUnsavedUpdate, requestUpdateNavigation } from './UnsavedUpdates.jsx';
 import { AREA_READ_TOOLS, areaSettingsFields, areaSettingsPatch } from '../lib/areas.js';
 import { agentReadiness } from '../lib/agents.js';
+import { isLocalProduct } from '../lib/local-product.js';
 import './area-settings.css';
 
 export function useAreaSettings(areaId) {
@@ -30,6 +31,7 @@ export function AreaSettings({ area, state }) {
 
 function AreaSettingsForm({ area, settings, onSaved, onReload }) {
   const { data, navigate, notify } = useApp();
+  const local = isLocalProduct(data);
   const initial = areaSettingsFields(settings);
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -48,20 +50,20 @@ function AreaSettingsForm({ area, settings, onSaved, onReload }) {
       const { result } = await apiRequest(`/api/areas/${encodeURIComponent(area.id)}/settings`, { method: 'PATCH', body: areaSettingsPatch(settings, form) });
       onSaved(result);
       await frondoseActions.refresh();
-      notify('Area defaults saved. No agent work was started.');
+      notify(local ? 'Area guidance saved.' : 'Area defaults saved. No agent work was started.');
     } catch (problem) { setError(problem); } finally { setBusy(false); }
   }
   return <form className="area-settings" onSubmit={save}>
-    <header><h2>Context and agent defaults</h2><p>Organize a domain of your work. These saved defaults do not grant access, start agents, or automatically include context in runs.</p></header>
+    <header><h2>{local ? 'Area guidance' : 'Context and agent defaults'}</h2><p>{local ? 'Keep the purpose and working conventions for this Area.' : 'Organize a domain of your work. These saved defaults do not grant access, start agents, or automatically include context in runs.'}</p></header>
     {settings.references_redacted ? <p role="note">Some defaults are outside your access. They are preserved; only an authorized user can change those lists.</p> : null}
     <Field label="Area instructions" hint="Guidance for reviewed context. Instructions are not authorization."><textarea rows={6} maxLength={20000} value={form.instructions} onChange={event => change('instructions', event.target.value)} placeholder="Purpose, constraints, and useful working conventions for this Area…" /></Field>
-    <fieldset><legend>Default agent profiles</legend><p>Profiles share provider connections. This selection does not create accounts or launch work.</p>{agents.map(agent => {
+    {!local ? <><fieldset><legend>Default agent profiles</legend><p>Profiles share provider connections. This selection does not create accounts or launch work.</p>{agents.map(agent => {
       const readiness = agentReadiness(agent, data.connections?.find(connection => connection.provider === agent.provider));
       return <label className="area-choice" key={agent.id}><input type="checkbox" disabled={settings.references_redacted} checked={form.default_agent_ids.includes(agent.id)} onChange={() => toggle('default_agent_ids', agent.id)} /><span><strong>{agent.name}</strong><small>{agent.provider} · {readiness.label}</small></span></label>;
     })}{unavailableAgents.map(id => <label className="area-choice" key={id}><input type="checkbox" disabled={settings.references_redacted} checked onChange={() => toggle('default_agent_ids', id)} /><span>Unavailable profile · remove reference</span></label>)}{!agents.length ? <p>No accessible agent profiles in this workspace.</p> : null}<Button onClick={() => navigate('agents')}>Manage agents</Button></fieldset>
     <fieldset><legend>Reusable Context Packs</legend><p>Suggested references only. Contents must still be selected and approved for each run.</p>{packs.map(pack => <label className="area-choice" key={pack.id}><input type="checkbox" disabled={settings.references_redacted} checked={form.context_pack_ids.includes(pack.id)} onChange={() => toggle('context_pack_ids', pack.id)} /><span>{pack.name}</span></label>)}{unavailablePacks.map(id => <label className="area-choice" key={id}><input type="checkbox" disabled={settings.references_redacted} checked onChange={() => toggle('context_pack_ids', id)} /><span>Unavailable Context Pack · remove reference</span></label>)}{!packs.length ? <p>No accessible Context Packs in this workspace.</p> : null}<Button onClick={() => navigate('settings', 'context')}>Manage Context Packs</Button></fieldset>
-    <fieldset><legend>Tool preferences</legend><p>Saved read-tool preferences for the future native tool surface, not executable grants. Every run still requires approved scope and server permission checks.</p>{AREA_READ_TOOLS.map(tool => <label className="area-choice" key={tool}><input type="checkbox" checked={form.allowed_tools.includes(tool)} onChange={() => toggle('allowed_tools', tool)} /><code>{tool}</code></label>)}<p>Permission policy: <strong>Review required</strong>. Area text cannot override this policy.</p></fieldset>
-    <fieldset><legend>Optional Contacts</legend><label className="area-choice"><input type="checkbox" checked={form.contacts_enabled} onChange={event => change('contacts_enabled', event.target.checked)} /><span>Show Contacts in this Area</span></label><p>Frondose works without a human team. Existing contacts remain accessible, including archived records. Contacts never grant account access.</p></fieldset>
+    <fieldset><legend>Tool preferences</legend><p>Saved read-tool preferences for the future native tool surface, not executable grants. Every run still requires approved scope and server permission checks.</p>{AREA_READ_TOOLS.map(tool => <label className="area-choice" key={tool}><input type="checkbox" checked={form.allowed_tools.includes(tool)} onChange={() => toggle('allowed_tools', tool)} /><code>{tool}</code></label>)}<p>Permission policy: <strong>Review required</strong>. Area text cannot override this policy.</p></fieldset></> : null}
+    {!isLocalProduct(data) ? <fieldset><legend>Optional Contacts</legend><label className="area-choice"><input type="checkbox" checked={form.contacts_enabled} onChange={event => change('contacts_enabled', event.target.checked)} /><span>Show Contacts in this Area</span></label><p>Frondose works without a human team. Existing contacts remain accessible, including archived records. Contacts never grant account access.</p></fieldset> : null}
     <ErrorMessage error={error} />{error?.status === 409 ? <Button onClick={() => requestUpdateNavigation(onReload)}>Load latest Area defaults</Button> : null}<footer><Button disabled={!dirty || busy} onClick={() => { setForm(initial); setError(null); }}>Reset changes</Button><Button type="submit" variant="primary" busy={busy} disabled={!dirty}>Save Area defaults</Button></footer>
   </form>;
 }

@@ -51,7 +51,7 @@ export function recordChange(db, resource, before, after, action) {
   // Route/project when the worker later wakes can otherwise route a queued move
   // into the wrong project or Area. Old history has no invented backfill.
   if (after && ['tasks', 'activity_entries'].includes(resource)) {
-    const targets = { project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', chat: 'chats', milestone: 'milestones', output: 'outputs' };
+    const targets = { area:'teams', project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', chat: 'chats', milestone: 'milestones', output: 'outputs' };
     let targetTable = resource === 'tasks' ? 'tasks' : targets[after.target_type];
     let targetId = resource === 'tasks' ? after.id : after.target_id;
     let target = resource === 'tasks' ? after : targetTable && db.prepare(`SELECT * FROM ${targetTable} WHERE id=?`).get(targetId);
@@ -72,6 +72,10 @@ export function recordChange(db, resource, before, after, action) {
   }
   const context = changeContext.getStore();
   if (context?.actor) db.prepare('INSERT INTO change_attribution VALUES(?,?,?,?)').run(id, context.actor.id, context.actor.name || 'Member', context.source || 'Frondose');
+  const prefix = { tasks: 'route', projects: 'project', documents: 'document', teams: 'area', team_resources: 'resource' }[resource];
+  const verb = !before && after ? 'created' : !after || (!before?.archived_at && after.archived_at) ? 'archived' : 'updated';
+  const kind = prefix ? `${prefix}.${verb}` : resource === 'activity_entries' && !after?.parent_id && !before && after?.publication_state === 'published' ? 'update.published' : null;
+  if (kind) context?.recordActivity?.({ workspaceId, kind, entityId: item.id, title: item.name ?? item.title });
 }
 function activeWorkspace(db, workspaceId) {
   if (typeof workspaceId !== 'string' || !db.prepare('SELECT 1 FROM workspaces WHERE id=? AND archived_at IS NULL').get(workspaceId)) throw validationError('Choose an active workspace.');

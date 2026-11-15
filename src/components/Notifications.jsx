@@ -29,16 +29,17 @@ function Notification({ item, duration }) {
   const returnFocus = useRef(document.activeElement);
   const [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(document.hidden);
+  const [acting, setActing] = useState(false), actionInFlight = useRef(false);
   const lifetime = duration === 0 ? 0 : item.undo ? Math.max(10000, duration) : duration;
   const remaining = useRef(lifetime);
   useEffect(() => { const change = () => setHidden(document.hidden); document.addEventListener('visibilitychange', change); return () => document.removeEventListener('visibilitychange', change); }, []);
   useEffect(() => { remaining.current = lifetime; }, [lifetime, item.revision]);
   useEffect(() => {
-    if (!lifetime || hovered || focused || hidden || item.closing) return;
+    if (!lifetime || hovered || focused || hidden || acting || item.closing) return;
     const started = performance.now();
     timer.current = setTimeout(() => notifications.dismiss(item.id), Math.max(0, remaining.current));
     return () => { clearTimeout(timer.current); remaining.current = Math.max(0, remaining.current - (performance.now() - started)); };
-  }, [lifetime, item.revision, hovered, focused, hidden, item.closing, item.id]);
+  }, [lifetime, item.revision, hovered, focused, hidden, acting, item.closing, item.id]);
   useEffect(() => {
     const element = ref.current;
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -76,8 +77,11 @@ function Notification({ item, duration }) {
     onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
     <Icon aria-hidden="true" interactive={false} />
     <span role={item.type === 'error' ? 'alert' : 'status'} aria-atomic="true">{item.message}</span>
-    {item.undo || item.action ? <button className="rumbo-notice-action" onClick={async () => {
+    {item.undo || item.action ? <button className="rumbo-notice-action" disabled={acting || item.closing} onClick={async () => {
+      if (actionInFlight.current) return;
+      actionInFlight.current = true; setActing(true);
       try { await (item.undo || item.action)(); dismiss(); } catch (error) { notify(error.message || 'The action could not be completed.', 'error'); }
+      finally { actionInFlight.current = false; setActing(false); }
     }}>{item.undo ? 'Undo' : item.actionLabel || 'Retry'}</button> : null}
     <button className="rumbo-notice-close" aria-label="Dismiss notification" onClick={dismiss}><X aria-hidden="true" interactive={false} /></button>
   </article>;

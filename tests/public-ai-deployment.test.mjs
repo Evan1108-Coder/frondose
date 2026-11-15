@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
-import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDeploymentPolicy } from '../server/deployment-policy.mjs';
@@ -119,6 +119,9 @@ test('production server serves built assets and SPA routes but not secrets, API 
   const directory = mkdtempSync(join(tmpdir(), 'rumbo-production-static-')), dataDir = mkdtempSync(join(tmpdir(), 'rumbo-production-data-'));
   writeFileSync(join(directory, 'index.html'), '<!doctype html><title>Frondose fixture</title>');
   writeFileSync(join(directory, 'app.js'), 'export default "fixture"'); writeFileSync(join(directory, '.env'), 'PRIVATE_SECRET');
+  mkdirSync(join(directory,'assets'));
+  writeFileSync(join(directory,'assets/pdf.worker.min-fixture.mjs'),'export default "worker"');
+  writeFileSync(join(directory,'decoder.wasm'),Buffer.from([0,97,115,109,1,0,0,0]));
   symlinkSync('/etc/hosts', join(directory, 'escape.txt'));
   assert.throws(() => createFrondoseServer({ env: {}, apiOptions: { dataDir: join(directory, 'private-data') }, clientDirectory: directory }), /Private Frondose data/);
   const { server } = createFrondoseServer({ env: {}, apiOptions: { dataDir }, clientDirectory: directory });
@@ -127,5 +130,9 @@ test('production server serves built assets and SPA routes but not secrets, API 
   const base = `http://127.0.0.1:${server.address().port}`;
   for (const path of ['/', '/connections/copilot']) { const response = await fetch(`${base}${path}`); assert.equal(response.status, 200, path); assert.match(await response.text(), /Frondose fixture/); assert.match(response.headers.get('content-security-policy'), /frame-ancestors 'none'/); }
   assert.equal((await fetch(`${base}/app.js`)).status, 200);
+  const script=await fetch(`${base}/app.js`),worker=await fetch(`${base}/assets/pdf.worker.min-fixture.mjs`),wasm=await fetch(`${base}/decoder.wasm`);
+  assert.match(worker.headers.get('content-type'),/^text\/javascript/);assert.equal(worker.headers.get('x-content-type-options'),'nosniff');
+  assert.match(worker.headers.get('content-security-policy'),/wasm-unsafe-eval/);assert(!script.headers.get('content-security-policy').includes('wasm-unsafe-eval'));
+  assert.match(script.headers.get('content-security-policy'),/media-src 'self' blob:/);assert.equal(wasm.headers.get('content-type'),'application/wasm');
   for (const path of ['/.env', '/escape.txt', '/missing.js', '/api/not-a-real-route']) assert.equal((await fetch(`${base}${path}`)).status, 404, path);
 });

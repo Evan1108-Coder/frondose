@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../data/api.js';
-import { Button, Dialog, ErrorMessage, Field } from '../../ui.jsx';
+import { Button, Dialog, ErrorMessage, Field, useApp } from '../../ui.jsx';
 
 export function IdentitySettings() {
+  const { data } = useApp();
+  const local = data?.meta?.product?.edition === 'local';
   const [identity, setIdentity] = useState(null), [sessions, setSessions] = useState([]), [error, setError] = useState(null), [busy, setBusy] = useState(false), [confirm, setConfirm] = useState(false);
   const [name, setName] = useState(''), [email, setEmail] = useState(''), [password, setPassword] = useState('');
   const load = async () => { const response = await apiRequest('/api/identity'); setIdentity(response.result); if (response.result.configured) setSessions((await apiRequest('/api/identity/sessions')).result); };
   useEffect(() => { load().catch(setError); }, []);
   const run = async fn => { setBusy(true); setError(null); try { await fn(); await load(); } catch (failure) { setError(failure); } finally { setBusy(false); } };
-  return <><header className="settings-heading"><div><h1>Account & sessions</h1><p>Manage sign-in for this Frondose installation and end sessions you no longer use.</p></div></header><ErrorMessage error={error} />
-    {identity && !identity.configured ? <section className="settings-panel identity-setup account-settings-panel"><h2>Set up your account</h2><p>This installation currently uses its development owner. Setting a password turns on sign-in for all browsers. Keep your password available; email recovery is not configured.</p><form onSubmit={e => { e.preventDefault(); setConfirm(true); }}>
+  return <><header className="settings-heading"><div><h1>{local ? 'Local lock & sessions' : 'Account & sessions'}</h1><p>Manage sign-in for this Frondose installation and end sessions you no longer use.</p></div></header><ErrorMessage error={error} />
+    {identity && !identity.configured ? <section className="settings-panel identity-setup account-settings-panel"><h2>{local ? 'Optional local password' : 'Set up your account'}</h2><p>Frondose uses your local owner identity. A password is optional and locks access from other browser sessions on this computer; it does not create a cloud account. Existing passwords remain enabled. Keep your password available; email recovery is not configured.</p><form onSubmit={e => { e.preventDefault(); setConfirm(true); }}>
       <Field label="Your name"><input required maxLength={160} value={name} onChange={e => setName(e.target.value)} autoComplete="name" /></Field>
       <Field label="Email"><input required type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></Field>
       <Field label="Password"><input required type="password" minLength={12} maxLength={256} value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" /></Field>

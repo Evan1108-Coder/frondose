@@ -28,11 +28,11 @@ const contrast = (a, b) =>
   (Math.max(luminance(a), luminance(b)) + 0.05) /
   (Math.min(luminance(a), luminance(b)) + 0.05);
 
-test("dark surfaces remain neutral and use a restrained indigo primary action", () => {
+test("dark surfaces remain neutral and use the requested white primary action", () => {
   assert.equal(dark.bg, "#0f1011");
   assert.equal(dark.nav, "#090a0b");
   assert.ok(luminance(dark.nav) < luminance(dark.bg), 'Sidebar is darker than the canvas');
-  assert.equal(dark.accent, "#6266d5");
+  assert.equal(dark.accent, "#eeeeee");
   for (const name of [
     "bg",
     "nav",

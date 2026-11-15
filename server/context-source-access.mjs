@@ -75,7 +75,7 @@ function references(read, table, key, workspaceId, path = new Set(), inspectDefi
   }
   if (table === 'activity_entries') {
     if (row.publication_state !== 'published') deny();
-    const target = { project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', output: 'outputs', milestone: 'milestones', chat: 'chats' }[row.target_type];
+    const target = { area:'teams', project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', output: 'outputs', milestone: 'milestones', chat: 'chats' }[row.target_type];
     if (!target || !row.target_id) deny();
     addParent(target, row.target_id);
     addParent('activity_entries', row.parent_id);

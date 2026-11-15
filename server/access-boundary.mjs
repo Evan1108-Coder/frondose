@@ -24,7 +24,7 @@ export function createAccessBoundary({ db, governance }) {
     }
     if (table === 'agent_profile_versions') return { item: row('agents', item.agent_id), table: 'agents' };
     if (item.entity_type && item.entity_id) return { item: row(item.entity_type, item.entity_id), table: item.entity_type };
-    if (item.target_type && item.target_id) { const targetTable = { project: 'projects', route: 'tasks', request: 'workspace_items', chat: 'chats', document: 'documents', output: 'outputs', milestone: 'milestones' }[item.target_type]; if (targetTable) return { item: row(targetTable, item.target_id), table: targetTable }; }
+    if (item.target_type && item.target_id) { const targetTable = { area:'teams', project: 'projects', route: 'tasks', request: 'workspace_items', chat: 'chats', document: 'documents', output: 'outputs', milestone: 'milestones' }[item.target_type]; if (targetTable) return { item: row(targetTable, item.target_id), table: targetTable }; }
     if (table === 'workspace_items' && item.kind === 'request') { const payload = item.payload || JSON.parse(item.payload_json || '{}'); if (payload.route_id) return { item: row('tasks', payload.route_id), table: 'tasks' }; }
     if (['project_strategies', 'route_workflows', 'milestone_contracts'].includes(table)) { const targetTable = { project_strategies: 'projects', route_workflows: 'tasks', milestone_contracts: 'milestones' }[table]; return { item: row(targetTable, item.id), table: targetTable }; }
     for (const [key, targetTable] of [['project_id', 'projects'], ['task_id', 'tasks'], ['source_task_id', 'tasks'], ['chat_id', 'chats'], ['run_id', 'runs'], ['output_id', 'outputs'], ['source_message_id', 'messages']]) if (item[key]) return { item: row(targetTable, item[key]), table: targetTable };

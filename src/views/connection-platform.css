@@ -44,7 +44,7 @@
 .cp-empty > svg { margin-bottom: 14px; width: 32px; height: 32px; }
 .cp-feature-list { border-block: 1px solid var(--border); margin: 22px 0; }
 .cp-feature { display: flex; align-items: center; gap: 16px; padding: 18px 6px; border-bottom: 1px solid var(--border-soft); }
-.cp-feature input { width: 16px; height: 16px; accent-color: #6266d5; flex-shrink: 0; }
+.cp-feature input { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
 .cp-feature span { min-width: 0; }
 .cp-feature strong, .cp-action-row strong { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
 .cp-feature small, .cp-action-row small { display: block; color: var(--muted); margin-top: 7px; font-size: 12px; overflow-wrap: anywhere; }

@@ -1,3 +1,5 @@
+import {RichMarkdownEditor} from './workspace/RichMarkdownEditor.jsx';
+import {useUnsavedUpdate} from './UnsavedUpdates.jsx';
 import { useEffect, useRef, useState } from "react";
 import { Check, Plus } from "./icons.jsx";
 import { frondoseActions } from "../data/useFrondose.js";
@@ -25,16 +27,21 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
     return { title: base.title ?? base.name ?? "", description: base.description ?? "", content: base.content ?? "", email: base.email ?? "", role: base.role ?? "", status: base.status ?? "planned", target_date: base.target_date ?? "", ...teamAppearance(base) };
   });
   const [form, setForm] = useState(initial);
+  const [savedForm,setSavedForm]=useState(initial),[autoSave,setAutoSave]=useState(true),[source,setSource]=useState(false);
+  const revision=useRef(item?.updated_at),userEdited=useRef(false),writing=useRef(false);
   const [preview, setPreview] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const keepRef = useRef(null);
   const { busy, error, execute, setError } = useAsync();
-  const dirty = Object.keys(initial).some((key) => form[key] !== initial[key]);
+  const dirty = Object.keys(savedForm).some((key) => form[key] !== savedForm[key]);
   const defaultPage = { team: 'New Area', document: 'New document', milestone: 'New milestone' }[kind];
   const defaultKey = { team: 'area', document: 'document', milestone: 'milestone' }[kind];
   const defaultField = (key, label) => defaultPage ? { 'data-field-default-key': `${defaultKey}.new.${key}`, 'data-field-default-page': defaultPage, 'data-field-default-label': label, 'data-field-default-mode': item ? 'edit' : 'create' } : {};
   useEffect(() => { if (discarding) keepRef.current?.focus(); }, [discarding]);
-  function change(key, value) { setForm((current) => ({ ...current, [key]: value })); setError(null); }
+  const releaseSavedEditor = useUnsavedUpdate(dirty,busy);
+  const liveForm=useRef(form);liveForm.current=form;
+  useEffect(()=>{if(kind!=='document'||!item?.id||!autoSave||!userEdited.current||!dirty||busy||error||!form.title.trim()||writing.current)return;const sent={...form};const timer=setTimeout(()=>{if(writing.current||liveForm.current.content!==sent.content||liveForm.current.title!==sent.title)return;writing.current=true;void execute(async()=>{const saved=await frondoseActions.updateDocument(item.id,{workspace_id:workspace?.id,title:sent.title.trim(),content:sent.content,expected_updated_at:revision.current});revision.current=saved.updated_at;setSavedForm(sent);}).finally(()=>{writing.current=false;});},900);return()=>clearTimeout(timer);},[kind,item?.id,autoSave,dirty,busy,error,form.title,form.content]);
+  function change(key, value) { userEdited.current=true; setForm((current) => ({ ...current, [key]: value })); setError(null); }
   function close() { if (!busy) { if (discarding) setDiscarding(false); else if (dirty) setDiscarding(true); else onClose(); } }
   async function submit(event) {
     event.preventDefault();
@@ -43,9 +50,10 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
       let input = { workspace_id: workspace?.id };
       if (kind === "team") input = { ...input, name: form.title.trim(), description: form.description, ...teamAppearance(form) };
       if (kind === "teamMember") input = { ...input, team_id: item?.team_id ?? defaults.team_id, name: form.title.trim(), email: form.email.trim() || null, role: form.role.trim() };
-      if (kind === "document") input = { ...input, team_id: item?.team_id ?? defaults.team_id ?? null, project_id: item?.project_id ?? defaults.project_id ?? null, title: form.title.trim(), content: form.content };
+      if (kind === "document") input = { ...input, team_id: item?.team_id ?? defaults.team_id ?? null, project_id: item?.project_id ?? defaults.project_id ?? null, title: form.title.trim(), content: form.content, ...(item?{expected_updated_at:revision.current}:{}) };
       if (kind === "milestone") input = { ...input, project_id: item?.project_id ?? defaults.project_id, title: form.title.trim(), description: form.description, status: form.status, target_date: form.target_date || null };
       const result = item ? await frondoseActions[`update${entity.action}`](item.id, input) : await frondoseActions[`create${entity.action}`](input);
+      releaseSavedEditor();
       notify(`${entity.label[0].toUpperCase()}${entity.label.slice(1)} ${item ? "saved" : "created"}`);
       onClose();
       onSaved?.(result);
@@ -60,7 +68,7 @@ export function WorkspaceEditor({ kind, item = null, defaults = {}, onClose, onS
         {kind === 'team' ? <details className="editor-details"><summary>Area appearance</summary><TeamAppearanceFields value={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} /></details> : null}
         {kind === "teamMember" ? <><Field label="Role"><input value={form.role} maxLength={200} onChange={(event) => change("role", event.target.value)} placeholder="e.g. Product lead" /></Field><Field label="Email" hint="Optional contact information. Frondose will not send an email."><input type="email" value={form.email} onChange={(event) => change("email", event.target.value)} placeholder="name@example.com" /></Field></> : null}
         {kind === "milestone" ? <div className="form-grid"><Select label="Status" value={form.status} onChange={(value) => change("status", value)}>{Object.entries(MILESTONE_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><Field label="Target date"><DateField {...defaultField('target-date', 'Target date')} data-field-default-allow="true" value={form.target_date} onChange={(value) => change("target_date", value)} /></Field></div> : null}
-        {kind === "document" ? <div className="document-writing"><div className="document-write-toolbar"><div className="segmented"><button type="button" className={!preview ? "active" : ""} aria-pressed={!preview} onClick={() => setPreview(false)}>Write</button><button type="button" className={preview ? "active" : ""} aria-pressed={preview} onClick={() => setPreview(true)}>Preview</button></div><span>Markdown supported</span></div>{preview ? <div className="document-preview">{form.content.trim() ? <DocumentContent content={form.content} /> : <p className="muted">Your document preview will appear here.</p>}</div> : <Field label="Content"><textarea {...defaultField('content', 'Content')} className="document-input" rows={14} value={form.content} onChange={(event) => change("content", event.target.value)} placeholder={"# The plan\n\nWrite your decisions, guidelines, and next steps…"} /></Field>}<span className="document-word-count">{form.content.trim() ? form.content.trim().split(/\s+/).length : 0} words</span></div> : null}
+        {kind === "document" ? <div className="document-writing"><div className="document-write-toolbar"><div className="segmented"><button type="button" className={!preview ? "active" : ""} aria-pressed={!preview} onClick={() => setPreview(false)}>Write</button><button type="button" className={preview ? "active" : ""} aria-pressed={preview} onClick={() => setPreview(true)}>Preview</button></div><label className="editor-autosave-toggle"><input type="checkbox" checked={autoSave} disabled={!item?.id} onChange={event=>setAutoSave(event.target.checked)}/>{item?.id?busy?'Saving…':dirty?'Autosave pending':'Autosave':'Create once to enable autosave'}</label></div>{preview ? <div className="document-preview">{form.content.trim() ? <DocumentContent content={form.content} /> : <p className="muted">Your document preview will appear here.</p>}</div> : <div className="document-rich-writing">{source?<><button type="button" className="text-button" onClick={()=>setSource(false)}>Back to Write</button><Field label="Content"><textarea {...defaultField('content','Content')} className="document-input" rows={14} value={form.content} onChange={event=>change('content',event.target.value)}/></Field></>:<RichMarkdownEditor value={form.content} readOnly={busy} onSource={()=>setSource(true)} onChange={content=>change('content',content)}/>}</div>}<span className="document-word-count">{form.content.trim() ? form.content.trim().split(/\s+/).length : 0} words</span></div> : null}
         <ErrorMessage error={error} />
       </div><footer className="dialog-footer"><Button disabled={busy} onClick={close}>Cancel</Button><Button type="submit" variant="primary" icon={item ? Check : Plus} busy={busy} disabled={!form.title.trim()}>{item ? "Save changes" : `Create ${entity.label}`}</Button></footer>
     </Form>}

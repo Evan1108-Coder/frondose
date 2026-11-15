@@ -12,6 +12,8 @@ import { val } from '../lib/model.js';
 import { AgentIdentity } from './AgentIdentity.jsx';
 import { Form } from './Form.jsx';
 import { ImageField } from './ImageField.jsx';
+import { isLocalProduct } from '../lib/local-product.js';
+import { LocalRuntimePanel } from './LocalInstallation.jsx';
 import './agent-editor.css';
 
 const ACCOUNT_PROVIDERS = [{ id: 'codex', label: 'Codex' }, { id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'GitHub Copilot' }, ...API_PROVIDERS.map(item => ({ id: item.id, label: item.id === 'gemini' ? 'Google Gemini API / Gemini CLI' : item.name }))];
@@ -121,7 +123,7 @@ export function AgentEditor({ item = null, defaults = {}, onClose }) {
           </label>)}</div>{!matchingProviders.length ? <p>No providers match.</p> : null}
         </fieldset>}
         <Select label="Connection method" name="connection_method" value={method || ''} disabled={busy || computerBound || methods.length < 2} onChange={id => { setMethodChoice({ provider: form.provider, id }); change('provider_connection_id', ''); }}>{methods.map(route => <option key={route.id} value={route.id}>{route.label}</option>)}</Select>
-        {computerBound ? <p>This identity uses its computer binding. Change or remove that binding in Computer connection before choosing another account route.</p> : <Select label={method === 'computer' ? 'Local account' : 'Account connection'} name="provider_connection_id" value={form.provider_connection_id} disabled={busy} onChange={value => change('provider_connection_id', value)}>
+        {isLocalProduct(data) && method === 'computer' && !computerBound ? <LocalRuntimePanel key={form.provider} compact providerId={form.provider} disabled={busy} onConnected={connection => { if (connection) change('provider_connection_id', connection.id); }} /> : computerBound ? <p>This identity uses its computer binding. Change or remove that binding in Computer connection before choosing another account route.</p> : <Select label={method === 'computer' ? 'Local account' : 'Account connection'} name="provider_connection_id" value={form.provider_connection_id} disabled={busy} onChange={value => change('provider_connection_id', value)}>
           <option value="">Not connected</option>{form.provider_connection_id && !connections.some(connection => connection.id === form.provider_connection_id) ? <option value={form.provider_connection_id}>Saved connection — unavailable for this method</option> : null}
           {connections.map(connection => <option key={connection.id} value={connection.id}>{val(connection, 'account_label') || providerLabel} · {(connection.workspace_states?.[scopedWorkspace] || connection.state)?.replaceAll('_', ' ') || 'state unknown'}</option>)}
         </Select>}

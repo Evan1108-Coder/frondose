@@ -3,6 +3,13 @@ const TYPES = { teams: 'team', projects: 'project', tasks: 'route', route_workfl
 const FIELDS = ['status', 'priority', 'reported_progress', 'target_date', 'due_at', 'health', 'parent_task_id', 'archived_at', 'publication_state'];
 const fail = (message, statusCode = 400) => { throw Object.assign(new Error(message), { statusCode }); };
 const parse = text => { try { return JSON.parse(text || 'null'); } catch { return null; } };
+function permissionScope(type, row) {
+  if (type === 'project') return { scope_type: 'project', scope_id: row.id };
+  if (row.project_id) return { scope_type: 'project', scope_id: row.project_id };
+  if (type === 'team') return { scope_type: 'team', scope_id: row.id };
+  if (row.team_id) return { scope_type: 'team', scope_id: row.team_id };
+  return { scope_type: 'workspace', scope_id: row.workspace_id };
+}
 
 export async function timelineRoute({ db, req, res, path, url, send, actor, allowed, filter }) {
   if (path !== '/timeline' || req.method !== 'GET') return false;
@@ -11,7 +18,7 @@ export async function timelineRoute({ db, req, res, path, url, send, actor, allo
   const get = (table, id) => id ? db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id) : null;
   const target = table && get(table, id);
   if (!target || target.workspace_id !== ws) fail('Activity target unavailable.', 404);
-  const scope = type === 'project' ? { scope_type: 'project', scope_id: id } : target.project_id ? { scope_type: 'project', scope_id: target.project_id } : { scope_type: 'team', scope_id: type === 'team' ? id : target.team_id };
+  const scope = permissionScope(type, target);
   const area = { team: 'workspace', project: 'projects', route: 'routes', document: 'documents', chat: 'chats' }[type];
   if (!allowed(ws, actor, `${area}.read`, scope)) fail('Activity target unavailable.', 404);
   const limit = Number(url.searchParams.get('limit') || 30);
@@ -24,7 +31,7 @@ export async function timelineRoute({ db, req, res, path, url, send, actor, allo
   }
   function matches(resource, item) {
     if (!item) return false;
-    if (resource === 'activity_entries') return matches({ project: 'projects', route: 'tasks', document: 'documents', chat: 'chats', milestone: 'milestones' }[item.target_type], get({ project: 'projects', route: 'tasks', document: 'documents', chat: 'chats', milestone: 'milestones' }[item.target_type] || 'activity_entries', item.target_id));
+    if (resource === 'activity_entries') return matches({ area:'teams', project: 'projects', route: 'tasks', document: 'documents', chat: 'chats', milestone: 'milestones' }[item.target_type], get({ area:'teams', project: 'projects', route: 'tasks', document: 'documents', chat: 'chats', milestone: 'milestones' }[item.target_type] || 'activity_entries', item.target_id));
     if (resource === 'route_workflows') return type === 'route' && item.parent_task_id === id || matches('tasks', get('tasks', item.id));
     if (resource === table && item.id === id) return true;
     if (type === 'route' && resource === 'tasks') return get('route_workflows', item.id)?.parent_task_id === id;
@@ -37,7 +44,7 @@ export async function timelineRoute({ db, req, res, path, url, send, actor, allo
     if (resource === 'activity_entries' || resource === 'route_workflows') return true; // Dedicated history policy above checks target and ancestry.
     const area = { teams: 'workspace', projects: 'projects', tasks: 'routes', documents: 'documents', chats: 'chats', milestones: 'projects', team_resources: 'documents' }[resource];
     if (!area) return false;
-    const at = resource === 'projects' ? { scope_type: 'project', scope_id: item.id } : item.project_id ? { scope_type: 'project', scope_id: item.project_id } : { scope_type: 'team', scope_id: resource === 'teams' ? item.id : item.team_id };
+    const at = permissionScope(TYPES[resource], item);
     if (!allowed(ws, actor, `${area}.read`, at)) return false;
     // Preserve historical team restrictions after a record moves into a visible project/team.
     return !item.team_id || allowed(ws, actor, `${area}.read`, { scope_type: 'team', scope_id: item.team_id });

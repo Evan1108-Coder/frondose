@@ -5,7 +5,7 @@
 .gov-heading > svg { width: 32px; height: 32px; color: var(--muted); margin-top: 6px; }
 .gov-tabs { display: flex; gap: 22px; overflow-x: auto; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
 .gov-tabs button { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; padding: 13px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; }
-.gov-tabs button[aria-selected="true"] { border-bottom-color: #6266d5; color: var(--text); }
+.gov-tabs button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--text); }
 .gov-tabs svg { width: 16px; height: 16px; }
 .gov-tabs button > span { background: var(--selected); border-radius: 5px; font-size: 11px; padding: 2px 5px; }
 .gov-boundary { font-size: 12px; color: var(--muted); line-height: 1.65; padding: 16px 18px; margin: 0 0 24px; border: 1px solid var(--border); border-radius: 8px; }
@@ -52,7 +52,7 @@
 .gov-permissions fieldset { padding: 12px 0; border: 0; margin: 0; }
 .gov-permissions legend { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: capitalize; }
 .gov-permissions label { display: flex; align-items: center; gap: 12px; padding: 10px 0; font-size: 13px; }
-.gov-permissions input { width: 15px; height: 15px; accent-color: #6266d5; }
+.gov-permissions input { width: 15px; height: 15px; accent-color: var(--accent); }
 .gov-permissions small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
 .gov-editor textarea { min-height: 90px; }
 .gov-explain { max-width: 680px; display: grid; gap: 18px; }

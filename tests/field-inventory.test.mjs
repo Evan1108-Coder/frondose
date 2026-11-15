@@ -70,13 +70,24 @@ test('every native/shared input site is instrumented or explicitly excluded acro
         const fields = analyzeFieldSource(source, path);
         const instrumented = instrumentFieldSource(source, path);
         for (const field of fields) {
-          if (field.excluded) assert.match(instrumented, /data-field-defaults-exclude="true"/, path);
+          if (field.excluded) assert.match(instrumented, /data-field-defaults-exclude(?:="true"|\s|\/?>)/, path);
           else assert.ok(instrumented.includes(`data-field-default-source=${JSON.stringify(field.key)}`), `${path}: ${field.label}`);
         }
       }
     }
   }
   check(resolve(root, 'src'));
+});
+
+test('explicit field exclusions are preserved without duplicate JSX attributes', () => {
+  for (const attribute of ['data-field-defaults-exclude', 'data-field-defaults-exclude="true"', 'data-field-defaults-exclude={true}']) {
+    const source = `export function Editor(){return <input ${attribute} value={name}/>}`;
+    const instrumented = instrumentFieldSource(source, 'src/components/Editor.jsx');
+    assert.equal(instrumented, source);
+    assert.equal((instrumented.match(/data-field-defaults-exclude/g) || []).length, 1);
+  }
+  const wrapped = instrumentFieldSource('export function Editor(){return <div data-field-defaults-exclude><input value={name}/></div>}', 'src/components/Editor.jsx');
+  assert.match(wrapped, /<input[^>]+data-field-defaults-exclude="true"/);
 });
 
 test('semantic identities survive insertion/reordering and distinguish identical labels in different forms', () => {

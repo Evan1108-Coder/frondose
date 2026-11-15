@@ -6,11 +6,16 @@ const source = file => readFileSync(new URL(`../src/${file}`, import.meta.url), 
 
 test('tooltips escape masked scroll containers and keep trigger accessibility', () => {
   const tooltip = source('components/Tooltip.jsx');
-  assert.match(tooltip, /createPortal\(<span role="tooltip"[\s\S]*document\.body\)/);
+  assert.match(tooltip, /popup.present \? createPortal\(<span \{\.\.\.popup.motionProps\} ref=\{panel\} role="tooltip"[\s\S]*document\.body\)/);
+  assert.match(tooltip, /usePopupMotion\(visible, panel, \{ ready: Boolean\(position\) \}\)/);
   assert.match(tooltip, /portal: true/);
   assert.match(tooltip, /"aria-describedby"/);
+  assert.match(tooltip, /visible \? id : null/);
   assert.match(tooltip, /!anchor\.current\.closest\('\[inert\]'\)/);
   assert.match(tooltip, /onClick:.*props\.onClick\?\.\(event\); hide\(\)/);
+  const motion = source('components/usePopupMotion.js');
+  assert.match(motion, /'aria-hidden': !open/);
+  assert.match(motion, /inert: !open/);
 });
 
 test('body portal positioning skips transformed trigger ancestors but leaves inline popups unchanged', () => {

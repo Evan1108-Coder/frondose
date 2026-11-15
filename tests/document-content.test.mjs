@@ -152,3 +152,5 @@ test('the math pipeline resolves one patched engine rather than a vulnerable nes
   const engines = Object.entries(lock.packages).filter(([key]) => /(?:^|\/)node_modules\/katex$/.test(key));
   assert.deepEqual(engines.map(([, value]) => value.version), ['0.19.0']);
 });
+
+test('positioned Markdown retains real leaf offsets through the emoji transform',async()=>{const rendered=await html('# Title\n\nFirst **bold** paragraph.\n\nSecond paragraph.',{sourcePositions:true});assert.match(rendered,/data-source-text-start="9"/);assert.match(rendered,/data-source-text-end=/);assert.match(rendered,/<strong><span data-source-text-start=/);const normal=await html('Ordinary text');assert.doesNotMatch(normal,/data-source-text-start/);});

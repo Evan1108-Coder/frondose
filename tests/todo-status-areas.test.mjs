@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {transformSync} from 'esbuild';
+import {createTodoService} from '../server/local-todos.mjs';
+import {TODO_STATUSES,todoStatus,todoAreaMembership,todoInArea,todoLaneRows,todoMoveFields} from '../src/lib/todo-model.js';
+test('Finished lanes do not offer to create tasks that start In Progress', () => {
+  const board = readFileSync(new URL('../src/views/TodoBoard.jsx', import.meta.url), 'utf8');
+  assert.match(board, /status!==['"]finished['"]\?\s*<button[^>]+aria-label=\{['"]Create to-do: /);
+  assert.match(board, /lane\('finished-only','Finished To Do',shown,\{status:'finished',horizontal:true\}\)/);
+  assert.match(board, /lane\('finished','Finished',todoLaneRows\(shown,\{status:'finished'\}\),\{status:'finished',horizontal:true\}\)/);
+});
+async function fixture(run){const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE workspaces(id TEXT PRIMARY KEY,archived_at TEXT);CREATE TABLE teams(id TEXT PRIMARY KEY,workspace_id TEXT,archived_at TEXT);INSERT INTO workspaces VALUES('ws',NULL),('other',NULL);INSERT INTO teams VALUES('a','ws',NULL),('b','ws',NULL),('c','ws',NULL),('foreign','other',NULL),('archived','ws','date');");const service=createTodoService({db,roots:{},comments:{}});const send=(action='',input={},method='POST',query={})=>service.dispatch({workspaceId:'ws',actor:{id:'local-owner'},action,method,input,query:new URLSearchParams(query)});const fresh=extra=>({title:'Review',description:'',prompt:'',resources:[],priority:'urgent-important',request_id:randomUUID(),...extra});try{await run({db,send,fresh});}finally{db.close();}}
+test('A new task defaults to In Progress and appears in its priority and exactly one status lane',()=>fixture(async({send,fresh})=>{const item=await send('',fresh());assert.equal(item.status,'in-progress');assert.equal(todoLaneRows([item],{priority:item.priority}).length,1);assert.equal(todoLaneRows([item],{status:'in-progress'}).length,1);assert.equal(todoLaneRows([item],{status:'finished'}).length,0);assert.deepEqual(TODO_STATUSES.map(([id])=>id),['in-progress','finished']);await assert.rejects(send('',fresh({status:['in-progress','finished']})));}));
+test('Priority moves preserve Finished; status moves preserve priority',()=>fixture(async({send,fresh})=>{let item=await send('',fresh({status:'finished',priority:'important'}));item=await send('move',{id:item.id,version:item.version,axis:'priority',priority:'urgent',status:'in-progress',request_id:randomUUID()});assert.equal(item.priority,'urgent');assert.equal(item.status,'finished');item=await send('move',{id:item.id,version:item.version,axis:'status',priority:'neither',status:'in-progress',request_id:randomUUID()});assert.equal(item.priority,'urgent');assert.equal(item.status,'in-progress');assert.equal(todoLaneRows([item],{priority:'urgent'}).length,1);}));
+test('Priority sorting works across statuses and status sorting across priorities',()=>fixture(async({send,fresh})=>{let a=await send('',fresh({status:'in-progress'})),b=await send('',fresh({status:'finished'}));a=await send('move',{id:a.id,version:a.version,axis:'priority',priority:a.priority,before_id:b.id,request_id:randomUUID()});assert.equal(a.status,'in-progress');b=await send('move',{id:b.id,version:b.version,axis:'priority',priority:'neither',request_id:randomUUID()});b=await send('move',{id:b.id,version:b.version,axis:'status',status:'in-progress',before_id:a.id,request_id:randomUUID()});assert.equal(b.priority,'neither');assert.equal((await send('',{},'GET')).items[0].id,b.id);}));
+test('One task belongs to multiple selected Areas and shares edits, not copies',()=>fixture(async({send,fresh,db})=>{let item=await send('',fresh({area_scope:'selected',team_ids:['a','b','a']}));assert.deepEqual(item.team_ids,['a','b']);for(const team_id of ['a','b'])assert.equal((await send('',{},'GET',{team_id})).items[0].id,item.id);assert.equal((await send('',{},'GET',{team_id:'c'})).items.length,0);item=await send('',fresh({...item,title:'Updated everywhere'}));assert.equal((await send('',{},'GET',{team_id:'b'})).items[0].title,'Updated everywhere');assert.equal(db.prepare('SELECT COUNT(*) AS n FROM local_todos').get().n,1);}));
+test('All Areas includes future current-workspace Areas; No Areas stays workspace-only',()=>fixture(async({send,fresh,db})=>{const all=await send('',fresh({area_scope:'all',team_ids:[]}));await send('',fresh({area_scope:'none',team_ids:[]}));db.exec("INSERT INTO teams VALUES('new','ws',NULL)");for(const team_id of ['a','b','new'])assert.deepEqual((await send('',{},'GET',{team_id})).items.map(item=>item.id),[all.id]);assert.equal((await send('',{},'GET')).items.length,2);await assert.rejects(send('',{},'GET',{team_id:'foreign'}));}));
+test('Area assignments reject foreign, archived, empty-selected and malformed scopes',()=>fixture(async({send,fresh})=>{for(const extra of[{area_scope:'selected',team_ids:['foreign']},{area_scope:'selected',team_ids:['archived']},{area_scope:'selected',team_ids:[]},{area_scope:'all',team_ids:['a']},{area_scope:'none',team_ids:['a']},{area_scope:'bogus'},{area_scope:'selected',team_ids:'a'}])await assert.rejects(send('',fresh(extra)));}));
+test('Legacy single-Area and To Do status remain readable without destructive migration',()=>fixture(async({send,fresh,db})=>{const item=await send('',fresh({team_id:'a',status:'todo'}));db.prepare('UPDATE local_todos SET status=?,data=? WHERE id=?').run('todo',JSON.stringify({title:'Legacy',resources:[]}),item.id);const saved=(await send('',{},'GET',{team_id:'a'})).items[0];assert.equal(saved.status,'in-progress');assert.deepEqual(saved.team_ids,['a']);assert.equal(db.prepare('SELECT status FROM local_todos WHERE id=?').get(item.id).status,'todo');assert.equal(todoStatus('finished'),'finished');assert.deepEqual(todoAreaMembership({team_id:'a'}),{area_scope:'selected',team_ids:['a']});assert.equal(todoInArea(saved,'b'),false);}));
+test('Multi-Area archive/restore preserves one membership set',()=>fixture(async({send,fresh})=>{let item=await send('',fresh({area_scope:'selected',team_ids:['a','b']}));item=await send('archive',{id:item.id,version:item.version,request_id:randomUUID()});assert.equal((await send('',{},'GET',{team_id:'b'})).items.length,0);item=await send('restore',{id:item.id,version:item.version,request_id:randomUUID()});assert.deepEqual(item.team_ids,['a','b']);assert.equal((await send('',{},'GET',{team_id:'a'})).items[0].id,item.id);}));
+for (const status of ['in-progress','finished']) {
+ test('Delete removes a '+status+' task from all its boards and only that task',()=>fixture(async({send,fresh,db})=>{
+   const input=fresh({status,title:'Remove this only',prompt:'Erase this prompt',area_scope:'selected',team_ids:['a','b']});
+   const item=await send('',input);
+   const other=await send('',fresh({title:'Keep this',resources:[{kind:'todo',id:item.id}]}));
+   const remove={id:item.id,version:item.version,request_id:randomUUID(),confirmed:true};
+   await assert.rejects(send('delete',{...remove,confirmed:false}),{statusCode:400});
+   await assert.rejects(send('delete',{...remove,version:0}),{statusCode:409});
+   const direct=createTodoService({db,roots:{},comments:{}});
+   await assert.rejects(direct.dispatch({workspaceId:'other',actor:{id:'local-owner'},action:'delete',method:'POST',input:remove}),{statusCode:404});
+   await assert.rejects(direct.dispatch({workspaceId:'ws',actor:{id:'someone-else'},action:'delete',method:'POST',input:remove}),{statusCode:403});
+   assert.deepEqual(await send('delete',remove),{id:item.id,deleted:true});
+   assert.deepEqual(await send('delete',remove),{id:item.id,deleted:true});
+   await assert.rejects(send('delete',{...remove,id:other.id}),{statusCode:409});
+   await assert.rejects(send('',input),{statusCode:404});
+   await assert.rejects(send('context',{},'GET',{id:item.id}),{statusCode:404});
+   for(const team_id of ['a','b'])assert.deepEqual((await send('',{},'GET',{team_id})).items,[]);
+   assert.deepEqual((await send('',{},'GET',{archived:'true'})).items,[]);
+   assert.deepEqual((await send('',{},'GET')).items.map(row=>row.id),[other.id]);
+   assert(db.prepare('SELECT result FROM local_todo_operations WHERE todo_id=?').all(item.id).every(row=>JSON.parse(row.result).deleted===true&&!row.result.includes(input.prompt)));
+ }));
+}
+test('Drag destination fields change one dimension and retain exact task identity',()=>{const item={id:'x',priority:'important',status:'finished'};assert.deepEqual(todoMoveFields(item,{priority:'urgent'}),{axis:'priority',priority:'urgent',status:'finished'});assert.deepEqual(todoMoveFields(item,{status:'in-progress',beforeId:'y'}),{axis:'status',priority:'important',status:'in-progress',before_id:'y'});});
+test('Shared board styling defeats Area heading and form-search overrides; React modules parse',()=>{const css=readFileSync(new URL('../src/views/todo-board.css',import.meta.url),'utf8');assert.match(css,/\.todo-board \.todo-lane>header>h2\{font-size:13px/);assert.match(css,/\.todo-editor \.search-field input\[type=search\]\{padding-inline-start:36px/);for(const file of ['TodoBoard.jsx','../components/TodoAreasField.jsx']){const path=file==='TodoBoard.jsx'?'../src/views/'+file:'../src/'+file.slice(3);assert.doesNotThrow(()=>transformSync(readFileSync(new URL(path,import.meta.url),'utf8'),{loader:'jsx'}));}});

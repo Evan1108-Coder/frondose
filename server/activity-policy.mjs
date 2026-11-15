@@ -1,8 +1,8 @@
 import { assertFrondoseSourceReferences } from './context-source-access.mjs';
 
-export const ACTIVITY_TARGET_TABLES = Object.freeze({ project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', output: 'outputs', milestone: 'milestones', chat: 'chats' });
-const AREAS = { project: 'projects', route: 'routes', request: 'workspace', document: 'documents', output: 'documents', milestone: 'projects', chat: 'chats' };
-const VIEWS = { project: 'projects', route: 'tasks', request: 'requests', document: 'documents', output: 'library', milestone: 'projects', chat: 'chats' };
+export const ACTIVITY_TARGET_TABLES = Object.freeze({ area: 'teams', project: 'projects', route: 'tasks', request: 'workspace_items', document: 'documents', output: 'outputs', milestone: 'milestones', chat: 'chats' });
+const AREAS = { area: 'workspace', project: 'projects', route: 'routes', request: 'workspace', document: 'documents', output: 'documents', milestone: 'projects', chat: 'chats' };
+const VIEWS = { area: 'teams', project: 'projects', route: 'tasks', request: 'requests', document: 'documents', output: 'library', milestone: 'projects', chat: 'chats' };
 const parse = value => { try { return JSON.parse(value || '{}'); } catch { return {}; } };
 
 export function createActivityPolicy(db, allowed = () => true) {
@@ -22,9 +22,9 @@ export function createActivityPolicy(db, allowed = () => true) {
     if (!Array.isArray(referencedIds)) return null;
     const referencedProjects = referencedIds.map(id => row('projects', id));
     if (referencedProjects.some(value => !value || value.workspace_id !== entry.workspace_id)) return null;
-    const at = projectId ? { scope_type: 'project', scope_id: projectId } : item.team_id ? { scope_type: 'team', scope_id: item.team_id } : {};
+    const at = entry.target_type === 'area' ? {scope_type:'team',scope_id:item.id} : projectId ? { scope_type: 'project', scope_id: projectId } : item.team_id ? { scope_type: 'team', scope_id: item.team_id } : {};
     return { item, table, area: AREAS[entry.target_type], at, requestRoute, scopes: [at, ...referencedIds.map(id => ({ scope_type: 'project', scope_id: id }))], active: !item.archived_at && !project?.archived_at && !requestRoute?.archived_at && !referencedProjects.some(value => value.archived_at),
-      display: { type: entry.target_type, id: item.id, title: item.title || item.name || 'Untitled', team_id: project?.team_id || item.team_id || null, project_id: projectId, project_ids: [...new Set([projectId, ...referencedIds].filter(Boolean))], view: VIEWS[entry.target_type] } };
+      display: { type: entry.target_type, id: item.id, title: item.title || item.name || 'Untitled', team_id: entry.target_type === 'area' ? item.id : project?.team_id || item.team_id || null, project_id: projectId, project_ids: [...new Set([projectId, ...referencedIds].filter(Boolean))], view: VIEWS[entry.target_type] } };
   }
   function permitted(entry, actor, verb) {
     const destination = target(entry);

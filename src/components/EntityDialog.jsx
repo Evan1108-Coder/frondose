@@ -4,9 +4,11 @@ import { Plus, Check } from "./icons.jsx";
 import { frondoseActions } from "../data/useFrondose.js";
 import { DateField } from "./DateField.jsx";
 import { ImageField } from './ImageField.jsx';
+import { ProjectLeadPicker } from './ProjectLeadPicker.jsx';
 import { validateProjectDates } from "../lib/workspace-spaces.js";
 import { WorkflowSelect, LabelPicker } from './WorkProperties.jsx';
 import { initialConversationAgent, conversationAgentFields } from '../lib/conversation-editor.js';
+import { isLocalProduct } from '../lib/local-product.js';
 import {
   Button,
   Dialog,
@@ -42,6 +44,7 @@ const actions = {
 };
 export function EntityDialog({ kind, item, defaults = {}, onClose }) {
   const { data, workspace, navigate, notify, setWorkspace, page } = useApp();
+  const local = isLocalProduct(data);
   const base = item ?? defaults;
   const defaultScope = { workspace: ['workspace', 'New workspace'], project: ['project', 'New project'], task: ['route', 'New Route'], chat: ['chat', 'New conversation'], agent: ['agent', 'New agent'], memory: ['memory', 'New memory note'] }[kind];
   const defaultField = (name, label) => defaultScope ? { 'data-field-default-key': `${defaultScope[0]}.new.${name}`, 'data-field-default-page': defaultScope[1], 'data-field-default-label': label, 'data-field-default-mode': item ? 'edit' : 'create' } : {};
@@ -273,13 +276,11 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
           {kind === "workspace" ? <ImageField label="Workspace picture" value={form.image_url} onChange={value => change('image_url', value)} disabled={busy} /> : null}
           {kind === "project" ? (
             <>
-              <WorkflowSelect kind="project" item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
-              <LabelPicker compact kind="project" value={form.labels} onChange={labels => change('labels', labels)} />
-              <div className="form-grid">
+              <div className="project-metadata-row">
+                <WorkflowSelect kind="project" item={form} onChange={patch => setForm(current => ({ ...current, ...patch }))} />
+                <div className="project-label-field"><span>Labels</span><LabelPicker compact kind="project" value={form.labels} onChange={labels => change('labels', labels)} /></div>
                 <Select label="Area" value={form.team_id} onChange={(value) => change("team_id", value)}><option value="">No Area</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</Select>
-                <Field label="Project lead"><input {...defaultField('lead', 'Project lead')} value={form.lead} maxLength={200} onChange={(event) => change("lead", event.target.value)} placeholder="Name of the project lead" /></Field>
-              </div>
-              <div className="form-grid">
+                <Field label="Project lead"><ProjectLeadPicker {...defaultField('lead', 'Project lead')} value={form.lead} agents={local ? [] : conversationAgents} disabled={busy} onChange={value => change('lead', value)} /></Field>
                 <Field label="Start date"><DateField {...defaultField('start-date', 'Start date')} data-field-default-allow="true" value={form.start_date} onChange={(value) => change("start_date", value)} /></Field>
                 <Field label="Target date"><DateField {...defaultField('target-date', 'Target date')} data-field-default-allow="true" value={form.target_date} onChange={(value) => change("target_date", value)} /></Field>
               </div>
@@ -294,7 +295,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                   placeholder="What does success look like?"
                 />
               </Field>
-              <Field
+              {!local ? <Field
                 label="Working folder"
                 hint="Absolute path to the project folder on this computer. Used when you start a live session."
               >
@@ -304,7 +305,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                   onChange={(e) => change("local_path", e.target.value)}
                   placeholder="/Users/you/Projects/my-project"
                 />
-              </Field>
+              </Field> : null}
               <Field label="GitHub repository">
                 <input
                   {...defaultField('github', 'GitHub repository')}
@@ -344,7 +345,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                     onChange={(value) => change("due_at", value)}
                   />
                 </Field>
-                <Select
+                {!local ? <Select
                   label="Assigned agent"
                   value={form.assignee_agent_ids[0] ?? ""}
                   onChange={(value) =>
@@ -357,7 +358,7 @@ export function EntityDialog({ kind, item, defaults = {}, onClose }) {
                       {agent.name}
                     </option>
                   ))}
-                </Select>
+                </Select> : null}
               </div>
             </>
           ) : null}

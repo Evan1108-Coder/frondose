@@ -57,7 +57,7 @@ export function installScrollFades(doc = document) {
     }
   }
   const mutations = new win.MutationObserver(records => {
-    if (records.some(record => record.type !== 'attributes' || record.attributeName !== 'style' || styles.get(record.target) !== record.target.getAttribute('style'))) schedule(true);
+    if (records.some(record => !record.target?.closest?.('[data-editor-scroll-indicator]') && (record.type !== 'attributes' || record.attributeName !== 'style' || styles.get(record.target) !== record.target.getAttribute('style')))) schedule(true);
   });
   mutations.observe(doc.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'open', 'dir'] });
   const scroll = () => schedule();

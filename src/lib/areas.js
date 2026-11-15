@@ -1,6 +1,8 @@
 /** Area is the product identity; legacy team IDs remain stable storage keys. */
+import { isLocalProduct } from './local-product.js';
 export const AREA_READ_TOOLS = ['search_workspace', 'get_area_context', 'get_project_context', 'get_route', 'search_knowledge', 'read_document'];
 export function areaContactsVisible(data, areaId, settings) {
+  if (isLocalProduct(data)) return false;
   const policy = settings ?? data.area_settings?.find(item => item.id === areaId);
   return policy?.contacts_enabled === true || (data.team_members ?? []).some(item => item.team_id === areaId);
 }

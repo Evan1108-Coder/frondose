@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "approvedAt": "2026-10-26",
+  "scope": "Native macOS app icon only",
+  "design": "Selected option B: white Frondose flower on a soft black satin face with a restrained upper rim",
+  "background": {
+    "style": "Soft charcoal-to-black satin gradient with subtle upper-edge highlight"
+  },
+  "sourceMark": "public/brand/frondose-frond.png",
+  "artworkMethod": "Built-in image generation with the previous Frondose flower and the user-supplied Orca app icon as references; selected second design B. Resampled to 1024px with sips; ICNS exported with Apple iconutil. Previous approved icon preserved in design/mac-icon-history/2026-10-26-before-option-B.",
+  "assets": [
+    {
+      "file": "Frondose.icns",
+      "sha256": "91bbe862f189bf17fe3304758a5d718a0c399f28ce06bfd56a386dcce9c0d014",
+      "representations": 10
+    },
+    {
+      "file": "Frondose.png",
+      "sha256": "5b1baaa0ecb123c4a8def6812b6abcc56d7456fa094d0a6f9ccca7f2bee8c2a7",
+      "width": 1024,
+      "height": 1024,
+      "alpha": true
+    }
+  ],
+  "opticalPadding": {
+    "updatedAt": "2026-10-30",
+    "method": "Approved complete face resampled to 952px on a transparent 1024px canvas; no flower or finish changes",
+    "originalMaster": "design/mac-icon-history/2026-10-30-before-optical-padding/Frondose.png"
+  }
+}

@@ -1,14 +1,17 @@
 import { cloneElement, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePopupPosition } from "./usePopupPosition.js";
+import { usePopupMotion } from './usePopupMotion.js';
 import "./tooltip.css";
 
 export function Tooltip({ label, children, delay = 350 }) {
   const id = useId();
   const anchor = useRef(null);
+  const panel = useRef(null);
   const timer = useRef(null);
   const [visible, setVisible] = useState(false);
   const position = usePopupPosition(visible, anchor, { width: Math.min(280, String(label ?? "").length * 7 + 24), height: 80, portal: true });
+  const popup = usePopupMotion(visible, panel, { ready: Boolean(position) });
   function hide() {
     clearTimeout(timer.current);
     setVisible(false);
@@ -44,7 +47,8 @@ export function Tooltip({ label, children, delay = 350 }) {
     onPointerLeave: (event) => { props.onPointerLeave?.(event); hide(); },
     onPointerDown: (event) => { props.onPointerDown?.(event); hide(); },
     onClick: (event) => { props.onClick?.(event); hide(); },
-    onFocus: (event) => { props.onFocus?.(event); schedule(); },
+    // Programmatic dialog focus after a pointer click must not cover its copy.
+    onFocus: (event) => { props.onFocus?.(event); if (document.documentElement.dataset.inputModality === 'keyboard') schedule(); },
     onBlur: (event) => { props.onBlur?.(event); hide(); },
-  })}{visible ? createPortal(<span role="tooltip" id={id} className="rumbo-tooltip" style={position ?? { visibility: "hidden" }}>{label}</span>, document.body) : null}</>;
+  })}{popup.present ? createPortal(<span {...popup.motionProps} ref={panel} role="tooltip" id={id} className="rumbo-tooltip" style={position ?? { visibility: "hidden" }}>{label}</span>, document.body) : null}</>;
 }

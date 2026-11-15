@@ -24,7 +24,7 @@ async function passwordMatches(password, stored) {
   return timingSafeEqual(actual, Buffer.from(expected, 'hex'));
 }
 
-export function createIdentityService({ db, now = () => Date.now() }) {
+export function createIdentityService({ db, now = () => Date.now(), ownerOnly = false }) {
   db.exec(`CREATE TABLE IF NOT EXISTS identity_users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS identity_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES identity_users(id) ON DELETE CASCADE, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS identity_invites (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, email TEXT NOT NULL, name TEXT NOT NULL, created_by TEXT NOT NULL, workspace_id TEXT NOT NULL, expires_at INTEGER NOT NULL, accepted_at INTEGER);
@@ -38,6 +38,7 @@ export function createIdentityService({ db, now = () => Date.now() }) {
     if (raw) {
       const session = db.prepare('SELECT * FROM identity_sessions WHERE token_hash=? AND expires_at>?').get(digest(raw), now());
       if (session) {
+        if (ownerOnly && session.user_id !== 'local-owner') return null;
         db.prepare('UPDATE identity_sessions SET last_seen_at=? WHERE token_hash=?').run(now(), session.token_hash);
         return { ...publicUser(db.prepare('SELECT * FROM identity_users WHERE id=?').get(session.user_id)), session_id: session.token_hash, mode: 'account' };
       }
@@ -70,11 +71,12 @@ export function createIdentityService({ db, now = () => Date.now() }) {
     const user = db.prepare('SELECT * FROM identity_users WHERE email=?').get(email);
     // Equal-cost work for unknown addresses avoids a cheap account enumeration path.
     const valid = await passwordMatches(input.password, user?.password_hash || `${'0'.repeat(32)}:${'0'.repeat(128)}`);
-    if (!user || !valid) throw error('Email or password is incorrect.', 401);
+    if (!user || !valid || ownerOnly && user.id !== 'local-owner') throw error('Email or password is incorrect.', 401);
     db.prepare('DELETE FROM identity_attempts WHERE key=?').run(`login:${email}`);
     return createSession(user.id);
   }
   function invite(input, actor) {
+    if (ownerOnly) throw error('Invitations are unavailable in the local edition.', 403);
     if (!configured()) throw error('Set up your account before inviting members.', 409);
     const raw = token(), email = emailOf(input.email);
     validateInvitationAuthority({ workspace_id: input.workspace_id, user_id: input.user_id, email, created_by: actor.id });
@@ -92,6 +94,7 @@ export function createIdentityService({ db, now = () => Date.now() }) {
     if (!governance.explain(invitation.workspace_id, issuer.id, 'members.manage').allowed) throw error('The inviter no longer has authority to invite this member.', 410);
   }
   async function accept(input) {
+    if (ownerOnly) throw error('Invitations are unavailable in the local edition.', 403);
     if (typeof input.token !== 'string' || input.token.length > 256) throw error('Invitation is invalid or expired.', 410);
     throttle(`invite:${digest(input.token)}`);
     const invitation = db.prepare('SELECT * FROM identity_invites WHERE token_hash=? AND accepted_at IS NULL AND expires_at>?').get(digest(input.token), now());

@@ -1,3 +1,4 @@
+import {extendActivityAreas} from './activity-area-migration.mjs';
 import { randomUUID, createHash } from 'node:crypto';
 import { isRecord, validationError } from './validation.mjs';
 import { recordChange } from './workspace-features.mjs';
@@ -6,9 +7,10 @@ import { getReaction, normalizeReactionColor } from '../src/lib/reaction-catalog
 import { validateUpdateChanges, applyUpdateChanges, validateUpdateAttachments } from './update-fields.mjs';
 
 export const ACTIVITY_TYPES = Object.freeze(['progress', 'decision', 'blocker', 'risk', 'release', 'outcome', 'comment']);
-export const ACTIVITY_TARGETS = Object.freeze(['project', 'route', 'request', 'document', 'output', 'milestone', 'chat']);
+export const ACTIVITY_TARGETS = Object.freeze(['area', 'project', 'route', 'request', 'document', 'output', 'milestone', 'chat']);
 
 const TARGETS = Object.freeze({
+  area: { table: 'teams' },
   project: { table: 'projects' },
   route: { table: 'tasks' },
   request: { table: 'workspace_items', kind: 'request' },
@@ -29,6 +31,7 @@ const text = (value, label, maximum, required = false) => {
 };
 
 export function installActivity(db) {
+  extendActivityAreas(db);
   db.exec(`CREATE TABLE IF NOT EXISTS activity_entries (
     id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -44,7 +47,7 @@ export function installActivity(db) {
     archived_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    CHECK (target_type IN ('project','route','request','document','output','milestone','chat')),
+    CHECK (target_type IN ('area','project','route','request','document','output','milestone','chat')),
     CHECK (update_type IN ('progress','decision','blocker','risk','release','outcome','comment')),
     CHECK (actor_type IN ('user','agent','system'))
   );
@@ -171,7 +174,7 @@ export async function activityRoute({ db, req, res, path, url, readBody, send, s
       // Permission filtering precedes pagination, so hidden records never occupy visible slots.
       const query = db.prepare(`SELECT * FROM activity_entries WHERE ${clauses.join(' AND ')} ORDER BY ${timeColumn} DESC,id DESC`);
       const result = [];
-      for (const item of query.iterate(...parameters)) { if (policy.visible(item, actor) && (filters.include_archived === 'true' || policy.ancestorsActive(item)) && (!filters.project_id || policy.target(item)?.display.project_ids.includes(filters.project_id)) && (!filters.team_id || ['project', 'route'].includes(item.target_type) && policy.target(item)?.display.team_id === filters.team_id)) result.push(item); if (result.length > limit) break; }
+      for (const item of query.iterate(...parameters)) { if (policy.visible(item, actor) && (filters.include_archived === 'true' || policy.ancestorsActive(item)) && (!filters.project_id || policy.target(item)?.display.project_ids.includes(filters.project_id)) && (!filters.team_id || ['area', 'project', 'route'].includes(item.target_type) && policy.target(item)?.display.team_id === filters.team_id)) result.push(item); if (result.length > limit) break; }
       const more = result.length > limit; if (more) result.pop();
       const last = result.at(-1);
       send(res, 200, { result: { items: result.map(present), next_cursor: more ? Buffer.from(JSON.stringify([binding, last[timeColumn], last.id])).toString('base64url') : null } }); return true;

@@ -5,20 +5,24 @@ import { frondoseActions } from '../data/useFrondose.js';
 import { AgentIdentity } from './AgentIdentity.jsx';
 import { Plus } from './icons.jsx';
 import './agent-links.css';
+import { isLocalProduct } from '../lib/local-product.js';
 
 /** Membership is organization only, never a folder/context/permission grant. */
 export function AgentLinks({ targetType, targetId, existingAgentIds = [] }) {
   const { workspace, data, navigate } = useApp();
+  const local = isLocalProduct(data);
   const [links, setLinks] = useState([]), [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState(''), [error, setError] = useState(null), [busy, setBusy] = useState(false);
   useEffect(() => {
+    if (local) return;
     const controller = new AbortController();
     setLinks([]); setError(null);
     apiRequest(`/api/agent-links?workspace_id=${encodeURIComponent(workspace.id)}`, { signal: controller.signal })
       .then(response => { if (!controller.signal.aborted) setLinks((response.result?.links || response.links || []).filter(link => link.target_type === targetType && link.target_id === targetId)); })
       .catch(cause => { if (!controller.signal.aborted) setError(cause); });
     return () => controller.abort();
-  }, [workspace.id, targetType, targetId, data.meta?.lastEventAt]);
+  }, [local, workspace.id, targetType, targetId, data.meta?.lastEventAt]);
+  if (local) return null;
   const ids = new Set([...existingAgentIds, ...links.map(link => link.agent_id)]);
   const members = data.agents.filter(agent => ids.has(agent.id) && !agent.archived_at);
   const available = data.agents.filter(agent => agent.workspace_id === workspace.id && !agent.archived_at && !ids.has(agent.id));

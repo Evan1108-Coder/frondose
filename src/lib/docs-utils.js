@@ -12,3 +12,13 @@ export function searchDocs(articles, query) {
     return { article, score: tokens.every(t => text.includes(t)) ? tokens.reduce((sum, t) => sum + (article.title.toLowerCase().includes(t) ? 10 : article.description.toLowerCase().includes(t) ? 4 : 1), 0) : 0 };
   }).filter(r => r.score).sort((a,b) => b.score-a.score).map(r => r.article);
 }
+
+// Docs, What’s New and sibling navigation all follow the authored release
+// sequence, including multiple builds on the same day. Preserve guide order.
+export function docsArticlesInNavigationOrder(articles, releaseNotes) {
+  const rank = new Map(releaseNotes.map((update, index) => [update.articleId, index]));
+  const updates = articles.filter(article => article.group === 'updates')
+    .sort((a, b) => (rank.get(a.id) ?? rank.size) - (rank.get(b.id) ?? rank.size));
+  let index = 0;
+  return articles.map(article => article.group === 'updates' ? updates[index++] : article);
+}

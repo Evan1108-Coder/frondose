@@ -1,21 +1,27 @@
 import { Children, Fragment, isValidElement, useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Check } from "./icons.jsx";
 import { usePopupPosition } from "./usePopupPosition.js";
+import { usePopupMotion } from './usePopupMotion.js';
+import { InterfaceElement, useInterfaceLanguage } from './InterfaceLanguage.jsx';
+import { interfaceText } from '../lib/interface-language.js';
 import "./select-field.css";
 
 function textContent(children) {
   return Children.toArray(children).map((child) => isValidElement(child) ? textContent(child.props.children) : String(child ?? "")).join("");
 }
 
-export function readSelectOptions(children, group = null, groupDisabled = false) {
+export function readSelectOptions(children, group = null, groupDisabled = false, language = 'en') {
   const options = [];
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
-    if (child.type === Fragment) options.push(...readSelectOptions(child.props.children, group, groupDisabled));
-    if (child.type === "optgroup") options.push(...readSelectOptions(child.props.children, child.props.label, groupDisabled || child.props.disabled));
-    if (child.type === "option") {
-      const label = child.props.label ?? textContent(child.props.children);
-      options.push({ value: String(child.props.value ?? label), label, group, disabled: Boolean(groupDisabled || child.props.disabled) });
+    const type = child.type === InterfaceElement ? child.props.interfaceElementType : child.type;
+    if (type === Fragment) options.push(...readSelectOptions(child.props.children, group, groupDisabled, language));
+    if (type === "optgroup") options.push(...readSelectOptions(child.props.children, child.props.label, groupDisabled || child.props.disabled, language));
+    if (type === "option") {
+      const source = child.props.label ?? textContent(child.props.children);
+      const label = child.type === InterfaceElement && child.props.label == null && child.props.interfaceOptionText !== undefined
+        ? interfaceText(child.props.interfaceOptionText, language) : source;
+      options.push({ value: String(child.props.value ?? source), label, group, disabled: Boolean(groupDisabled || child.props.disabled) });
     }
   });
   return options;
@@ -32,11 +38,13 @@ export function SelectField({ label, value, defaultValue = "", onChange, childre
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const options = readSelectOptions(children);
+  const language = useInterfaceLanguage();
+  const options = readSelectOptions(children, null, false, language);
   const selectedValue = String(value ?? uncontrolled ?? "");
   const selected = options.findIndex((option) => option.value === selectedValue);
   const enabled = options.map((option, index) => !option.disabled ? index : -1).filter((index) => index >= 0);
   const position = usePopupPosition(open, trigger, { height: Math.min(320, options.length * 38 + new Set(options.map((option) => option.group).filter(Boolean)).size * 28 + 12) });
+  const popup = usePopupMotion(open, list, { ready: Boolean(position) });
 
   function close(restore = false) {
     setOpen(false);
@@ -123,7 +131,7 @@ export function SelectField({ label, value, defaultValue = "", onChange, childre
         <ChevronDown morphTo={open ? ChevronUp : ChevronDown} interactive={false} aria-hidden="true" />
       </button>
       {name ? <input type="hidden" name={name} value={selectedValue} disabled={disabled} /> : null}
-      {open ? <div ref={list} id={listId} className="rumbo-select-panel" role="listbox" aria-label={props["aria-label"] ?? label ?? "Options"} style={position ?? { visibility: "hidden" }} data-rumbo-popup="select">
+      {popup.present ? <div {...popup.motionProps} ref={list} id={listId} className="rumbo-select-panel" role="listbox" aria-label={props["aria-label"] ?? label ?? "Options"} style={position ?? { visibility: "hidden" }} data-rumbo-popup={open ? 'select' : undefined}>
         {options.map((option, index) => <Fragment key={`${option.value}-${index}`}>
           {option.group && options[index - 1]?.group !== option.group ? <div className="rumbo-select-group" role="presentation">{option.group}</div> : null}
           <div id={`${listId}-${index}`} role="option" aria-selected={selected === index} aria-disabled={option.disabled || undefined} className={`rumbo-select-option ${active === index ? "is-active" : ""}`} data-option-index={index} onMouseDown={(event) => event.preventDefault()} onPointerMove={() => { if (!option.disabled) setActive(index); }} onClick={event => { event.preventDefault(); event.stopPropagation(); choose(index); }}>

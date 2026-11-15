@@ -1,10 +1,10 @@
 const VIEWS = new Set([
-  "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
-  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "views", "docs", "reader", "updates", "skills", "workflows",
+  "todos", "workspace", "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
+  "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "comments", "views", "docs", "reader", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
-const TEAM_SECTIONS = new Set(['overview', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
+const TEAM_SECTIONS = new Set(['overview', 'todos', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
 const ASSISTANT_SECTIONS = new Set(['conversation', 'activity', 'scheduled']);
 const VIEW_ALIASES = { 'frondose-agent': 'rumbo-agent', 'talvori-agent': 'rumbo-agent', areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 
@@ -44,19 +44,22 @@ export function parsePage(hash = "") {
     if (returns.length > 1 || returns.length && !validReturn(returns[0])) return home();
     const coordinationRuns = params.getAll('coordinationRun'), coordinationItems = params.getAll('coordination');
     if (coordinationRuns.length > 1 || coordinationItems.length > 1 || coordinationRuns.length !== coordinationItems.length || [...coordinationRuns,...coordinationItems].some(value=>!validId(value))) return home();
+    const resources = params.getAll('resource');
+    if (resources.length > 1 || resources.some(value => !validId(value))) return home();
+    const teamScopes=params.getAll('area');if(teamScopes.length>1||teamScopes.some(value=>!validId(value)))return home();
     const sections = params.getAll('section').map(value => value === 'contacts' ? 'people' : value);
     const sectionOptions = view === 'rumbo-agent' ? ASSISTANT_SECTIONS : TEAM_SECTIONS;
     if (sections.length > 1 || (sections.length && !sectionOptions.has(sections[0]))) return home();
     // Retired Playbooks links remain useful without reviving the old builder.
     if (view === 'playbooks') return { view: 'settings', id: 'scheduled-work', projectId: null };
-    return { view, id, projectId, ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'reader' && returns.length ? { returnTo: returns[0] } : {}), ...(view === 'chats' && id && coordinationRuns.length ? { coordinationRunId:coordinationRuns[0],coordinationId:coordinationItems[0] } : {}), ...((view === 'teams' && id || view === 'rumbo-agent') && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
+    return { view, id, projectId, ...(["tasks","projects","documents","todos","updates"].includes(view)&&teamScopes.length?{teamId:teamScopes[0]}:{}), ...(view === 'teams' && id && sections[0] === 'resources' && resources.length ? {resourceId:resources[0]} : {}), ...(reviews.length ? { reviewId: reviews[0] } : {}), ...(view === 'reader' && returns.length ? { returnTo: returns[0] } : {}), ...(view === 'chats' && id && coordinationRuns.length ? { coordinationRunId:coordinationRuns[0],coordinationId:coordinationItems[0] } : {}), ...((view === 'teams' && id || view === 'rumbo-agent') && sections.length ? { section: sections[0] } : {}), ...(['chats', 'rumbo-agent'].includes(view) && id && messages.length ? { messageId: messages[0] } : {}) };
   } catch {
     return home();
   }
 }
 
 /** Build a canonical hash while preserving a project-scoped list or detail. */
-export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null, returnTo = null, coordinationRunId = null, coordinationId = null } = {}) {
+export function pageHash(view, id = null, { projectId = null, messageId = null, section = null, reviewId = null, returnTo = null, coordinationRunId = null, coordinationId = null, resourceId = null, teamId = null } = {}) {
   view = VIEW_ALIASES[view] || view;
   if (view === 'playbooks') {
     if (id !== null && !validId(id)) throw new TypeError('Invalid page identifier');
@@ -82,10 +85,15 @@ export function pageHash(view, id = null, { projectId = null, messageId = null, 
     if (!TEAM_SECTIONS.has(section)) throw new TypeError('Invalid team section');
     query.set('section', section === 'people' ? 'contacts' : section);
   }
+  if (view === 'teams' && id && section === 'resources' && resourceId !== null) {
+    if (!validId(resourceId)) throw new TypeError('Invalid resource identifier');
+    query.set('resource', resourceId);
+  }
   if (section && view === 'rumbo-agent') {
     if (!ASSISTANT_SECTIONS.has(section)) throw new TypeError('Invalid assistant section');
     query.set('section', section);
   }
+  if(teamId&&["tasks","projects","documents","todos","updates"].includes(view)){if(!validId(teamId))throw new TypeError("Invalid Area identifier");query.set("area",teamId);}
   if (projectId && SCOPED_VIEWS.has(view)) query.set('project', projectId);
   if (messageId && ['chats', 'rumbo-agent'].includes(view) && id) query.set('message', messageId);
   return `${path}${query.size ? `?${query}` : ''}`;

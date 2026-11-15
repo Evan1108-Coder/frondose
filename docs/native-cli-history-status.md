@@ -1,4 +1,25 @@
-# Native CLI history: out of scope
+# Native CLI history: current scope and historical research
+
+The later October 26 request supersedes the October 24 no-history direction:
+Frondose now has an opt-in local Codex/Claude session-history search slice and
+exact provider-native resume with opaque server-validated results. See
+[Local native CLI session history search](local-session-history-search.md) for
+supported formats, consent, bounds and fixture/native verification limits.
+Website-chat import, universal two-way sync, cross-provider conversion and the
+retired Session views remain out of scope. The older statements below describe
+the former connection-library checkpoint, not the current CLI-first UI.
+
+October 28 native-terminal correction: the ordinary Codex picker now launches
+`codex resume --all`, rather than hiding sessions from other working
+directories. Exact result IDs still use the validated provider-native session
+ID. Claude retains its native `--resume` picker. Frondose preserves the owner's
+HOME and supported provider configuration variables; it does not manufacture a
+new provider account or copy credentials. Picker support depends on the
+installed CLI version. This source change needs a safe backend restart on an
+already-running host; it does not modify the user's running process. No actual
+owner transcript content was read to test it.
+
+## Historical October 24 checkpoint
 
 As of the October 24, 2026 user decision, native CLI chat-history listing,
 import, continuation and synchronization are **out of scope**. Do not build or

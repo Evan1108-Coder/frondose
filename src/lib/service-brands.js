@@ -1,3 +1,4 @@
+import vscode from '@iconify-icons/logos/visual-studio-code';
 import openai from '@iconify-icons/logos/openai-icon';
 import codex from '@iconify-icons/logos/codex';
 import anthropic from '@iconify-icons/logos/anthropic-icon';
@@ -11,6 +12,7 @@ import slack from '@iconify-icons/logos/slack-icon';
 import teams from '@iconify-icons/logos/microsoft-teams';
 import discord from '@iconify-icons/logos/discord-icon';
 import notion from '@iconify-icons/logos/notion-icon';
+import bitbucket from '@iconify-icons/logos/bitbucket';
 import gitlab from '@iconify-icons/logos/gitlab-icon';
 import mcp from '@iconify-icons/logos/model-context-protocol-icon';
 import linear from '@iconify-icons/logos/linear-icon';
@@ -29,6 +31,7 @@ const openrouter = { width: 24, height: 24, body: '<path d="M16.778 1.844v1.919q
 
 // Trusted, bundled SVG Logos assets, not user-supplied SVG or remote HTML.
 const entries = [
+  ['vscode', vscode, ['vs code', 'visual studio code', 'vs code web'], []],
   ['openai', openai, ['openai api', 'chatgpt'], ['openai.com', 'chatgpt.com']],
   ['codex', codex, [], []],
   ['openrouter', openrouter, ['open router'], ['openrouter.ai']],
@@ -53,6 +56,7 @@ const entries = [
   ['microsoft-teams', teams, ['microsoft teams', 'teams'], ['teams.microsoft.com']],
   ['discord', discord, [], ['discord.com', 'discord.gg']],
   ['notion', notion, [], ['notion.so', 'notion.site']],
+  ['bitbucket', bitbucket, [], ['bitbucket.org']],
   ['gitlab', gitlab, [], ['gitlab.com']],
   ['mcp', mcp, ['model context protocol'], ['modelcontextprotocol.io']],
 ];
@@ -60,6 +64,7 @@ const brands = entries.map(([id, icon, aliases, domains]) => ({
   id, aliases: [id, ...aliases], domains,
   src: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${icon.width}" height="${icon.height}" viewBox="0 0 ${icon.width} ${icon.height}">${icon.body}</svg>`)}`,
 }));
+brands.push(...[['gitea', 'gitea.com'], ['azure-devops', 'dev.azure.com']].map(([id, domain]) => ({ id, aliases: [id, id.replaceAll('-', ' ')], domains: [domain], src: '/brand/services/' + id + '.svg', rendering: 'mask' })));
 brands.push(...['docs', 'sheets', 'slides'].map(product => ({ id: `google-${product}`, aliases: [`google-${product}`, `google ${product}`], domains: [], src: `/brand/services/google-${product}.png` })));
 brands.push(...[
   ['groq', ['groq'], ['groq.com']], ['together', ['together', 'together ai'], ['together.ai']],

@@ -19,13 +19,17 @@ import { ReviewPanel } from '../components/ReviewPanel.jsx';
 import { FrondoseAgentEntryButton } from '../components/FrondoseAgentEntry.jsx';
 import { TemplateInstanceDetails } from '../components/TemplateInstanceDetails.jsx';
 import "./workspace-spaces.css";
+import { isLocalProduct } from '../lib/local-product.js';
 
 const TABS = [{ id: "overview", label: "Overview" }, { id: "strategy", label: "Strategy & risks" }, { id: "timeline", label: "Timeline" }, { id: "routes", label: "Routes" }, { id: "agents", label: "AI agents" }, { id: "documents", label: "Documents" }, { id: "chats", label: "Chats" }, { id: 'changes', label: 'Changes' }, { id: "updates", label: "Updates" }, { id: "activity", label: "Activity" }];
 
 export function ProjectHub({ project }) {
   const { data, edit, navigate, archive, perform, page } = useApp();
+  const local = isLocalProduct(data);
+  const tabs = local ? TABS.filter(item => !['agents', 'chats'].includes(item.id)) : TABS;
   const [tab, setTab] = useState(page.reviewId ? 'changes' : 'overview');
   useEffect(() => { if (page.reviewId) setTab('changes'); }, [page.reviewId]);
+  useEffect(() => { if (local && ['agents', 'chats'].includes(tab)) setTab('overview'); }, [local, tab]);
   const [query, setQuery] = useState("");
   const [routeStatus, setRouteStatus] = useState("all");
   const [document, setDocument] = useState(null);
@@ -44,10 +48,10 @@ export function ProjectHub({ project }) {
   return <main className="page space-page project-hub">
     <button className="back-link" onClick={() => navigate("projects")}><ArrowLeft />All projects</button>
     {project.image_url ? <button className="project-picture-edit" aria-label="Change project picture" onClick={() => edit('project', project)}><img className="project-heading-picture" src={project.image_url} alt="" /></button> : null}
-    <PageHeader title={project.name} description={project.description || "A shared home for your plans, context, and progress."}><FrondoseAgentEntryButton source={{ type: 'project', id: project.id }} /><Button icon={Pencil} onClick={() => edit("project", project)}>Edit project</Button><Button variant="primary" icon={Plus} onClick={() => edit("task", null, { project_id: project.id, team_id: project.team_id })}>New route</Button></PageHeader>
-    <SpaceTabs label="Project sections" tabs={TABS.map((item) => ({ ...item, count: item.id === "routes" ? routes.length : item.id === "chats" ? chats.length : undefined }))} value={tab} onChange={value => requestUpdateNavigation(() => setTab(value))} />
-    <div className="space-section-toolbar"><Button onClick={() => navigate('workbench', project.id)}>Open workbench<ArrowRight /></Button><Button onClick={() => navigate('library', null, { projectId: project.id })}>Project outputs<ArrowRight /></Button></div>
-    <div className="space-tab-content" role="tabpanel" aria-label={TABS.find((item) => item.id === tab).label}>
+    <PageHeader title={project.name} description={project.description || "A shared home for your plans, context, and progress."}><FrondoseAgentEntryButton source={{ type: 'project', id: project.id }} /><Button onClick={() => requestUpdateNavigation(() => setTab("updates"))}>New update</Button><Button icon={Pencil} onClick={() => edit("project", project)}>Edit project</Button><Button variant="primary" icon={Plus} onClick={() => edit("task", null, { project_id: project.id, team_id: project.team_id })}>New route</Button></PageHeader>
+    <SpaceTabs label="Project sections" tabs={tabs.map((item) => ({ ...item, count: item.id === "routes" ? routes.length : item.id === "chats" ? chats.length : undefined }))} value={tab} onChange={value => requestUpdateNavigation(() => setTab(value))} />
+    <div className="space-section-toolbar">{local ? <Button onClick={() => navigate('workspace')}>Open workspace<ArrowRight /></Button> : <Button onClick={() => navigate('workbench', project.id)}>Open workbench<ArrowRight /></Button>}<Button onClick={() => navigate('library', null, { projectId: project.id })}>Project outputs<ArrowRight /></Button></div>
+    <div className="space-tab-content" role="tabpanel" aria-label={tabs.find((item) => item.id === tab)?.label ?? 'Overview'}>
       {tab === 'strategy' ? <ProjectStrategy project={project} /> : null}
       {tab === 'timeline' ? <ProjectTimeline project={project} /> : null}
       {tab === 'changes' ? <ReviewPanel targetType="project" targetId={project.id} projectId={project.id} defaultOpen /> : null}
@@ -63,9 +67,9 @@ export function ProjectHub({ project }) {
       </aside></div> : null}
       {tab === "routes" ? <section><div className="space-section-toolbar"><SearchField value={query} onChange={setQuery} placeholder="Search project routes…" /><Select value={routeStatus} onChange={setRouteStatus} aria-label="Project route status"><option value="all">All statuses</option>{Object.entries(STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><span className="toolbar-count">{filteredRoutes.length} routes</span></div>{filteredRoutes.length ? <RouteRows routes={filteredRoutes} projectId={project.id} /> : <Empty compact kind={query || routeStatus !== "all" ? "search" : "routes"} title={query || routeStatus !== "all" ? "No routes match these filters" : "Plan your first route"} description="Break the brief into focused pieces of work." action={query || routeStatus !== "all" ? "Clear filters" : "New route"} onAction={() => query || routeStatus !== "all" ? (setQuery(""), setRouteStatus("all")) : edit("task", null, { project_id: project.id, team_id: project.team_id })} />}</section> : null}
       {tab === "documents" ? <DocumentsPanel projectId={project.id} /> : null}
-      {tab === "chats" ? <section><div className="space-section-toolbar"><p className="muted">Conversations linked to this project.</p><Button icon={Plus} onClick={() => edit("chat", null, { project_id: project.id })}>New project chat</Button></div>{chats.length ? chats.map((chat) => <button key={chat.id} className="space-linked-row" onClick={() => navigate("chats", chat.id, { projectId: project.id })}><MessageCircle /><span><strong>{chat.title}</strong><small>{(val(chat, "participant_agent_ids") ?? []).length} agents · Updated {relative(val(chat, "updated_at"))}</small></span><ArrowRight /></button>) : <Empty compact kind="chats" title="Keep the conversation close" description="Discuss the project with your agents and keep its context attached." action="Create project chat" onAction={() => edit("chat", null, { project_id: project.id })} />}</section> : null}
-      {tab === 'agents' ? <AgentLinks targetType="project" targetId={project.id} /> : null}
-      {tab === "updates" ? <ActivityFeed workspaceId={project.workspace_id} targetType="project" targetId={project.id} /> : null}
+      {!local && tab === "chats" ? <section><div className="space-section-toolbar"><p className="muted">Conversations linked to this project.</p><Button icon={Plus} onClick={() => edit("chat", null, { project_id: project.id })}>New project chat</Button></div>{chats.length ? chats.map((chat) => <button key={chat.id} className="space-linked-row" onClick={() => navigate("chats", chat.id, { projectId: project.id })}><MessageCircle /><span><strong>{chat.title}</strong><small>{(val(chat, "participant_agent_ids") ?? []).length} agents · Updated {relative(val(chat, "updated_at"))}</small></span><ArrowRight /></button>) : <Empty compact kind="chats" title="Keep the conversation close" description="Discuss the project with your agents and keep its context attached." action="Create project chat" onAction={() => edit("chat", null, { project_id: project.id })} />}</section> : null}
+      {!local && tab === 'agents' ? <AgentLinks targetType="project" targetId={project.id} /> : null}
+      {tab === "updates" ? <ActivityFeed workspaceId={project.workspace_id} targetType="project" targetId={project.id} title="Project updates" /> : null}
       {tab === "activity" ? <ActivityTimeline workspaceId={project.workspace_id} targetType="project" targetId={project.id} /> : null}
     </div>
     {document ? <WorkspaceEditor kind="document" item={document} onClose={() => setDocument(null)} /> : null}
