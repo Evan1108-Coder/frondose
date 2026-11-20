@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, symlink, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
+import { createRequire } from 'node:module';
 import { DESKTOP_PACKAGE_INPUTS, packageArguments, stagingRoot, packagingEnvironment, copyPackageInput, desktopOutputDirectory } from '../scripts/desktop-package.mjs';
+
+test('Linux deb packaging has a project homepage and a maintainer address', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const config = createRequire(import.meta.url)('../config/electron-builder.cjs');
+  assert.equal(new URL(manifest.homepage).protocol, 'https:');
+  assert.ok(config.linux.target.includes('deb'));
+  assert.match(config.linux.maintainer, /^[^<>]+ <[^@<>\s]+@[^<>\s]+>$/);
+});
 
 test('desktop packaging whitelist excludes private storage and does not source checkout node_modules', () => {
   assert.ok(DESKTOP_PACKAGE_INPUTS.includes('desktop'));

@@ -281,7 +281,7 @@ test('live derived context uses project folder and rejects arbitrary working-fol
     const projectPath = join(dataDir, 'project');
     const otherPath = join(dataDir, 'other');
     const aliasPath = join(dataDir, 'project-alias');
-    await mkdir(projectPath); await mkdir(otherPath); await symlink(projectPath, aliasPath);
+    await mkdir(projectPath); await mkdir(otherPath); await symlink(projectPath, aliasPath, 'junction');
     await call(`/projects/${project.id}`, { local_path: projectPath }, 'PATCH');
     const agent = (await call('/agents', { workspace_id: workspace.id, name: 'Folder test agent', provider: 'codex', working_directory: otherPath }, 'POST', 201)).agent;
     await call('/memory-notes', { workspace_id: workspace.id, project_id: project.id, title: 'Project decision', content: 'Use the project-specific convention.' }, 'POST', 201);
@@ -295,16 +295,16 @@ test('live derived context uses project folder and rejects arbitrary working-fol
       assert.equal(run.task_id, task.id);
       assert.equal(run.project_id, project.id);
       const last = launches.at(-1);
-      assert.equal(last.cwd, await realpath(projectPath));
+      assert.equal(await realpath(last.cwd), await realpath(projectPath));
       assert.match(last.prompt, /Preserve the complete project context/);
       assert.match(last.prompt, /Use the project-specific convention/);
       assert.match(last.prompt, /Linked route/);
     }
     await call(`/projects/${project.id}`, { local_path: null }, 'PATCH');
     await call('/runs', input, 'POST', 201);
-    assert.equal(launches.at(-1).cwd, await realpath(otherPath), 'Agent folder applies only without a linked project folder');
+    assert.equal(await realpath(launches.at(-1).cwd), await realpath(otherPath), 'Agent folder applies only without a linked project folder');
     await call('/runs', { ...input, cwd: projectPath }, 'POST', 201);
-    assert.equal(launches.at(-1).cwd, await realpath(projectPath), 'Explicit folder is supported when project has no folder');
+    assert.equal(await realpath(launches.at(-1).cwd), await realpath(projectPath), 'Explicit folder is supported when project has no folder');
   }, { integrationOptions: {
     execute: async (_command, args) => ({ stdout: args.includes('mcp') ? '[]' : 'Logged in', stderr: '', code: 0 }),
     spawnProcess: (_provider, _args, options) => {

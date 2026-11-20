@@ -13,7 +13,7 @@ module.exports = {
   // accessing signing credentials. This is not Developer ID/notarization.
   mac: { icon: 'desktop/assets/mac/Frondose.icns', target: ['dmg', 'zip'], category: 'public.app-category.productivity', identity: '-', extendInfo: { NSMicrophoneUsageDescription: 'Frondose uses your microphone only while you explicitly record dictation.', NSSpeechRecognitionUsageDescription: 'Frondose transcribes dictation on this Mac when an on-device language is available.', NSAppleEventsUsageDescription: 'Frondose operates only the applications you explicitly select for Computer Use.' } },
   win: { target: ['nsis', 'zip'], ...(release.windowsPublisherName ? { publisherName: release.windowsPublisherName } : {}) },
-  linux: { target: ['AppImage', 'deb'], category: 'Development' },
+  linux: { target: ['AppImage', 'deb'], category: 'Development', maintainer: 'Frondose <270086281+Evan1108-Coder@users.noreply.github.com>' },
   // Signed installers and update distribution require owner-provisioned
   // certificates and release infrastructure; no Orca update service is used.
   publish: release.feedUrl ? { provider: 'generic', url: release.feedUrl } : null,

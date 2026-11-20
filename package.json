@@ -2,6 +2,7 @@
   "name": "frondose",
   "version": "0.1.16",
   "private": true,
+  "homepage": "https://github.com/Evan1108-Coder/frondose",
   "type": "module",
   "engines": {
     "node": "^22.17.0 || >=24.0.0"

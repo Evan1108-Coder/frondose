@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -17,7 +18,14 @@ import { parseSlashCommand } from '../src/lib/commands.js';
 import { documentLink } from '../src/lib/document-markdown.js';
 import { captureAgentActions } from '../server/agent-awareness.mjs';
 
-const temp = t => { const dir = mkdtempSync(join(tmpdir(), 'frondose-rebrand-')); t.after(() => rmSync(dir, { recursive: true, force: true })); return dir; };
+const temp = (t, cleanup = []) => {
+  const dir = mkdtempSync(join(tmpdir(), 'frondose-rebrand-'));
+  t.after(async () => {
+    try { for (const close of cleanup.reverse()) await close(); }
+    finally { await rm(dir, { recursive: true, force: true, maxRetries: 5 }); }
+  });
+  return dir;
+};
 
 test('new environment names take precedence, including explicit empty values; legacy rotation remains live', () => {
   const input = { RUMBO_HF_CLIENT_ID: 'old-registration', RUMBO_GITHUB_CLIENT_SECRET: 'legacy-secret' };
@@ -69,17 +77,17 @@ test('new installations use Frondose paths; existing database paths never silent
 });
 
 test('an explicitly selected legacy database reopens without losing records', t => {
-  const dir = temp(t); let api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
+  const cleanup = [], dir = temp(t, cleanup); let api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
   const original = api.snapshot().workspaces.map(row => row.id); api.close();
   renameSync(join(dir, 'frondose.sqlite'), join(dir, 'rumbo.sqlite'));
-  api = createLocalApi({ dataDir: dir, integrationOptions: { env: {} } }); t.after(() => api.close());
+  api = createLocalApi({ dataDir: dir, integrationOptions: { env: {} } }); cleanup.push(() => api.close());
   assert.equal(api.dbPath, join(dir, 'rumbo.sqlite'));
   assert.deepEqual(api.snapshot().workspaces.map(row => row.id), original);
 });
 
 test('default-name migration is backed up, versioned, idempotent, and preserves custom names, guidance and history', t => {
-  const dir = temp(t), api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
-  const path = api.dbPath; api.close(); const db = new DatabaseSync(path); t.after(() => db.close());
+  const cleanup = [], dir = temp(t, cleanup), api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
+  const path = api.dbPath; api.close(); const db = new DatabaseSync(path); cleanup.push(() => db.close());
   db.prepare('DELETE FROM settings WHERE key=?').run('brand.frondose.v1');
   db.prepare("UPDATE workspaces SET name='Rumbo Studio' WHERE id='ws_personal'").run();
   const stamp = new Date().toISOString();
@@ -121,9 +129,9 @@ test('legacy and Frondose assistant links resolve identically; generated links u
 });
 
 test('existing Talvori defaults migrate once with a recovery backup and without touching authored records', t => {
-  const dir = temp(t), api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
+  const cleanup = [], dir = temp(t, cleanup), api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
   const path = api.dbPath; api.close();
-  const db = new DatabaseSync(path); t.after(() => db.close());
+  const db = new DatabaseSync(path); cleanup.push(() => db.close());
   db.prepare('DELETE FROM settings WHERE key=?').run('brand.frondose.v1');
   const stamp = new Date().toISOString();
   db.prepare("UPDATE workspaces SET name='Talvori Studio' WHERE id='ws_personal'").run();
@@ -148,10 +156,14 @@ test('existing Talvori defaults migrate once with a recovery backup and without 
 });
 
 test('old and new assistant API routes share the same access boundary and result', async t => {
-  const dir = temp(t), api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
+  const cleanup = [], dir = temp(t, cleanup), api = createLocalApi({ dataDir: dir, seedMode: 'demo', integrationOptions: { env: {} } });
+  cleanup.push(() => api.close());
   const server = createServer((req, res) => api.middleware(req, res));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { await new Promise(resolve => server.close(resolve)); api.close(); });
+  cleanup.push(() => new Promise((resolve, reject) => {
+    server.close(error => error ? reject(error) : resolve());
+    server.closeAllConnections();
+  }));
   const base = `http://127.0.0.1:${server.address().port}/api`;
   const read = async name => { const res = await fetch(`${base}/${name}?workspace_id=ws_personal`); return { status: res.status, json: await res.json() }; };
   assert.deepEqual(await read('frondose-agent'), await read('rumbo-agent'));
@@ -165,8 +177,9 @@ test('old and new assistant API routes share the same access boundary and result
 });
 
 test('old session cookies stay usable; new sessions use the Frondose cookie name', async t => {
-  const dir = temp(t), api = createLocalApi({ dataDir: dir, integrationOptions: { env: {} } });
-  const db = new DatabaseSync(api.dbPath); t.after(() => { db.close(); api.close(); });
+  const cleanup = [], dir = temp(t, cleanup), api = createLocalApi({ dataDir: dir, integrationOptions: { env: {} } });
+  cleanup.push(() => api.close());
+  const db = new DatabaseSync(api.dbPath); cleanup.push(() => db.close());
   const identity = createIdentityService({ db });
   const session = await identity.setup({ name: 'Owner', email: 'owner@example.com', password: 'a fixture password 123' }, { id: 'local-owner' });
   assert.match(identity.cookie(session.token, true), /^frondose_session=.*Secure$/);

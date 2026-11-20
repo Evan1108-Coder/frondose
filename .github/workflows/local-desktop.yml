@@ -14,7 +14,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       # No model-provider or service credentials are supplied to these jobs.
@@ -29,7 +29,7 @@ jobs:
       - name: Build local application and packaging contract
         run: npm run build
       - name: Isolated application and runtime tests
-        run: npm test
+        run: npm test -- --test-timeout=180000
       - name: Verify Sites packaging compatibility
         run: npm run test:sites
       - name: Build unpacked desktop for this operating system

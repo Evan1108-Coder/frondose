@@ -42,7 +42,7 @@ async function render({item,defaults={}}={}) {
   if(!runtime){
     const directory=mkdtempSync(join(tmpdir(),'frondose-conversation-dialog-test-'));
     try {
-      const result=await build({stdin:{contents:'export { EntityDialog } from "./src/components/EntityDialog.jsx"; export { AppContext } from "./src/app-context.js";',resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',jsx:'automatic',loader:{'.css':'empty','.woff2':'dataurl','.woff':'dataurl','.ttf':'dataurl'},plugins:[{name:'shared-react',setup(builder){builder.onResolve({filter:/^react(?:-dom)?(?:\/.*)?$/},args=>({path:require.resolve(args.path),external:true}));}}]});
+      const result=await build({stdin:{contents:'export { EntityDialog } from "./src/components/EntityDialog.jsx"; export { AppContext } from "./src/app-context.js";',resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm',jsx:'automatic',loader:{'.css':'empty','.woff2':'dataurl','.woff':'dataurl','.ttf':'dataurl'},plugins:[{name:'shared-react',setup(builder){builder.onResolve({filter:/^react(?:-dom)?(?:\/.*)?$/},args=>({path:pathToFileURL(require.resolve(args.path)).href,external:true}));}}]});
       const path=join(directory,'dialog.mjs');writeFileSync(path,result.outputFiles[0].text);
       runtime=await import(pathToFileURL(path).href);
     } finally {rmSync(directory,{recursive:true,force:true});}

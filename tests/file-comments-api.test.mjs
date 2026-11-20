@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { createFrondoseServer } from '../server/start.mjs';
+import { containsPath, createFrondoseServer } from '../server/start.mjs';
+
+test('public assets contain their children, not private siblings or another drive', () => {
+  for (const [path, base] of [[posix, '/frondose'], [win32, 'C:/Frondose']]) {
+    const root = path.join(base, 'client');
+    assert.equal(containsPath(root, root, path), true);
+    assert.equal(containsPath(root, path.join(root, 'private'), path), true);
+    assert.equal(containsPath(root, path.join(base, 'private'), path), false);
+    assert.equal(containsPath(root, path.join(base, 'client-backup'), path), false);
+  }
+  assert.equal(containsPath('D:/frondose/client', 'C:/frondose/private', win32), false);
+});
 
 async function fixture(callback) {
   const directory = await mkdtemp(join(tmpdir(), 'frondose-comments-http-'));

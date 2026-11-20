@@ -22,7 +22,7 @@ async function renderer() {
       absWorkingDir: project, entryPoints: ['src/components/DocumentContent.jsx'], write: false,
       bundle: true, platform: 'node', format: 'esm', jsx: 'automatic', loader: { '.css': 'empty' },
       plugins: [{ name: 'one-react', setup(builder) {
-        builder.onResolve({ filter: /^react(?:-dom)?(?:\/.*)?$/ }, args => ({ path: require.resolve(args.path), external: true }));
+        builder.onResolve({ filter: /^react(?:-dom)?(?:\/.*)?$/ }, args => ({ path: pathToFileURL(require.resolve(args.path)).href, external: true }));
       } }],
     });
     const path = join(directory, 'renderer.mjs');

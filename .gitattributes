@@ -1,0 +1,2 @@
+# Preserve the exact upstream license bytes on Windows too.
+public/licenses/node-diff3-MIT.md -text

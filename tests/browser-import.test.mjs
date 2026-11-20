@@ -45,19 +45,21 @@ test('preview is redacted, workspace-scoped and single-use; only confirmed selec
 });
 test('synthetic Chrome WAL and Firefox cookie profiles are found without touching real browser data',async t=>{
   const home=await realpath(await mkdtemp(join(tmpdir(),'frondose-browser-profiles-unit-')));
-  t.after(()=>rm(home,{recursive:true,force:true}));
+  const databases=[];
+  t.after(async()=>{for(const db of databases)db.close();await rm(home,{recursive:true,force:true,maxRetries:5});});
   const chrome=join(home,'Library','Application Support','Google','Chrome','Default','Network');
   const fox=join(home,'Library','Application Support','Firefox','Profiles','test.default');
   await mkdir(chrome,{recursive:true});await mkdir(fox,{recursive:true});
-  const db=new DatabaseSync(join(chrome,'Cookies'));t.after(()=>db.close());
+  const db=new DatabaseSync(join(chrome,'Cookies'));databases.push(db);
   db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE meta(key,value); INSERT INTO meta VALUES('version',24);
     CREATE TABLE cookies(host_key,name,path,value,encrypted_value,is_secure,is_httponly,samesite,expires_utc,top_frame_site_key,has_cross_site_ancestor);
     INSERT INTO cookies VALUES('chrome.example.test','sid','/','fixture',x'',1,1,1,0,'',0),
     ('skip.example.test','sid','/','partitioned',x'',1,1,1,0,'https://other.test',0);`);
   const firefox=new DatabaseSync(join(fox,'cookies.sqlite'));
+  databases.push(firefox);
   firefox.exec(`CREATE TABLE moz_cookies(host,name,path,value,expiry,isSecure,isHttpOnly,sameSite,originAttributes);
     INSERT INTO moz_cookies VALUES('fox.example.test','sid','/','fixture',0,1,1,1,''),
-    ('skip.example.test','sid','/','container',0,1,1,1,'^userContextId=2');`);firefox.close();
+    ('skip.example.test','sid','/','container',0,1,1,1,'^userContextId=2');`);
   if(process.platform!=='win32')await symlink(fox,join(home,'Library','Application Support','Firefox','Profiles','not-real'));
   const handler=createBrowserImport({home,platform:'darwin',authorize:async()=>{},confirm:async()=>true,getKey:async()=>{throw Error('No Keychain read should happen');}});
   const invoke=(operation,sourceId)=>handler({operation,workspaceId:'one',sourceId});
