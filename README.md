@@ -79,8 +79,9 @@ and conversations are retained rather than silently moved or deleted.
 After building the client, `npm run desktop` starts its own local server.
 If the port is already in use, close the other server when it is safe or set
 `PORT` to a free loopback port; the desktop will not trust an existing listener.
-`npm run desktop:pack` builds an unpacked app for the
-current operating system; `npm run desktop:dist` requests its installer targets.
+This is the **Linux desktop branch (`master-linux`)**. On Linux, `npm run desktop:pack` builds an unpacked desktop app and `npm run desktop:dist` builds its AppImage and DEB. Both commands reject other host operating systems or packaging targets. Linux packages and desktop smoke testing under a virtual display; no macOS-specific menu bar or local updater.
+
+The desktop branches share application history. Use [master-mac](https://github.com/Evan1108-Coder/frondose/tree/master-mac) for macOS, [master-windows](https://github.com/Evan1108-Coder/frondose/tree/master-windows) for Windows, or [master-linux](https://github.com/Evan1108-Coder/frondose/tree/master-linux) for Linux. Port shared fixes without replacing each branch's native target and CI configuration.
 Packaging uses private no-spaces staging, installs/rebuilds production native
 dependencies only there, includes third-party notices and checks that checkout
 node-pty binaries were not modified. Run packaging through npm; developers whose

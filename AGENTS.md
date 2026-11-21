@@ -22,7 +22,7 @@ Run the local server yourself and open the preview in the browser available to t
 
 After code changes, refresh or restart the local Frondose server and verify the served app before handing off. Preserve its configured local port; back up live local data before any real schema migration. Do not restart unrelated servers.
 
-GitHub workflow (October 6): `master` is the canonical Frondose branch. After validation, push completed work directly to `origin/master` by default. Use a separate branch or pull request only when a real synchronization or safety issue prevents a clean direct push; explain that issue to Evan. Preserve unrelated local changes and never force-push to resolve divergence.
+GitHub workflow (November 21): `master-mac` is the default Frondose branch; `master-windows` and `master-linux` have their own native build targets and CI. Make shared fixes on the default branch, then port the shared changes to the affected platform branches. Preserve each branch's `config/desktop-target.json`, native workflow runner and branch-specific README instructions. Run each affected platform's CI before release. Preserve unrelated local changes and never force-push to resolve divergence.
 
 Before making substantial visual changes, use the Product Design plugin's `get-context` skill when the visual source is unclear or no longer matches the current goal. When the user gives durable prototype-specific design feedback, preferences, or decisions, record them in `AGENTS.md`.
 
