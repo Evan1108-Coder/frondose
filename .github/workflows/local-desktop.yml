@@ -29,9 +29,65 @@ jobs:
         run: npm test -- --test-timeout=180000
       - name: Verify Sites packaging compatibility
         run: npm run test:sites
-      - name: Build unpacked desktop for this operating system
-        run: npm run desktop:pack
+  windows-packages:
+    name: Build and verify Windows installer and ZIP
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build local application and packaging contract
+        run: npm run build
+      # Build the app once, and smoke-test the unpacked app from this build.
+      - name: Build Windows installer and ZIP
+        run: npm run desktop:dist
       - name: Native packaged browser lifecycle smoke
         run: node scripts/desktop-smoke.mjs --packaged
-      - name: Build native installers on their target operating system
-        run: npm run desktop:dist
+      - name: Verify both Windows packages
+        id: verify
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          $installer = Get-Item -LiteralPath "dist-desktop/Frondose Setup $version.exe"
+          $zip = Get-Item -LiteralPath "dist-desktop/Frondose-$version-win.zip"
+          foreach ($file in @($installer, $zip)) {
+            if ($file.PSIsContainer -or $file.Length -le 0) {
+              throw "Expected a nonempty Windows package: $($file.Name)"
+            }
+            Write-Host "$($file.Name): $($file.Length) bytes"
+          }
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          try {
+            $entries = $archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') }
+            if ($entries -notcontains 'Frondose.exe' -or $entries -notcontains 'resources/app.asar') {
+              throw 'The Windows ZIP does not contain the packaged Frondose app.'
+            }
+          } finally {
+            $archive.Dispose()
+          }
+          "installer=dist-desktop/$($installer.Name)" >> $env:GITHUB_OUTPUT
+          "zip=dist-desktop/$($zip.Name)" >> $env:GITHUB_OUTPUT
+      - name: Upload verified Windows installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-installer
+          path: ${{ steps.verify.outputs.installer }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Upload verified Windows ZIP
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-zip
+          path: ${{ steps.verify.outputs.zip }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
