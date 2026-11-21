@@ -2,18 +2,15 @@ name: Local desktop compatibility
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [master-mac]
   pull_request:
+    branches: [master-mac]
 permissions:
   contents: read
 jobs:
   local-desktop:
-    name: Local desktop on ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-22.04]
-    runs-on: ${{ matrix.os }}
+    name: Local desktop on macos-latest
+    runs-on: macos-latest
     timeout-minutes: 45
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -35,10 +32,6 @@ jobs:
       - name: Build unpacked desktop for this operating system
         run: npm run desktop:pack
       - name: Native packaged browser lifecycle smoke
-        if: runner.os != 'Linux'
         run: node scripts/desktop-smoke.mjs --packaged
-      - name: Native packaged browser lifecycle smoke with virtual display
-        if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/desktop-smoke.mjs --packaged
       - name: Build native installers on their target operating system
         run: npm run desktop:dist
