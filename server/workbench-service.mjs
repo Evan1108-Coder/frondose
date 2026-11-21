@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, stat, lstat, writeFile, rename, unlink, chmod } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, posix, relative, resolve, sep } from 'node:path';
 import { createConnection } from 'node:net';
 import { promisify } from 'node:util';
 import { validationError } from './validation.mjs';
@@ -223,7 +223,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory, terminalPlatfo
   async function listTree(root, path, showHidden) {
     const directory = await fileFor(root, path);
     const entries = await readdir(directory, { withFileTypes: true });
-    return entries.filter(item => !blocked.test(item.name) && (showHidden || !item.name.startsWith('.'))).slice(0, 500).map(item => ({ name: item.name, path: join(path || '', item.name), type: item.isDirectory() ? 'directory' : item.isSymbolicLink() ? 'link' : 'file' })).sort((a, b) => Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name));
+    return entries.filter(item => !blocked.test(item.name) && (showHidden || !item.name.startsWith('.'))).slice(0, 500).map(item => ({ name: item.name, path: posix.join(sep === '\\' ? (path || '').replaceAll('\\', '/') : path || '', item.name), type: item.isDirectory() ? 'directory' : item.isSymbolicLink() ? 'link' : 'file' })).sort((a, b) => Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name));
   }
   async function readText(root, path) {
     const target = await fileFor(root, path);
@@ -638,7 +638,7 @@ export function createWorkbenchService({ db, dataDir, ptyFactory, terminalPlatfo
         let entries; try { entries = await listTree(root, dir, prefs(project).showHiddenFiles); } catch { continue; }
         for (const item of entries) {
           if (++visited > 2500) break;
-          if (item.type === 'directory') { if (dir.split(sep).length < 8) pending.push(item.path); }
+          if (item.type === 'directory') { if (dir.split('/').length < 8) pending.push(item.path); }
           else if (item.type !== 'link' && item.path.toLowerCase().includes(query)) found.push(item);
           if (found.length >= 100) break;
         }

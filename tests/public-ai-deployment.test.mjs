@@ -55,7 +55,13 @@ async function fixture(t) {
     } };
   } } });
   server = createServer((req, res) => api.middleware(req, res, () => { res.statusCode = 404; res.end(); })); base = await listen();
-  t.after(async () => { await new Promise(resolve => server.close(resolve)); api.close(); rmSync(directory, { recursive: true, force: true }); });
+  const openReadConnections = [];
+  t.after(async () => {
+    await new Promise(resolve => server.close(resolve));
+    for (const db of openReadConnections) db.close();
+    api.close();
+    rmSync(directory, { recursive: true, force: true, maxRetries: 4 });
+  });
   const call = async (path, method = 'GET', body, cookie, extra = {}) => {
     return new Promise((resolve, reject) => {
       const req = httpRequest(`${base}${path}`, { method, headers: { host: 'rumbo.example', 'x-forwarded-proto': 'https', ...(method !== 'GET' ? { origin: env.FRONDOSE_PUBLIC_BASE_URL } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}), ...extra } }, response => {
@@ -66,7 +72,8 @@ async function fixture(t) {
   };
   const login = await call('/identity/login', 'POST', { email: 'owner@example.com', password: 'fixture owner password 123' }); assert.equal(login.status, 200, JSON.stringify(login));
   const cookie = login.headers.get('set-cookie').split(';')[0]; events.push(login);
-  return { call, cookie, ws, prompts, configs, login, events, api, get clock() { return clock; }, setClock(value) { clock = value; } };
+  const readDatabase = () => { const db = new DatabaseSync(api.dbPath, { readOnly: true }); openReadConnections.push(db); return db; };
+  return { call, cookie, ws, prompts, configs, login, events, api, readDatabase, get clock() { return clock; }, setClock(value) { clock = value; } };
 }
 
 test('public HTTP: secure sessions, unauthenticated denial, no shared runners/host terminal, OAuth callback and explicit model test', async t => {
@@ -99,7 +106,7 @@ test('public HTTP: secure sessions, unauthenticated denial, no shared runners/ho
   const input = { workspace_id: ws, agent_id: agent.id, chat_id: chat.id, prompt: 'Propose a Route', model: 'fixture-model', work_mode: 'conversation', include_workspace: false, include_chat: false, include_memory: false };
   const preview = (await good('/context/inspect', input)).result;
   await good(`/chats/${chat.id}/turns`, { ...input, content: input.prompt, context_inspection_id: preview.id, client_turn_id: 'public-sdk-fixture' });
-  const db = new DatabaseSync(f.api.dbPath); t.after(() => db.close());
+  const db = f.readDatabase();
   const waitRun = async chatId => { for (let n = 0; n < 100; n++) { const run = db.prepare('SELECT * FROM runs WHERE chat_id=? ORDER BY created_at DESC').get(chatId); if (run && ['completed', 'failed'].includes(run.status)) { assert.equal(run.status, 'completed', JSON.stringify(run)); return run; } await new Promise(resolve => setTimeout(resolve, 10)); } throw Error('Hosted run did not settle'); };
   const run = await waitRun(chat.id);
   assert.equal(f.prompts.at(-1), preview.finalPrompt); assert.equal((await good(`/agent-actions?run_id=${run.id}`)).actions[0].status, 'pending');
@@ -122,7 +129,8 @@ test('production server serves built assets and SPA routes but not secrets, API 
   mkdirSync(join(directory,'assets'));
   writeFileSync(join(directory,'assets/pdf.worker.min-fixture.mjs'),'export default "worker"');
   writeFileSync(join(directory,'decoder.wasm'),Buffer.from([0,97,115,109,1,0,0,0]));
-  symlinkSync('/etc/hosts', join(directory, 'escape.txt'));
+  writeFileSync(join(dataDir, 'outside.txt'), 'PRIVATE_OUTSIDE_CONTENT');
+  symlinkSync(join(dataDir, 'outside.txt'), join(directory, 'escape.txt'));
   assert.throws(() => createFrondoseServer({ env: {}, apiOptions: { dataDir: join(directory, 'private-data') }, clientDirectory: directory }), /Private Frondose data/);
   const { server } = createFrondoseServer({ env: {}, apiOptions: { dataDir }, clientDirectory: directory });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

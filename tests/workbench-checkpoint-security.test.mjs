@@ -119,10 +119,16 @@ test('checkpoint security: replacing the linked root during staging cannot resto
 
 test('checkpoint security: changing current file mode after preview invalidates restore rather than silently losing permissions', async t => {
   const f = await fixture(t), { input } = await f.setup();
-  await chmod(join(f.root, 'a.txt'), 0o700);
-  await assert.rejects(f.checkpoints.restore(input), error => ['stale_worktree', 'stale_checkpoint'].includes(error.code));
-  assert.equal(await readFile(join(f.root, 'a.txt'), 'utf8'), 'CURRENT a.txt\n');
-  assert.equal((await stat(join(f.root, 'a.txt'))).mode & 0o777, 0o700);
+  const file = join(f.root, 'a.txt'), windows = process.platform === 'win32';
+  const before = (await stat(file)).mode & 0o777;
+  // Windows chmod supports the writable flag, not POSIX execute or owner bits.
+  await chmod(file, windows ? 0o444 : 0o700);
+  try {
+    await assert.rejects(f.checkpoints.restore(input), error => ['stale_worktree', 'stale_checkpoint'].includes(error.code));
+    assert.equal(await readFile(file, 'utf8'), 'CURRENT a.txt\n');
+    const after = (await stat(file)).mode & 0o777;
+    assert.equal(windows ? after & 0o200 : after, windows ? 0 : 0o700);
+  } finally { await chmod(file, before); }
 });
 
 test('checkpoint security: malformed UTF-8, symlink destinations and cross-workspace targets fail closed', async t => {

@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { StringDecoder } from 'node:string_decoder';
 import { providerSetup, listProviderSetups, providerCatalog } from './provider-adapters.mjs';
 import { NATIVE_AGENT_TOOL_STDIO_PATH, isNativeAgentToolBridgeDescriptor } from './native-agent-tool-bridge.mjs';
+import { isNativeToolEndpoint } from './native-agent-tool-endpoint.mjs';
 import { startCodexAppServer } from './codex-app-server.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -78,7 +79,7 @@ export function createIntegrationService({ dataDir, env = process.env, execute: 
     if (JSON.stringify(keys) !== JSON.stringify(['args', 'command', 'enabledTools', 'env', 'name', 'required', 'transport'])) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
     const envKeys = value.env && typeof value.env === 'object' && !Array.isArray(value.env) ? Object.keys(value.env).sort() : [];
     const tools = value.enabledTools;
-    if (value.name !== 'frondose' || value.transport !== 'stdio' || value.command !== process.execPath || value.required !== true || !Array.isArray(value.args) || value.args.length !== 1 || value.args[0] !== NATIVE_AGENT_TOOL_STDIO_PATH || JSON.stringify(envKeys) !== JSON.stringify(['FRONDOSE_NATIVE_TOOL_CAPABILITY', 'FRONDOSE_NATIVE_TOOL_SOCKET']) || typeof value.env.FRONDOSE_NATIVE_TOOL_SOCKET !== 'string' || !isAbsolute(value.env.FRONDOSE_NATIVE_TOOL_SOCKET) || value.env.FRONDOSE_NATIVE_TOOL_SOCKET.length > 500 || !/^[A-Za-z0-9_-]{43}$/.test(value.env.FRONDOSE_NATIVE_TOOL_CAPABILITY || '') || !Array.isArray(tools) || tools.length > 64 || new Set(tools).size !== tools.length || tools.some((name) => typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/.test(name))) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
+    if (value.name !== 'frondose' || value.transport !== 'stdio' || value.command !== process.execPath || value.required !== true || !Array.isArray(value.args) || value.args.length !== 1 || value.args[0] !== NATIVE_AGENT_TOOL_STDIO_PATH || JSON.stringify(envKeys) !== JSON.stringify(['FRONDOSE_NATIVE_TOOL_CAPABILITY', 'FRONDOSE_NATIVE_TOOL_SOCKET']) || !isNativeToolEndpoint(value.env.FRONDOSE_NATIVE_TOOL_SOCKET) || !/^[A-Za-z0-9_-]{43}$/.test(value.env.FRONDOSE_NATIVE_TOOL_CAPABILITY || '') || !Array.isArray(tools) || tools.length > 64 || new Set(tools).size !== tools.length || tools.some((name) => typeof name !== 'string' || !/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/.test(name))) throw error('invalid_native_tool_bridge', 'The native tool bridge descriptor is invalid.', 409);
     return value;
   }
   function persist() {

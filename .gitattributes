@@ -1,2 +1,4 @@
 # Preserve the exact upstream license bytes on Windows too.
 public/licenses/node-diff3-MIT.md -text
+# Pinned SVGs are hash-checked against their exact reviewed bytes.
+public/brand/**/*.svg -text

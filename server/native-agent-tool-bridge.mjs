@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { windowsNativeToolEndpoint } from './native-agent-tool-endpoint.mjs';
 
 export const NATIVE_AGENT_TOOL_STDIO_PATH = fileURLToPath(new URL('./native-agent-tool-stdio.mjs', import.meta.url));
 const TOOL_NAME = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
@@ -46,9 +47,12 @@ export async function createNativeAgentToolBridge({ listTools, callTool, expires
   if (signal?.aborted || Date.now() >= expiresAt) { signal?.removeEventListener('abort', abort); throw fail('bridge_revoked', 'Native tool access expired or was revoked.'); }
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
   let directory;
-  try { directory = mkdtempSync(join(tmpdir(), 'rumbo-native-tools-')); chmodSync(directory, 0o700); }
+  const windows = process.platform === 'win32';
+  try { if (!windows) { directory = mkdtempSync(join(tmpdir(), 'rumbo-native-tools-')); chmodSync(directory, 0o700); } }
   catch (failure) { signal?.removeEventListener('abort', abort); if (directory) rmSync(directory, { recursive: true, force: true }); throw failure; }
-  const socketPath = join(directory, 'bridge.sock');
+  // Windows IPC uses an unguessable local pipe name. Every request still
+  // requires the separate per-run capability, just as on Unix.
+  const socketPath = windows ? windowsNativeToolEndpoint(randomBytes(16).toString('hex')) : join(directory, 'bridge.sock');
   const capability = randomBytes(32).toString('base64url');
   const sockets = new Set();
   let closed = false, active = 0, requestCount = 0;
@@ -110,7 +114,7 @@ export async function createNativeAgentToolBridge({ listTools, callTool, expires
     closePromise = (async () => {
       await listening.catch(() => {});
       if (server.listening) await new Promise((resolve) => server.close(() => resolve()));
-      rmSync(directory, { recursive: true, force: true });
+      if (directory) rmSync(directory, { recursive: true, force: true });
     })();
     return closePromise;
   }
@@ -118,7 +122,8 @@ export async function createNativeAgentToolBridge({ listTools, callTool, expires
   try {
     await Promise.race([listening, revoked]);
     if (signal?.aborted || Date.now() >= expiresAt) throw fail('bridge_revoked', 'Native tool access expired or was revoked.');
-    chmodSync(socketPath, 0o600); server.unref();
+    if (!windows) chmodSync(socketPath, 0o600);
+    server.unref();
   } catch (failure) { await close(); throw failure; }
   expiryTimer = setTimeout(() => void close(), Math.max(1, expiresAt - Date.now())); expiryTimer.unref?.();
   const descriptor = Object.freeze({

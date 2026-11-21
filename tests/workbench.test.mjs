@@ -65,6 +65,7 @@ test('Workbench preferences, commands and package script discovery are persisted
 
 test('Git inspection, private diff protection and explicit worktree creation', async () => fixture(async ({ root, call, service, project, db }) => {
   execFileSync('git', ['init', '-b', 'main'], { cwd: root });
+  execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: root });
   await writeFile(join(root, 'hello.txt'), 'Before\n');
   execFileSync('git', ['add', 'hello.txt'], { cwd: root });
   execFileSync('git', ['-c', 'user.name=Workbench test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'Initial'], { cwd: root });

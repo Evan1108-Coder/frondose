@@ -5,6 +5,25 @@ import { connect } from 'node:net';
 import { dirname } from 'node:path';
 import { test } from 'node:test';
 import { createNativeAgentToolBridge } from '../server/native-agent-tool-bridge.mjs';
+import { isNativeToolEndpoint, windowsNativeToolEndpoint } from '../server/native-agent-tool-endpoint.mjs';
+
+const windows = process.platform === 'win32';
+const endpoint = bridge => bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET;
+const unavailable = path => new Promise((resolve, reject) => {
+  const probe = connect(path);
+  probe.once('connect', () => { probe.destroy(); reject(Error('A closed bridge still accepts connections.')); });
+  probe.once('error', resolve);
+});
+
+test('native endpoints admit a generated local pipe on Windows, not remote or arbitrary pipes', () => {
+  const native = windowsNativeToolEndpoint('a'.repeat(32));
+  assert.ok(isNativeToolEndpoint(native, 'win32'));
+  assert.ok(isNativeToolEndpoint('/private/fixture/bridge.sock', 'darwin'));
+  for (const path of [native.replace('.\\pipe', 'remote\\pipe'), native + '\n', String.raw`\\.\pipe\other`, '/tmp/bridge.sock']) {
+    assert.equal(isNativeToolEndpoint(path, 'win32'), false);
+  }
+  assert.equal(isNativeToolEndpoint(native, 'linux'), false);
+});
 
 function socketClient(path) {
   const socket = connect(path); socket.setEncoding('utf8');
@@ -36,9 +55,12 @@ test('private bridge authenticates bounded list and call requests and cleans up 
     expiresAt: Date.now() + 30_000,
   });
   t.after(() => bridge.close());
-  const { descriptor } = bridge, directory = dirname(descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET);
-  assert.equal(statSync(directory).mode & 0o777, 0o700);
-  assert.equal(statSync(descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET).mode & 0o777, 0o600);
+  const { descriptor } = bridge, path = endpoint(bridge), directory = dirname(path);
+  assert.ok(isNativeToolEndpoint(path));
+  if (!windows) {
+    assert.equal(statSync(directory).mode & 0o777, 0o700);
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+  }
   assert.equal(JSON.stringify(descriptor.args).includes(descriptor.env.FRONDOSE_NATIVE_TOOL_CAPABILITY), false);
 
   const client = socketClient(descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET); t.after(() => client.socket.destroy());
@@ -51,7 +73,8 @@ test('private bridge authenticates bounded list and call requests and cleans up 
   assert.equal(called.result.content[0].text, 'document:doc-1');
   assert.deepEqual(calls, [{ name: 'documents.read', args: { id: 'doc-1' } }]);
   await bridge.close();
-  assert.equal(existsSync(directory), false);
+  if (!windows) assert.equal(existsSync(directory), false);
+  await unavailable(path);
 });
 
 test('stdio adapter exposes only the bounded MCP surface and forwards through environment secrets', async (t) => {
@@ -104,9 +127,10 @@ test('invalid definitions, expiry, and pre-aborted signals fail before opening t
   await assert.rejects(createNativeAgentToolBridge({ listTools: () => [], callTool: () => {}, expiresAt: Date.now() + 1000, signal: controller.signal }), { code: 'bridge_revoked' });
   const liveController = new AbortController();
   const bridge = await createNativeAgentToolBridge({ listTools: () => [], callTool: () => {}, expiresAt: Date.now() + 10_000, signal: liveController.signal });
-  const directory = dirname(bridge.descriptor.env.FRONDOSE_NATIVE_TOOL_SOCKET);
-  liveController.abort(); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(existsSync(directory), false);
+  const path = endpoint(bridge);
+  liveController.abort(); await bridge.close();
+  if (!windows) assert.equal(existsSync(dirname(path)), false);
+  await unavailable(path);
 });
 
 test('abort during pending tool discovery rejects promptly without opening a socket', async () => {

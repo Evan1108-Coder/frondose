@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createLocalSessionHistoryService, parseLocalSessionJsonl } from '../server/local-session-history.mjs';
 
@@ -40,7 +40,7 @@ async function fixture(callback) {
 
 test('reviewed Codex/Claude parsers count visible text once and exclude system, tools and private reasoning', () => {
   const a = parseLocalSessionJsonl('codex', codex(first, '/fixture/project')), b = parseLocalSessionJsonl('claude', claude(second, '/fixture/project'));
-  assert.equal(a.messageCount, 2); assert.equal(b.messageCount, 2); assert.equal(b.cwd, '/fixture/project'); assert.equal(b.title, 'Orchid garden');
+  assert.equal(a.messageCount, 2); assert.equal(b.messageCount, 2); assert.equal(b.cwd, resolve('/fixture/project')); assert.equal(b.title, 'Orchid garden');
   assert.doesNotMatch(`${a.content}\n${b.content}`, /forbidden/); assert.match(a.content, /lighthouse/); assert.match(b.content, /orchid/);
   const worker = JSON.parse(codex(first, '/fixture/project').split('\n')[0]); worker.payload.source = { subagent: { thread_spawn: {} } };
   assert.equal(parseLocalSessionJsonl('codex', jsonl([worker])), null);
@@ -51,7 +51,7 @@ test('reviewed Codex/Claude parsers count visible text once and exclude system, 
 test('legacy and paginated Codex formats, custom titles and first identity stay provider-native without duplicated fallback messages', () => {
   const metadata = { type: 'session_meta', payload: { id: first, cwd: '/project', history_mode: 'paginated' } };
   const paginated = parseLocalSessionJsonl('codex', jsonl([metadata, { type: 'event_msg', payload: { type: 'item_completed', item: { type: 'UserMessage', content: [{ type: 'text', text: 'Paginated rose' }] } } }, { type: 'event_msg', payload: { type: 'item_completed', item: { type: 'AgentMessage', content: 'Rose complete' } } }, { type: 'response_item', payload: { type: 'message', role: 'user', content: 'duplicate non-paginated channel' } }, { type: 'session_meta', payload: { id: second, cwd: '/copied-parent' } }]));
-  assert.equal(paginated.sessionId, first); assert.equal(paginated.cwd, '/project'); assert.equal(paginated.messageCount, 2); assert.match(paginated.content, /Paginated rose/); assert.doesNotMatch(paginated.content, /duplicate/);
+  assert.equal(paginated.sessionId, first); assert.equal(paginated.cwd, resolve('/project')); assert.equal(paginated.messageCount, 2); assert.match(paginated.content, /Paginated rose/); assert.doesNotMatch(paginated.content, /duplicate/);
   const legacy = parseLocalSessionJsonl('codex', jsonl([{ ...metadata, payload: { id: first, cwd: '/project' } }, { type: 'event_msg', payload: { type: 'user_message', message: 'Legacy tulip' } }, { type: 'event_msg', payload: { type: 'agent_message', message: 'Legacy complete' } }]));
   assert.equal(legacy.messageCount, 2); assert.equal(legacy.title, 'Legacy tulip');
   assert.equal(parseLocalSessionJsonl('claude', claude(first, '/project') + jsonl([{ type: 'user', sessionId: second, cwd: '/project', message: { content: 'Conflicting identity' } }])), null);

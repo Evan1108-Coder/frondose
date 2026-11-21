@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
@@ -67,7 +67,7 @@ test('production build includes referenced public code but excludes credentials 
   await writeFile(join(root, '.openai', 'hosting.json'), '{"d1":null,"r2":null}');
   await execFileAsync(process.execPath, [join(root, 'scripts', 'prepare-sites-build.mjs')], { cwd: root });
   const outputRoot = join(root, 'dist');
-  const entries = await readdir(outputRoot, { recursive: true });
+  const entries = (await readdir(outputRoot, { recursive: true })).map(entry => entry.split(sep).join('/'));
   assert.ok(entries.includes('client/index.html'));
   assert.ok(entries.includes('server/index.js'));
   assert.ok(entries.includes('.openai/hosting.json'));

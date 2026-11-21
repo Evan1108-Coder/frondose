@@ -83,7 +83,9 @@ test('general conversations use an empty private transient directory and restric
     const events = [];
     await service.startRun({ provider, prompt: 'Help plan a presentation.', workMode: 'conversation' }, { onEvent: event => events.push(event) });
     assert.ok(!Object.keys(launch.options.env).some(key => /^(?:FRONDOSE|TALVORI|RUMBO)_/.test(key)), 'Operator secrets under every brand stay outside provider runtimes');
-    assert.equal(statSync(launch.options.cwd).mode & 0o777, 0o700);
+    const scratch = statSync(launch.options.cwd);
+    assert.ok(scratch.isDirectory());
+    if (process.platform !== 'win32') assert.equal(scratch.mode & 0o777, 0o700);
     assert.deepEqual(readdirSync(launch.options.cwd), []);
     assert.notEqual(launch.options.cwd, directory);
     if (provider === 'codex') {
@@ -141,7 +143,9 @@ test('GitHub validates token before storing, lists repositories, and disconnects
   assert.equal(result.connection.accountLabel, 'test-user');
   assert.equal(JSON.stringify(result).includes(token), false);
   assert.equal(JSON.stringify(changes).includes(token), false);
-  assert.equal(statSync(join(directory, 'integrations.private.json')).mode & 0o777, 0o600);
+  const store = statSync(join(directory, 'integrations.private.json'));
+  assert.ok(store.isFile());
+  if (process.platform !== 'win32') assert.equal(store.mode & 0o777, 0o600);
   const resources = await service.resources('github');
   assert.equal(resources.resources[0].name, 'test-user/project');
   assert.equal(requests[1].options.headers.Authorization, `Bearer ${token}`);

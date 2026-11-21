@@ -1,12 +1,16 @@
 import { createServer } from 'node:http';
-import { readFile, realpath, stat } from 'node:fs/promises';
-import { realpathSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
+import { realpath, realpathSync } from 'node:fs';
+import { promisify } from 'node:util';
 import { resolve, relative, isAbsolute, sep, extname, dirname } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createLocalApi } from './local-api.mjs';
 import { frondoseEnvironment, frondoseDataDirectory } from './brand-config.mjs';
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm':'application/wasm', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
+// Use the same OS canonicalization for the startup boundary and each read.
+// Windows temporary paths can otherwise differ as RUNNER~1 vs the long name.
+const canonicalPath = promisify(realpath.native);
 export function containsPath(root, candidate, path = { relative, isAbsolute, sep }) {
   const rel = path.relative(root, candidate);
   return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
@@ -14,11 +18,11 @@ export function containsPath(root, candidate, path = { relative, isAbsolute, sep
 
 export function createFrondoseServer({ env = process.env, apiOptions = {}, clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url)) } = {}) {
   env = frondoseEnvironment(env);
-  const root = realpathSync(clientDirectory);
+  const root = realpathSync.native(clientDirectory);
   const dataDirectory = frondoseDataDirectory(apiOptions.dataDir || env.FRONDOSE_DATA_DIR);
   if (containsPath(root, dataDirectory)) throw Error('Private Frondose data must not be stored in the public client directory.');
   const api = createLocalApi({ ...apiOptions, productMode: 'local', dataDir: dataDirectory, integrationOptions: { ...apiOptions.integrationOptions, env } });
-  if (containsPath(root, realpathSync(dirname(api.dbPath)))) { api.close(); throw Error('Private Frondose data cannot resolve inside public client assets.'); }
+  if (containsPath(root, realpathSync.native(dirname(api.dbPath)))) { api.close(); throw Error('Private Frondose data cannot resolve inside public client assets.'); }
   const server = createServer((req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; worker-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -29,10 +33,10 @@ export function createFrondoseServer({ env = process.env, apiOptions = {}, clien
       const inside = value => containsPath(root, value);
       let candidate = resolve(root, `.${path}`);
       if (!inside(candidate)) { res.statusCode = 404; res.end(); return; }
-      try { candidate = await realpath(candidate); if (!inside(candidate) || !(await stat(candidate)).isFile()) throw Error('not a static asset'); }
+      try { candidate = await canonicalPath(candidate); if (!inside(candidate) || !(await stat(candidate)).isFile()) throw Error('not a static asset'); }
       catch {
         if (extname(path) || path === '/api' || path.startsWith('/api/')) { res.statusCode = 404; res.end(); return; }
-        candidate = await realpath(resolve(root, 'index.html'));
+        candidate = await canonicalPath(resolve(root, 'index.html'));
         if (!inside(candidate)) { res.statusCode = 404; res.end(); return; }
       }
       // Only this pinned decoder worker needs WebAssembly compilation. The

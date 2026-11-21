@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdir, mkdtemp, writeFile, chmod, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, chmod, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -31,5 +31,5 @@ test('setup validates installed CLI and refuses an already open or uncertain des
   const root = await mkdtemp(join(tmpdir(), 'frondose-web-setup-')), path = join(root, 'Visual Studio Code.app');
   await mkdir(join(path, 'Contents/Resources/app/bin'), { recursive: true }); const cli = join(path, 'Contents/Resources/app/bin/code-tunnel'); await writeFile(cli, 'fixture, never executed'); await chmod(cli, 0o700);
   const input = { application: { id: 'vscode', path }, directory: root, platform: 'darwin' };
-  try { await assert.rejects(vscodeWebSetup({ ...input, running: async () => true }), /already open/); await assert.rejects(vscodeWebSetup({ ...input, running: async () => null }), /unavailable/); const result = await vscodeWebSetup({ ...input, running: async () => false }); assert.equal(result.startsAutomatically, false); assert.equal(result.licenseAccepted, false); assert.ok(result.command.includes(cli)); } finally { await rm(root, { recursive: true, force: true }); }
+  try { await assert.rejects(vscodeWebSetup({ ...input, running: async () => true }), /already open/); await assert.rejects(vscodeWebSetup({ ...input, running: async () => null }), /unavailable/); const result = await vscodeWebSetup({ ...input, running: async () => false }); assert.equal(result.startsAutomatically, false); assert.equal(result.licenseAccepted, false); assert.equal(result.command, setupCommand(await realpath(cli), root, 'darwin')); } finally { await rm(root, { recursive: true, force: true }); }
 });

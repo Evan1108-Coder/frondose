@@ -2,13 +2,14 @@ import { createConnection } from 'node:net';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { isNativeToolEndpoint } from './native-agent-tool-endpoint.mjs';
 
 const MAX_LINE_BYTES = 262_144;
 const MAX_PENDING = 32;
 const jsonrpcError = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } });
 
 export function runNativeAgentToolStdio({ input = process.stdin, output = process.stdout, socketPath = process.env.FRONDOSE_NATIVE_TOOL_SOCKET, capability = process.env.FRONDOSE_NATIVE_TOOL_CAPABILITY } = {}) {
-  if (typeof socketPath !== 'string' || !socketPath.startsWith('/') || socketPath.length > 500 || typeof capability !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(capability)) throw new Error('Native tool bridge environment is invalid.');
+  if (!isNativeToolEndpoint(socketPath) || typeof capability !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(capability)) throw new Error('Native tool bridge environment is invalid.');
   const socket = createConnection(socketPath);
   const pending = new Map();
   let inputBuffer = '', socketBuffer = '', closed = false;

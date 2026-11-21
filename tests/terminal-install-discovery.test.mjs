@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, writeFile, rm, symlink, readFile, open, opendir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, relative, sep } from 'node:path';
 import { terminalDiscoveryEnvironment, terminalInstallDirectories, pairTerminalRuntimePath } from '../server/terminal-install-discovery.mjs';
 import { createTerminalLaunchPlan, detectTerminalProviders } from '../server/terminal-launch-plan.mjs';
 
@@ -15,6 +15,17 @@ async function nvm(home, versions, aliases = {}) {
   for (const [name, value] of Object.entries(aliases)) { const file = join(home, '.nvm', 'alias', name); await mkdir(join(file, '..'), { recursive: true }); await writeFile(file, value); }
 }
 const nvmPaths = paths => paths.filter(value => value.includes('/.nvm/versions/node/'));
+const virtualHome = '/fixture/home';
+async function posixFixture(actualHome) {
+  const canonicalHome = await realpath(actualHome);
+  const local = value => join(canonicalHome, ...posix.relative(virtualHome, value).split('/'));
+  return {
+    open: (...args) => open(local(args[0]), ...args.slice(1)),
+    opendir: value => opendir(local(value)),
+    realpath: async value => posix.resolve(virtualHome, relative(canonicalHome, await realpath(local(value))).split(sep).join('/')),
+  };
+}
+const fixtureNvmPaths = async home => nvmPaths(await terminalInstallDirectories({ platform: 'linux', env: { HOME: virtualHome }, fileSystem: await posixFixture(home) }));
 
 test('cold-GUI fallback preserves Orca attribution and original source hashes', async () => {
   const source = await readFile(new URL('../server/terminal-install-discovery.mjs', import.meta.url), 'utf8');
@@ -52,17 +63,17 @@ test('Windows lookup canonicalizes PATH once and deduplicates casing while keepi
 
 test('nvm default and bounded alias chains prefer the selected installed version, then newest fallbacks', async () => fixture(async home => {
   await nvm(home, ['v22.9.0', 'v24.18.0', 'v26.7.0'], { default: 'lts/current', 'lts/current': '24' });
-  const paths = nvmPaths(await terminalInstallDirectories({ platform: 'linux', env: { HOME: home } }));
+  const paths = await fixtureNvmPaths(home);
   assert.deepEqual(paths.map(value => value.split('/').at(-2)), ['v24.18.0', 'v26.7.0', 'v22.9.0']);
 }));
 
 test('invalid versions, cyclic/traversing aliases and overlong aliases never add foreign directories', async () => fixture(async home => {
   await nvm(home, ['v22.0.0', 'v26.0.0', 'not-a-version', 'v024.0.0'], { default: 'cycle', cycle: 'default' });
-  let paths = nvmPaths(await terminalInstallDirectories({ platform: 'linux', env: { HOME: home } }));
+  let paths = await fixtureNvmPaths(home);
   assert.deepEqual(paths.map(value => value.split('/').at(-2)), ['v26.0.0', 'v22.0.0']);
   for (const alias of ['../../outside', '024', 'x'.repeat(2000)]) {
     await writeFile(join(home, '.nvm', 'alias', 'default'), alias);
-    paths = nvmPaths(await terminalInstallDirectories({ platform: 'linux', env: { HOME: home } }));
+    paths = await fixtureNvmPaths(home);
     assert.deepEqual(paths.map(value => value.split('/').at(-2)), ['v26.0.0', 'v22.0.0']);
   }
 }));
@@ -70,7 +81,7 @@ test('invalid versions, cyclic/traversing aliases and overlong aliases never add
 test('alias symlinks outside the alias directory are not read or trusted', async () => fixture(async home => {
   await nvm(home, ['v22.0.0', 'v26.0.0']); await mkdir(join(home, '.nvm', 'alias'));
   await writeFile(join(home, 'outside-alias'), '22'); await symlink(join(home, 'outside-alias'), join(home, '.nvm', 'alias', 'default'));
-  const paths = nvmPaths(await terminalInstallDirectories({ platform: 'linux', env: { HOME: home } }));
+  const paths = await fixtureNvmPaths(home);
   assert.equal(paths[0].split('/').at(-2), 'v26.0.0');
 }));
 
@@ -82,16 +93,17 @@ test('version enumeration stops after 128 entries and adds at most 32 nvm versio
 });
 
 test('script CLIs pair sibling Node only in child PATH while native binaries preserve inherited order', async () => fixture(async home => {
-  const bin = join(home, 'node-version', 'bin'); await mkdir(bin, { recursive: true });
-  const script = join(bin, 'codex'), native = join(bin, 'native');
-  await writeFile(script, '#!/usr/bin/env node\n'); await writeFile(native, Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
+  const bin = posix.join(virtualHome, 'node-version', 'bin');
+  const physicalBin = join(home, 'node-version', 'bin'); await mkdir(physicalBin, { recursive: true });
+  const script = posix.join(bin, 'codex'), native = posix.join(bin, 'native');
+  await writeFile(join(physicalBin, 'codex'), '#!/usr/bin/env node\n'); await writeFile(join(physicalBin, 'native'), Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
   const env = { PATH: `/owner/bin:${bin}:/fallback/bin` }, calls = [];
-  const options = { platform: 'linux', resolveExecutable: async (command, lookup) => { calls.push([command, lookup.env.PATH]); return { path: join(bin, 'node') }; } };
+  const options = { platform: 'linux', fileSystem: await posixFixture(home), resolveExecutable: async (command, lookup) => { calls.push([command, lookup.env.PATH]); return { path: posix.join(bin, 'node') }; } };
   const paired = await pairTerminalRuntimePath(script, env, options);
   assert.equal(paired.PATH, `${bin}:/owner/bin:/fallback/bin`); assert.equal(env.PATH, `/owner/bin:${bin}:/fallback/bin`);
   assert.deepEqual(calls, [['node', bin]]);
   calls.length = 0; assert.equal(await pairTerminalRuntimePath(native, env, options), env); assert.equal(calls.length, 0);
-  assert.equal(await pairTerminalRuntimePath(script, env, { platform: 'linux', resolveExecutable: async () => null }), env);
+  assert.equal(await pairTerminalRuntimePath(script, env, { ...options, resolveExecutable: async () => null }), env);
   assert.equal(await pairTerminalRuntimePath('relative', env, options), env);
   assert.equal(await pairTerminalRuntimePath(script, env, { platform: 'win32' }), env);
 }));
