@@ -1,0 +1,139 @@
+name: Distribution install and launch smoke
+on:
+  push:
+    branches: [qa/distribution-install-smoke]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows:
+    name: Windows ${{ matrix.variant }} install and launch
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: installer
+            artifact: '14708097957'
+          - variant: zip
+            artifact: '14708930501'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      # Download the exact Windows packages that passed the previous build.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: '44905706492'
+          artifact-ids: ${{ matrix.artifact }}
+          path: packages
+      - name: Install via NSIS and open installed Frondose
+        if: matrix.variant == 'installer'
+        shell: pwsh
+        run: |
+          $setup = (Get-Item -LiteralPath 'packages/Frondose Setup 0.1.18.exe').FullName
+          $target = Join-Path $env:RUNNER_TEMP 'fd-installed'
+          if (Test-Path -LiteralPath $target) { throw 'Expected a fresh installation directory.' }
+          $install = Start-Process -FilePath $setup -ArgumentList "/S /D=$target" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "NSIS installer returned $($install.ExitCode)." }
+          $app = Get-Item -LiteralPath (Join-Path $target 'Frondose.exe')
+          $uninstaller = Get-Item -LiteralPath (Join-Path $target 'Uninstall Frondose.exe')
+          Write-Host "Setup completed with exit code 0 and installed $($app.FullName) and $($uninstaller.Name)."
+          node scripts/distribution-launch-smoke.mjs windows-installer "$($app.FullName)"
+      - name: Extract ZIP and open portable Frondose
+        if: matrix.variant == 'zip'
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'fd-zip'
+          if (Test-Path -LiteralPath $target) { throw 'Expected a fresh extraction directory.' }
+          Expand-Archive -LiteralPath 'packages/Frondose-0.1.18-win.zip' -DestinationPath $target
+          $app = Get-Item -LiteralPath (Join-Path $target 'Frondose.exe')
+          Write-Host "ZIP extracted to $target."
+          node scripts/distribution-launch-smoke.mjs windows-zip "$($app.FullName)"
+      - name: Upload rendered desktop proof
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-${{ matrix.variant }}-launch-proof
+          path: distribution-proof/*.png
+          if-no-files-found: error
+          retention-days: 7
+  linux:
+    name: Ubuntu 22.04 AppImage and DEB install and launch
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 1d6d1dc1c15a3e15275aab52b4d61dde7fee42c5
+          path: linux-source
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: linux-source/package-lock.json
+      - name: Build Linux distribution from master-linux
+        id: build
+        working-directory: linux-source
+        run: |
+          npm ci
+          npm run build
+          npm run desktop:dist
+      - name: Run the delivered Linux AppImage
+        shell: bash
+        run: |
+          shopt -s nullglob
+          images=(linux-source/dist-desktop/*.AppImage)
+          [[ ${#images[@]} == 1 ]]
+          image="$(realpath "${images[0]}")"
+          chmod +x "$image"
+          if [[ -c /dev/fuse && -r /dev/fuse && -w /dev/fuse ]]; then
+            echo 'Trying normal AppImage launch with FUSE.'
+            sudo apt-get update -qq
+            sudo apt-get install -y libfuse2
+            if xvfb-run -a node scripts/distribution-launch-smoke.mjs linux-appimage "$image" > "$RUNNER_TEMP/frondose-appimage.log" 2>&1; then
+              cat "$RUNNER_TEMP/frondose-appimage.log"
+              echo 'AppImage launch mode: normal FUSE mount' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/frondose-appimage.log"
+            grep -qiE 'fuse:|AppImages require FUSE|Cannot mount AppImage' "$RUNNER_TEMP/frondose-appimage.log"
+          fi
+          echo 'AppImage launch mode: extract and run (runner FUSE unavailable)' >> "$GITHUB_STEP_SUMMARY"
+          APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a node scripts/distribution-launch-smoke.mjs linux-appimage "$image"
+      - name: Install the DEB and open the installed launcher
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          packages=(linux-source/dist-desktop/*.deb)
+          [[ ${#packages[@]} == 1 ]]
+          deb="$(realpath "${packages[0]}")"
+          package="$(dpkg-deb -f "$deb" Package)"
+          sudo apt-get update -qq
+          sudo apt-get install -y "$deb"
+          [[ "$(dpkg-query -W -f='${Status}' "$package")" == 'install ok installed' ]]
+          launcher="$(command -v frondose)"
+          installed="$(readlink -f "$launcher")"
+          dpkg-query -L "$package" | grep -Fx "$installed"
+          xvfb-run -a node scripts/distribution-launch-smoke.mjs linux-deb "$launcher"
+      - name: Upload rendered desktop proof
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ubuntu-desktop-launch-proof
+          path: distribution-proof/*.png
+          if-no-files-found: error
+          retention-days: 7
