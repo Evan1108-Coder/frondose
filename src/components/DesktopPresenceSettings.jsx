@@ -7,13 +7,17 @@ export function DesktopPresenceSettings() {
   const writing = useRef(false);
   useEffect(() => {
     if (!bridge) return;
-    let live = true;
-    const refresh = () => void bridge.status().then(result => {
-      if (live && !writing.current) setState(result);
-    }).catch(cause => { if (live) setError(cause); });
+    let live = true, revision = 0;
+    const unsubscribe = bridge.onState?.(result => { revision++; if (live) setState(result); });
+    const refresh = () => {
+      const current = ++revision;
+      void bridge.status().then(result => {
+        if (live && current === revision && !writing.current) setState(result);
+      }).catch(cause => { if (live && current === revision) setError(cause); });
+    };
     refresh();
     window.addEventListener('focus', refresh);
-    return () => { live = false; window.removeEventListener('focus', refresh); };
+    return () => { live = false; unsubscribe?.(); window.removeEventListener('focus', refresh); };
   }, [bridge]);
   if (!bridge) return null;
   const update = async operation => {
@@ -34,8 +38,8 @@ export function DesktopPresenceSettings() {
     {p ? <fieldset disabled={busy}>
       {state.supported.tray ? <div className="desktop-presence-row">
         <label><input type="checkbox" checked={p.showTray} onChange={e => set('showTray', e.target.checked)} /> {mac ? 'Show menu bar icon' : 'Show system tray icon'}</label>
-        <p>Open Frondose, settings, or updates without finding the window. An amber dot marks new activity while you’re away.</p>
-        <Button disabled={!p.showTray || busy} onClick={() => void update(bridge.previewAttention)}>{state.attention ? 'Clear attention dot' : 'Preview attention dot'}</Button>
+        <p>Find workspace shortcuts, activity, power and startup controls in the frond menu. An amber dot marks new activity while you’re away.</p>
+        <Button disabled={!p.showTray || busy} onClick={() => void update(bridge.previewAttention)}>{(state.preview ?? state.attention) ? 'End dot preview' : 'Preview attention dot'}</Button>
       </div> : null}
       <div className="desktop-presence-row"><label><input type="checkbox" checked={p.keepRunning} onChange={e => set('keepRunning', e.target.checked)} /> Keep running when the window closes</label>
         <p>Preserve open work and drafts. {mac ? 'Reopen from the Dock or menu bar.' : 'Reopen from the tray or taskbar.'} Quit still exits the app.</p></div>

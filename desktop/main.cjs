@@ -31,17 +31,26 @@ let presence, desktopReady = false, quitting = false, quitPrompt = false, pendin
 const pendingOsTargets = new Map(), previews = new Map();
 const aboutWindow = createAboutWindow({ BrowserWindow, getParent: () => mainWindow, iconPath: appIcon, getVersion: () => app.getVersion() });
 function reveal() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    // A Finder preview can keep Frondose alive after the workspace closes.
+    // Reopen the workspace instead of leaving its tray shortcuts inert.
+    if (desktopReady && !quitting) nativeAction(openWindow)();
+    return;
+  }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
   presence?.clearAttention();
 }
 function selectDesktopPage(route) {
-  reveal();
   pendingRoute = route;
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('frondose-desktop:system-route');
+  reveal();
+  sendToWorkspace('system-route');
 }
+function sendToWorkspace(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(`frondose-desktop:${channel}`, payload);
+}
+function hideWorkspace() { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide(); }
 async function checkUpdates() {
   selectDesktopPage('updates');
   await nativeUpdater?.command({ operation: 'check' });
@@ -77,12 +86,13 @@ async function openDocument(path) {
   catch (error) { view.destroy(); throw error; }
 }
 const nativeAction = fn => () => { void Promise.resolve().then(fn).catch(error => dialog.showErrorBox('Frondose', error.message)); };
-const chooseDocument = nativeAction(async () => {
+async function pickDocument() {
   reveal();
   const options = { title: 'Open a read-only document preview', filters: [fileFilter], properties: ['openFile'] };
   const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
   if (!result.canceled && result.filePaths[0]) await openDocument(result.filePaths[0]);
-});
+}
+const chooseDocument = nativeAction(pickDocument);
 function receiveOsTarget(value) {
   const target = osTarget(value);
   if (!target) return false;
@@ -292,8 +302,10 @@ if (primary) app.whenReady().then(async () => {
     registerIpc();
     presence = await createSystemPresence({ app, userData: app.getPath('userData'), platform: process.platform, Tray, Menu, nativeImage, nativeTheme, powerSaveBlocker, iconPath: join(root, 'public/brand/frondose-frond-icon.png'), classicIcon: appIcon,
       allowLogin: app.isPackaged && !process.env.FRONDOSE_DESKTOP_USER_DATA,
-      activity: () => ownedApi?.desktopActivity(),
+      activity: () => ownedApi?.desktopActivity(), onState: state => sendToWorkspace('presence-state', state),
       actions: { open: reveal, settings: () => selectDesktopPage('settings'), updates: checkUpdates, quit: requestQuit,
+        hide: hideWorkspace, route: selectDesktopPage, document: pickDocument, about: () => aboutWindow.show(),
+        error: error => dialog.showErrorBox('Frondose', error.message),
         visible: () => Boolean(mainWindow?.isVisible() && !mainWindow?.isMinimized() && mainWindow?.isFocused()) },
     });
   }

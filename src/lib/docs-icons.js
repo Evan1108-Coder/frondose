@@ -4,7 +4,7 @@ import {
   GalleryVerticalEnd, BrainCircuit, MousePointerClick, AudioLines, TabletSmartphone, Container, GitCompare, FileScan,
   TextCursor, FolderInput, BringToFront, ListTree, GlobeLock, PanelTopClose, Pilcrow, SquareChevronRight, Paperclip,
   Kanban, ListCheck, MessageSquareQuote, AlarmClockCheck, AppWindowMac, FolderSync, GitGraph,
-  LaptopMinimalCheck, PanelTopDashed, ListTodo, Dock, MonitorStop,
+  LaptopMinimalCheck, PanelTopDashed, ListTodo, Dock, MonitorStop, ListCollapse,
   MessageSquareText, UserRoundCog, LayoutGrid,
   FlagTriangleRight, SquareSlash, MessageCircleReply, PlugZap, SquareTerminal, NotebookTabs,
   Landmark, Crown, ContactRound, ScanEye, Hourglass, Vote, ShieldAlert, BadgeInfo, KeySquare, ClipboardList, UserRoundKey, LogOut, GitPullRequest, Workflow, PackageOpen, HardDrive, FilePenLine, Sheet, Presentation, ChartNoAxesGantt, SquareKanban, Hash, Component, StickyNote, RefreshCw, GitCompareArrows, Wrench, CodeXml,
@@ -15,6 +15,7 @@ import { DOC_AI_ARTICLE_ICONS } from './docs-ai-icons.js';
 // Explicit editorial choices: each article keeps its own semantic visual identity.
 // Named imports keep unused library geometry out of the Docs bundle.
 export const DOC_ARTICLE_ICONS = Object.freeze({
+  'organized-frond-menu':{iconName:'ListCollapse',iconNode:ListCollapse},
   'release-candidate-fixes':{iconName:'BadgePlus',iconNode:BadgePlus},
   'review-update-cleanup':{iconName:'ListEnd',iconNode:ListEnd},
   'clearer-update-blockers':{iconName:'CircleArrowDown',iconNode:CircleArrowDown},

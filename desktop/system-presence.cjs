@@ -2,6 +2,7 @@
 const { readFile, writeFile, rename, rm, mkdir } = require('node:fs/promises');
 const { join } = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { desktopMenu } = require('./system-menu.cjs');
 
 const defaults = Object.freeze({ showTray: true, keepRunning: false, keepAwake: 'off', dockIcon: 'classic', openAtLogin: false });
 const values = { keepAwake: ['off', 'working', 'on'], dockIcon: ['classic', 'indigo', 'paper'] };
@@ -56,7 +57,7 @@ function createAwakeControl(blocker) {
   };
 }
 
-async function createSystemPresence({ app, userData, platform, Tray, Menu, nativeImage, nativeTheme, powerSaveBlocker, iconPath, classicIcon, actions, activity, allowLogin = true }) {
+async function createSystemPresence({ app, userData, platform, Tray, Menu, nativeImage, nativeTheme, powerSaveBlocker, iconPath, classicIcon, actions, activity, onState = () => {}, allowLogin = true }) {
   const path = join(userData, 'desktop-presence.json');
   let prefs = normalizePresence(null);
   try { prefs = normalizePresence(JSON.parse(await readFile(path, 'utf8'))); }
@@ -65,8 +66,8 @@ async function createSystemPresence({ app, userData, platform, Tray, Menu, nativ
   const source = nativeImage.createFromPath(iconPath);
   const images = new Map();
   const awake = createAwakeControl(powerSaveBlocker);
-  let tray = null, attention = false, awakeActive = false, working = false, previous = null, pending = false, closed = false, updating = false;
-  let menuState = '', lastDock = null;
+  let tray = null, attention = false, preview = false, awakeActive = false, previous = null, pending = false, closed = false, updating = false;
+  let menuState = '', published = '', lastDock = null;
   function image(kind) {
     if (images.has(kind)) return images.get(kind);
     const built = kind === 'classic' ? nativeImage.createFromPath(classicIcon)
@@ -76,38 +77,43 @@ async function createSystemPresence({ app, userData, platform, Tray, Menu, nativ
     images.set(kind, built);
     return built;
   }
-  const menuAction = fn => () => { void Promise.resolve().then(fn).catch(error => console.warn('Frondose desktop action failed:', error.message)); };
-  const state = () => ({ preferences: prefs, supported, attention, awakeActive, working, trayVisible: Boolean(tray) });
+  function menuError(error) {
+    // Native checkbox and radio items can flip before the preference is saved.
+    // Restore the authoritative values after an unsuccessful write.
+    menuState = '';
+    schedule();
+    actions.error?.(error);
+  }
+  const state = () => ({ preferences: prefs, supported, attention, preview, awakeActive, working: Boolean(previous?.working.length), workingCount: previous?.working.length || 0, waitingCount: previous?.waiting.length || 0, trayVisible: Boolean(tray) });
+  function publish() {
+    const snapshot = state(), fingerprint = JSON.stringify(snapshot);
+    if (published !== fingerprint) { published = fingerprint; onState(snapshot); }
+  }
   function sync() {
     if (closed) return;
-    awakeActive = awake.sync(prefs.keepAwake, working);
+    awakeActive = awake.sync(prefs.keepAwake, Boolean(previous?.working.length));
     if (supported.dock && lastDock !== prefs.dockIcon) {
       app.dock.setIcon(image(prefs.dockIcon));
       lastDock = prefs.dockIcon;
     }
     if (!supported.tray || !prefs.showTray || source.isEmpty()) {
-      tray?.destroy(); tray = null; menuState = ''; return;
+      tray?.destroy(); tray = null; menuState = ''; publish(); return;
     }
-    const kind = attention ? nativeTheme.shouldUseDarkColors ? 'tray-dark' : 'tray-light' : 'tray-plain';
-    const next = `${kind}:${awakeActive}`;
+    const kind = attention || preview ? nativeTheme.shouldUseDarkColors ? 'tray-dark' : 'tray-light' : 'tray-plain';
     if (!tray) {
       tray = new Tray(image(kind));
-      if (platform === 'win32') tray.on('click', menuAction(actions.open));
+      if (platform === 'win32') tray.on('click', () => { void Promise.resolve().then(actions.open).catch(menuError); });
     }
+    const next = `${kind}:${JSON.stringify(state())}`;
     if (menuState === next) return;
-    menuState = next;
     tray.setImage(image(kind));
     tray.setToolTip(attention ? 'Frondose — Activity needs attention' : 'Frondose');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: attention ? 'Activity needs attention' : awakeActive ? 'Keeping this computer awake' : 'Frondose', enabled: false },
-      { type: 'separator' },
-      { label: 'Open Frondose', click: menuAction(actions.open) },
-      { label: 'Settings…', click: menuAction(actions.settings) },
-      { label: 'Check for Updates…', click: menuAction(actions.updates) },
-      { type: 'separator' },
-      { label: 'Quit Frondose', click: menuAction(actions.quit) },
-      { label: 'Quit and Stop Sessions…', click: menuAction(() => actions.quit(true)) },
-    ]));
+    tray.setContextMenu(Menu.buildFromTemplate(desktopMenu(state(), {
+      ...actions, error: menuError, set: setPreference, toggle: key => setPreference(key, !prefs[key]),
+      clear: clearAttention, preview: togglePreview,
+    })));
+    menuState = next;
+    publish();
   }
   // AppKit invokes native menu and theme handlers in its own callouts.
   // Coalesce icon changes away from those callbacks.
@@ -120,7 +126,6 @@ async function createSystemPresence({ app, userData, platform, Tray, Menu, nativ
     try {
       const next = activity();
       if (!next) return;
-      working = next.working.length > 0;
       if (!actions.visible() && previous && (previous.working.some(id => !next.working.includes(id)) || next.waiting.some(id => !previous.waiting.includes(id)))) attention = true;
       previous = next;
       schedule();
@@ -130,42 +135,52 @@ async function createSystemPresence({ app, userData, platform, Tray, Menu, nativ
   timer.unref?.();
   nativeTheme.on('updated', schedule);
   if (supported.login) prefs = { ...prefs, openAtLogin: app.getLoginItemSettings().openAtLogin === true };
+  sample();
   schedule();
+  function clearAttention() { attention = false; schedule(); }
+  function togglePreview() {
+    if (!supported.tray || !prefs.showTray) throw Error('Show the menu bar or tray icon before previewing its dot.');
+    preview = !preview;
+    schedule();
+    return state();
+  }
+  async function setPreference(key, value) {
+    if (!Object.hasOwn(defaults, key) || normalizePresence({ [key]: value })[key] !== value) throw Error('Unsupported desktop preference.');
+    if ((key === 'showTray' && !supported.tray) || (key === 'dockIcon' && !supported.dock) || (key === 'openAtLogin' && !supported.login)) throw Error('This desktop setting is not available here.');
+    if (updating) throw Error('Wait for the other desktop setting to finish saving.');
+    updating = true;
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    try {
+      const next = { ...prefs, [key]: value };
+      await mkdir(userData, { recursive: true, mode: 0o700 });
+      if (key === 'openAtLogin') {
+        // The OS owns login-item state. Do not silently show the requested
+        // value if the system rejected it.
+        app.setLoginItemSettings({ openAtLogin: value });
+        next.openAtLogin = app.getLoginItemSettings().openAtLogin === true;
+        if (next.openAtLogin !== value) throw Error('macOS or Windows did not accept the login setting. Check your system startup settings.');
+      }
+      await writeFile(temporary, JSON.stringify(next), { mode: 0o600, flag: 'wx' });
+      await rename(temporary, path);
+      prefs = next;
+      if (!prefs.showTray) preview = false;
+      sample();
+      sync();
+      return state();
+    } finally {
+      updating = false;
+      await rm(temporary, { force: true }).catch(() => {});
+    }
+  }
   return {
     state,
     markAttention() { if (!actions.visible()) { attention = true; schedule(); } },
-    clearAttention() { attention = false; schedule(); },
+    clearAttention,
     async command(payload) {
       if (payload?.operation === 'status') return state();
-      if (payload?.operation === 'preview-attention') {
-        if (!supported.tray || !prefs.showTray) throw Error('Show the menu bar or tray icon before previewing its dot.');
-        attention = !attention;
-        schedule();
-        return state();
-      }
-      const key = payload?.key, value = payload?.value;
-      if (payload?.operation !== 'set' || !Object.hasOwn(defaults, key) || normalizePresence({ [key]: value })[key] !== value) throw Error('Unsupported desktop preference.');
-      if ((key === 'showTray' && !supported.tray) || (key === 'dockIcon' && !supported.dock) || (key === 'openAtLogin' && !supported.login)) throw Error('This desktop setting is not available here.');
-      if (updating) throw Error('Wait for the other desktop setting to finish saving.');
-      updating = true;
-      const temporary = `${path}.${randomUUID()}.tmp`;
-      try {
-        const next = { ...prefs, [key]: value };
-        if (key === 'openAtLogin') {
-          app.setLoginItemSettings({ openAtLogin: value });
-          next.openAtLogin = app.getLoginItemSettings().openAtLogin === true;
-        }
-        await mkdir(userData, { recursive: true, mode: 0o700 });
-        await writeFile(temporary, JSON.stringify(next), { mode: 0o600, flag: 'wx' });
-        await rename(temporary, path);
-        prefs = next;
-        sample();
-        sync();
-        return state();
-      } finally {
-        updating = false;
-        await rm(temporary, { force: true }).catch(() => {});
-      }
+      if (payload?.operation === 'preview-attention') return togglePreview();
+      if (payload?.operation === 'set') return setPreference(payload.key, payload.value);
+      throw Error('Unsupported desktop preference.');
     },
     close() {
       closed = true;

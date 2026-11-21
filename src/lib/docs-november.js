@@ -1,6 +1,16 @@
 // Dated local development milestones; not fabricated public release dates.
 export const DOC_NOVEMBER = [
   {
+    id:'organized-frond-menu',group:'updates',date:'2026-11-21',
+    title:'More controls in the frond menu',
+    description:'Jump to your work, see agent activity and change desktop settings from the system menu.',
+    sections:[
+      {id:'shortcuts',title:'Find workspace shortcuts',paragraphs:['Select the frond in the Mac menu bar or right-click it in the Windows notification area. Use Search Workspace, or open Workspace for To Do List, Routes, Projects, Automations and a read-only document preview. These shortcuts open screens without running commands or starting an agent.']},
+      {id:'controls',title:'Change desktop settings from the menu',paragraphs:['Activity shows how many agents are working or waiting for input. Previewing the dot does not clear real attention. Window & Startup, Keep Awake and Dock Icon put related controls together. Setting changes appear immediately in the open Desktop presence settings page.']},
+      {id:'hiding',title:'Hide without closing',paragraphs:['Hide Workspace Window leaves current views and drafts intact regardless of your close behavior. Use Open Frondose to return. Quit still exits the app, and stopping live sessions requires confirmation.']},
+    ],related:['desktop-presence','native-desktop-presence'],
+  },
+  {
     id:'native-desktop-presence',group:'updates',date:'2026-11-21',
     title:'Frondose in the menu bar and system tray',
     description:'Reopen your workspace, notice activity, and control whether Frondose stays running or awake.',

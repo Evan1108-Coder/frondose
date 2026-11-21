@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld('frondoseDesktop', Object.freeze({
     set: (key, value) => invoke('presence', { operation: 'set', key, value }),
     previewAttention: () => invoke('presence', { operation: 'preview-attention' }),
     consumeRoute: () => invoke('presence', { operation: 'consume-route' }),
+    onState(callback) {
+      if (typeof callback !== 'function') return () => {};
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on('frondose-desktop:presence-state', listener);
+      return () => ipcRenderer.removeListener('frondose-desktop:presence-state', listener);
+    },
     onRoute(callback) {
       if (typeof callback !== 'function') return () => {};
       const listener = () => callback();

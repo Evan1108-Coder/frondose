@@ -1,5 +1,7 @@
 /** Every entry must link to an authored in-app Docs article. Newest first. */
 export const PRODUCT_UPDATES = Object.freeze([
+  Object.freeze({id:'organized-frond-menu',title:'More controls in the frond menu',date:'2026-11-21',articleId:'organized-frond-menu',appVersion:'0.1.18'}),
+  Object.freeze({id:'native-desktop-presence',title:'Frondose in the menu bar and system tray',date:'2026-11-21',articleId:'native-desktop-presence',appVersion:'0.1.17'}),
   Object.freeze({id:'release-candidate-fixes',title:'Browser, Chat and workspace reliability fixes',date:'2026-11-15',articleId:'release-candidate-fixes',appVersion:'0.1.16'}),
   Object.freeze({id:'review-update-cleanup',title:'Review and close update blockers',date:'2026-11-15',articleId:'review-update-cleanup',appVersion:'0.1.15'}),
   Object.freeze({id:'clearer-update-blockers',title:'See what is blocking an update',date:'2026-11-15',articleId:'clearer-update-blockers',appVersion:'0.1.14'}),

@@ -12,6 +12,7 @@ import { notify } from './lib/notifications.js';
 import { WorkspaceSurface } from './components/workspace/WorkspaceSurface.jsx';
 import { rememberWorkspaceReturnPage, workspaceSettingsReturnPage } from './lib/workspace-settings.js';
 import { requestWorkspaceNavigation } from './lib/workspace-navigation.js';
+import { requestWorkspaceTool } from './lib/workspace-tool-intent.js';
 import { isLocalProduct } from './lib/local-product.js';
 import { isWorkspaceStandalonePage } from './lib/workspace-screens.js';
 import { isRetiredLocalPage, isLocalCreationAllowed } from './lib/local-navigation.js';
@@ -27,6 +28,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -204,22 +206,6 @@ export function App() {
       setPage(parsePage(next));
     }));
   }, [localPage]);
-  useEffect(() => {
-    const desktop = globalThis.frondoseDesktop?.presence;
-    if (!desktop) return;
-    let live = true;
-    const consume = () => {
-      void desktop.consumeRoute().then(route => {
-        if (!live || !route) return;
-        if (route === 'settings') navigate('settings', 'local-installation');
-        else if (route === 'updates') navigate('settings', 'app-updates');
-        else if (route === 'workspace') navigate('workspace');
-      }).catch(() => {});
-    };
-    const unsubscribe = desktop.onRoute(consume);
-    consume();
-    return () => { live = false; unsubscribe(); };
-  }, [navigate]);
   const activateWorkspacePage = useCallback(next => {
     next = localPage(next);
     history.replaceState(null, '', pageHash(next.view, next.id, next));
@@ -276,6 +262,27 @@ export function App() {
   const workspace =
     visible(rawData?.workspaces).find((item) => item.id === workspaceId) ??
     visible(rawData?.workspaces)[0];
+  const hasWorkspace = Boolean(workspace);
+  const handleDesktopRoute = useEffectEvent(route => {
+    switch (route) {
+      case 'settings': navigate('settings', 'local-installation'); break;
+      case 'updates': navigate('settings', 'app-updates'); break;
+      case 'routes': navigate('tasks'); break;
+      case 'workspace': case 'todos': case 'projects': case 'docs': navigate(route); break;
+      case 'search': requestUpdateNavigation(() => setCommandOpen(true)); break;
+      case 'automations':
+        if (workspace) requestUpdateNavigation(() => requestWorkspaceTool(workspace.id, 'automations', {}, () => navigate('workspace')));
+        break;
+    }
+  });
+  useEffect(() => {
+    const desktop = globalThis.frondoseDesktop?.presence;
+    if (!desktop || !hasWorkspace) return;
+    const consume = () => { void desktop.consumeRoute().then(route => handleDesktopRoute(route)).catch(() => {}); };
+    const unsubscribe = desktop.onRoute(consume);
+    consume();
+    return unsubscribe;
+  }, [hasWorkspace]);
   useEffect(() => {
     if (!workspace) return;
     if (!isWorkspaceStandalonePage(page)) rememberWorkspaceReturnPage(localStorage, workspace.id, page);
