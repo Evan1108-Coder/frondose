@@ -22,6 +22,22 @@ export function packageArguments(input = []) {
   if (input.filter(arg => ['--mac', '--win', '--linux'].includes(arg)).length > 1 || input.filter(arg => ['--x64', '--arm64', '--universal'].includes(arg)).length > 1) throw Error('Build one target platform and architecture at a time.');
   return [...input];
 }
+const desktopTargets = Object.freeze({
+  darwin: { branch: 'master-mac', flag: '--mac', name: 'macOS' },
+  win32: { branch: 'master-windows', flag: '--win', name: 'Windows' },
+  linux: { branch: 'master-linux', flag: '--linux', name: 'Linux' },
+});
+export function desktopBuildArguments(input, target, host = process.platform) {
+  const args = packageArguments(input);
+  const platform = target?.platform;
+  const selected = typeof platform === 'string' && Object.hasOwn(desktopTargets, platform) ? desktopTargets[platform] : null;
+  if (!selected || selected.branch !== target?.branch) throw Error('The desktop target configuration is invalid.');
+  if (host !== platform) throw Error(`The ${selected.branch} branch builds on ${selected.name} only. Use the branch for your operating system.`);
+  const requested = args.find(flag => ['--mac', '--win', '--linux'].includes(flag));
+  if (requested && requested !== selected.flag) throw Error(`The ${selected.branch} branch cannot package ${requested}; use the matching platform branch.`);
+  if (args.includes('--universal') && platform !== 'darwin') throw Error('Universal desktop packages are supported on macOS only.');
+  return requested ? args : [...args, selected.flag];
+}
 export function stagingRoot(value = tmpdir()) {
   const directory = resolve(value);
   if (/\s/.test(directory)) throw Error('Native packaging needs a private writable staging path without spaces. Set FRONDOSE_DESKTOP_STAGING_ROOT to such a directory. Your checkout does not need to move.');
@@ -100,8 +116,9 @@ async function writeNpmShims(directory, executable, npm) {
 }
 
 export async function packageDesktop({ root = fileURLToPath(new URL('../', import.meta.url)), args = process.argv.slice(2), env = process.env } = {}) {
-  args = packageArguments(args);
   root = await realpath(root);
+  const desktopTarget = JSON.parse(await readFile(join(root, 'config/desktop-target.json'), 'utf8'));
+  args = desktopBuildArguments(args, desktopTarget);
   const output = desktopOutputDirectory(root, env.FRONDOSE_DESKTOP_OUTPUT_DIR);
   const clientDirectory = desktopClientDirectory(root, env.FRONDOSE_DESKTOP_CLIENT_DIR);
   if ((await lstat(clientDirectory)).isSymbolicLink()) throw Error('Desktop client input must not be a symbolic link.');
@@ -138,7 +155,7 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
     childEnv.npm_execpath = npm;
     await run(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: stage, env: childEnv });
     await run(process.execPath, [cli, '--projectDir', stage, '--config', join(stage, 'config/electron-builder.cjs'), '--config.directories.output', output, '--config.electronVersion', electronVersion, ...args], { cwd: stage, env: childEnv });
-    await writeFile(join(output, 'frondose-build.json'), JSON.stringify({ version: buildVersion || packageJson.version, platform: process.platform, architecture: process.arch, electronVersion, nodeVersion: process.version, nativeRebuild: 'isolated-staging-only', inputs: [...DESKTOP_PACKAGE_INPUTS], lockSha256: createHash('sha256').update(await readFile(join(stage, 'package-lock.json'))).digest('hex') }, null, 2) + '\n');
+    await writeFile(join(output, 'frondose-build.json'), JSON.stringify({ version: buildVersion || packageJson.version, platform: desktopTarget.platform, targetBranch: desktopTarget.branch, architecture: process.arch, electronVersion, nodeVersion: process.version, nativeRebuild: 'isolated-staging-only', inputs: [...DESKTOP_PACKAGE_INPUTS], lockSha256: createHash('sha256').update(await readFile(join(stage, 'package-lock.json'))).digest('hex') }, null, 2) + '\n');
     console.log('Desktop package built. Root Node-native dependencies and local workspace data were not rebuilt or copied.');
   } catch (error) { failure = error; }
   finally { await rm(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }
