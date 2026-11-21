@@ -31,7 +31,38 @@ async function verifyPackagedPty(executable, fixtureDirectory) {
   // Run only the packaged native module with Electron's own ABI. A fixed
   // non-interactive echo in the private fixture folder cannot read projects,
   // load shell profiles or invoke a provider account.
-  const code = `const pty=require(${JSON.stringify(modulePath)});const path=require('node:path');const win=process.platform==='win32';const shell=win?path.join(process.env.SystemRoot||'C:\\\\Windows','System32','cmd.exe'):'/bin/sh';const args=win?['/d','/c','echo FRONDOSE_PACKAGED_PTY_OK']:['-c','printf FRONDOSE_PACKAGED_PTY_OK'];let text='';const terminal=pty.spawn(shell,args,{cwd:${JSON.stringify(fixtureDirectory)},env:{PATH:process.env.PATH||process.env.Path||'',SystemRoot:process.env.SystemRoot||'',TERM:'xterm-256color'},name:'xterm-256color',cols:80,rows:24});const timeout=setTimeout(()=>{terminal.kill();console.error('Packaged PTY timed out');process.exitCode=1},10000);terminal.onData(chunk=>{text=(text+chunk).slice(-2000)});terminal.onExit(({exitCode})=>setTimeout(()=>{clearTimeout(timeout);if(exitCode!==0||!text.includes('FRONDOSE_PACKAGED_PTY_OK')){console.error('Packaged PTY failed',exitCode,text);process.exitCode=1}else console.log('FRONDOSE_PACKAGED_PTY_OK')},80));`;
+  const code = `
+    const pty = require(${JSON.stringify(modulePath)});
+    const path = require('node:path');
+    const win = process.platform === 'win32';
+    const shell = win ? path.join(process.env.SystemRoot || 'C:\\\\Windows', 'System32', 'cmd.exe') : '/bin/sh';
+    const marker = 'FRONDOSE_PACKAGED_PTY_OK';
+    const args = win ? ['/d', '/c', 'echo ' + marker] : ['-c', 'printf ' + marker];
+    let text = '', finished = false;
+    const terminal = pty.spawn(shell, args, {
+      cwd: ${JSON.stringify(fixtureDirectory)},
+      env: { PATH: process.env.PATH || process.env.Path || '', SystemRoot: process.env.SystemRoot || '', TERM: 'xterm-256color' },
+      name: 'xterm-256color', cols: 80, rows: 24,
+    });
+    function finish(status, message) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      // ConPTY can retain a native handle after onExit. Exit the probe after
+      // writing the verified result, rather than waiting for Node to drain.
+      const stream = status === 0 ? process.stdout : process.stderr;
+      stream.write(message + '\\n', () => process.exit(status));
+    }
+    const timeout = setTimeout(() => {
+      try { terminal.kill(); } catch {}
+      finish(1, 'Packaged PTY timed out');
+    }, 10000);
+    terminal.onData(chunk => { text = (text + chunk).slice(-2000); });
+    terminal.onExit(({ exitCode }) => setTimeout(() => {
+      if (exitCode !== 0 || !text.includes(marker)) finish(1, 'Packaged PTY failed (' + exitCode + ')');
+      else finish(0, marker);
+    }, 80));
+  `;
   await new Promise((yes, no) => {
     const probe = spawn(executable, ['-e', code], { cwd: fixtureDirectory, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
@@ -39,7 +70,7 @@ async function verifyPackagedPty(executable, fixtureDirectory) {
     probe.stdout.on('data', receive); probe.stderr.on('data', receive);
     const timer = setTimeout(() => { probe.kill('SIGKILL'); no(Error('Packaged native PTY probe did not finish.')); }, 20000);
     probe.once('error', error => { clearTimeout(timer); no(error); });
-    probe.once('exit', code => { clearTimeout(timer); code === 0 && output.includes('FRONDOSE_PACKAGED_PTY_OK') ? yes() : no(Error('The packaged native PTY could not run with the application ABI.')); });
+    probe.once('close', code => { clearTimeout(timer); code === 0 && output.includes('FRONDOSE_PACKAGED_PTY_OK') ? yes() : no(Error('The packaged native PTY could not run with the application ABI.')); });
   });
 }
 
@@ -69,7 +100,7 @@ try {
     child = spawn(executable, launchArgs, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: false });
     const receive = bytes => { const text = String(bytes); output = (output + text).slice(-128000); process.stdout.write(text); };
     child.stdout.on('data', receive); child.stderr.on('data', receive);
-    child.once('error', no); child.once('exit', (code, signal) => yes({ code, signal }));
+    child.once('error', no); child.once('close', (code, signal) => yes({ code, signal }));
     killTimer = setTimeout(() => { child.kill('SIGKILL'); no(Error('Native desktop smoke timed out.')); }, 45000);
   });
   if (result.code !== 0 || !output.includes('FRONDOSE_DESKTOP_SMOKE_OK')) throw Error(`Native desktop smoke failed (${result.code ?? result.signal}).`);
