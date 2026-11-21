@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, Notification, shell, session, powerMonitor, Menu, safeStorage, clipboard } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, Notification, shell, session, powerMonitor, powerSaveBlocker, Menu, Tray, nativeImage, nativeTheme, safeStorage, clipboard } = require('electron');
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { get } = require('node:http');
@@ -15,6 +15,8 @@ const { runtimeStatus } = require('./runtime-status.cjs');
 const {clipboardText}=require('./clipboard-policy.cjs');
 const { createLocalIntegrations } = require('./integration-service.cjs');
 const { createDesktopWorkstationTools } = require('./workstation-tools.cjs');
+const { createSystemPresence } = require('./system-presence.cjs');
+const { osTarget, documentHtml, fileFilter } = require('./os-open.cjs');
 
 app.setName('Frondose');
 if (process.env.FRONDOSE_DESKTOP_USER_DATA) app.setPath('userData', resolve(process.env.FRONDOSE_DESKTOP_USER_DATA));
@@ -25,15 +27,84 @@ const appIcon = process.platform === 'darwin' ? join(__dirname, 'assets/mac/Fron
 const origin = appUrl(process.env.FRONDOSE_DESKTOP_URL || `http://127.0.0.1:${process.env.PORT || 4174}`);
 const smoke = process.env.FRONDOSE_DESKTOP_SMOKE === '1';
 let mainWindow, browserHost, ownedServer, ownedApi, nativeUpdater, localIntegrations, terminalShell, quotaService, quotaOpening, quotaQuitting=false;
+let presence, desktopReady = false, quitting = false, quitPrompt = false, pendingRoute = null;
+const pendingOsTargets = new Map(), previews = new Map();
 const aboutWindow = createAboutWindow({ BrowserWindow, getParent: () => mainWindow, iconPath: appIcon, getVersion: () => app.getVersion() });
+function reveal() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  presence?.clearAttention();
+}
+function selectDesktopPage(route) {
+  reveal();
+  pendingRoute = route;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('frondose-desktop:system-route');
+}
+async function checkUpdates() {
+  selectDesktopPage('updates');
+  await nativeUpdater?.command({ operation: 'check' });
+}
+async function requestQuit(confirmAlways = false) {
+  if (quitting || quitPrompt) return;
+  quitPrompt = true;
+  try {
+    const work = ownedApi?.desktopActivity();
+    if (confirmAlways || ownedApi?.updaterTerminalTargets().length || work?.working.length || work?.waiting.length) {
+      reveal();
+      const options = { type: 'warning', message: 'Quit Frondose and stop local sessions?', detail: 'Save your drafts first. This ends sessions owned by this Frondose process and does not undo changes they already made.', buttons: ['Cancel', 'Quit and Stop Sessions'], cancelId: 0, defaultId: 0, noLink: true };
+      const decision = mainWindow && !mainWindow.isDestroyed() ? await dialog.showMessageBox(mainWindow, options) : await dialog.showMessageBox(options);
+      if (decision.response !== 1) return;
+    }
+    quitting = true;
+    app.quit();
+  } finally { quitPrompt = false; }
+}
+async function openDocument(path) {
+  path = resolve(path);
+  const html = previews.has(path) ? null : await documentHtml(path);
+  const current = previews.get(path);
+  if (current && !current.isDestroyed()) { current.show(); current.focus(); return; }
+  if (!html || previews.size >= 8) throw Error('Close a document preview before opening another one.');
+  const view = new BrowserWindow({ width: 740, height: 600, show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, navigateOnDragDrop: false } });
+  previews.set(path, view);
+  view.on('closed', () => previews.delete(path));
+  view.webContents.on('will-navigate', event => event.preventDefault());
+  view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  view.once('ready-to-show', () => view.show());
+  try { await view.loadURL('data:text/html;base64,' + Buffer.from(html).toString('base64')); }
+  catch (error) { view.destroy(); throw error; }
+}
+const nativeAction = fn => () => { void Promise.resolve().then(fn).catch(error => dialog.showErrorBox('Frondose', error.message)); };
+const chooseDocument = nativeAction(async () => {
+  reveal();
+  const options = { title: 'Open a read-only document preview', filters: [fileFilter], properties: ['openFile'] };
+  const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+  if (!result.canceled && result.filePaths[0]) await openDocument(result.filePaths[0]);
+});
+function receiveOsTarget(value) {
+  const target = osTarget(value);
+  if (!target) return false;
+  if (!desktopReady) {
+    if (pendingOsTargets.size < 24) pendingOsTargets.set(target.path || target.route, target);
+  } else nativeAction(() => target.path ? openDocument(target.path) : selectDesktopPage(target.route))();
+  return true;
+}
 function installMenu() {
   const about = { label: 'About Frondose', click: () => { void aboutWindow.show(); } };
-  const application = { label: 'Frondose', submenu: [about, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] };
-  Menu.setApplicationMenu(Menu.buildFromTemplate([...(process.platform === 'darwin' ? [application] : []), { role: 'fileMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }, ...(process.platform === 'darwin' ? [] : [{ role: 'help', submenu: [about] }])]));
+  const settings = { label: 'Desktop Settings…', accelerator: 'CmdOrCtrl+,', click: nativeAction(() => selectDesktopPage('settings')) };
+  const updates = { label: 'Check for Updates…', click: nativeAction(checkUpdates) };
+  const quit = { label: 'Quit Frondose', accelerator: 'CmdOrCtrl+Q', click: nativeAction(() => requestQuit()) };
+  const stop = { label: 'Quit and Stop Sessions…', click: nativeAction(() => requestQuit(true)) };
+  const sep = { type: 'separator' };
+  const application = { label: 'Frondose', submenu: [about, updates, sep, settings, sep, { role: 'services' }, sep, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, sep, stop, quit] };
+  const file = { label: 'File', submenu: [{ label: 'Open Document Preview…', accelerator: 'CmdOrCtrl+O', click: chooseDocument }, sep, { role: 'close' }, ...(process.platform === 'darwin' ? [] : [sep, settings, updates, stop, quit])] };
+  Menu.setApplicationMenu(Menu.buildFromTemplate([...(process.platform === 'darwin' ? [application] : []), file, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }, ...(process.platform === 'darwin' ? [] : [{ role: 'help', submenu: [about] }])]));
 }
 const notificationService = createNativeNotificationService({ Notification, platform: process.platform, isPackaged: app.isPackaged,
   onStatus: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('frondose-desktop:notification-status', status); },
-  onOpen: action => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); if (action) mainWindow.webContents.send('frondose-desktop:notification-open', action); } },
+  onOpen: action => { reveal(); if (action && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('frondose-desktop:notification-open', action); },
 });
 
 function readHealth() {
@@ -71,7 +142,13 @@ function registerIpc() {
     const response = await mainWindow.webContents.session.fetch(origin + '/api/directory-workspace?workspace_id=' + encodeURIComponent(workspaceId), { credentials: 'include', signal: AbortSignal.timeout(5000) });
     const body = await response.json(); if (!response.ok || body.result?.workspaceId !== workspaceId) throw Error('Unlock and select this local workspace first.');
   } });
-  app.once('before-quit', () => workstationTools.close());
+  app.once('will-quit', () => workstationTools.close());
+  ipcMain.handle('frondose-desktop:presence', (event, payload) => {
+    trusted(event);
+    if (payload?.operation === 'consume-route') { const route = pendingRoute; pendingRoute = null; return route; }
+    if (!presence) throw Error('Desktop settings are still opening.');
+    return presence.command(payload);
+  });
   ipcMain.handle('frondose-desktop:workstation-tools', (event, payload) => { trusted(event); if (process.env.FRONDOSE_DESKTOP_SMOKE === '1' && payload?.operation !== 'capabilities') throw Error('Native execution is disabled during smoke checks.'); return workstationTools.releaseCommand(payload); });
   ipcMain.handle('frondose-desktop:clipboard-write',(event,text)=>{trusted(event);clipboard.writeText(clipboardText(text));return {copied:true};});
   ipcMain.handle('frondose-desktop:provider-usage', async(event,payload)=>{trusted(event);
@@ -144,7 +221,12 @@ function registerIpc() {
     trusted(event);
     return notificationService.send({ title: 'Frondose', body: options?.test === true ? 'This is a test notification from Frondose.' : 'Your workspace is ready. Frondose will let you know when work needs attention.', silent: options?.silent === true });
   });
-  ipcMain.handle('frondose-desktop:notification', (event, payload) => { trusted(event); return notificationService.send(payload); });
+  ipcMain.handle('frondose-desktop:notification', (event, payload) => {
+    trusted(event);
+    const delivery = notificationService.send(payload);
+    presence?.markAttention();
+    return delivery;
+  });
   ipcMain.handle('frondose-desktop:notification-settings', async event => { trusted(event); const target = notificationSettingsTarget(process.platform); if (!target) return { opened: false, error: 'Use your desktop environment’s notification settings.' }; await shell.openExternal(target); return { opened: true }; });
   ipcMain.handle('frondose-desktop:open-external', async (event, payload) => { trusted(event); const url = browserUrl(payload?.url); if (url === 'about:blank') throw Error('Enter a web address first.'); await shell.openExternal(url); return { opened: true }; });
 }
@@ -158,6 +240,23 @@ async function openWindow() {
   browserHost = createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboard });
   mainWindow.webContents.on('did-start-navigation', (event, _url, isInPlace, isMainFrame) => { if ((event.isMainFrame ?? isMainFrame) && !(event.isSameDocument ?? isInPlace)) browserHost?.hideAll(); });
   mainWindow.webContents.on('render-process-gone', () => browserHost?.hideAll());
+  mainWindow.webContents.on('will-prevent-unload', () => {
+    quitting = false;
+    reveal();
+    void dialog.showMessageBox(mainWindow, { type: 'info', message: 'Save open work before closing Frondose.', buttons: ['OK'] });
+  });
+  mainWindow.on('focus', () => presence?.clearAttention());
+  mainWindow.on('close', event => {
+    if (quitting || nativeUpdater?.critical()) return;
+    if (presence?.state().preferences.keepRunning) {
+      event.preventDefault();
+      if (process.platform === 'darwin' || presence.state().trayVisible) mainWindow.hide();
+      else mainWindow.minimize();
+    } else if (ownedApi?.updaterTerminalTargets().length || ownedApi?.desktopActivity().working.length || ownedApi?.desktopActivity().waiting.length) {
+      event.preventDefault();
+      nativeAction(() => requestQuit())();
+    }
+  });
   mainWindow.on('closed', () => { browserHost?.close(); mainWindow = null; });
   mainWindow.once('ready-to-show', () => { mainWindow.show(); console.log(`Frondose desktop ready: ${origin}`); });
   await mainWindow.loadURL(origin);
@@ -173,13 +272,32 @@ async function openWindow() {
     app.quit();
   }
 }
-app.whenReady().then(async () => {
+const primary = smoke || app.requestSingleInstanceLock();
+if (primary && !smoke) {
+  app.on('open-file', (event, path) => { if (receiveOsTarget(path)) event.preventDefault(); });
+  app.on('open-url', (event, url) => { if (receiveOsTarget(url)) event.preventDefault(); });
+  app.on('second-instance', (_event, argv) => {
+    if (desktopReady) reveal();
+    for (const arg of argv.slice(1)) receiveOsTarget(arg);
+  });
+  for (const arg of process.argv.slice(app.isPackaged ? 1 : 2)) receiveOsTarget(arg);
+  app.on('activate', reveal);
+}
+if (!primary) app.quit();
+if (primary) app.whenReady().then(async () => {
   if (process.platform === 'darwin') app.dock.setIcon(appIcon);
   installMenu();
   await ensureServer();
-  if (!smoke) registerIpc();
-  await openWindow();
-  if (smoke) return;
+  if (!smoke) {
+    registerIpc();
+    presence = await createSystemPresence({ app, userData: app.getPath('userData'), platform: process.platform, Tray, Menu, nativeImage, nativeTheme, powerSaveBlocker, iconPath: join(root, 'public/brand/frondose-frond-icon.png'), classicIcon: appIcon,
+      allowLogin: app.isPackaged && !process.env.FRONDOSE_DESKTOP_USER_DATA,
+      activity: () => ownedApi?.desktopActivity(),
+      actions: { open: reveal, settings: () => selectDesktopPage('settings'), updates: checkUpdates, quit: requestQuit,
+        visible: () => Boolean(mainWindow?.isVisible() && !mainWindow?.isMinimized() && mainWindow?.isFocused()) },
+    });
+  }
+  if (smoke) { await openWindow(); return; }
   terminalShell = await createTerminalShell({
     userData: app.getPath('userData'),
     chooseShell: async () => {
@@ -194,7 +312,11 @@ app.whenReady().then(async () => {
     if (body.result?.workspaceId !== workspaceId) throw Error('Workspace identity could not be verified.');
   } });
   nativeUpdater = await createNativeUpdater({ app, origin, window: () => mainWindow, browserHost: () => browserHost, ownsServer: () => ownedServer?.listening === true, terminalTargets: () => ownedApi?.updaterTerminalTargets() || [], powerMonitor });
+  await openWindow();
   nativeUpdater.start();
+  desktopReady = true;
+  for (const target of pendingOsTargets.values()) nativeAction(() => target.path ? openDocument(target.path) : selectDesktopPage(target.route))();
+  pendingOsTargets.clear();
 }).catch(error => {
   console.error(error);
   browserHost?.close();
@@ -204,4 +326,16 @@ app.whenReady().then(async () => {
   app.exit(1);
 });
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', event => { if(quotaService&&!quotaQuitting){event.preventDefault();quotaQuitting=true;void quotaService.close().finally(()=>app.quit());return;} aboutWindow.close(); nativeUpdater?.close(); browserHost?.close(); notificationService.close(); ownedApi?.close(); ownedServer?.close(); });
+app.on('before-quit', event => {
+  if (primary && !smoke && desktopReady && mainWindow && !quitting && !nativeUpdater?.critical()) {
+    event.preventDefault();
+    nativeAction(() => requestQuit())();
+    return;
+  }
+  if (quotaService && !quotaQuitting) {
+    event.preventDefault();
+    quotaQuitting = true;
+    void quotaService.close().finally(() => app.quit());
+  }
+});
+app.on('will-quit', () => { presence?.close(); aboutWindow.close(); nativeUpdater?.close(); browserHost?.close(); notificationService.close(); ownedApi?.close(); ownedServer?.close(); });

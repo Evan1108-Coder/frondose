@@ -32,6 +32,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Frondose product decisions
 
+- Desktop presence: keep the menu-bar/tray preference independent from close-to-background and power settings. Use the existing frond, make attention a local hint rather than an authorization signal, and never start or resume agent work from a visibility change or system link. Finder previews stay read-only, bounded and outside any workspace. Preserve drafts and the update safety gate when adding native menu shortcuts.
+
 - November 15 localization: switching interface language should update all product-owned labels, controls, descriptions, and accessibility names throughout the app. Preserve workspace and item names, comments, files, prompts, CLI commands/output and external content in their original language. Reuse locale catalogs for repeated app labels, keep IDs and stored values stable, and explicitly label partial translations and formatting-only options until the real coverage is complete.
 
 - November 12 updater layout: put the update offer and minimized progress in the bottom-right corner. The larger full-window progress screen shows only a title, version, progress bar, status description, and Minimize. Keep release notes on the review screen and keep all install safety gates when minimized.

@@ -15,6 +15,18 @@ contextBridge.exposeInMainWorld('frondoseDesktop', Object.freeze({
     text: payload?.text, locale: payload?.locale, appId: payload?.appId, windowId: payload?.windowId, direction: payload?.direction,
   }) }),
   appInfo: () => invoke('app-info'),
+  presence: Object.freeze({
+    status: () => invoke('presence', { operation: 'status' }),
+    set: (key, value) => invoke('presence', { operation: 'set', key, value }),
+    previewAttention: () => invoke('presence', { operation: 'preview-attention' }),
+    consumeRoute: () => invoke('presence', { operation: 'consume-route' }),
+    onRoute(callback) {
+      if (typeof callback !== 'function') return () => {};
+      const listener = () => callback();
+      ipcRenderer.on('frondose-desktop:system-route', listener);
+      return () => ipcRenderer.removeListener('frondose-desktop:system-route', listener);
+    },
+  }),
   chooseDirectory: () => invoke('choose-directory'),
   integrations: Object.freeze({ command: payload => invoke('integrations', { operation: payload?.operation, providerId: payload?.providerId, workspaceId: payload?.workspaceId, confirmed: payload?.confirmed === true, credentials: payload?.credentials ? { token: payload.credentials.token, email: payload.credentials.email, host: payload.credentials.host, organization: payload.credentials.organization, site: payload.credentials.site, cloudId: payload.credentials.cloudId } : undefined, resourceIds: payload?.resourceIds, resourceId: payload?.resourceId, kind: payload?.kind }) }),
   terminalShell: payload => invoke('terminal-shell', { operation: payload?.operation }),

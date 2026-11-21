@@ -2256,7 +2256,23 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     return snapshot(store.db);
   }
 
-  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), updaterTerminalTargets: () => product.local && !closed && !desktopUpdateGate.isPreparing() ? workbench.updaterTerminalTargets() : [], dbPath: store.dbPath };
+  function desktopActivity() {
+    const working = [], waiting = [];
+    if (!product.local || closed) return { working, waiting };
+    const db = getDb();
+    const run = db.prepare('SELECT status FROM runs WHERE id=?');
+    for (const id of liveRuns.keys()) {
+      const status = run.get(id)?.status;
+      if (status === 'needs_input') waiting.push(`run:${id}`);
+      else if (status === 'starting' || status === 'running') working.push(`run:${id}`);
+    }
+    for (const row of workspaceAgentChats?.desktopTurns() || []) {
+      if (row.status === 'needs-input') waiting.push(`chat:${row.id}`);
+      else if (row.status === 'starting' || row.status === 'running') working.push(`chat:${row.id}`);
+    }
+    return { working, waiting };
+  }
+  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), updaterTerminalTargets: () => product.local && !closed && !desktopUpdateGate.isPreparing() ? workbench.updaterTerminalTargets() : [], desktopActivity, dbPath: store.dbPath };
 }
 
 export default createLocalApi;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiRequest, frondoseApi } from '../data/api.js';
 import { frondoseActions } from '../data/useFrondose.js';
 import { Button, ErrorMessage, useApp } from '../ui.jsx';
+import { DesktopPresenceSettings } from './DesktopPresenceSettings.jsx';
 import './local-installation.css';
 
 const names = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
@@ -49,6 +50,7 @@ export function LocalInstallation() {
   const { navigate } = useApp();
   return <><header className="settings-heading"><div><h1>Local installation</h1><p>One owner. Your workspace, history and credentials stay on this computer.</p></div></header>
     <section className="local-installation-facts"><h2>Your private workspace</h2><ul><li>No Frondose cloud account, membership or subscription is required.</li><li>Existing local passwords remain enabled. An optional local lock is separate from CLI sign-in.</li><li>Each CLI manages its own provider login. Cloud AI providers still receive prompts you explicitly send.</li><li>Local terminal processes need this computer awake and Frondose running.</li><li>Native tools run as your OS user, not inside a project sandbox.</li></ul><div><Button onClick={() => navigate('settings', 'personal-security')}>Local lock & sessions</Button><Button onClick={() => navigate('settings', 'storage')}>Export workspace</Button><Button onClick={() => navigate('settings', 'terminal')}>Terminal preferences</Button></div></section>
+    <DesktopPresenceSettings />
     <LocalRuntimePanel discoveryOnly />
   </>;
 }

@@ -47,7 +47,7 @@ test('desktop native controls require a listening app-owned server; the external
   assert.match(source, /const local = await launchLocal\([^;]+;\s*ownedServer = local.server;/);
   assert.match(source, /function trusted\(event\) \{ if \(!ownedServer\?\.listening \|\| !isTrustedFrame/);
   assert.match(source, /!smoke && ownedServer\?\.listening \? \{ preload:/);
-  assert.match(source, /await ensureServer\(\);\s*if \(!smoke\) registerIpc\(\);/);
+  assert.match(source, /await ensureServer\(\);\s*if \(!smoke\) \{\s*registerIpc\(\);/);
 });
 
 function fixture(maxPages = 12) {

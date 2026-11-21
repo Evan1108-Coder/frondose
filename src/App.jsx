@@ -204,6 +204,22 @@ export function App() {
       setPage(parsePage(next));
     }));
   }, [localPage]);
+  useEffect(() => {
+    const desktop = globalThis.frondoseDesktop?.presence;
+    if (!desktop) return;
+    let live = true;
+    const consume = () => {
+      void desktop.consumeRoute().then(route => {
+        if (!live || !route) return;
+        if (route === 'settings') navigate('settings', 'local-installation');
+        else if (route === 'updates') navigate('settings', 'app-updates');
+        else if (route === 'workspace') navigate('workspace');
+      }).catch(() => {});
+    };
+    const unsubscribe = desktop.onRoute(consume);
+    consume();
+    return () => { live = false; unsubscribe(); };
+  }, [navigate]);
   const activateWorkspacePage = useCallback(next => {
     next = localPage(next);
     history.replaceState(null, '', pageHash(next.view, next.id, next));

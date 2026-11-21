@@ -326,5 +326,5 @@ export function createWorkspaceAgentChat({ db, roots, recordActivity, env = proc
   }
   function activeSessionsFor(resource,id) { return [...active.values()].filter(e => resource === 'workspaces' ? e.conversation.workspace_id === id : resource === 'projects' && e.conversation.project_id === id).map(e => ({ id:e.turnId,status:e.status })); }
   function close() { for (const entry of active.values()) { entry.status='interrupted'; entry.error='Frondose closed. This turn was not replayed.'; persist(entry); } closed = true; for (const entry of active.values()) { entry.stopped = true; entry.stop?.(); } for (const a of [...approvals.values()]) a.finish(false); }
-  return { dispatch, activeSessionsFor, automationTargets, startAutomationTurn, close };
+  return { dispatch, activeSessionsFor, automationTargets, startAutomationTurn, close, desktopTurns: () => [...active.values()].map(({ turnId, status }) => ({ id: turnId, status })) };
 }

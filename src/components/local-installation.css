@@ -13,3 +13,10 @@
 .local-runtime-row > button { flex-shrink: 0; }
 .dialog .form-fields > .local-runtime-panel { flex-basis: 100%; }
 @media (max-width: 600px) { .local-runtime-row { align-items: start; flex-wrap: wrap; } .local-runtime-row > button { max-width: 100%; } }
+.desktop-presence-settings fieldset { min-inline-size: 0; border: 0; padding: 0; margin: 0; }
+.desktop-presence-settings .desktop-presence-row { display: grid; justify-items: start; gap: .45rem; padding: .8rem 0; }
+.desktop-presence-row + .desktop-presence-row { border-top: 1px solid var(--border); }
+.desktop-presence-row label { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; }
+.desktop-presence-row input[type=checkbox] { margin-inline: 0; }
+.desktop-presence-row select { max-inline-size: 100%; }
+.desktop-presence-row p { margin: 0; color: var(--muted); }

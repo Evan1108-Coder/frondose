@@ -1,6 +1,16 @@
 // Dated local development milestones; not fabricated public release dates.
 export const DOC_NOVEMBER = [
   {
+    id:'native-desktop-presence',group:'updates',date:'2026-11-21',
+    title:'Frondose in the menu bar and system tray',
+    description:'Reopen your workspace, notice activity, and control whether Frondose stays running or awake.',
+    sections:[
+      {id:'frond',title:'Open Frondose from the system',paragraphs:['The Frondose frond appears in the macOS menu bar or Windows notification area, with an amber dot for new activity while you’re away. Open the window, jump to desktop settings, check for updates, or quit from its native menu. Settings → Local installation → Desktop presence can hide the icon and preview the dot.']},
+      {id:'background',title:'Choose what happens on close',paragraphs:['The keep-running toggle is independent of the icon. When enabled, closing the main window preserves the running app and its current views. Keep awake is a separate power setting; your system can still enforce battery and lid sleep.']},
+      {id:'os-open',title:'Preview a file from Finder',paragraphs:['Open supported plain-text, Markdown or delimited files in a separate read-only window. This does not link the file to a workspace or send it to an agent.']},
+    ],related:['desktop-presence','local-frondose'],
+  },
+  {
     id:'release-candidate-fixes',group:'updates',date:'2026-11-15',
     title:'Browser, Chat and workspace reliability fixes',
     description:'Keep local paths private, remove saved Chat transcripts, and make task creation clearer.',
