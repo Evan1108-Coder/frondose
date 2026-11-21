@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { desktopOutputDirectory } from './desktop-package.mjs';
 const require = createRequire(import.meta.url);
+const withoutNodeMode = env => Object.fromEntries(Object.entries(env).filter(([name]) => name.toUpperCase() !== 'ELECTRON_RUN_AS_NODE'));
 const root = fileURLToPath(new URL('../', import.meta.url));
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--packaged') || args.length > 1) throw Error('Usage: node scripts/desktop-smoke.mjs [--packaged]');
@@ -64,7 +65,7 @@ async function verifyPackagedPty(executable, fixtureDirectory) {
     }, 80));
   `;
   await new Promise((yes, no) => {
-    const probe = spawn(executable, ['-e', code], { cwd: fixtureDirectory, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const probe = spawn(executable, ['-e', code], { cwd: fixtureDirectory, env: { ...withoutNodeMode(process.env), ELECTRON_RUN_AS_NODE: '1' }, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     const receive = chunk => { output = (output + String(chunk)).slice(-16000); process.stdout.write(String(chunk)); };
     probe.stdout.on('data', receive); probe.stderr.on('data', receive);
@@ -94,7 +95,11 @@ try {
   const launchArgs = args.includes('--packaged') ? [] : [join(root, 'desktop/main.cjs')];
   // Prevent inherited credentials/service URLs from affecting this fixture. The
   // native smoke path refuses to start any API/database if health is unavailable.
-  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '', FRONDOSE_DESKTOP_SMOKE: '1', FRONDOSE_DESKTOP_USER_DATA: fixtureDirectory, FRONDOSE_DESKTOP_URL: `http://127.0.0.1:${server.address().port}` };
+  // Explicitly omit the mode switch: Electron can treat a present but empty
+  // variable as a request to run as Node, and Windows environment names are
+  // case-insensitive. The packaged PTY probe above opts into Node separately.
+  const guiEnv = withoutNodeMode(process.env);
+  const env = { ...guiEnv, FRONDOSE_DESKTOP_SMOKE: '1', FRONDOSE_DESKTOP_USER_DATA: fixtureDirectory, FRONDOSE_DESKTOP_URL: `http://127.0.0.1:${server.address().port}` };
   let output = '';
   const result = await new Promise((yes, no) => {
     child = spawn(executable, launchArgs, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: false });
