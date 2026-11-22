@@ -72,17 +72,21 @@
 .rumbo-download-placeholder { padding: 24px; display: grid; justify-items: start; gap: 16px; }
 .rumbo-download-placeholder > svg { width: 32px; height: 32px; color: var(--muted); }
 .rumbo-download-placeholder p { margin: 0; color: var(--muted); line-height: 1.7; }
-.rumbo-feedback-dialog { width: min(720px, calc(100vw - 32px)); }
+.rumbo-feedback-dialog { width: min(820px, calc(100vw - 32px)); }
 .rumbo-feedback-dialog form { min-height: 0; overflow-y: auto; }
 .rumbo-feedback-body { padding: 0 24px 22px; }
-.rumbo-feedback-notice { display: flex; flex-direction: column; gap: 5px; padding: 13px 15px; margin-bottom: 20px; border: 1px solid var(--border-soft); border-radius: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.rumbo-feedback-notice strong { color: var(--text); font-size: 12px; }
 .rumbo-feedback-drop { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--input); }
 .rumbo-feedback-drop:focus-within, .rumbo-feedback-drop.dragging { border-color: var(--focus); outline: none; }
-.rumbo-feedback-drop label { display: block; padding: 15px 16px 0; font-size: 12px; font-weight: 600; }
-.rumbo-feedback-drop textarea { width: 100%; min-height: 180px; padding: 12px 16px; border: 0; border-radius: 0; background: transparent; resize: vertical; outline: none; box-shadow: none; line-height: 1.7; }
-.rumbo-feedback-drop textarea:focus-visible { outline: none; }
-.rumbo-feedback-drop-hint { padding: 10px 16px 13px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; color: var(--faint); font-size: 11px; }
+.rumbo-feedback-label { display: block; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.dialog.rumbo-feedback-dialog .rumbo-feedback-drop #rumbo-feedback-message {
+  display: block; width: 100%; height: clamp(220px, 45dvh, 520px);
+  padding: 16px; border: 0; border-radius: 0; background: transparent;
+  resize: none; outline: none; box-shadow: none; line-height: 1.7;
+}
+.dialog-expanded.rumbo-feedback-dialog .rumbo-feedback-drop #rumbo-feedback-message { height: clamp(220px, 62dvh, 900px); }
+.rumbo-feedback-drop-hint { margin: 8px 0 0; color: var(--faint); font-size: 11px; }
+.rumbo-feedback-email-label { display: block; margin: 18px 0 6px; font-weight: 600; }
+#rumbo-feedback-email { width: min(100%, 380px); }
 .rumbo-feedback-files { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
 .rumbo-feedback-files li { display: flex; gap: 10px; align-items: center; padding: 9px 12px; border: 1px solid var(--border-soft); border-radius: 8px; }
 .rumbo-feedback-files li > svg { width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; }
@@ -90,11 +94,12 @@
 .rumbo-feedback-files strong { font-size: 12px; overflow-wrap: anywhere; font-weight: 500; }
 .rumbo-feedback-files small { color: var(--faint); font-size: 11px; }
 .rumbo-feedback-error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
-.rumbo-feedback-status { font-size: 13px; line-height: 1.6; color: var(--text); padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0; }
-.rumbo-feedback-footer { padding: 18px 24px; border-top: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-.rumbo-feedback-footer > div { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rumbo-feedback-footer { padding: 18px 24px; border-top: 1px solid var(--border-soft); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
 .rumbo-feedback-footer small { color: var(--faint); font-size: 11px; }
-@media (max-width: 520px) { .rumbo-feedback-body { padding-inline: 16px; } .rumbo-feedback-footer { padding: 16px; align-items: flex-end; } .rumbo-feedback-footer > div { align-items: flex-start; flex-direction: column; } .rumbo-feedback-footer .button { white-space: nowrap; } }
+.rumbo-feedback-tools, .rumbo-feedback-send { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rumbo-feedback-docs { color: var(--secondary); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.rumbo-feedback-sent { color: var(--text); font-size: 13px; }
+@media (max-width: 520px) { .rumbo-feedback-body { padding-inline: 16px; } .rumbo-feedback-footer { padding: 16px; } }
 /* Customization is a readable single-column editor on a phone, not a shrunken
    desktop control table. Select triggers remain bounded to the dialog width. */
 @media (max-width: 600px) {
