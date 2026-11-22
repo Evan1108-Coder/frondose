@@ -124,16 +124,30 @@ try {
   });
   const workspaceId = created.workspace.id;
   await json(origin + '/api/projects', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ name: marker, workspace_id: workspaceId }) });
+  await until('native window completed its initial navigation', () =>
+    launchLog.includes('Frondose desktop ready: ' + origin));
   renderer = await until('Frondose renderer debugger', debuggerSession);
+  await until('initial document finishes loading', () => renderer.evalInApp('document.readyState === "complete" && Boolean(document.querySelector("#root")?.innerText.trim())'));
   // The fresh renderer may have loaded before the fixture workspace was
   // created; reload it so the test uses the real, populated workspace UI.
-  await renderer.command('Page.reload', {});
+  if (!await renderer.evalInApp('Boolean(document.querySelector(".native-update-ui"))')) await renderer.command('Page.reload', {});
   const status = 'window.frondoseDesktop?.updates?.command({operation:"status"})';
   await until('old version and workspace UI', async () => {
     const v = await renderer.evalInApp(status);
     return v?.currentVersion === versionBefore &&
       await renderer.evalInApp('Boolean(document.querySelector(".native-update-ui"))');
   });
+  // A synthetic first-use workspace can have the onboarding modal open. Close
+  // it using its normal control; never bypass the updater's safety checks.
+  await renderer.evalInApp(String.raw`
+    (() => {
+      const welcome = document.querySelector('.workspace-welcome-dialog');
+      const skip = [...(welcome?.querySelectorAll('button') || [])].find(x => x.textContent.trim() === 'Skip setup');
+      if (skip && !skip.disabled) skip.click();
+      return Boolean(skip);
+    })()
+  `);
+  await until('onboarding dialog closed', () => renderer.evalInApp('!document.querySelector(".workspace-welcome-dialog")'));
   activeDir = newDir;
   await renderer.evalInApp('window.frondoseDesktop.updates.command({operation:"check"})');
   await until('bottom-right update popup', () => renderer.evalInApp(String.raw`

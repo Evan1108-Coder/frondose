@@ -22,6 +22,9 @@ jobs:
           node-version: '24'
       - run: node --test tests/desktop-updates.test.mjs tests/desktop-public-release.test.mjs
   qa-images:
+    # A harness-only retry may use the exact immutable inputs from QA run #2.
+    # Normal branch pushes and workflow dispatches always build a fresh pair.
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[replay-qa-images]')
     strategy:
       fail-fast: false
       matrix:
@@ -69,8 +72,12 @@ jobs:
           retention-days: 3
   upgrade:
     needs: qa-images
+    if: ${{ !cancelled() && (needs.qa-images.result == 'success' || (needs.qa-images.result == 'skipped' && github.event_name == 'push' && contains(github.event.head_commit.message, '[replay-qa-images]'))) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -79,9 +86,18 @@ jobs:
         with:
           node-version: '24'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.qa-images.result == 'success'
         with:
           path: qa-images
           pattern: qa-image-*
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.qa-images.result == 'skipped'
+        with:
+          run-id: '44972968013'
+          github-token: ${{ github.token }}
+          artifact-ids: '14735025739,14734148070'
+          path: qa-images
           digest-mismatch: error
       - name: Trust a temporary TLS root for the disposable test feed
         run: |
