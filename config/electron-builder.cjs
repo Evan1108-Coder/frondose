@@ -8,7 +8,7 @@ module.exports = {
   protocols: [{ name: 'Frondose navigation', schemes: ['frondose'] }],
   directories: { output: 'dist-desktop' },
   extraMetadata: { main: 'desktop/main.cjs' },
-  files: ['desktop/**', 'server/**', 'src/lib/**', 'scripts/*.mjs', 'third-party/**', 'public/brand/frondose-frond-icon.png', 'dist/client/**', 'package.json', '!**/*.test.*', '!desktop/open-in-apps.cjs', '!desktop/editor-tab-setup.cjs', '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'],
+  files: ['desktop/**', 'server/**', 'src/lib/**', 'scripts/*.mjs', 'third-party/**', 'public/brand/frondose-frond-icon.png', 'dist/client/**', 'package.json', '!**/*.test.*', '!desktop/open-in-apps.cjs', '!desktop/editor-tab-setup.cjs', '!scripts/desktop-appimage-upgrade-qa.mjs', '!scripts/publish-desktop-release.mjs', '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'],
   asarUnpack: ['**/*.node', '**/node-pty/**', 'desktop/bin/**'],
   npmRebuild: true,
   ...(release.feedUrl && process.platform !== 'linux' ? { forceCodeSigning: true } : {}),

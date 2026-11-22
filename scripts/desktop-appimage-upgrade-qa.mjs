@@ -125,22 +125,55 @@ try {
   const workspaceId = created.workspace.id;
   await json(origin + '/api/projects', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ name: marker, workspace_id: workspaceId }) });
   renderer = await until('Frondose renderer debugger', debuggerSession);
+  // The fresh renderer may have loaded before the fixture workspace was
+  // created; reload it so the test uses the real, populated workspace UI.
+  await renderer.command('Page.reload', {});
   const status = 'window.frondoseDesktop?.updates?.command({operation:"status"})';
-  await until('old version in native bridge', async () => (await renderer.evalInApp(status))?.currentVersion === versionBefore);
+  await until('old version and workspace UI', async () => {
+    const v = await renderer.evalInApp(status);
+    return v?.currentVersion === versionBefore &&
+      await renderer.evalInApp('Boolean(document.querySelector(".native-update-ui"))');
+  });
   activeDir = newDir;
   await renderer.evalInApp('window.frondoseDesktop.updates.command({operation:"check"})');
-  const point = await until('bottom-right update popup', () => renderer.evalInApp(String.raw`
+  await until('bottom-right update popup', () => renderer.evalInApp(String.raw`
     (() => {
       const popup = document.querySelector('.native-update-prompt:not([inert])');
       const button = [...(popup?.querySelectorAll('button') || [])].find(x => x.textContent.trim() === 'Update');
-      if (!button || !popup.innerText.includes('0.90.2')) return null;
-      const rect = popup.getBoundingClientRect(), click = button.getBoundingClientRect();
-      if (rect.right < innerWidth - 80 || rect.bottom < innerHeight - 100 || rect.width < 1 || click.width < 1) return null;
-      return { x: click.x + click.width / 2, y: click.y + click.height / 2 };
+      if (!button || button.disabled || !popup.innerText.includes('0.90.2')) return false;
+      const rect = popup.getBoundingClientRect();
+      if (rect.right < innerWidth - 80 || rect.bottom < innerHeight - 100 || rect.width < 1) return false;
+      return true;
     })()
   `));
-  await renderer.command('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
-  await renderer.command('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
+  console.log('Verified the actual Update button in the bottom-right popup.');
+  await renderer.evalInApp(String.raw`
+    (() => {
+      const popup = document.querySelector('.native-update-prompt:not([inert])');
+      const button = [...(popup?.querySelectorAll('button') || [])].find(x => x.textContent.trim() === 'Update');
+      if (!button || button.disabled) throw Error('Update button is no longer actionable');
+      button.click();
+      return true;
+    })()
+  `);
+  const clickResult = await until('native updater handles the button click', async () => {
+    const v = await renderer.evalInApp(status);
+    return v && !['idle', 'available', 'checking'].includes(v.phase) && v;
+  }, 15000);
+  console.log('After click: ' + clickResult.phase);
+  if (['blocked', 'error'].includes(clickResult.phase)) throw Error(JSON.stringify(clickResult));
+  // Fast failures (such as a local safety guard) should say why, instead of
+  // waiting for a new PID that won't be created.
+  try {
+    const installState = await until('download and install', async () => {
+      const v = await renderer.evalInApp(status);
+      return v && ['installing', 'blocked', 'error'].includes(v.phase) && v;
+    }, 45000);
+    if (installState.phase !== 'installing') throw Error(JSON.stringify(installState));
+  } catch (error) {
+    if (launcher.exitCode === null && launchLog.includes('Downloading update') === false ||
+        /"phase":"(?:error|blocked)"/.test(error.message)) throw error;
+  }
   renderer.close();
   renderer = null;
   relaunchedPid = await until('new Frondose process and visible window after updater relaunch', async () => {

@@ -21,9 +21,17 @@ jobs:
         with:
           node-version: '24'
       - run: node --test tests/desktop-updates.test.mjs tests/desktop-public-release.test.mjs
-  upgrade:
+  qa-images:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - age: old
+            version: '0.90.1'
+          - age: new
+            version: '0.90.2'
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 25
     env:
       FRONDOSE_RELEASE_BUILD: '1'
       FRONDOSE_RELEASE_FEED_URL: https://updates.frondose.test:18443/
@@ -42,16 +50,39 @@ jobs:
           node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("config/desktop-target.json", JSON.stringify({platform:"linux",branch:"master-linux"}))'
       - run: npm ci
       - run: npm run build
-      - name: Build two isolated update-enabled AppImages
+      - name: Build and review an isolated update-enabled AppImage
+        env:
+          FRONDOSE_DESKTOP_BUILD_VERSION: ${{ matrix.version }}
         run: |
-          FRONDOSE_DESKTOP_BUILD_VERSION=0.90.1 FRONDOSE_DESKTOP_OUTPUT_DIR=dist-desktop-qa-old npm run desktop:dist
-          FRONDOSE_DESKTOP_BUILD_VERSION=0.90.2 FRONDOSE_DESKTOP_OUTPUT_DIR=dist-desktop-qa-new npm run desktop:dist
-          for age in old new; do
-            mkdir "release-qa-$age"
-            cp dist-desktop-qa-"$age"/Frondose*.AppImage dist-desktop-qa-"$age"/frondose*.deb dist-desktop-qa-"$age"/latest-linux.yml "release-qa-$age/"
-          done
-          node scripts/publish-desktop-release.mjs review release-qa-old linux-x64 0.90.1
-          node scripts/publish-desktop-release.mjs review release-qa-new linux-x64 0.90.2
+          npm run desktop:dist
+          mkdir release-qa
+          cp dist-desktop/Frondose*.AppImage dist-desktop/frondose*.deb dist-desktop/latest-linux.yml release-qa/
+          node scripts/publish-desktop-release.mjs review release-qa linux-x64 "$FRONDOSE_DESKTOP_BUILD_VERSION"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qa-image-${{ matrix.age }}
+          path: |
+            release-qa/*.AppImage
+            release-qa/latest-linux.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+  upgrade:
+    needs: qa-images
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: qa-images
+          pattern: qa-image-*
+          digest-mismatch: error
       - name: Trust a temporary TLS root for the disposable test feed
         run: |
           sudo apt-get update -qq
@@ -72,4 +103,4 @@ jobs:
       - name: Click update, verify the relaunched app and saved project
         run: |
           xvfb-run -a node scripts/desktop-appimage-upgrade-qa.mjs \
-            dist-desktop-qa-old dist-desktop-qa-new "$RUNNER_TEMP/frondose-qa-server.pem" "$RUNNER_TEMP/frondose-qa-server.key"
+            qa-images/qa-image-old qa-images/qa-image-new "$RUNNER_TEMP/frondose-qa-server.pem" "$RUNNER_TEMP/frondose-qa-server.key"
