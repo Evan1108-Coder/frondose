@@ -26,5 +26,4 @@ test('specialized text settings and onboarding do not reintroduce a second outli
   assert.match(agent, /\.rumbo-agent-identity-fields textarea:focus-visible\s*\{[^}]*border-color: var\(--focus\); outline: none; box-shadow: none/);
   assert.match(fields, /\.field-default-search input:focus,[^}]*border-color: var\(--focus\); outline: none; box-shadow: none/);
   assert.match(fields, /\.field-default-settings button:focus-visible\s*\{[^}]*outline: 2px/);
-  assert.match(source('src/components/help-menu.css'), /\.rumbo-feedback-drop:focus-within[^}]*border-color: var\(--focus\); outline: none/);
 });

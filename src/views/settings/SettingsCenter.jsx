@@ -27,6 +27,8 @@ import { SETTINGS_GROUPS, PAGE_RESOURCE, pretty, featureItems } from '../../lib/
 import { isLocalProduct, localSettingsGroups } from '../../lib/local-product.js';
 import { LocalWorkspaceSettings, LocalTerminalSettings, LocalNotificationSettings } from './LocalWorkspaceSettings.jsx';
 import { WorkspaceActivitySettings } from './WorkspaceActivitySettings.jsx';
+import { SupportLogs } from './SupportLogs.jsx';
+import { SUPPORT_LOG_SECTION } from '../../lib/support-logs.js';
 import { LocalInstallation } from '../../components/LocalInstallation.jsx';
 import { WorkstationAppearance } from './WorkstationAppearance.jsx';
 import { NativeIntegrations } from './NativeIntegrations.jsx';
@@ -60,6 +62,7 @@ PAGE_ICONS['session-history'] = Terminal;
 PAGE_ICONS.privacy = ShieldCheck;
 PAGE_ICONS.languages = BookOpen;
 PAGE_ICONS['app-updates'] = Download;
+PAGE_ICONS[SUPPORT_LOG_SECTION] = Activity;
 PAGE_ICONS.github = GitBranch;
 PAGE_ICONS['onboarding-checklist']=CircleCheck;
 PAGE_ICONS['cli-agents']=Bot;
@@ -124,6 +127,7 @@ function SettingsContent({ section, teamId }) {
   if(isLocalProduct(data)&&section==='onboarding-checklist')return <OnboardingChecklist key={workspace.id}/>;
   if(isLocalProduct(data)&&section==='cli-agents')return <CliAgentsSettings key={workspace.id}/>;
   if(isLocalProduct(data)&&section==='workspace-activity')return <WorkspaceActivitySettings workspaceId={workspace.id}/>;
+  if(isLocalProduct(data)&&section===SUPPORT_LOG_SECTION)return <SupportLogs/>;
   if (isLocalProduct(data) && ['preferences', 'workspace-tabs', 'privacy', 'workspace', 'session-history'].includes(section)) return <LocalWorkspaceSettings section={section}/>;
   if (section === 'languages') return <LanguageSettings/>;
   if (isLocalProduct(data) && section === 'terminal') return <LocalTerminalSettings/>;

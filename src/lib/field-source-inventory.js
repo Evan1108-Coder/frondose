@@ -418,14 +418,6 @@ export const SOURCE_FIELD_DEFINITIONS = [
     "reason": null
   },
   {
-    "key": "source.components-feedback-dialog.feedback-dialog.how-could-rumbo-work-better-for-.dd0c24ce5a14",
-    "page": "Contact us",
-    "label": "How could Frondose work better for you?",
-    "type": "textarea",
-    "eligible": true,
-    "reason": null
-  },
-  {
     "key": "source.components-git-hub-code-browser.git-hub-code-browser.base-branch-or-sha.7504bc3595c8",
     "page": "GitHub · Repository code / Compare revisions",
     "label": "Base branch or SHA",
