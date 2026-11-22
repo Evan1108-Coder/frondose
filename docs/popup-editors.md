@@ -56,13 +56,15 @@ not implemented. A provider identity does not enable them or expose ordinary
 ChatGPT/Claude website history. See [Native CLI history status](native-cli-history-status.md)
 for the provider-specific research and remaining release requirements.
 
-## Contact us is a placeholder
+## Contact us
 
-Help → Contact us deliberately remains visible. Its dialog says delivery is not
-connected; Preview message reports that nothing was sent. The text and up to
-five files (10 MB each) exist only in that open dialog: attachments are not
-uploaded, the message is not delivered, and closing clears the draft. This is
-an explicit exception to persisted editor uploads, not a support operation.
+Write directly in the feedback textbox. Use Attach files or drop files into the
+textbox. Text and attachments together must total less than 20 MB, with no
+separate character, file-count, or per-file size limit. Leave an email only if
+you want a reply. Nothing is sent until you press Send feedback in a build
+with delivery enabled. Closing clears an unsent draft.
+
+See [Feedback delivery](feedback-delivery.md) for setup and address routing.
 
 ## Names and pictures
 
