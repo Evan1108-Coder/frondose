@@ -1,7 +1,7 @@
 'use strict';
 const { open, lstat } = require('node:fs/promises');
 const { constants } = require('node:fs');
-const { basename, extname, isAbsolute } = require('node:path');
+const { basename, posix, win32 } = require('node:path');
 const { fileURLToPath } = require('node:url');
 
 const maxBytes = 512 * 1024;
@@ -13,21 +13,30 @@ const routes = new Map([
   ['frondose://settings/desktop', 'settings'],
   ['frondose://settings/updates', 'updates'],
 ]);
-function osTarget(input) {
+function osTarget(input, platform = process.platform) {
   if (typeof input !== 'string' || input.length > 8192 || /[\u0000-\u001f]/.test(input)) return null;
   const route = routes.get(input.replace(/\/$/, ''));
   if (route) return { route };
   let path = input;
   if (input.startsWith('file:')) {
-    try { path = fileURLToPath(input); } catch { return null; }
+    try { path = fileURLToPath(input, { windows: platform === 'win32' }); } catch { return null; }
   }
-  if (!isAbsolute(path) || !extensions.includes(extname(path).toLowerCase().slice(1))) return null;
+  if (path.length > 8192 || /[\u0000-\u001f]/.test(path)) return null;
+  const paths = platform === 'win32' ? win32 : posix;
+  if (!paths.isAbsolute(path) || !extensions.includes(paths.extname(path).toLowerCase().slice(1))) return null;
+  if (platform === 'win32') {
+    // UNC, device namespaces and alternate streams are not ordinary drive
+    // paths. A UNC read can begin Windows network auth before the file opens.
+    if (!/^[A-Za-z]:[\\/]/.test(path) || /[:<>"|?*]/.test(path.slice(2))) return null;
+    const device = /^(?:CON|CONIN\$|CONOUT\$|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/i;
+    if (path.slice(3).split(/[\\/]/).some(part => device.test(part.split('.')[0].trimEnd()))) return null;
+  }
   return { path };
 }
 const escape = text => text.replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c]);
 
 async function documentHtml(path) {
-  if (!osTarget(path)?.path) throw Error('Choose a supported Markdown, text, CSV or TSV file.');
+  if (!osTarget(path)?.path) throw Error('Choose a Markdown, text, CSV or TSV file on a local drive.');
   const info = await lstat(path);
   if (!info.isFile() || info.size > maxBytes) throw Error('Choose a regular text file up to 512 KiB.');
   const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
