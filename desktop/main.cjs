@@ -17,7 +17,6 @@ const { createLocalIntegrations } = require('./integration-service.cjs');
 const { createDesktopWorkstationTools } = require('./workstation-tools.cjs');
 const { createSystemPresence } = require('./system-presence.cjs');
 const { osTarget, documentHtml, fileFilter } = require('./os-open.cjs');
-const reportConfig = require('./report-config.json');
 
 app.setName('Frondose');
 if (process.env.FRONDOSE_DESKTOP_USER_DATA) app.setPath('userData', resolve(process.env.FRONDOSE_DESKTOP_USER_DATA));
@@ -149,17 +148,6 @@ async function ensureServer() {
 }
 function trusted(event) { if (!ownedServer?.listening || !isTrustedFrame(event, mainWindow, origin)) throw Error('Only the trusted Frondose app can use desktop controls.'); }
 function registerIpc() {
-  const reports = import('./report-service.mjs').then(({ createDesktopReportService }) => createDesktopReportService({
-    enabled: reportConfig.enabled === true && !smoke && process.env.FRONDOSE_DESKTOP_NO_ACCOUNT_READS !== '1',
-  }));
-  ipcMain.handle('frondose-desktop:report-status', async event => {
-    trusted(event);
-    return (await reports).status();
-  });
-  ipcMain.handle('frondose-desktop:report-send', async (event, payload) => {
-    trusted(event);
-    return (await reports).send(payload);
-  });
   const workstationTools = createDesktopWorkstationTools({ authorizeWorkspace: async workspaceId => {
     const response = await mainWindow.webContents.session.fetch(origin + '/api/directory-workspace?workspace_id=' + encodeURIComponent(workspaceId), { credentials: 'include', signal: AbortSignal.timeout(5000) });
     const body = await response.json(); if (!response.ok || body.result?.workspaceId !== workspaceId) throw Error('Unlock and select this local workspace first.');
@@ -339,8 +327,12 @@ if (primary) app.whenReady().then(async () => {
     const body = await response.json();
     if (body.result?.workspaceId !== workspaceId) throw Error('Workspace identity could not be verified.');
   } });
-  nativeUpdater = await createNativeUpdater({ app, origin, window: () => mainWindow, browserHost: () => browserHost, ownsServer: () => ownedServer?.listening === true, terminalTargets: () => ownedApi?.updaterTerminalTargets() || [], powerMonitor });
+  nativeUpdater = await createNativeUpdater({ app, origin, window: () => mainWindow, browserHost: () => browserHost, ownsServer: () => ownedServer?.listening === true, terminalTargets: () => ownedApi?.updaterTerminalTargets() || [], powerMonitor, onPhase(phase) {
+    const statuses = { available: 'available', installing: 'installing', blocked: 'blocked', error: 'failed' };
+    if (Object.hasOwn(statuses, phase)) ownedApi?.recordSupport({ action: 'app.update', status: statuses[phase] });
+  } });
   await openWindow();
+  ownedApi?.recordSupport({ action: 'app.opened', status: 'completed' });
   nativeUpdater.start();
   desktopReady = true;
   for (const target of pendingOsTargets.values()) nativeAction(() => target.path ? openDocument(target.path) : selectDesktopPage(target.route))();
