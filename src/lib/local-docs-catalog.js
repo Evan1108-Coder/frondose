@@ -68,7 +68,7 @@ const GUIDES = [
   ], settingsLink('storage', 'Storage and exports')],
 ];
 
-const SAFE_IDS = new Set(['archive-retention', 'audit-history', 'profile-pictures', 'field-defaults', 'labels-statuses']);
+const SAFE_IDS = new Set(['archive-retention', 'audit-history', 'profile-pictures', 'field-defaults', 'labels-statuses', 'help-feedback']);
 const GROUPS = [
   ['updates', 'What’s New', 'What changed in the local workspace.'],
   ['getting-started', 'Getting started', 'Choose a directory and use your own computer.'],
