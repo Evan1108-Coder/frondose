@@ -615,7 +615,7 @@ export function App() {
         </div>
         {previewGeometry ? <SidebarPagePreview geometry={previewGeometry} onChange={next => setPreviewPlacement(clampPagePreview(next, window.innerWidth, window.innerHeight))} onOpen={() => { restoreSidebar(); requestAnimationFrame(() => document.getElementById('main-content')?.focus()); }} onExit={restoreSidebar} /> : null}
         </>}
-        {feedbackOpen ? <Suspense fallback={<p role="status">Opening feedback…</p>}><FeedbackDialog onClose={() => setFeedbackOpen(false)} /></Suspense> : null}
+        {feedbackOpen ? <Suspense fallback={<p role="status">Opening feedback…</p>}><FeedbackDialog onClose={() => setFeedbackOpen(false)} onOpenDocs={() => { setFeedbackOpen(false); navigate('docs', 'help-feedback'); }} /></Suspense> : null}
         {commandOpen ? (
           <CommandPalette onClose={() => setCommandOpen(false)} />
         ) : null}
