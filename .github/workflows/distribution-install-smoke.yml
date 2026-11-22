@@ -16,9 +16,9 @@ jobs:
       matrix:
         include:
           - variant: installer
-            artifact: '14708097957'
+            artifact: '14750098495'
           - variant: zip
-            artifact: '14708930501'
+            artifact: '14750605634'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -27,12 +27,13 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
-      # Download the exact Windows packages that passed the previous build.
+      # Exact packages built from master-windows at acc0f088f.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
-          run-id: '44905706492'
+          run-id: '45011254209'
           artifact-ids: ${{ matrix.artifact }}
+          digest-mismatch: error
           path: packages
       - name: Install via NSIS and open installed Frondose
         if: matrix.variant == 'installer'
@@ -76,7 +77,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 1d6d1dc1c15a3e15275aab52b4d61dde7fee42c5
+          ref: a3efd0c6b9cb467994a3f07dc6c8e0284c100bac
           path: linux-source
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
