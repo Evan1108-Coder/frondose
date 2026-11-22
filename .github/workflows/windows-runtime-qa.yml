@@ -23,3 +23,28 @@ jobs:
             node --test --test-timeout=90000 tests/local-session-history-api.test.mjs tests/local-trust-boundary.test.mjs
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+  full-suite:
+    name: Windows suite shard ${{ matrix.shard }}/4
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      TEST_SHARD: ${{ matrix.shard }}/4
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run build
+      - name: Verify this portion of the full suite
+        shell: pwsh
+        run: node --test --test-concurrency=2 "--test-shard=$env:TEST_SHARD" --test-timeout=180000 "tests/*.test.mjs"
+      - name: Verify the Sites packaging contract once
+        if: matrix.shard == 1
+        run: npm run test:sites
