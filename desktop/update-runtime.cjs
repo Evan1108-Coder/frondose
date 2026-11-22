@@ -22,7 +22,7 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
       } catch { /* fail closed; no signing/security override */ }
       if (!configured) reason = 'This Mac build has no matching publisher signature. Use a local/manual build; automatic installation is unavailable.';
     } else if (process.platform === 'win32' && settings.windowsPublisherName) configured = true;
-    else if (process.platform === 'linux' && process.env.APPIMAGE) configured = true;
+    else if (process.platform === 'linux' && process.env.APPIMAGE) reason = 'This AppImage has no authenticated release feed. Use a verified manual download.';
     else reason = 'This build uses manual installation. A signed publisher build or supported AppImage is needed for automatic updates.';
   }
   let native, progressCallback, timer, safetyRequest = null, lastState;
@@ -34,6 +34,7 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
     native.autoInstallOnAppQuit = false;
     native.allowDowngrade = false;
     native.allowPrerelease = false;
+    native.disableWebInstaller = true;
     native.on('error', () => {}); // operation promises expose sanitized errors in the UI
     native.on('download-progress', info => progressCallback?.(info.percent));
   }
@@ -91,7 +92,7 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
   configured ||= Boolean(local);
   const storage = createUpdateStorage(app.getPath('userData'));
   const service = createDesktopUpdateService({ configured, reason, version: app.getVersion(), ...storage, prepare, adapter: native ? {
-    async check() { const result = await native.checkForUpdates(); return result?.updateInfo || null; },
+    async check() { const result = await native.checkForUpdates(); return result?.isUpdateAvailable ? result.updateInfo : null; },
     async download(callback) { progressCallback = callback; try { await native.downloadUpdate(); } finally { progressCallback = null; } },
     install() { return new Promise((_resolve, reject) => { native.once('error', reject); try { native.quitAndInstall(false, true); } catch (error) { reject(error); } }); },
   } : local });

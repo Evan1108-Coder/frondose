@@ -13,6 +13,18 @@ import documents from '../desktop/os-open.cjs';
 const { createSystemPresence, createAwakeControl, normalizePresence } = system;
 const { desktopMenu } = menu;
 const { osTarget, documentHtml, maxBytes } = documents;
+
+test('Windows shell previews admit ordinary drive paths but not network, device or stream paths', () => {
+  const win = input => osTarget(input, 'win32');
+  assert.deepEqual(win(String.raw`C:\Projects\brief.txt`), { path: String.raw`C:\Projects\brief.txt` });
+  assert.deepEqual(win('file:///D:/Projects/brief.csv'), { path: String.raw`D:\Projects\brief.csv` });
+  for (const path of [
+    String.raw`\\server\share\brief.txt`, 'file://server/share/brief.txt',
+    String.raw`\\?\C:\Projects\brief.txt`, String.raw`\\.\C:\Projects\brief.txt`,
+    String.raw`\Projects\brief.txt`, String.raw`C:\Projects\brief.md:stream.txt`,
+    String.raw`C:\Projects\CON.txt`, 'file:///C:/Projects/a%00.txt',
+  ]) assert.equal(win(path), null);
+});
 const temporary = async t => {
   const dir = await mkdtemp(join(tmpdir(), 'frondose-desktop-presence-'));
   t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 5 }));
