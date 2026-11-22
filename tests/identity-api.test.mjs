@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 
 test('signed members cannot read foreign workspaces or project-denied chat data through lists, exports, or direct endpoints', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'rumbo-identity-api-'));

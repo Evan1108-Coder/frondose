@@ -72,7 +72,6 @@ import { createCopilotHostedRuntime } from './copilot-hosted-runtime.mjs';
 import { createDeploymentPolicy } from './deployment-policy.mjs';
 import { API_PROVIDERS, apiProviderDefinition } from '../src/lib/ai-provider-catalog.js';
 import { installActivity, activitySnapshot, activityRoute } from './activity-service.mjs';
-import { createIdentityService } from './identity-service.mjs';
 import { createGovernanceService, governanceRoute } from './governance-service.mjs';
 import { createAccessBoundary } from './access-boundary.mjs';
 import { createLocalProductPolicy } from './local-product.mjs';
@@ -562,10 +561,11 @@ function snapshot(db) {
   };
 }
 
-export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {}, copilotOptions = {}, productMode = 'compatible', localDiscovery = detectTerminalProviders, localGitOptions = {}, localSessionHistoryOptions = {}, githubRouteOptions = {} } = {}) {
+export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions = {}, scheduledWorkOptions = {}, copilotOptions = {}, productMode = 'compatible', localDiscovery = detectTerminalProviders, localGitOptions = {}, localSessionHistoryOptions = {}, githubRouteOptions = {}, testSupport } = {}) {
+  if (testSupport && !process.env.NODE_TEST_CONTEXT) throw new Error('Test adapters are available only to the Node test runner.');
   integrationOptions = { ...integrationOptions, env: frondoseEnvironment(integrationOptions.env || process.env) };
   dataDir ||= integrationOptions.env.FRONDOSE_DATA_DIR;
-  const deployment = createDeploymentPolicy(integrationOptions.env || process.env);
+  const deployment = (testSupport?.createDeploymentPolicy ?? createDeploymentPolicy)(integrationOptions.env);
   const product = createLocalProductPolicy({ mode: productMode, hosted: deployment.hosted });
   const externalConnectionsPaused = deployment.hosted || integrationOptions.externalConnectionsPaused !== false;
   let store = createDatabase(dataDir, { seedMode });
@@ -573,7 +573,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
   function installAccess() {
     installPersonalProfiles(store.db);
     store.db.exec('CREATE TABLE IF NOT EXISTS agent_run_sponsors (run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE, actor_id TEXT NOT NULL)');
-    identity = createIdentityService({ db: store.db, ownerOnly: product.local });
+    identity = testSupport?.createIdentityService?.({ db: store.db, ownerOnly: product.local });
     governance = createGovernanceService({ db: store.db });
     for (const workspace of store.db.prepare('SELECT id FROM workspaces').all()) governance.bootstrap(workspace.id);
     access = createAccessBoundary({ db: store.db, governance });
@@ -599,7 +599,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     ]);
     connectionPlatform = createConnectionPlatform({ db: store.db, dataDir: store.directory, env: integrationOptions.env || process.env, fetchImpl: integrationOptions.fetchImpl || fetch, paused: externalConnectionsPaused,
       authorize: ({ actor, workspace_id, permission, scope_type, scope_id }) => {
-        if (!actor?.id) throw Object.assign(new Error('Sign in to use connections.'), { statusCode: 401 });
+        if (!actor?.id) throw Object.assign(new Error('This request has no local workspace owner.'), { statusCode: 401 });
         const capability = { 'routes.edit': 'routes.write', 'projects.edit': 'projects.write', 'documents.edit': 'documents.write' }[permission] || permission;
         return governance.authorize(workspace_id, actor.id, capability, { scope_type, scope_id });
       },
@@ -622,7 +622,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     hostedCopilot = createCopilotHostedRuntime({ accounts: aiConnections.copilotOAuth, env: integrationOptions.env || process.env, ...copilotOptions });
   }
   installAccess();
-  try { deployment.assertConfigured(identity, seedMode); } catch (reason) { store.db.close(); throw reason; }
+  try { deployment.assertConfigured?.(identity, seedMode); } catch (reason) { store.db.close(); throw reason; }
   function providerState(provider, workspaceId, actor) {
     if (provider === 'copilot') {
       try {
@@ -1362,10 +1362,11 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     return send(res, 201, { run, demo: true });
   }
 
+  const localOwner = () => ({ id: 'local-owner', name: getDb().prepare("SELECT name FROM local_profile WHERE id='local'").get()?.name || 'You', mode: 'local' });
+  const requestActor = req => identity ? identity.resolve(req) : localOwner();
   function scheduleActor(actorId) {
-    const user = getDb().prepare('SELECT id,name FROM identity_users WHERE id=?').get(actorId);
-    if (user) return { ...user, mode: 'account' };
-    return actorId === 'local-owner' && !identity.configured() ? { id: actorId, name: getDb().prepare("SELECT name FROM local_profile WHERE id='local'").get()?.name || 'You', mode: 'local' } : null;
+    if (identity) return testSupport.scheduleActor(getDb(), identity, actorId, localOwner);
+    return actorId === 'local-owner' ? localOwner() : null;
   }
   function scheduleChat(chatId, workspaceId, actor, write = false) {
     const db = getDb(), chat = db.prepare('SELECT * FROM chats WHERE id=? AND workspace_id=? AND archived_at IS NULL').get(chatId, workspaceId);
@@ -1540,12 +1541,15 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && (['/api/auth/google-drive/callback', '/api/connection-platform/oauth/callback', '/api/ai-connections/huggingface/callback', '/api/ai-connections/copilot/callback'].includes(url.pathname) || url.pathname.startsWith('/api/ai-connections/openrouter/callback/')))) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return fail(res, 415, 'unsupported_media_type', 'Use application/json for API changes.');
     try {
-      const db = getDb();
       const requestedPath = url.pathname.slice(API_PREFIX.length) || '/';
       // Public Area CRUD shares legacy storage and exactly the same access checks.
       const path = /^\/areas(?:\/[^/]+)?$/.test(requestedPath) ? requestedPath.replace(/^\/areas/, '/teams') : requestedPath;
+      if (!testSupport && (path === '/identity' || path.startsWith('/identity/'))) {
+        return fail(res, 410, 'accounts_removed', 'Frondose accounts are no longer used. Open your local workspace directly.');
+      }
+      const db = getDb();
       product.checkPath(path, req.method);
-      deployment.throttleIdentity(req, path);
+      deployment.throttleIdentity?.(req, path);
       if (deployment.hosted && (path === '/identity/setup' || /^\/(workbench|change-reviews)(?:\/|$)/.test(path) || path.startsWith('/connections/'))) return fail(res, 403, 'host_capability_disabled', 'Host filesystem, terminal and shared CLI account management are disabled in public mode.');
       if (path.startsWith('/runner-transport/')) {
         res.setHeader('Cache-Control', 'no-store');
@@ -1567,7 +1571,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         }
         return fail(res, 404, 'not_found', 'Computer transport endpoint not found.');
       }
-      const actor = identity.resolve(req);
+      const actor = requestActor(req);
       product.checkOwner(actor);
       Object.assign(changeContext.getStore(), { actor, recordActivity: product.local && actor?.id === 'local-owner' ? recordActivity : undefined, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Frondose' });
       if (path === '/workspace-activity' && req.method === 'GET') {
@@ -1602,27 +1606,9 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         await connectionPlatform.handle({ method: req.method, path, query: Object.fromEntries(url.searchParams), actor });
         res.statusCode = 303; res.setHeader('Location', '/#/connections'); res.setHeader('Cache-Control', 'no-store'); res.end(); return;
       }
-      if (path === '/identity' && req.method === 'GET') return send(res, 200, { result: { configured: identity.configured(), product: product.descriptor, user: actor && { id: actor.id, name: actor.name, email: actor.email, mode: actor.mode } } });
-      if (path.startsWith('/identity/')) {
-        const body = req.method === 'GET' ? {} : await readBody(req);
-        if (['/identity/setup', '/identity/login', '/identity/accept'].includes(path) && req.method === 'POST') {
-          const result = path.endsWith('/setup') ? await identity.setup(body, actor) : path.endsWith('/login') ? await identity.login(body) : await identity.accept(body);
-          return send(res, 200, { result: { user: result.user } }, { 'Set-Cookie': identity.cookie(result.token, deployment.hosted) });
-        }
-        if (!actor) return fail(res, 401, 'sign_in_required', 'Sign in to continue.');
-        if (path === '/identity/sessions' && req.method === 'GET') return send(res, 200, { result: identity.sessions(actor) });
-        if (path === '/identity/logout' && req.method === 'POST') { identity.revoke(actor, actor.session_id || ''); return send(res, 200, { result: { signed_out: true } }, { 'Set-Cookie': identity.cookie('', deployment.hosted) }); }
-        if (path === '/identity/revoke' && req.method === 'POST') { identity.revoke(actor, body.session_id); return send(res, 200, { result: { revoked: true } }); }
-        if (path === '/identity/invite' && req.method === 'POST') {
-          governance.authorize(body.workspace_id, actor.id, 'members.manage');
-          const target = db.prepare("SELECT * FROM governance_members WHERE workspace_id=? AND id=? AND status='active'").get(body.workspace_id, body.member_id);
-          if (!target || !target.email) throw validationError('Choose an active member with an email address.');
-          const ranks = { Owner: 100, Admin: 80, Manager: 50, Member: 10 };
-          const issuer = db.prepare('SELECT * FROM governance_members WHERE workspace_id=? AND id=?').get(body.workspace_id, actor.id);
-          if (ranks[issuer.rank] <= ranks[target.rank]) return fail(res, 403, 'access_denied', 'Invitations can only be issued for lower-ranked members.');
-          return send(res, 201, { result: identity.invite({ workspace_id: body.workspace_id, user_id: target.id, name: target.name, email: target.email }, actor) });
-        }
-        return fail(res, 404, 'not_found', 'Identity action not found.');
+      if (path === '/identity' || path.startsWith('/identity/')) {
+        if (identity) return await testSupport.identityRequest({ req, res, path, db, actor, identity, deployment, product, governance, readBody, send, fail });
+        return fail(res, 410, 'accounts_removed', 'Frondose accounts are no longer used. Open your local workspace directly.');
       }
       if (!actor) return fail(res, 401, 'sign_in_required', 'Sign in to continue.');
       if (path === '/desktop-updates/status' || path === '/desktop-updates/prepare' || path === '/desktop-updates/renew' || path === '/desktop-updates/release') {
@@ -2117,7 +2103,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       if (req.method === 'GET' && streamMatch) {
         const runId = streamMatch[1];
         if (!db.prepare('SELECT 1 FROM runs WHERE id=?').get(runId)) return fail(res, 404, 'not_found', 'Run not found.');
-        res.frondoseCanRead = () => { try { access.check({ actor: identity.resolve(req), path, method: 'GET', url }); return true; } catch { return false; } };
+        res.frondoseCanRead = () => { try { access.check({ actor: requestActor(req), path, method: 'GET', url }); return true; } catch { return false; } };
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
         res.setHeader('Cache-Control', 'no-cache, no-transform');

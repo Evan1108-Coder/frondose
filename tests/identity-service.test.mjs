@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { createIdentityService } from '../server/identity-service.mjs';
+import { createIdentityService } from './fixtures/legacy-identity.mjs';
 import { createGovernanceService } from '../server/governance-service.mjs';
 
 test('account setup replaces implicit local authority; cookies are opaque, expiring and revocable', async () => {

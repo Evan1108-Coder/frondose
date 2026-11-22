@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 import { createAccessBoundary } from '../server/access-boundary.mjs';
 import { createGovernanceService } from '../server/governance-service.mjs';
 import { installActivity } from '../server/activity-service.mjs';

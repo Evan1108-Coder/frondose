@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { TERMINAL_PROVIDER_CATALOG } from '../server/terminal-launch-plan.mjs';
 import { createLocalProductPolicy } from '../server/local-product.mjs';
-import { createIdentityService } from '../server/identity-service.mjs';
+import { createIdentityService } from './fixtures/legacy-identity.mjs';
 import { createLocalApi } from '../server/local-api.mjs';
 import { localSettingsGroups } from '../src/lib/local-product.js';
 import { SETTINGS_GROUPS } from '../src/lib/settings-catalog.js';
@@ -46,14 +46,14 @@ test('local navigation removes member, role, billing and hosted administration w
   const before = JSON.stringify(data);
   const groups = localSettingsGroups(SETTINGS_GROUPS, data);
   const ids = groups.flatMap(([, items]) => items.map(([id]) => id));
-  for (const id of ['members', 'security', 'access-approvals', 'applications', 'api', 'billing']) assert.equal(ids.includes(id), false);
-  for (const id of ['local-installation', 'personal-security', 'workspace-tabs', 'terminal', 'privacy', 'storage']) assert.equal(ids.includes(id), true);
+  for (const id of ['members', 'security', 'personal-security', 'access-approvals', 'applications', 'api', 'billing']) assert.equal(ids.includes(id), false);
+  for (const id of ['local-installation', 'workspace-tabs', 'terminal', 'privacy', 'storage']) assert.equal(ids.includes(id), true);
   for (const id of ['agents', 'rumbo-agent', 'accounts', 'workbench', 'home-attention', 'chats', 'permissions', 'usage', 'scheduled-work']) assert.equal(ids.includes(id), false);
   assert.equal(areaContactsVisible(data, 'a', { contacts_enabled: true }), false);
   assert.equal(JSON.stringify(data), before);
   assert.equal(localSettingsGroups(SETTINGS_GROUPS, {}), SETTINGS_GROUPS);
 });
-test('local owner lock is optional, never bypassed, and historical member passwords/sessions do not become access', async () => {
+test('legacy fixture: owner lock is optional, never bypassed, and historical member passwords/sessions do not become access', async () => {
   const db = new DatabaseSync(':memory:');
   try {
     const identity = createIdentityService({ db, ownerOnly: true });
@@ -100,7 +100,7 @@ test('local API publishes edition, redacts discovery paths, and never runs a pro
     assert.equal(discoveries, 1);
     for (const path of ['/identity/invite', '/identity/accept', '/governance', '/team_members']) {
       const denied = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-      assert.equal(denied.status, 403);
+      assert.equal(denied.status, path.startsWith('/identity/') ? 410 : 403);
     }
     const crossOrigin = await fetch(base + '/local-runtime', { headers: { Origin: 'https://attacker.example' } });
     assert.equal(crossOrigin.status, 403);

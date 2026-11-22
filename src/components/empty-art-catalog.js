@@ -23,7 +23,7 @@ export const emptyArtAliases = Object.freeze({
   'route-labels': 'route_label', 'project-labels': 'project_label',
   'route-templates': 'route_template', 'project-templates': 'project_template',
   'route-workflow': 'route_status', 'project-statuses': 'project_status',
-  'code-reviews': 'code', 'personal-security': 'security',
+  'code-reviews': 'code',
   integrations: 'connections', coordination: 'operations',
   'output-policy': 'review', retention: 'archive',
 });
