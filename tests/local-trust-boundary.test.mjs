@@ -15,20 +15,36 @@ async function fixture(t) {
 }
 
 test('the local API separates browser origins and permits only top-level cross-origin OAuth callbacks', async t => {
-  const dataDir = await fixture(t);
-  const api = createLocalApi({ dataDir, productMode: 'local', integrationOptions: {
+  const dataDir = await mkdtemp(join(tmpdir(), 'frondose-trust-boundary-'));
+  let api, server;
+  // Node runs after hooks in registration order. Close both Windows handles
+  // before deleting the SQLite WAL/SHM files.
+  t.after(async () => {
+    try {
+      if (server?.listening) {
+        const stopped = new Promise(resolve => server.close(resolve));
+        server.closeAllConnections();
+        await stopped;
+      }
+    } finally {
+      api?.close();
+      await rm(dataDir, { recursive: true, force: true, maxRetries: 5 });
+    }
+  });
+  api = createLocalApi({ dataDir, productMode: 'local', integrationOptions: {
     env: {}, fetchImpl: () => assert.fail('A callback without an active authorization must not call a provider'),
   } });
-  const server = createServer(api.middleware);
-  t.after(async () => { await new Promise(resolve => server.close(resolve)); api.close(); });
-  await new Promise((resolve, reject) => server.listen(0, '127.0.0.1', resolve).once('error', reject));
+  server = createServer(api.middleware);
+  await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   const host = `127.0.0.1:${port}`;
   const get = (path, headers = {}) => new Promise((resolve, reject) => {
-    const req = request({ port, host: '127.0.0.1', path, headers }, res => {
+    const req = request({ port, host: '127.0.0.1', path, headers, agent: false }, res => {
       let body = '';
+      res.once('error', reject);
       res.setEncoding('utf8').on('data', piece => { body += piece; }).on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
     });
+    req.setTimeout(15000, () => req.destroy(Error('Loopback test request timed out.')));
     req.once('error', reject).end();
   });
   const approved = await get('/api/bootstrap', { Origin: `http://${host}`, 'Sec-Fetch-Site': 'same-origin' });
