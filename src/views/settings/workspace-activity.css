@@ -9,3 +9,7 @@
 .workspace-recording li span, .workspace-recording time, .workspace-recording-retention { color: var(--muted); }
 .workspace-recording time, .workspace-recording-retention { font-size: .85rem; }
 .workspace-recording-empty { padding: 20px; border: 1px dashed var(--border); border-radius: 12px; }
+.support-log-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.support-log-controls label { display: grid; gap: 6px; }
+.support-log-controls select { min-height: 36px; padding: 0 8px; }
+.support-copy-status:empty { display: none; }

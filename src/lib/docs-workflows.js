@@ -179,7 +179,7 @@ export const DOC_WORKFLOWS = [
     ['troubleshoot-provider', 'provider-connections', 'session-progress'], { view: 'connections', label: 'Open connections' }),
 
   recipe('feedback-intake', 'Turn user feedback into reviewable work', 'Use a manual intake process while external collection remains separate.',
-    'Use this when you already have feedback from interviews, messages, or another authorized source. The goal is to preserve the reported problem and evaluate it before turning it into implementation work. This workflow is not the help menu’s Feedback form, whose current preview submission sends nothing to a support service.',
+    'Use this when you already have feedback from interviews, messages, or another authorized source. The goal is to preserve the reported problem and evaluate it before turning it into implementation work. Use Help → Contact us for external support; it displays an email address rather than sending a message.',
     ['Create a request or document that records the feedback in the reporter’s own terms, with sensitive details removed where appropriate.',
       'Identify the affected workflow, observed difficulty, and evidence. Separate the user’s problem from their suggested implementation.',
       'Link relevant resource files or source references that you are authorized to retain.',

@@ -58,13 +58,17 @@ for the provider-specific research and remaining release requirements.
 
 ## Contact us
 
-Write directly in the feedback textbox. Use Attach files or drop files into the
-textbox. Text and attachments together must total less than 20 MB, with no
-separate character, file-count, or per-file size limit. Leave an email only if
-you want a reply. Nothing is sent until you press Send feedback in a build
-with delivery enabled. Closing clears an unsent draft.
+Open the question-mark menu and choose Contact us to see and copy the current
+email address. Send feedback, bug reports, or general questions from your email
+app. Frondose does not send the message or upload files.
 
-See [Feedback delivery](feedback-delivery.md) for setup and address routing.
+For a bug report, choose **Go to support logs**, select the date it happened,
+and use **Copy day** or **Download day**. Review the excerpt before sharing it.
+The support log keeps up to 30 days of dated action labels and statuses on this
+computer. It omits names, paths, credentials, prompts, and file or terminal
+contents. It cannot capture every click, actions outside Frondose, or raw crash
+output. Chat can add a reviewed day to a draft with **Add support log**;
+automations still use the separately approved recent workspace activity.
 
 ## Names and pictures
 

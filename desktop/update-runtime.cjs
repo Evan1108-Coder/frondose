@@ -10,7 +10,7 @@ const { createUpdateCleanup } = require('./update-cleanup.cjs');
 
 // Only immutable, owner-provisioned packaging configuration selects a feed.
 // No renderer URL, GH_TOKEN, Orca endpoint or caller-supplied executable is used.
-async function createNativeUpdater({ app, origin, window: getWindow, browserHost: getBrowserHost, ownsServer = () => false, terminalTargets = () => [], powerMonitor, config = require('./release-config.json') }) {
+async function createNativeUpdater({ app, origin, window: getWindow, browserHost: getBrowserHost, ownsServer = () => false, terminalTargets = () => [], powerMonitor, onPhase = () => {}, config = require('./release-config.json') }) {
   let configured = false, validConfig = true, reason = 'Automatic updates are not configured for this build.', settings;
   try { settings = releaseConfiguration(config); }
   catch { validConfig = false; settings = releaseConfiguration(); reason = 'The packaged release configuration is invalid. No update requests will be made.'; }
@@ -103,7 +103,12 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
     const snapshot = service.snapshot();
     return { ...snapshot, platform: process.platform, native: true, downloadsAvailable: Boolean(settings.downloadsUrl), canCleanup: snapshot.phase === 'blocked' && ownsServer() && targets().length > 0 };
   };
-  service.onState(value => { lastState = value; send('update-state', state()); });
+  service.onState(value => {
+    const changed = value.phase !== lastState?.phase;
+    lastState = value;
+    if (changed) onPhase(value.phase);
+    send('update-state', state());
+  });
   await service.init();
   const resumed = () => { void service.tick({ resumed: true }); };
   powerMonitor.on('resume', resumed);

@@ -48,6 +48,7 @@ import { createGitHubRouteSyncService } from './github-route-sync.mjs';
 import {createLocalAutomationService} from './local-cli-automations.mjs';
 import {createTodoService} from './local-todos.mjs';
 import { installWorkspaceActivity, recordWorkspaceActivity, readWorkspaceActivity, formatWorkspaceActivity } from './workspace-activity.mjs';
+import { classifySupportRequest, installSupportLogs, readSupportLogs, recordSupportEvent, supportRequestOutcome } from './support-logs.mjs';
 import { createFileCommentsService } from './file-comments.mjs';
 import { createDesktopUpdateGate } from './desktop-update-gate.mjs';
 import { authorizeNativeAgentBinding } from './native-agent-authorization.mjs';
@@ -675,7 +676,15 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       assertAssistantBinding: agent => assertFrondoseAgentBinding(getDb(), context.workspaceId, agent, context.actor, access.allowed) });
   }
   let localGit, localSessionHistory, githubRoutes, localAutomations, workspaceAgentChats, workstationTools;
-  if (product.local) installWorkspaceActivity(store.db);
+  if (product.local) {
+    installWorkspaceActivity(store.db);
+    installSupportLogs(store.db);
+  }
+  function recordSupport(event) {
+    if (!product.local || closed || !event) return;
+    try { recordSupportEvent(store.db, event); }
+    catch { /* Diagnostics must not change the outcome of the original action. */ }
+  }
   function recordActivity(event) {
     if (!product.local) return;
     try { recordWorkspaceActivity(store.db, event); }
@@ -1588,6 +1597,16 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
       const actor = requestActor(req);
       product.checkOwner(actor);
       Object.assign(changeContext.getStore(), { actor, recordActivity: product.local && actor?.id === 'local-owner' ? recordActivity : undefined, source: path.startsWith('/agent-actions/') ? 'Approved agent proposal' : 'Frondose' });
+      if (path === '/support-logs' && req.method === 'GET') {
+        if (!product.local) return fail(res, 404, 'not_found', 'Support logs are local-only.');
+        res.setHeader('Cache-Control', 'no-store');
+        if (actor?.id !== 'local-owner') return fail(res, 403, 'access_denied', 'Support logs are available only to the local owner.');
+        return send(res, 200, { result: readSupportLogs(db) });
+      }
+      if (product.local && actor?.id === 'local-owner') {
+        const supportRequest = classifySupportRequest(req.method, path);
+        if (supportRequest) res.once?.('finish', () => recordSupport(supportRequestOutcome(supportRequest, res.statusCode)));
+      }
       if (path === '/workspace-activity' && req.method === 'GET') {
         if (!product.local) return fail(res, 404, 'not_found', 'Workspace activity is local-only.');
         res.setHeader('Cache-Control', 'no-store');
@@ -2237,7 +2256,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     installAccess();
     runnerJobs = makeRunnerJobs();
     nativeToolService = makeNativeTools();
-    if (product.local) installWorkspaceActivity(store.db);
+    if (product.local) {
+      installWorkspaceActivity(store.db);
+      installSupportLogs(store.db);
+    }
     workbench = createWorkbenchService({ db: store.db, dataDir: store.directory, terminalEnv: integrationOptions.env, authorizeNativeAgent, authorizeTerminalResume: product.local ? request => localSessionHistory.resolveResume(request) : undefined, assertDirectoryMutable: workspaceId => localGit?.assertNoMutation(workspaceId), recordActivity });
     directoryWorkspace = product.local ? createDirectoryWorkspaceService({ db: store.db, dataDir: store.directory, allowed: access.allowed, activeSessionsFor: workspaceId => activeRunsFor('workspaces', workspaceId), recordActivity }) : null;
     workspaceAgentChats = product.local ? createWorkspaceAgentChat({ db: store.db, roots: directoryWorkspace, env: integrationOptions.env, recordActivity }) : null;
@@ -2272,7 +2294,7 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     }
     return { working, waiting };
   }
-  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), updaterTerminalTargets: () => product.local && !closed && !desktopUpdateGate.isPreparing() ? workbench.updaterTerminalTargets() : [], desktopActivity, dbPath: store.dbPath };
+  return { middleware, handle: middleware, close, reset, snapshot: () => snapshot(getDb()), dispatchScheduledWork: () => scheduledWork.dispatchDue(), dispatchEventWork: () => eventWork.dispatchEvents(), updaterTerminalTargets: () => product.local && !closed && !desktopUpdateGate.isPreparing() ? workbench.updaterTerminalTargets() : [], desktopActivity, recordSupport, dbPath: store.dbPath };
 }
 
 export default createLocalApi;
