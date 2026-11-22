@@ -22,19 +22,8 @@ jobs:
           node-version: '24'
       - run: node --test tests/desktop-updates.test.mjs tests/desktop-public-release.test.mjs
   qa-images:
-    # A harness-only retry may use the exact immutable inputs from QA run #2.
-    # Normal branch pushes and workflow dispatches always build a fresh pair.
-    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[replay-qa-images]')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - age: old
-            version: '0.90.1'
-          - age: new
-            version: '0.90.2'
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       FRONDOSE_RELEASE_BUILD: '1'
       FRONDOSE_RELEASE_FEED_URL: https://updates.frondose.test:18443/
@@ -53,26 +42,42 @@ jobs:
           node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("config/desktop-target.json", JSON.stringify({platform:"linux",branch:"master-linux"}))'
       - run: npm ci
       - run: npm run build
-      - name: Build and review an isolated update-enabled AppImage
-        env:
-          FRONDOSE_DESKTOP_BUILD_VERSION: ${{ matrix.version }}
+      - name: Build both AppImages and sign their reviewed manifests with an ephemeral QA key
         run: |
-          npm run desktop:dist
-          mkdir release-qa
-          cp dist-desktop/Frondose*.AppImage dist-desktop/frondose*.deb dist-desktop/latest-linux.yml release-qa/
-          node scripts/publish-desktop-release.mjs review release-qa linux-x64 "$FRONDOSE_DESKTOP_BUILD_VERSION"
+          qa_key="$(node -p "require('node:crypto').generateKeyPairSync('ed25519').privateKey.export({format:'der',type:'pkcs8'}).toString('base64')")"
+          FRONDOSE_RELEASE_LINUX_PUBLIC_KEY="$(printf '%s' "$qa_key" | node -p "require('node:crypto').createPublicKey(require('node:crypto').createPrivateKey({key:Buffer.from(require('node:fs').readFileSync(0,'utf8'),'base64'),format:'der',type:'pkcs8'})).export({format:'der',type:'spki'}).toString('base64')")"
+          export FRONDOSE_RELEASE_LINUX_PUBLIC_KEY
+          for age in old new; do
+            if [[ "$age" == old ]]; then version=0.90.1; else version=0.90.2; fi
+            output="dist-desktop-qa-$age"
+            FRONDOSE_DESKTOP_BUILD_VERSION="$version" FRONDOSE_DESKTOP_OUTPUT_DIR="$output" npm run desktop:dist
+            directory="release-qa-$age"
+            mkdir "$directory"
+            cp "$output"/Frondose*.AppImage "$output"/frondose*.deb "$output"/latest-linux.yml "$directory/"
+            FRONDOSE_RELEASE_LINUX_SIGNING_KEY="$qa_key" \
+              node scripts/publish-desktop-release.mjs sign-linux-qa "$directory" "$version"
+          done
+          unset qa_key
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: qa-image-${{ matrix.age }}
+          name: qa-image-old
           path: |
-            release-qa/*.AppImage
-            release-qa/latest-linux.yml
+            release-qa-old/*.AppImage
+            release-qa-old/latest-linux.yml
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qa-image-new
+          path: |
+            release-qa-new/*.AppImage
+            release-qa-new/latest-linux.yml
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
   upgrade:
     needs: qa-images
-    if: ${{ !cancelled() && (needs.qa-images.result == 'success' || (needs.qa-images.result == 'skipped' && github.event_name == 'push' && contains(github.event.head_commit.message, '[replay-qa-images]'))) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -86,18 +91,9 @@ jobs:
         with:
           node-version: '24'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: needs.qa-images.result == 'success'
         with:
           path: qa-images
           pattern: qa-image-*
-          digest-mismatch: error
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: needs.qa-images.result == 'skipped'
-        with:
-          run-id: '44972968013'
-          github-token: ${{ github.token }}
-          artifact-ids: '14735025739,14734148070'
-          path: qa-images
           digest-mismatch: error
       - name: Trust a temporary TLS root for the disposable test feed
         run: |

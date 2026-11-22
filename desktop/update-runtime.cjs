@@ -7,11 +7,12 @@ const { createUpdateStorage } = require('./update-storage.cjs');
 const { createLocalAdapter } = require('./local-update.cjs');
 const { blocked, cleanBlockers, leaseBlockers, rendererKinds } = require('./update-blockers.cjs');
 const { createUpdateCleanup } = require('./update-cleanup.cjs');
+const { verificationKey, verifyLinuxRelease } = require('./release-signature.cjs');
 
 // Only immutable, owner-provisioned packaging configuration selects a feed.
 // No renderer URL, GH_TOKEN, Orca endpoint or caller-supplied executable is used.
 async function createNativeUpdater({ app, origin, window: getWindow, browserHost: getBrowserHost, ownsServer = () => false, terminalTargets = () => [], powerMonitor, config = require('./release-config.json') }) {
-  let configured = false, validConfig = true, reason = 'Automatic updates are not configured for this build.', settings;
+  let configured = false, validConfig = true, reason = 'Automatic updates are not configured for this build.', settings, linuxKey;
   try { settings = releaseConfiguration(config); }
   catch { validConfig = false; settings = releaseConfiguration(); reason = 'The packaged release configuration is invalid. No update requests will be made.'; }
   if (app.isPackaged && settings.feedUrl && app.getVersion() !== '0.0.0') {
@@ -22,7 +23,10 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
       } catch { /* fail closed; no signing/security override */ }
       if (!configured) reason = 'This Mac build has no matching publisher signature. Use a local/manual build; automatic installation is unavailable.';
     } else if (process.platform === 'win32' && settings.windowsPublisherName) configured = true;
-    else if (process.platform === 'linux' && process.env.APPIMAGE) configured = true;
+    else if (process.platform === 'linux' && process.arch === 'x64' && process.env.APPIMAGE) {
+      try { linuxKey = verificationKey(config.linuxUpdatePublicKey); configured = true; }
+      catch { reason = 'This AppImage has no authenticated release feed. Use a verified manual download.'; }
+    }
     else reason = 'This build uses manual installation. A signed publisher build or supported AppImage is needed for automatic updates.';
   }
   let native, progressCallback, timer, safetyRequest = null, lastState;
@@ -34,6 +38,15 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
     native.autoInstallOnAppQuit = false;
     native.allowDowngrade = false;
     native.allowPrerelease = false;
+    native.disableWebInstaller = true;
+    if (linuxKey) {
+      native.disableDifferentialDownload = true;
+      const compatible = native.isUpdateSupported;
+      native.isUpdateSupported = info => {
+        if (!verifyLinuxRelease(info, linuxKey)) throw Error('The Linux update does not have a valid Frondose release signature.');
+        return compatible(info);
+      };
+    }
     // A public feed needs no per-install identifier or provider credentials.
     native.requestHeaders = { 'x-user-staging-id': '' };
     native.on('error', () => {}); // operation promises expose sanitized errors in the UI
@@ -93,7 +106,7 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
   configured ||= Boolean(local);
   const storage = createUpdateStorage(app.getPath('userData'));
   const service = createDesktopUpdateService({ configured, reason, version: app.getVersion(), ...storage, prepare, adapter: native ? {
-    async check() { const result = await native.checkForUpdates(); return result?.updateInfo || null; },
+    async check() { const result = await native.checkForUpdates(); return result?.isUpdateAvailable ? result.updateInfo : null; },
     async download(callback) { progressCallback = callback; try { await native.downloadUpdate(); } finally { progressCallback = null; } },
     install() { return new Promise((_resolve, reject) => { native.once('error', reject); try { native.quitAndInstall(false, true); } catch (error) { reject(error); } }); },
   } : local });

@@ -35,11 +35,18 @@ No account, workspace content or R2 write credential is needed to check.
      `AZURE_CLIENT_SECRET` for a principal assigned only to the chosen
      Microsoft Artifact Signing certificate profile. An alternative provider
      would need a reviewed signing adapter.
-   - `desktop-build-linux`: no signing or upload credentials.
+   - `desktop-build-linux`: no signing or upload credentials. Set the repository
+     variable `FRONDOSE_RELEASE_LINUX_PUBLIC_KEY` to the base64-encoded DER SPKI
+     Ed25519 public key to pin in the AppImage.
    - `desktop-release-production`: variables `R2_ENDPOINT` (the account's
      S3 endpoint), `R2_BUCKET` (`frondose-releases`); secrets
      `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` from an R2 Object Read &
-     Write token scoped to this bucket. Restrict deployment branches to
+     Write token scoped to this bucket, and
+     `FRONDOSE_RELEASE_LINUX_SIGNING_KEY` from the matching private key in
+     base64-encoded DER PKCS#8 format. Keep a protected offline backup of the
+     private key. A replacement key requires an explicit trust transition;
+     changing an R2 file cannot replace the installed app's pinned key.
+     Restrict deployment branches to
      `master-mac` and configure a required approval before promotion, where
      supported by the GitHub plan. Restrict signing environments to the same
      workflow dispatch branch. Do not enable publishing on production until
@@ -69,7 +76,12 @@ download artifacts, or client configuration.
    approved release run. The publisher checks every asset, writes immutable
    versioned binaries under per-platform/architecture prefixes, verifies that
    the public HTTPS objects are readable, and switches each `latest*.yml`
-   last. It refuses a downgrade or overwriting a different binary under the
+   last. For AppImages the publisher signs the manifest's version, target,
+   package name, byte size and SHA-512 with Ed25519. The AppImage verifies this
+   signature using its packaged public key before accepting the offer, and
+   verifies the full download against the authenticated digest. TLS and an
+   unsigned checksum alone are not sufficient to install an AppImage update.
+   It refuses a downgrade or overwriting a different binary under the
    same version. If a run is interrupted after updating one manifest, resume
    using the **same** build artifacts; do not rebuild a version in place.
 4. Link the first-time installers from the website: macOS DMG, Windows signed

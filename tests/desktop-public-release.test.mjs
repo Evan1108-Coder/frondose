@@ -1,22 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import service from '../desktop/update-service.cjs';
 import build from '../desktop/release-build.cjs';
+import signature from '../desktop/release-signature.cjs';
 import { reviewTarget } from '../scripts/publish-desktop-release.mjs';
 
-const configured = { FRONDOSE_RELEASE_BUILD: '1', FRONDOSE_RELEASE_FEED_URL: 'https://updates.example.com/stable/linux-x64/', FRONDOSE_RELEASE_DOWNLOADS_URL: 'https://example.com/download', FRONDOSE_DESKTOP_BUILD_VERSION: '0.1.20' };
+function makeKeys() {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  return { publicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    privateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64') };
+}
+const keys = makeKeys();
+const configured = { FRONDOSE_RELEASE_BUILD: '1', FRONDOSE_RELEASE_FEED_URL: 'https://updates.example.com/stable/linux-x64/', FRONDOSE_RELEASE_DOWNLOADS_URL: 'https://example.com/download', FRONDOSE_DESKTOP_BUILD_VERSION: '0.1.20', FRONDOSE_RELEASE_LINUX_PUBLIC_KEY: keys.publicKey };
 test('public packaging is explicit, HTTPS only, and gated on platform signing', () => {
   assert.equal(build.releaseBuild({}, 'darwin'), null);
   assert.equal(build.releaseBuild({ FRONDOSE_RELEASE_FEED_URL: 'https://updates.example.com' }, 'linux'), null);
   assert.equal(build.releaseBuild(configured, 'linux').feedUrl, configured.FRONDOSE_RELEASE_FEED_URL);
+  assert.equal(build.releaseBuild(configured, 'linux').linuxUpdatePublicKey, keys.publicKey);
+  assert.throws(() => build.releaseBuild({ ...configured, FRONDOSE_RELEASE_LINUX_PUBLIC_KEY: '' }, 'linux'), /verification key/);
   assert.throws(() => build.releaseBuild(configured, 'darwin'), /Developer ID/);
   assert.throws(() => build.releaseBuild(configured, 'win32'), /Artifact Signing/);
   assert.throws(() => build.releaseBuild(configured, 'linux', ['--dir']), /installer/);
   assert.throws(() => build.releaseBuild({ ...configured, FRONDOSE_RELEASE_FEED_URL: 'http://updates.example.com' }, 'linux'), /HTTPS/);
+});
+test('AppImage feed requires the packaged Ed25519 key and authenticates the artifact fields', () => {
+  const pinned = signature.verificationKey(keys.publicKey);
+  const other = makeKeys();
+  const hash = createHash('sha512').update('fixture bytes').digest('base64');
+  const file = { url: 'Frondose-0.1.20.AppImage', size: 13, sha512: hash };
+  const info = { version: '0.1.20', files: [file], path: file.url, sha512: hash };
+  const signed = signature.signLinuxRelease(info, keys);
+  assert.equal(signature.verifyLinuxRelease(signed, pinned), true);
+  assert.equal(signature.verifyLinuxRelease(info, pinned), false);
+  assert.equal(signature.verifyLinuxRelease(signed, signature.verificationKey(other.publicKey)), false);
+  assert.throws(() => signature.signLinuxRelease(info, { ...keys, publicKey: other.publicKey }), /do not match/);
+  for (const update of [
+    { ...signed, files: [{ ...file, size: 14 }] },
+    { ...signed, files: [{ ...file, sha512: createHash('sha512').update('changed').digest('base64') }] },
+    { ...signed, path: 'another-package.AppImage' },
+    { ...signed, stagingPercentage: 100 },
+    { ...signed, packages: {} },
+  ]) assert.equal(signature.verifyLinuxRelease(update, pinned), false);
 });
 test('background checks offer a release without installing or losing the offer when offline', async () => {
   let offline = false, calls = 0;

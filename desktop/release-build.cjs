@@ -1,5 +1,6 @@
 'use strict';
 const { releaseConfiguration } = require('./update-service.cjs');
+const { verificationKey } = require('./release-signature.cjs');
 
 function releaseBuild(env, platform, args = []) {
   if (env.FRONDOSE_RELEASE_BUILD !== '1') return null;
@@ -19,6 +20,10 @@ function releaseBuild(env, platform, args = []) {
   if (platform === 'win32' && (!config.windowsPublisherName || !windowsSigning(env, config) ||
       !env.AZURE_TENANT_ID || !env.AZURE_CLIENT_ID || !env.AZURE_CLIENT_SECRET)) {
     throw Error('Windows release requires the expected publisher and Artifact Signing credentials.');
+  }
+  if (platform === 'linux') {
+    verificationKey(env.FRONDOSE_RELEASE_LINUX_PUBLIC_KEY);
+    config.linuxUpdatePublicKey = env.FRONDOSE_RELEASE_LINUX_PUBLIC_KEY;
   }
   return config;
 }

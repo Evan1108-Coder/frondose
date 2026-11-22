@@ -3,7 +3,7 @@ const { app, BrowserWindow, WebContentsView, ipcMain, dialog, Notification, shel
 const { resolve, join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { get } = require('node:http');
-const { appUrl, browserUrl, isTrustedFrame } = require('./browser-policy.cjs');
+const { appUrl, browserUrl, isTrustedFrame, guardWorkspaceNavigation } = require('./browser-policy.cjs');
 const { createBrowserHost } = require('./browser-host.cjs');
 const { createBrowserImport, boundedBytes } = require('./browser-import.cjs');
 const { createPasswordVault } = require('./browser-passwords.cjs');
@@ -244,10 +244,11 @@ async function openWindow() {
   mainWindow = new BrowserWindow({ width: 1440, height: 920, minWidth: 760, minHeight: 520, title: 'Frondose', icon: appIcon, backgroundColor: '#0f1011', show: false, autoHideMenuBar: true, webPreferences: { ...(!smoke && ownedServer?.listening ? { preload: join(__dirname, 'preload.cjs') } : {}), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, webviewTag: false, navigateOnDragDrop: false } });
   // The app renderer never leaves its fixed loopback origin. Guest pages have
   // separate contents/sessions and never receive this preload or main IPC role.
-  mainWindow.webContents.on('will-navigate', (event, target) => { try { if (new URL(target).origin !== origin) event.preventDefault(); } catch { event.preventDefault(); } });
+  guardWorkspaceNavigation(mainWindow.webContents, origin);
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-  browserHost = createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboard });
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+  browserHost = createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboard, origin });
   mainWindow.webContents.on('did-start-navigation', (event, _url, isInPlace, isMainFrame) => { if ((event.isMainFrame ?? isMainFrame) && !(event.isSameDocument ?? isInPlace)) browserHost?.hideAll(); });
   mainWindow.webContents.on('render-process-gone', () => browserHost?.hideAll());
   mainWindow.webContents.on('will-prevent-unload', () => {
@@ -272,7 +273,10 @@ async function openWindow() {
   await mainWindow.loadURL(origin);
   if (process.env.FRONDOSE_DESKTOP_SMOKE === '1') {
     if (mainWindow.webContents.getLastWebPreferences().preload) throw Error('The external smoke renderer must not have a native preload.');
-    const proof = await browserHost.command({ operation: 'show', workspaceId: 'desktop-smoke', tabId: 'browser-smoke', bounds: { x: 240, y: 150, width: 640, height: 480 }, url: 'about:blank' });
+    const guest = { operation: 'show', workspaceId: 'desktop-smoke', tabId: 'browser-smoke', bounds: { x: 240, y: 150, width: 640, height: 480 } };
+    await require('node:assert/strict').rejects(browserHost.command({ ...guest, url: origin }), /workspace server/);
+    if (browserHost.count() !== 0) throw Error('A rejected guest must not allocate a browser view.');
+    const proof = await browserHost.command({ ...guest, url: 'about:blank' });
     const security = browserHost.securityState({ workspaceId: 'desktop-smoke', tabId: 'browser-smoke' });
     if (security.nodeIntegration !== false || security.contextIsolation !== true || security.sandbox !== true || security.webSecurity !== true || security.hasPreload) throw Error('Desktop browser security smoke failed.');
     await browserHost.command({ operation: 'hide', workspaceId: 'desktop-smoke', tabId: 'browser-smoke' });

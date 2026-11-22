@@ -174,7 +174,7 @@ async function createLocalAdapter({ app, origin, execPath = process.execPath, en
       await ownedDirectory(dirname(path));
       await verifyBundle(path, offer);
       offered = checked = { ...offer, path };
-      return { version: offer.version, releaseName: `Frondose ${offer.version} (Local Build)`, releaseNotes: 'This owner-staged Mac build will replace this copy of Frondose and reopen it. Save your drafts and close running terminals first. This is not a public release.' };
+      return { version: offer.version, artifactIdentity: offer.hash, releaseName: `Frondose ${offer.version} (Local Build)`, releaseNotes: 'This owner-staged Mac build will replace this copy of Frondose and reopen it. Save your drafts and close running terminals first. This is not a public release.' };
     },
     async download(progress) {
       if (!checked) throw Error('No verified local build is available.');

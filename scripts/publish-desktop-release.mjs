@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, readFile, readdir } from 'node:fs/promises';
+import { lstat, readFile, readdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import updater from '../desktop/update-service.cjs';
+import releaseSignature from '../desktop/release-signature.cjs';
 
 export const targets = {
   'mac-arm64': { manifest: 'latest-mac.yml', update: ['.zip'], download: '.dmg' },
@@ -60,10 +61,18 @@ export async function reviewTarget(dir, target, version, parse) {
   for (const ext of [contract.download, contract.alternate].filter(Boolean)) {
     if ([...entries.keys()].filter(name => name.endsWith(ext)).length !== 1) throw Error('Expected exactly one downloadable package: ' + ext);
   }
-  return { entries: [...entries.values()], meta, manifest: contract.manifest };
+  return { entries: [...entries.values()], meta, manifest: contract.manifest, info: manifest };
 }
 
-async function publish({ root, version, endpoint, bucket, publicRoot, parse }) {
+async function signLinuxManifest(plan, dump, env = process.env) {
+  const signed = releaseSignature.signLinuxRelease(plan.info, {
+    privateKey: env.FRONDOSE_RELEASE_LINUX_SIGNING_KEY,
+    publicKey: env.FRONDOSE_RELEASE_LINUX_PUBLIC_KEY,
+  });
+  await writeFile(plan.meta, dump(signed));
+}
+
+async function publish({ root, version, endpoint, bucket, publicRoot, parse, dump }) {
   const httpsRoot = updater.releaseConfiguration({ feedUrl: publicRoot }).feedUrl;
   if (!httpsRoot || new URL(httpsRoot).pathname !== '/' || !/^https:\/\/[0-9a-f]{32}\.r2\.cloudflarestorage\.com\/?$/i.test(endpoint) || !/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket)) throw Error('Invalid R2 bucket, S3 endpoint, or public origin.');
   const aws = async (command, key, extra = []) => {
@@ -77,6 +86,7 @@ async function publish({ root, version, endpoint, bucket, publicRoot, parse }) {
   const verified = [];
   for (const target of Object.keys(targets)) {
     const plan = await reviewTarget(join(root, target), target, version, parse);
+    if (target === 'linux-x64') await signLinuxManifest(plan, dump);
     const prefix = 'stable/' + target + '/';
     const key = prefix + plan.manifest;
     const old = await readCurrent(key);
@@ -105,20 +115,23 @@ async function publish({ root, version, endpoint, bucket, publicRoot, parse }) {
   for (const plan of verified) {
     if (!plan.identical) await aws('put-object', plan.key, [plan.old ? '--if-match' : '--if-none-match', plan.old?.ETag ?? '*', '--body', plan.meta, '--metadata', 'version=' + version + ',sha256=' + plan.manifestHash, '--cache-control', 'no-store, max-age=0', '--content-type', 'application/yaml; charset=utf-8']);
     const response = await fetch(new URL(plan.key, httpsRoot), { redirect: 'error', signal: AbortSignal.timeout(15000), cache: 'no-store' });
-    if (!response.ok || parse(await response.text())?.version !== version) throw Error('The deployed manifest is stale or inaccessible: ' + plan.key);
+    if (!response.ok || createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex') !== plan.manifestHash) throw Error('The deployed manifest is stale or inaccessible: ' + plan.key);
     console.log('Published and verified ' + plan.key + ' at ' + version);
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const require = createRequire(import.meta.url);
-  const parse = createRequire(require.resolve('electron-updater/package.json'))('js-yaml').load;
+  const { load: parse, dump } = createRequire(require.resolve('electron-updater/package.json'))('js-yaml');
   const [operation, directory, targetOrVersion, version] = process.argv.slice(2);
   if (operation === 'review') {
     const plan = await reviewTarget(directory, targetOrVersion, version, parse);
     console.log('Verified release manifest and hashes for ' + plan.entries.length + ' files.');
+  } else if (operation === 'sign-linux-qa') {
+    const plan = await reviewTarget(directory, 'linux-x64', targetOrVersion, parse);
+    await signLinuxManifest(plan, dump);
   } else if (operation === 'publish' && process.env.GITHUB_ACTIONS === 'true') {
-    await publish({ root: directory, version: targetOrVersion, endpoint: process.env.R2_ENDPOINT || '', bucket: process.env.R2_BUCKET || '', publicRoot: process.env.FRONDOSE_UPDATES_ORIGIN, parse });
+    await publish({ root: directory, version: targetOrVersion, endpoint: process.env.R2_ENDPOINT || '', bucket: process.env.R2_BUCKET || '', publicRoot: process.env.FRONDOSE_UPDATES_ORIGIN, parse, dump });
   } else {
     throw Error('Use review <dir> <target> <version>, or publish from protected GitHub Actions.');
   }

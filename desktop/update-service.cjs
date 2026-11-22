@@ -1,5 +1,6 @@
 'use strict';
 const { EventEmitter } = require('node:events');
+const { createHash } = require('node:crypto');
 const { cleanBlockers } = require('./update-blockers.cjs');
 
 function releaseUrl(value) {
@@ -22,8 +23,18 @@ function publicRelease(info) {
   const notes = Array.isArray(info.releaseNotes) ? info.releaseNotes.map(item => String(item.note || '')).join('\n\n') : String(info.releaseNotes || '');
   return { version: info.version, name: String(info.releaseName || `Frondose ${info.version}`).slice(0, 180), notes: notes.slice(0, 24000).replace(/<[^>]*>/g, ''), releaseDate: Number.isFinite(Date.parse(info.releaseDate)) ? new Date(info.releaseDate).toISOString() : null };
 }
+// Bind user consent to the reviewed package, not just to its version label.
+function releaseIdentity(info) {
+  if (info.files != null && (!Array.isArray(info.files) || info.files.length > 12)) throw Error('The update feed returned invalid artifact metadata.');
+  const references = [info.artifactIdentity, info.path, info.sha512, info.sha2,
+    ...((info.files || []).map(file => [file?.url, file?.sha512, file?.sha2, file?.size, file?.blockMapSize]))];
+  const payload = JSON.stringify([info.version, references]);
+  if (payload.length > 16384) throw Error('The update feed returned oversized artifact metadata.');
+  return createHash('sha256').update(payload).digest('hex');
+}
 function newerStableVersion(candidate, installed) {
-  if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(candidate) || candidate.length > 60) return false;
+  if (typeof candidate !== 'string' || typeof installed !== 'string' || installed.length > 100 || candidate.length > 60
+      || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(candidate)) return false;
   const left = candidate.split('.').map(BigInt), right = installed.split('-')[0].split('.');
   if (right.length !== 3 || right.some(value => !/^\d+$/.test(value))) return false;
   for (let i = 0; i < 3; i++) { if (left[i] > BigInt(right[i])) return true; if (left[i] < BigInt(right[i])) return false; }
@@ -31,6 +42,7 @@ function newerStableVersion(candidate, installed) {
 }
 function createDesktopUpdateService({ adapter, configured = false, reason = 'Release hosting is not configured for this build.', version = '0.0.0', load = async () => null, save = async () => {}, prepare = async () => { throw Error('Update safety checks are unavailable.'); }, now = Date.now } = {}) {
   const events = new EventEmitter();
+  let reviewedIdentity = null;
   let state = { phase: configured ? 'idle' : 'unconfigured', currentVersion: version, reason: configured ? null : reason, release: null, progress: null, scheduledAt: null, dismissed: false, error: null, blockers: [] }, receipt = null, operation = null, closed = false, generation = 0, installSafety = null;
   const snapshot = () => structuredClone(state);
   const change = values => { if (!closed && Object.entries(values).some(([key, value]) => state[key] !== value)) { state = { ...state, ...values }; events.emit('state', snapshot()); } };
@@ -45,7 +57,7 @@ function createDesktopUpdateService({ adapter, configured = false, reason = 'Rel
   async function init() {
     try {
       const saved = await load();
-      if (saved && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(saved.version || '') && ['later', 'tonight'].includes(saved.choice)) receipt = { version: saved.version, choice: saved.choice, scheduledAt: Number.isFinite(saved.scheduledAt) ? saved.scheduledAt : null };
+      if (saved && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(saved.version || '') && ['later', 'tonight'].includes(saved.choice)) receipt = { version: saved.version, identity: /^[a-f0-9]{64}$/.test(saved.identity || '') ? saved.identity : null, choice: saved.choice, scheduledAt: Number.isFinite(saved.scheduledAt) ? saved.scheduledAt : null };
       // Never replay a missed or uncertain installation when starting the app.
       if (receipt?.choice === 'tonight' && receipt.scheduledAt <= now()) change({ reason: 'The scheduled time passed while Frondose was closed. Check for updates and choose again.' });
     } catch { configured = false; change({ phase: 'unconfigured', reason: 'Update preferences could not be read safely. No update will run.' }); }
@@ -56,10 +68,11 @@ function createDesktopUpdateService({ adapter, configured = false, reason = 'Rel
     return run(async () => {
       const epoch = ++generation;
       if (!background) change({ phase: 'checking', error: null, blockers: [] });
-      let release;
+      let release, identity;
       try {
         const info = await adapter.check();
         release = info ? publicRelease(info) : null;
+        identity = info ? releaseIdentity(info) : null;
       } catch (error) {
         // An offline machine or an unavailable feed should not interrupt work
         // or erase the last usable offer. Manual checks still surface errors.
@@ -68,10 +81,15 @@ function createDesktopUpdateService({ adapter, configured = false, reason = 'Rel
       }
       if (closed || epoch !== generation) return snapshot();
       if (!release || !newerStableVersion(release.version, version)) {
+        reviewedIdentity = null;
         change({ phase: 'idle', release: null, scheduledAt: null, dismissed: false, progress: null, error: null, blockers: [] });
         return snapshot();
       }
-      const same = receipt?.version === release.version, scheduled = same && receipt.choice === 'tonight';
+      if (state.release?.version === release.version && reviewedIdentity && reviewedIdentity !== identity) throw Error('The update publisher changed artifacts without changing the version. This offer cannot be installed.');
+      reviewedIdentity = identity;
+      // Preserve old dismissals, but never replay an old unpinned future schedule.
+      const same = receipt?.version === release.version && (receipt.identity ? receipt.identity === identity : receipt.choice === 'later' || receipt.scheduledAt <= now());
+      const scheduled = same && receipt.choice === 'tonight';
       const missed = scheduled && receipt.scheduledAt <= now();
       change({ release, progress: null, blockers: [], phase: missed ? 'blocked' : scheduled ? 'scheduled' : 'available', scheduledAt: scheduled && !missed ? receipt.scheduledAt : null, dismissed: Boolean(same && (receipt.choice === 'later' || scheduled)), error: missed ? 'The scheduled time passed while Frondose was closed. Choose Install now when you are ready.' : null });
       return snapshot();
@@ -91,7 +109,7 @@ function createDesktopUpdateService({ adapter, configured = false, reason = 'Rel
       try {
         if (closed) return snapshot();
         const info = await adapter.check();
-        if (!info || publicRelease(info).version !== selected) throw Error('The selected release changed. Check for updates and review it again.');
+        if (!info || publicRelease(info).version !== selected || releaseIdentity(info) !== reviewedIdentity) throw Error('The selected release changed. Check for updates and review it again.');
         if (closed) return snapshot();
         change({ phase: 'downloading', progress: 0 });
         await adapter.download(progress => { if (!closed) change({ progress: Math.min(100, Math.max(0, Number(progress) || 0)) }); });
@@ -113,7 +131,7 @@ function createDesktopUpdateService({ adapter, configured = false, reason = 'Rel
     if (choice === 'now') return install();
     const scheduledAt = choice === 'tonight' ? nextTonight(now()) : null;
     return run(async () => {
-      await persist({ version: selectedVersion, choice: choice === 'tonight' ? 'tonight' : 'later', scheduledAt });
+      await persist({ version: selectedVersion, identity: reviewedIdentity, choice: choice === 'tonight' ? 'tonight' : 'later', scheduledAt });
       change({ phase: scheduledAt ? 'scheduled' : 'available', scheduledAt, dismissed: true, error: null, blockers: [] });
       return snapshot();
     });

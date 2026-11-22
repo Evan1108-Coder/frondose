@@ -5,6 +5,7 @@
  * than accepting renderer-supplied Electron preferences or preload scripts. */
 'use strict';
 const { createHash } = require('node:crypto');
+const { isIPv4 } = require('node:net');
 
 const GUEST_WEB_PREFERENCES = Object.freeze({
   nodeIntegration: false,
@@ -32,6 +33,42 @@ function appUrl(value = 'http://127.0.0.1:4174') {
   return url.origin;
 }
 
+// Keep native authority attached to the packaged entry document, not to
+// arbitrary documents (including blob: URLs) with an equivalent web origin.
+function isWorkspaceDocument(value, origin) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' && url.origin === origin && !url.username && !url.password &&
+      (url.pathname === '/' || url.pathname === '/index.html');
+  } catch { return false; }
+}
+
+function navigationUrl(event, legacyUrl) {
+  return typeof event?.url === 'string' ? event.url : typeof legacyUrl === 'string' ? legacyUrl : legacyUrl?.url;
+}
+
+function guardWorkspaceNavigation(contents, origin) {
+  const admit = (event, legacyUrl, _isInPlace, legacyMainFrame) => {
+    const target = navigationUrl(event, legacyUrl);
+    const childFrame = (event?.isMainFrame ?? legacyUrl?.isMainFrame ?? legacyMainFrame) === false;
+    if (childFrame ? !['about:blank', 'about:srcdoc'].includes(target) : !isWorkspaceDocument(target, origin)) event.preventDefault();
+  };
+  for (const type of ['will-navigate', 'will-frame-navigate', 'will-redirect']) contents.on(type, admit);
+}
+
+function isFrondoseServiceRequest(value, origin) {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) return false;
+    if ((url.port || (['https:', 'wss:'].includes(url.protocol) ? '443' : '80')) !== new URL(origin).port) return false;
+    // The app binds loopback. Its aliases must not become guest entry points.
+    // WHATWG URL parsing normalizes short IPv4 and IPv4-mapped IPv6 notation.
+    const host = url.hostname.replace(/\.$/, '');
+    return host === 'localhost' || host.endsWith('.localhost') || host === 'terminal.local' ||
+      host === '0.0.0.0' || host === '[::1]' || (isIPv4(host) && host.startsWith('127.')) || /^\[::ffff:7f[0-9a-f]{2}:/.test(host);
+  } catch { return false; }
+}
+
 function browserIdentity(input) {
   if (!input || typeof input !== 'object') throw Error('Choose a workspace browser tab.');
   const { workspaceId, tabId } = input;
@@ -49,8 +86,10 @@ function browserBounds(value, viewport) {
 }
 
 function isTrustedFrame(event, mainWindow, origin) {
-  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return false;
-  try { return new URL(event.senderFrame.url).origin === origin; } catch { return false; }
+  try {
+    return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents &&
+      event.senderFrame && event.senderFrame === mainWindow.webContents.mainFrame && isWorkspaceDocument(event.senderFrame.url, origin));
+  } catch { return false; }
 }
 
 function notificationPayload(input) {
@@ -64,4 +103,4 @@ function notificationPayload(input) {
   return { title: text(input.title, 100), body: text(input.body, 300), silent: input.silent === true, action };
 }
 
-module.exports = { GUEST_WEB_PREFERENCES, browserUrl, appUrl, browserIdentity, browserBounds, isTrustedFrame, notificationPayload };
+module.exports = { GUEST_WEB_PREFERENCES, browserUrl, appUrl, browserIdentity, browserBounds, isTrustedFrame, navigationUrl, guardWorkspaceNavigation, isFrondoseServiceRequest, notificationPayload };
