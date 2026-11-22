@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { installPersonalProfiles, selfProfile, updateSelfProfile } from './personal-profile.mjs';
 import { installConversationAgent, validateConversationAgent, assertConversationAgent, bindConversationAgent } from './conversation-agent.mjs';
 import { frondoseEnvironment, frondoseDataDirectory, frondoseDatabasePath } from './brand-config.mjs';
+import { prepareWorkspaceDatabaseFile } from './workspace-database-file.mjs';
 import { installFrondoseBrand } from './brand-migration.mjs';
 import { changeContext } from './change-context.mjs';
 import { timelineRoute } from './timeline-service.mjs';
@@ -295,18 +296,22 @@ function fail(res, status, code, message, details) {
   send(res, status, { error: { code, message, ...(details ? { details } : {}) } });
 }
 function allowedLoopbackHost(value) {
-  if (!value) return false;
-  try {
-    const hostname = new URL(`http://${value}`).hostname;
-    return ['127.0.0.1', 'localhost', '[::1]', '::1', 'terminal.local'].includes(hostname);
-  } catch { return false; }
+  return typeof value === 'string' && /^(?:127\.0\.0\.1|localhost|\[::1\])(?::[0-9]{1,5})?$/i.test(value);
 }
 function allowedOrigin(origin, host) {
   if (!origin) return true;
   try {
     const url = new URL(origin);
-    return url.protocol === 'http:' && allowedLoopbackHost(url.host) && url.host === host;
+    return origin === url.origin && url.protocol === 'http:' && allowedLoopbackHost(url.host) && url.host === host;
   } catch { return false; }
+}
+function isProviderCallback(path) {
+  return [
+    '/api/auth/google-drive/callback',
+    '/api/connection-platform/oauth/callback',
+    '/api/ai-connections/huggingface/callback',
+    '/api/ai-connections/copilot/callback',
+  ].includes(path) || /^\/api\/ai-connections\/openrouter\/callback\/[A-Za-z0-9_-]+$/.test(path);
 }
 async function readBody(req, limit = 1_000_000) {
   if (req.frondoseBody !== undefined) {
@@ -456,8 +461,9 @@ function seed(db, { demo = false } = {}) {
 
 function createDatabase(dataDir, { seedMode = 'clean' } = {}) {
   const directory = frondoseDataDirectory(dataDir);
-  mkdirSync(directory, { recursive: true });
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
   const dbPath = frondoseDatabasePath(directory);
+  prepareWorkspaceDatabaseFile(dbPath);
   const db = new DatabaseSync(dbPath);
   const schemaPath = join(dirname(fileURLToPath(import.meta.url)), 'schema.sql');
   db.exec(readFileSync(schemaPath, 'utf8'));
@@ -1535,10 +1541,18 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
     url.pathname = url.pathname.replace(/^\/api\/(?:frondose|talvori)-agent(?=\/|$)/, '/api/rumbo-agent');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
+    if (!deployment.hosted) res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     try { deployment.checkRequest(req); } catch (reason) { return fail(res, reason.statusCode || 403, reason.code, reason.message); }
     if (!deployment.hosted && !allowedLoopbackHost(req.headers.host)) return fail(res, 403, 'invalid_host', 'Frondose only accepts loopback hosts.');
     if (!deployment.hosted && !allowedOrigin(req.headers.origin, req.headers.host)) return fail(res, 403, 'invalid_origin', 'Cross-origin API requests are not allowed.');
-    if (req.headers['sec-fetch-site'] === 'cross-site' && !(req.method === 'GET' && (['/api/auth/google-drive/callback', '/api/connection-platform/oauth/callback', '/api/ai-connections/huggingface/callback', '/api/ai-connections/copilot/callback'].includes(url.pathname) || url.pathname.startsWith('/api/ai-connections/openrouter/callback/')))) return fail(res, 403, 'invalid_origin', 'Cross-site browser requests are not allowed.');
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite === 'cross-site' || (!deployment.hosted && fetchSite === 'same-site')) {
+      // Provider callbacks need a real top-level navigation. Never allow
+      // another origin to embed or fetch these state-changing endpoints.
+      const callback = req.method === 'GET' && isProviderCallback(url.pathname);
+      const navigation = req.headers['sec-fetch-mode'] === 'navigate' && req.headers['sec-fetch-dest'] === 'document';
+      if (!callback || (!deployment.hosted && !navigation)) return fail(res, 403, 'invalid_origin', 'Cross-origin browser requests are not allowed.');
+    }
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && (Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) return fail(res, 415, 'unsupported_media_type', 'Use application/json for API changes.');
     try {
       const requestedPath = url.pathname.slice(API_PREFIX.length) || '/';

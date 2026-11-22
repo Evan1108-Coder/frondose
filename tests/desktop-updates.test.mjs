@@ -104,6 +104,25 @@ test('double Install now and stale release clicks do not create parallel install
   const item = fixture(); await item.service.check(); await item.service.choose('now', '1.0.9'); assert.equal(item.calls.includes('download'), false);
   await Promise.all([item.service.choose('now', '1.1.0'), item.service.choose('now', '1.1.0')]); assert.equal(item.calls.filter(call => call === 'install').length, 1); item.service.close();
 });
+test('same-version replacement cannot reuse review or a persisted schedule', async () => {
+  const first = { ...release, files: [{ url: 'Frondose-1.1.0.zip', sha512: 'first reviewed digest', size: 300 }] };
+  const changed = { ...first, files: [{ ...first.files[0], sha512: 'different digest' }] };
+  let metadata = first, persisted;
+  const rejectDownload = async () => assert.fail('changed package must not download');
+  const { service } = fixture({ save: async value => { persisted = value; }, adapter: { check: async () => metadata, download: rejectDownload } });
+  await service.check();
+  await service.choose('tonight', '1.1.0');
+  metadata = changed;
+  await service.choose('now', '1.1.0');
+  assert.equal(service.snapshot().phase, 'error');
+  assert.match(service.snapshot().error, /selected release changed/i);
+  service.close();
+  const restarted = fixture({ load: async () => persisted, adapter: { check: async () => changed, download: rejectDownload } });
+  await restarted.service.init();
+  assert.equal((await restarted.service.check()).phase, 'available');
+  assert.equal(restarted.service.snapshot().scheduledAt, null);
+  restarted.service.close();
+});
 test('private preferences are atomic, installation-scoped, and reject linked or oversized files', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'frondose-update-storage-'));
   try {

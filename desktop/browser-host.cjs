@@ -1,11 +1,17 @@
 'use strict';
 const {browserContextMenu}=require('./browser-context-menu.cjs');
-const { GUEST_WEB_PREFERENCES, browserUrl, browserIdentity, browserBounds } = require('./browser-policy.cjs');
+const { GUEST_WEB_PREFERENCES, appUrl, browserUrl, browserIdentity, browserBounds, navigationUrl, isFrondoseServiceRequest } = require('./browser-policy.cjs');
 const { loginOrigin, fillLogin } = require('./browser-passwords.cjs');
 
 /** Main-process-owned Chromium guests. Hiding a React view does not destroy the
  * page. All operations are routed through a checked top-level app IPC caller. */
-function createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboard, maxPages = 12 }) {
+function createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboard, origin, maxPages = 12 }) {
+  const workspaceOrigin = appUrl(origin);
+  function guestPageUrl(value) {
+    const url = browserUrl(value);
+    if (isFrondoseServiceRequest(url, workspaceOrigin)) throw Error('Frondose’s workspace server cannot be opened inside Browser.');
+    return url;
+  }
   const pages = new Map();
   const applications = new Map();
   const release = key => { for (const [id, owner] of applications) if (owner === key) applications.delete(id); };
@@ -31,6 +37,9 @@ function createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboa
     // filesystem and downloads need an explicit future permission workflow.
     guestSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     guestSession.setPermissionCheckHandler(() => false);
+    // Covers every guest request, including subframes, workers and redirects.
+    // Other localhost ports remain available to developers for local previews.
+    guestSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: isFrondoseServiceRequest(details.url, workspaceOrigin) }));
     guestSession.on('will-download', (event, _item, contents) => {
       event.preventDefault();
       for (const row of pages.values()) if (row.view.webContents === contents) { row.error = 'Downloads are not enabled in this browser yet. Open the page in your default browser to download.'; publish(row); }
@@ -38,6 +47,7 @@ function createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboa
     configured.add(partition);
   }
   function navigate(row, destination) {
+    destination = guestPageUrl(destination);
     const generation = ++row.navigationGeneration;
     row.error = null;
     let loading;
@@ -60,11 +70,16 @@ function createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboa
     pages.set(row.key, row);
     const contents = view.webContents;
     contents.setWindowOpenHandler(() => { row.error = 'Popup blocked. Open the destination in another Browser tab.'; publish(row); return { action: 'deny' }; });
-    const admitNavigation = (event, target) => { try { browserUrl(typeof target === 'string' ? target : target.url); } catch { event.preventDefault(); row.error = 'Only HTTP and HTTPS pages can be opened.'; publish(row); } };
+    const admitNavigation = (event, target) => {
+      try { guestPageUrl(navigationUrl(event, target)); }
+      catch (error) { event.preventDefault(); row.error = error.message; publish(row); }
+    };
     contents.on('context-menu',(_event,params)=>{if(!Menu||!alive()||!row.attached||contents.isDestroyed())return;const items=browserContextMenu({contents,params,clipboard,navigate:url=>{try{navigate(row,url);}catch(error){row.error=error.message;publish(row);}}});Menu.buildFromTemplate(items).popup({window:mainWindow});});
     contents.on('will-navigate', admitNavigation);
     contents.on('will-redirect', admitNavigation);
-    contents.on('did-start-navigation', (_event,url,_inPlace,isMainFrame) => { if (typeof url === 'object' ? url.isMainFrame : isMainFrame) ++row.documentGeneration; });
+    contents.on('did-start-navigation', (event, details, _inPlace, isMainFrame) => {
+      if (event?.isMainFrame ?? details?.isMainFrame ?? isMainFrame) ++row.documentGeneration;
+    });
     for (const name of ['did-start-loading', 'did-stop-loading', 'did-navigate', 'did-navigate-in-page', 'page-title-updated']) contents.on(name, () => publish(row));
     // Native guest clicks cannot bubble into the application's DOM focus layer.
     // Only a real, currently attached guest focus event selects its split pane.
@@ -96,7 +111,7 @@ function createBrowserHost({ mainWindow, WebContentsView, session, Menu, clipboa
     let bounds;
     let destination;
     if (operation === 'show') bounds = browserBounds(input.bounds, mainWindow.getContentBounds());
-    if (operation === 'navigate' || operation === 'show' && input.url !== undefined) destination = browserUrl(input.url);
+    if (operation === 'navigate' || operation === 'show' && input.url !== undefined) destination = guestPageUrl(input.url);
     const created = !row;
     row ||= create(identity);
     if (operation === 'show' && applicationId) { applications.set(applicationId, identity.key); row.applicationId = applicationId; }

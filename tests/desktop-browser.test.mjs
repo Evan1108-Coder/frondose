@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import { readFile } from 'node:fs/promises';
 const require = createRequire(import.meta.url);
-const { browserUrl, appUrl, browserIdentity, browserBounds, isTrustedFrame, GUEST_WEB_PREFERENCES, notificationPayload } = require('../desktop/browser-policy.cjs');
+const { browserUrl, appUrl, browserIdentity, browserBounds, isTrustedFrame, guardWorkspaceNavigation, GUEST_WEB_PREFERENCES, notificationPayload } = require('../desktop/browser-policy.cjs');
 const { createBrowserHost } = require('../desktop/browser-host.cjs');
 
 test('desktop URL policy accepts only complete HTTP(S) browser pages and a fixed loopback application origin', () => {
@@ -36,8 +36,27 @@ test('desktop native controls reject guests, subframes and navigated app documen
   assert.equal(isTrustedFrame({ sender: contents, senderFrame: frame }, window, 'http://127.0.0.1:4174'), true);
   assert.equal(isTrustedFrame({ sender: {}, senderFrame: frame }, window, 'http://127.0.0.1:4174'), false);
   assert.equal(isTrustedFrame({ sender: contents, senderFrame: { ...frame } }, window, 'http://127.0.0.1:4174'), false);
-  frame.url = 'https://example.com';
-  assert.equal(isTrustedFrame({ sender: contents, senderFrame: frame }, window, 'http://127.0.0.1:4174'), false);
+  for (const url of ['https://example.com', 'blob:http://127.0.0.1:4174/file', 'http://127.0.0.1:4174/api/health', 'http://localhost:4174/']) {
+    frame.url = url;
+    assert.equal(isTrustedFrame({ sender: contents, senderFrame: frame }, window, 'http://127.0.0.1:4174'), false);
+  }
+});
+
+test('workspace navigation policy rejects off-boundary redirects and keeps previews as source documents', () => {
+  const contents = new EventEmitter(), origin = 'http://127.0.0.1:4174';
+  guardWorkspaceNavigation(contents, origin);
+  function decide(type, url, isMainFrame, legacy = false) {
+    let prevented = false;
+    const event = { ...(legacy ? {} : { url, isMainFrame }), preventDefault() { prevented = true; } };
+    contents.emit(type, event, ...(legacy ? [url, false, isMainFrame] : []));
+    return prevented;
+  }
+  assert.equal(decide('will-navigate', origin + '/#/projects', true), false);
+  assert.equal(decide('will-redirect', origin + '/index.html', true, true), false);
+  assert.equal(decide('will-redirect', 'https://example.test/', true), true);
+  assert.equal(decide('will-navigate', 'blob:' + origin + '/fixture', true), true);
+  assert.equal(decide('will-frame-navigate', 'about:srcdoc', false), false);
+  assert.equal(decide('will-frame-navigate', origin + '/api/health', false), true);
 });
 
 test('desktop native controls require a listening app-owned server; the external test fixture receives no preload or IPC', async () => {
@@ -50,7 +69,7 @@ test('desktop native controls require a listening app-owned server; the external
   assert.match(source, /await ensureServer\(\);\s*if \(!smoke\) \{\s*registerIpc\(\);/);
 });
 
-function fixture(maxPages = 12) {
+function fixture(maxPages = 12, origin = 'http://127.0.0.1:4174') {
   const views = [], attached = new Set(), partitions = new Map(), sent = [];
   class FakeContents extends EventEmitter {
     constructor() { super(); this.url = ''; this.destroyed = false; this.navigationHistory = { canGoBack: () => false, canGoForward: () => false }; }
@@ -62,8 +81,8 @@ function fixture(maxPages = 12) {
   }
   class FakeView { constructor(options) { this.options = options; this.webContents = new FakeContents(); views.push(this); } setBounds(bounds) { this.bounds = bounds; } }
   const mainWindow = { isDestroyed: () => false, getContentBounds: () => ({ width: 1000, height: 800 }), webContents: { send(channel, state) { sent.push({ channel, state }); } }, contentView: { addChildView: view => attached.add(view), removeChildView: view => attached.delete(view) } };
-  const session = { fromPartition(name) { if (!partitions.has(name)) { const value = new EventEmitter(); value.setPermissionRequestHandler = handler => value.permissionRequest = handler; value.setPermissionCheckHandler = handler => value.permissionCheck = handler; partitions.set(name, value); } return partitions.get(name); } };
-  const host = createBrowserHost({ mainWindow, WebContentsView: FakeView, session, maxPages });
+  const session = { fromPartition(name) { if (!partitions.has(name)) { const value = new EventEmitter(); value.setPermissionRequestHandler = handler => value.permissionRequest = handler; value.setPermissionCheckHandler = handler => value.permissionCheck = handler; value.webRequest = { onBeforeRequest(handler) { value.beforeRequest = handler; } }; partitions.set(name, value); } return partitions.get(name); } };
+  const host = createBrowserHost({ mainWindow, WebContentsView: FakeView, session, maxPages, origin });
   const identity = { workspaceId: 'ws_one', tabId: 'tab_one', bounds: { x: 200, y: 100, width: 600, height: 400 } };
   return { host, views, attached, partitions, identity, sent };
 }
@@ -138,6 +157,30 @@ test('browser popup, permission and download policies deny unreviewed native acc
   assert.equal(guestSession.permissionCheck(), false);
   let allowed; guestSession.permissionRequest({}, 'media', value => { allowed = value; }); assert.equal(allowed, false);
   guestSession.emit('will-download', { preventDefault() { prevented++; } }); assert.equal(prevented, 3);
+  host.close();
+});
+
+test('guest network policy isolates the actual workspace port without disabling other local previews', async () => {
+  const { host, views, partitions, identity } = fixture(12, 'http://127.0.0.1:4417');
+  await assert.rejects(host.command({ ...identity, operation: 'show', url: 'http://localhost:4417/' }), /workspace server/);
+  assert.equal(views.length, 0);
+  await host.command({ ...identity, operation: 'show', url: 'http://127.0.0.1:5173/' });
+  const check = (url, resourceType) => {
+    let decision;
+    [...partitions.values()][0].beforeRequest({ url, resourceType }, value => { decision = value; });
+    return decision.cancel;
+  };
+  assert.equal(check('http://127.0.0.1:4417/', 'mainFrame'), true);
+  assert.equal(check('http://localhost:4417/api/health', 'subFrame'), true);
+  assert.equal(check('ws://[::1]:4417/', 'webSocket'), true);
+  assert.equal(check('http://[::ffff:127.0.0.1]:4417/', 'xhr'), true);
+  assert.equal(check('http://127.0.0.1:5173/assets/main.js', 'script'), false);
+  assert.equal(check('https://example.test:4417/', 'xhr'), false);
+  const contents = views[0].webContents;
+  let prevented = 0;
+  contents.emit('will-redirect', { url: 'http://localhost:4417/', preventDefault() { prevented++; } });
+  contents.emit('will-redirect', { url: 'https://example.test/', preventDefault() { prevented++; } });
+  assert.equal(prevented, 1, 'modern Electron navigation events enforce the same policy');
   host.close();
 });
 

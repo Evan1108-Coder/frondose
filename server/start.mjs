@@ -1,8 +1,8 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { realpath, realpathSync } from 'node:fs';
+import { lstatSync, realpath, realpathSync } from 'node:fs';
 import { promisify } from 'node:util';
-import { resolve, relative, isAbsolute, sep, extname, dirname } from 'node:path';
+import { resolve, relative, isAbsolute, sep, extname, dirname, basename } from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createLocalApi } from './local-api.mjs';
 import { frondoseEnvironment, frondoseDataDirectory } from './brand-config.mjs';
@@ -16,15 +16,27 @@ export function containsPath(root, candidate, path = { relative, isAbsolute, sep
   return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
+// A data location may not exist until SQLite is created. Resolve its nearest
+// existing parent first so a symlink cannot redirect creation into served assets.
+function resolveBeforeCreation(path) {
+  if (lstatSync(path, { throwIfNoEntry: false })) return realpathSync.native(path);
+  const parent = dirname(path);
+  if (path === parent) return realpathSync.native(path);
+  return resolve(resolveBeforeCreation(parent), basename(path));
+}
+
 export function createFrondoseServer({ env = process.env, apiOptions = {}, clientDirectory = fileURLToPath(new URL('../dist/client/', import.meta.url)) } = {}) {
   env = frondoseEnvironment(env);
   const root = realpathSync.native(clientDirectory);
   const dataDirectory = frondoseDataDirectory(apiOptions.dataDir || env.FRONDOSE_DATA_DIR);
-  if (containsPath(root, dataDirectory)) throw Error('Private Frondose data must not be stored in the public client directory.');
+  if (containsPath(root, dataDirectory) || containsPath(root, resolveBeforeCreation(dataDirectory))) {
+    throw Error('Private Frondose data must not be stored in the public client directory.');
+  }
   const api = createLocalApi({ ...apiOptions, testSupport: undefined, productMode: 'local', dataDir: dataDirectory, integrationOptions: { ...apiOptions.integrationOptions, env } });
   if (containsPath(root, realpathSync.native(dirname(api.dbPath)))) { api.close(); throw Error('Private Frondose data cannot resolve inside public client assets.'); }
   const server = createServer((req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; worker-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     api.middleware(req, res, () => { void (async () => {
       if (!['GET', 'HEAD'].includes(req.method)) { res.statusCode = 405; res.end(); return; }
