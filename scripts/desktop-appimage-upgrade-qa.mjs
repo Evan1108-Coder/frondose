@@ -170,19 +170,59 @@ try {
       return true;
     })()
   `);
-  const clickResult = await until('native updater handles the button click', async () => {
+  let clickResult = await until('native updater handles the button click', async () => {
     const v = await renderer.evalInApp(status);
     return v && !['idle', 'available', 'checking'].includes(v.phase) && v;
   }, 15000);
+  // First-run onboarding mounts asynchronously; if the guarded update sees
+  // it, prove the blocker is correctly named and close it through normal UI.
+  const onboarding = v => v?.phase === 'blocked' && v.blockers?.length === 1
+    && v.blockers[0].kind === 'dialog' && v.blockers[0].label === 'Welcome to Frondose';
+  async function finishFixtureOnboarding(v) {
+    if (!onboarding(v)) return false;
+    console.log('Verified Frondose blocked installation and named the Welcome to Frondose dialog.');
+    await until('actionable Skip setup', () => renderer.evalInApp(String.raw`
+      (() => {
+        const welcome = document.querySelector('.workspace-welcome-dialog');
+        const skip = [...(welcome?.querySelectorAll('button') || [])].find(x => x.textContent.trim() === 'Skip setup');
+        if (!skip || skip.disabled) return false;
+        skip.click();
+        return true;
+      })()
+    `));
+    await until('welcome dialog fully closed', () => renderer.evalInApp('!document.querySelector(".workspace-welcome-dialog")'));
+    await until('reviewed Try again control', () => renderer.evalInApp(String.raw`
+      (() => {
+        const dialog = document.querySelector('.native-update-dialog');
+        const retry = [...(dialog?.querySelectorAll('button') || [])].find(x => x.textContent.trim() === 'Try again');
+        if (!retry || retry.disabled) return false;
+        retry.click();
+        return true;
+      })()
+    `));
+    return true;
+  }
+  if (await finishFixtureOnboarding(clickResult)) {
+    clickResult = await until('retry begins', async () => {
+      const v = await renderer.evalInApp(status);
+      return v && !onboarding(v) && v;
+    }, 15000);
+  }
   console.log('After click: ' + clickResult.phase);
   if (['blocked', 'error'].includes(clickResult.phase)) throw Error(JSON.stringify(clickResult));
   // Fast failures (such as a local safety guard) should say why, instead of
   // waiting for a new PID that won't be created.
   try {
-    const installState = await until('download and install', async () => {
+    let installState = await until('download and install', async () => {
       const v = await renderer.evalInApp(status);
       return v && ['installing', 'blocked', 'error'].includes(v.phase) && v;
     }, 45000);
+    if (await finishFixtureOnboarding(installState)) {
+      installState = await until('install after confirmed retry', async () => {
+        const v = await renderer.evalInApp(status);
+        return v && !onboarding(v) && ['installing', 'blocked', 'error'].includes(v.phase) && v;
+      }, 45000);
+    }
     if (installState.phase !== 'installing') throw Error(JSON.stringify(installState));
   } catch (error) {
     if (launcher.exitCode === null && launchLog.includes('Downloading update') === false ||
