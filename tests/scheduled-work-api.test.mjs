@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { EventEmitter } from 'node:events';
 import { randomBytes, createCipheriv } from 'node:crypto';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 import { captureAgentActions } from '../server/agent-awareness.mjs';
 
 async function fixture(t,options={}) {

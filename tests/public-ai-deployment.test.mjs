@@ -4,8 +4,8 @@ import { createServer, request as httpRequest } from 'node:http';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createDeploymentPolicy } from '../server/deployment-policy.mjs';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createDeploymentPolicy } from './fixtures/legacy-deployment.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 import { createFrondoseServer } from '../server/start.mjs';
 import { DatabaseSync } from 'node:sqlite';
 

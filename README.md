@@ -5,9 +5,10 @@ tab. Back to workspace restores the prior view/session. Unsaved changes are
 guarded before leaving the current view.
 
 **Current direction: completely local, single owner.** Normal `npm start` and
-`npm run dev` enforce the local edition: no human memberships, invitations,
-hosted signup or billing UI. Existing content, attribution and optional local
-passwords remain intact. Cloud AI calls still require the provider's network.
+`npm run dev` enforce the local edition: no Frondose signup, sign-in, or local
+password. Existing workspaces, the local profile, and historical attribution are
+preserved. Optional provider connections may still require the provider’s own
+sign-in and network.
 See [the full local product scope and implementation ledger](docs/local-first-roadmap.md).
 Older hosted/team checkpoints below are historical and do not describe the current default product.
 
@@ -236,7 +237,7 @@ Run `npm test`, `npm run build`, and `npm run test:sites` from the repository ro
 
 New installation data is in `.frondose/frondose.sqlite`; upgraded installations retain `.rumbo/rumbo.sqlite`. Optional legacy GitHub/Google credentials are in the private data directory's owner-only `integrations.private.json`; they are not encrypted and do not enter exports or browser state. The local server denies static access to both private directories, environment files, and key files.
 
-Do not expose this development server to a network. Optional local account sign-in now uses salted scrypt passwords, opaque expiring sessions, revocation, and one-use invitation links. Workspace APIs enforce membership, four built-in ranks, custom permission roles, scoped/temporary grants, individual exceptions, and owner approval workflows. Custom roles do not create arbitrary new rank levels. Invitations are copied links, not delivered email; password recovery, public hosting, and production identity operations are not implemented.
+Do not expose this server to a network. The app uses the current computer’s local profile; old Frondose sessions and invitations no longer authorize access. Use your operating system’s screen lock and disk encryption to protect local data.
 
 New workspace OAuth credentials use AES-256-GCM encryption; the private encryption key is stored separately in the private data directory's `connections.key` (or supplied by the operator). Never publish this directory. Legacy credentials described above retain their existing separate storage and are not silently migrated. Workspace exports exclude credentials, governance/account data, and connection caches.
 
