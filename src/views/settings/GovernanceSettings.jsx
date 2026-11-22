@@ -65,7 +65,7 @@ function ScopeFields({ value, onChange, data, workspace }) {
 function GovernanceEditor({ editor, snapshot, data, workspace, command, busy, error, onClose }) {
   const original = editor.value;
   const [value, setValue] = useState(() => ({ name: '', email: '', rank: 'Member', permissions: [], scope_type: 'workspace', scope_id: '', member_id: '', role_id: '', permission: '', effect: 'allow', reason: '', expires_at: '', ...original }));
-  const [permissionQuery, setPermissionQuery] = useState(''), [grantType, setGrantType] = useState('role'), [confirmRemoval, setConfirmRemoval] = useState(false), [invitation, setInvitation] = useState(null), [inviteError, setInviteError] = useState(null), [inviteBusy, setInviteBusy] = useState(false);
+  const [permissionQuery, setPermissionQuery] = useState(''), [grantType, setGrantType] = useState('role'), [confirmRemoval, setConfirmRemoval] = useState(false);
   const update = (key, item) => setValue(current => ({ ...current, [key]: item }));
   const title = editor.kind === 'role' ? original ? 'Edit role' : 'Create role' : editor.kind === 'grant' ? 'Grant access' : editor.kind === 'revoke' ? 'Revoke access?' : original ? `Manage ${original.name}` : 'Add person';
   async function save(event) {
@@ -84,8 +84,6 @@ function GovernanceEditor({ editor, snapshot, data, workspace, command, busy, er
       <Select label="Rank" value={value.rank} onChange={item => update('rank', item)}>{RANKS.filter(item => item !== 'Owner' || original).map(item => <option key={item} value={item}>{item}</option>)}</Select>
       {value.rank === 'Owner' ? <p className="gov-notice">Granting ownership creates a request for the existing Owners to approve.</p> : null}
       {original ? <div className="gov-secondary-actions">
-        {original.id !== snapshot.current_user?.id ? <Button busy={inviteBusy} onClick={async () => { setInviteBusy(true); setInviteError(null); try { const response = await apiRequest('/api/identity/invite', { method: 'POST', body: { workspace_id: workspace.id, member_id: original.id } }); setInvitation(`${location.origin}/#/overview?invitation=${encodeURIComponent(response.result.invitation_token)}`); } catch (cause) { setInviteError(cause); } finally { setInviteBusy(false); } }}>Create invitation link</Button> : null}
-        <ErrorMessage error={inviteError} />{invitation ? <Field label="Invitation link" hint="Share this private link with the intended person. It expires in 48 hours; no email has been sent."><input readOnly value={invitation} onFocus={event => event.target.select()} /></Field> : null}
         {confirmRemoval ? <div className="gov-notice"><p>{original.id === snapshot.current_user?.id ? 'Leave this workspace? Owner departure may require approval.' : `Remove ${original.name} from this workspace? Their previous work remains attributed to them.`}</p><Button busy={busy} onClick={async () => { if (await command(original.id === snapshot.current_user?.id ? 'leave' : 'remove_member', original.id === snapshot.current_user?.id ? {} : { member_id: original.id, version: original.version })) onClose(); }}>Confirm {original.id === snapshot.current_user?.id ? 'departure' : 'removal'}</Button><Button onClick={() => setConfirmRemoval(false)}>Keep membership</Button></div> : <Button onClick={() => setConfirmRemoval(true)}>{original.id === snapshot.current_user?.id ? 'Leave workspace' : 'Remove membership'}</Button>}
       </div> : null}
     </> : null}

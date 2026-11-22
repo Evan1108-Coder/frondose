@@ -6,7 +6,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
 import test from 'node:test';
 import { createDirectoryWorkspaceService, directoryRelativePath } from '../server/directory-workspace.mjs';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 
 const owner = { id: 'local-owner' };
 test('read-only text is reported and cannot be replaced through atomic rename', async () => fixture(async ({ service, bind, root }) => {

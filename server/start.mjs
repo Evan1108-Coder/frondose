@@ -21,7 +21,7 @@ export function createFrondoseServer({ env = process.env, apiOptions = {}, clien
   const root = realpathSync.native(clientDirectory);
   const dataDirectory = frondoseDataDirectory(apiOptions.dataDir || env.FRONDOSE_DATA_DIR);
   if (containsPath(root, dataDirectory)) throw Error('Private Frondose data must not be stored in the public client directory.');
-  const api = createLocalApi({ ...apiOptions, productMode: 'local', dataDir: dataDirectory, integrationOptions: { ...apiOptions.integrationOptions, env } });
+  const api = createLocalApi({ ...apiOptions, testSupport: undefined, productMode: 'local', dataDir: dataDirectory, integrationOptions: { ...apiOptions.integrationOptions, env } });
   if (containsPath(root, realpathSync.native(dirname(api.dbPath)))) { api.close(); throw Error('Private Frondose data cannot resolve inside public client assets.'); }
   const server = createServer((req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Frame-Options', 'DENY');

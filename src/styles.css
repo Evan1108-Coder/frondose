@@ -4794,12 +4794,6 @@ dd {
   }
 }
 /* Account entry uses the same restrained panels and controls as the workspace. */
-.identity-screen { min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
-.identity-card { width: min(100%, 420px); padding: 32px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
-.identity-card h1 { margin: 24px 0 16px; font-size: 24px; }
-.identity-card form, .identity-setup form { display: grid; gap: 18px; }
-.identity-setup { padding: 24px; }
-.identity-setup p { color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
 .settings-panel.account-settings-panel { width: min(100%, 720px); padding: 28px 32px 32px; }
 .settings-panel.account-settings-panel h2 { margin: 0 0 10px; font-size: 18px; line-height: 1.35; }
 .settings-panel.account-settings-panel p { max-width: 65ch; margin: 0 0 26px; }
