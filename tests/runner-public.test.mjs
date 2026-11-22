@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 
 const PUBLIC_ORIGIN = 'https://frondose.example';
 const fixtureEncryptionKey = Buffer.alloc(32, 19).toString('base64');

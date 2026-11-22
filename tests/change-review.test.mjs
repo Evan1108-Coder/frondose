@@ -9,7 +9,7 @@ import { parsePatch, textPatch, foldRows, hideWhitespaceChanges, fileKind, patch
 import { createWorkbenchService } from '../server/workbench-service.mjs';
 import { createChangeReviewService } from '../server/change-review-service.mjs';
 import { createProviderAdapter } from '../server/connectors/adapters.mjs';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 import { createServer } from 'node:http';
 import { parsePage, pageHash } from '../src/lib/navigation.js';
 

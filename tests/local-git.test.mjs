@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import test from 'node:test';
 import { createDirectoryWorkspaceService } from '../server/directory-workspace.mjs';
 import { createLocalGitService } from '../server/local-git.mjs';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 import { resolveRunnerExecutable } from '../server/runner-process.mjs';
 import { githubRepositoryFromRemote, localGitApiPath, localGitSetupPrompt, localGithubReadFailure } from '../src/lib/local-git.js';
 
