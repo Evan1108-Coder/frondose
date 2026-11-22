@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import service from '../desktop/update-service.cjs';
 import build from '../desktop/release-build.cjs';
 import signature from '../desktop/release-signature.cjs';
-import { reviewTarget } from '../scripts/publish-desktop-release.mjs';
+import { reviewTarget, signLinuxManifest } from '../scripts/publish-desktop-release.mjs';
 
 function makeKeys() {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
@@ -90,5 +90,27 @@ test('release manifest must match the exact binary and cannot reference third-pa
     await assert.rejects(reviewTarget(dir, 'linux-x64', '0.1.20', JSON.parse), /size\/hash/);
     await save({ ...manifest, files: [{ ...manifest.files[0], url: 'https://elsewhere.example/' + binary }] });
     await assert.rejects(reviewTarget(dir, 'linux-x64', '0.1.20', JSON.parse), /relative file/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('the publisher accepts a verified combined Linux manifest but signs only the AppImage', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'release-linux-multi-target-'));
+  const version = '0.1.20';
+  const record = (url, bytes) => ({ url, size: Buffer.byteLength(bytes), sha512: createHash('sha512').update(bytes).digest('base64') });
+  const image = record('Frondose-0.1.20.AppImage', 'image fixture');
+  const deb = record('frondose_0.1.20_amd64.deb', 'deb fixture');
+  try {
+    await writeFile(join(dir, image.url), 'image fixture');
+    await writeFile(join(dir, deb.url), 'deb fixture');
+    await writeFile(join(dir, 'latest-linux.yml'), JSON.stringify({ version, files: [deb, image], path: deb.url, sha512: deb.sha512 }));
+    const plan = await reviewTarget(dir, 'linux-x64', version, JSON.parse);
+    assert.equal(plan.entries.length, 2, 'both manual downloads remain reviewed');
+    await signLinuxManifest(plan, JSON.stringify, { FRONDOSE_RELEASE_LINUX_SIGNING_KEY: keys.privateKey, FRONDOSE_RELEASE_LINUX_PUBLIC_KEY: keys.publicKey });
+    const signed = JSON.parse(await readFile(plan.meta, 'utf8'));
+    assert.deepEqual(signed.files, [image]);
+    assert.equal(signed.path, image.url);
+    assert.equal(signed.sha512, image.sha512);
+    assert.equal(signature.verifyLinuxRelease(signed, signature.verificationKey(keys.publicKey)), true);
+    assert.equal((await reviewTarget(dir, 'linux-x64', version, JSON.parse)).entries.length, 2);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

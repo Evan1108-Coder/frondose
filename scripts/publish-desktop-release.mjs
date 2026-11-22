@@ -64,8 +64,16 @@ export async function reviewTarget(dir, target, version, parse) {
   return { entries: [...entries.values()], meta, manifest: contract.manifest, info: manifest };
 }
 
-async function signLinuxManifest(plan, dump, env = process.env) {
-  const signed = releaseSignature.signLinuxRelease(plan.info, {
+export async function signLinuxManifest(plan, dump, env = process.env) {
+  // electron-builder merges the AppImage and DEB into latest-linux.yml.
+  // reviewTarget verifies every listed file first. Publish only the verified
+  // AppImage in the signed update feed; the DEB remains a manual download.
+  const appImages = plan.info.files.filter(file => file.url.endsWith('.AppImage'));
+  if (appImages.length !== 1) throw Error('Expected exactly one verified AppImage update.');
+  const { url, size, sha512 } = appImages[0];
+  const signed = releaseSignature.signLinuxRelease({
+    version: plan.info.version, files: [{ url, size, sha512 }], path: url, sha512,
+  }, {
     privateKey: env.FRONDOSE_RELEASE_LINUX_SIGNING_KEY,
     publicKey: env.FRONDOSE_RELEASE_LINUX_PUBLIC_KEY,
   });
