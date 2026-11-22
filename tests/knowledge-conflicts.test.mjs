@@ -12,7 +12,7 @@ import { installWorkflow } from '../server/workflow-service.mjs';
 import { installSkills } from '../server/skills-service.mjs';
 import { installWorkspaceFeatures } from '../server/workspace-features.mjs';
 import { installKnowledgeConflicts, knowledgeConflictRoute, getKnowledgeConflictWarnings } from '../server/knowledge-conflicts.mjs';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 
 const time = '2026-09-24T12:00:00.000Z';
 function fixture(t) {

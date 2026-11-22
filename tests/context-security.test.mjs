@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { createLocalApi } from '../server/local-api.mjs';
+import { createLocalApi } from './fixtures/legacy-account-api.mjs';
 import { getInspection, captureRunContext } from '../server/run-context-store.mjs';
 import { captureSourceAccess, assertSourceAccess } from '../server/context-source-access.mjs';
 

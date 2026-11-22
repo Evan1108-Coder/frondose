@@ -1,8 +1,13 @@
 # Prototype Instructions
 
+The desktop app and downloads are account-free. Keep the local profile, records,
+and optional provider sign-ins; do not reintroduce Frondose identity or hosted signup.
+Use the approved `public/brand/frondose-frond-icon.png` artwork and generated lockups
+in all public surfaces. Preserve historical asset URLs as compatibility aliases.
+
 October 20 rebrand supersedes prior product naming: **Frondose** replaces Talvori
-and Rumbo. Preserve features and user-authored content, use an F monogram, and
-keep old URLs, cookies, archives, saved field identities and operator settings
+and Rumbo. Preserve features and user-authored content, and
+keep old URLs, archives, saved field identities and operator settings
 compatible. `FRONDOSE_` settings take precedence over `TALVORI_`, then `RUMBO_`,
 including explicitly empty values. Never move an existing private database.
 

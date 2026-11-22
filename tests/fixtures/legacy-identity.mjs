@@ -1,6 +1,6 @@
 import { randomBytes, createHash, scrypt as derive, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import { createGovernanceService, GOVERNANCE_RANKS } from './governance-service.mjs';
+import { createGovernanceService, GOVERNANCE_RANKS } from '../../server/governance-service.mjs';
 
 const scrypt = promisify(derive);
 const digest = value => createHash('sha256').update(value).digest('hex');
