@@ -11,11 +11,17 @@ test('local history API defaults off, saves only consent, and resets its service
   const api = createLocalApi({ dataDir: directory, seedMode: 'demo', productMode: 'local', integrationOptions: { autoDetect: false, probeIntervalMs: 0, env: { HOME: directory } } });
   const server = createServer((req, res) => void api.handle(req, res));
   try {
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
     const workspaceId = api.snapshot().workspaces[0].id;
     const base = `http://127.0.0.1:${server.address().port}/api/local-session-history`;
     const call = async (action = '', body) => {
-      const response = await fetch(`${base}${action}?workspace_id=${workspaceId}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
+      const response = await fetch(`${base}${action}?workspace_id=${workspaceId}`, {
+        // Each step is a separate request; don't reuse a socket across the
+        // database reset or leave an idle connection in fixture teardown.
+        signal: AbortSignal.timeout(15000),
+        headers: { Connection: 'close', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
+      });
       return { status: response.status, payload: await response.json() };
     };
     const initial = await call(); assert.equal(initial.status, 200); assert.equal(initial.payload.result.enabled, false); assert.equal(initial.payload.result.indexed, 0);
@@ -27,5 +33,11 @@ test('local history API defaults off, saves only consent, and resets its service
     assert.equal((await call('/settings', { enabled: false, allow_all: false, confirmed: true })).status, 200);
     api.reset();
     const afterReset = await call(); assert.equal(afterReset.status, 200); assert.equal(afterReset.payload.result.enabled, false); assert.equal(afterReset.payload.result.indexed, 0);
-  } finally { await new Promise(resolve => server.close(resolve)); api.close(); await rm(directory, { recursive: true, force: true }); }
+  } finally {
+    const stopped = new Promise(resolve => server.close(resolve));
+    server.closeAllConnections();
+    await stopped;
+    api.close();
+    await rm(directory, { recursive: true, force: true, maxRetries: 5 });
+  }
 });
