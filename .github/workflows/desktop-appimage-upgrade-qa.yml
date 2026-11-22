@@ -1,0 +1,75 @@
+name: AppImage update and reopen QA
+on:
+  push:
+    branches: [testing-public-release]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  updater-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - run: node --test tests/desktop-updates.test.mjs tests/desktop-public-release.test.mjs
+  upgrade:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    env:
+      FRONDOSE_RELEASE_BUILD: '1'
+      FRONDOSE_RELEASE_FEED_URL: https://updates.frondose.test:18443/
+      FRONDOSE_RELEASE_DOWNLOADS_URL: https://updates.frondose.test:18443/
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Select the Linux native package for this disposable checkout
+        run: |
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("config/desktop-target.json", JSON.stringify({platform:"linux",branch:"master-linux"}))'
+      - run: npm ci
+      - run: npm run build
+      - name: Build two isolated update-enabled AppImages
+        run: |
+          FRONDOSE_DESKTOP_BUILD_VERSION=0.90.1 FRONDOSE_DESKTOP_OUTPUT_DIR=dist-desktop-qa-old npm run desktop:dist
+          FRONDOSE_DESKTOP_BUILD_VERSION=0.90.2 FRONDOSE_DESKTOP_OUTPUT_DIR=dist-desktop-qa-new npm run desktop:dist
+          for age in old new; do
+            mkdir "release-qa-$age"
+            cp dist-desktop-qa-"$age"/Frondose*.AppImage dist-desktop-qa-"$age"/frondose*.deb dist-desktop-qa-"$age"/latest-linux.yml "release-qa-$age/"
+          done
+          node scripts/publish-desktop-release.mjs review release-qa-old linux-x64 0.90.1
+          node scripts/publish-desktop-release.mjs review release-qa-new linux-x64 0.90.2
+      - name: Trust a temporary TLS root for the disposable test feed
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libfuse2 libnss3-tools xdotool lsof
+          test -c /dev/fuse
+          umask 077
+          cd "$RUNNER_TEMP"
+          openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 1 -keyout frondose-qa-ca.key -out frondose-qa-ca.pem -subj '/CN=Frondose disposable update QA CA' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign'
+          openssl req -new -nodes -newkey rsa:2048 -keyout frondose-qa-server.key -out frondose-qa-server.csr -subj '/CN=updates.frondose.test'
+          printf '%s\n' 'subjectAltName=DNS:updates.frondose.test' 'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' > frondose-qa-server.ext
+          openssl x509 -req -in frondose-qa-server.csr -CA frondose-qa-ca.pem -CAkey frondose-qa-ca.key -CAcreateserial -out frondose-qa-server.pem -days 1 -sha256 -extfile frondose-qa-server.ext
+          printf '127.0.0.1 updates.frondose.test\n' | sudo tee -a /etc/hosts
+          sudo install -m 644 frondose-qa-ca.pem /usr/local/share/ca-certificates/frondose-qa-ca.crt
+          sudo update-ca-certificates
+          mkdir -p "$HOME/.pki/nssdb"
+          if [[ ! -f "$HOME/.pki/nssdb/cert9.db" ]]; then certutil -N --empty-password -d "sql:$HOME/.pki/nssdb"; fi
+          certutil -A -d "sql:$HOME/.pki/nssdb" -n 'Frondose disposable QA CA' -t 'C,,' -i frondose-qa-ca.pem
+      - name: Click update, verify the relaunched app and saved project
+        run: |
+          xvfb-run -a node scripts/desktop-appimage-upgrade-qa.mjs \
+            dist-desktop-qa-old dist-desktop-qa-new "$RUNNER_TEMP/frondose-qa-server.pem" "$RUNNER_TEMP/frondose-qa-server.key"

@@ -34,6 +34,8 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
     native.autoInstallOnAppQuit = false;
     native.allowDowngrade = false;
     native.allowPrerelease = false;
+    // A public feed needs no per-install identifier or provider credentials.
+    native.requestHeaders = { 'x-user-staging-id': '' };
     native.on('error', () => {}); // operation promises expose sanitized errors in the UI
     native.on('download-progress', info => progressCallback?.(info.percent));
   }
@@ -104,7 +106,20 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
   };
   service.onState(value => { lastState = value; send('update-state', state()); });
   await service.init();
-  const resumed = () => { void service.tick({ resumed: true }); };
+  // Use the existing unref'd scheduler but make public checks infrequent.
+  // Jitter spreads checks from users who open their app around the same time.
+  const publicCheckInterval = 4 * 60 * 60 * 1000 + Math.floor(Math.random() * 15 * 60 * 1000);
+  let nextPublicCheck = 0, publicChecking = false;
+  async function pollPublic({ manual = false } = {}) {
+    if (!native || !manual && (publicChecking || Date.now() < nextPublicCheck
+      || !['idle', 'available', 'error'].includes(service.snapshot().phase))) return;
+    if (publicChecking && manual) return service.check();
+    publicChecking = true;
+    nextPublicCheck = Date.now() + publicCheckInterval;
+    try { await service.check({ background: !manual }); }
+    finally { publicChecking = false; }
+  }
+  const resumed = () => { void service.tick({ resumed: true }).then(() => pollPublic()); };
   powerMonitor.on('resume', resumed);
   let localFingerprint, polling = false;
   async function pollLocal() {
@@ -115,7 +130,7 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
       if (fingerprint !== localFingerprint) { localFingerprint = fingerprint; await service.check(); }
     } finally { polling = false; }
   }
-  timer = setInterval(() => { void service.tick(); void pollLocal(); }, local ? 3000 : 15000); timer.unref?.();
+  timer = setInterval(() => { void service.tick().then(() => pollPublic()); void pollLocal(); }, local ? 3000 : 15000); timer.unref?.();
   return {
     state,
     async command(payload) {
@@ -136,14 +151,14 @@ async function createNativeUpdater({ app, origin, window: getWindow, browserHost
           return { result, state: state() };
         } finally { cleanupBusy = false; }
       }
-      if (payload?.operation === 'check') { cleanup.clear(); await service.check(); return state(); }
+      if (payload?.operation === 'check') { cleanup.clear(); if (native) await pollPublic({ manual: true }); else await service.check(); return state(); }
       if (payload?.operation === 'choose') { cleanup.clear(); await service.choose(payload.choice, payload.version); return state(); }
       if (payload?.operation === 'downloads' && settings.downloadsUrl) return { url: settings.downloadsUrl };
       throw Error('Unsupported update operation.');
     },
     safety(payload) { if (safetyRequest && payload?.nonce === safetyRequest.nonce) safetyRequest.finish(payload); return { received: true }; },
     critical() { return ['preparing', 'installing'].includes(lastState?.phase); },
-    start() { send('update-state', state()); if (local) void pollLocal(); else if (configured) void service.check(); },
+    start() { send('update-state', state()); if (local) void pollLocal(); else if (configured) void pollPublic(); },
     close() { cleanup.clear(); clearInterval(timer); powerMonitor.removeListener('resume', resumed); service.close(); },
   };
 }

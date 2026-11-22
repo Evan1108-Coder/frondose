@@ -51,19 +51,29 @@ function createDesktopUpdateService({ adapter, configured = false, reason = 'Rel
     } catch { configured = false; change({ phase: 'unconfigured', reason: 'Update preferences could not be read safely. No update will run.' }); }
     return snapshot();
   }
-  async function check() {
-    if (!configured || closed) return snapshot();
+  async function check({ background = false } = {}) {
+    if (!configured || closed || background && (operation || !['idle', 'available', 'error'].includes(state.phase))) return snapshot();
     return run(async () => {
       const epoch = ++generation;
-      change({ phase: 'checking', error: null, blockers: [] });
-      const info = await adapter.check();
+      if (!background) change({ phase: 'checking', error: null, blockers: [] });
+      let release;
+      try {
+        const info = await adapter.check();
+        release = info ? publicRelease(info) : null;
+      } catch (error) {
+        // An offline machine or an unavailable feed should not interrupt work
+        // or erase the last usable offer. Manual checks still surface errors.
+        if (background) return snapshot();
+        throw error;
+      }
       if (closed || epoch !== generation) return snapshot();
-      if (!info) { change({ phase: 'idle', release: null, scheduledAt: null, progress: null }); return snapshot(); }
-      const release = publicRelease(info);
-      if (!newerStableVersion(release.version, version)) { change({ phase: 'idle', release: null, scheduledAt: null }); return snapshot(); }
+      if (!release || !newerStableVersion(release.version, version)) {
+        change({ phase: 'idle', release: null, scheduledAt: null, dismissed: false, progress: null, error: null, blockers: [] });
+        return snapshot();
+      }
       const same = receipt?.version === release.version, scheduled = same && receipt.choice === 'tonight';
       const missed = scheduled && receipt.scheduledAt <= now();
-      change({ release, progress: null, phase: missed ? 'blocked' : scheduled ? 'scheduled' : 'available', scheduledAt: scheduled && !missed ? receipt.scheduledAt : null, dismissed: Boolean(same && (receipt.choice === 'later' || scheduled)), error: missed ? 'The scheduled time passed while Frondose was closed. Choose Install now when you are ready.' : null });
+      change({ release, progress: null, blockers: [], phase: missed ? 'blocked' : scheduled ? 'scheduled' : 'available', scheduledAt: scheduled && !missed ? receipt.scheduledAt : null, dismissed: Boolean(same && (receipt.choice === 'later' || scheduled)), error: missed ? 'The scheduled time passed while Frondose was closed. Choose Install now when you are ready.' : null });
       return snapshot();
     });
   }

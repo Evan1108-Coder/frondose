@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildNativeTools } from './build-native-tools.mjs';
+import releaseTools from '../desktop/release-build.cjs';
 
 export const DESKTOP_PACKAGE_INPUTS = Object.freeze([
   'desktop', 'server', 'src/lib', 'scripts', 'third-party', 'config/electron-builder.cjs',
@@ -119,6 +120,7 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
   root = await realpath(root);
   const desktopTarget = JSON.parse(await readFile(join(root, 'config/desktop-target.json'), 'utf8'));
   args = desktopBuildArguments(args, desktopTarget);
+  const releaseConfig = releaseTools.releaseBuild(env, desktopTarget.platform, args);
   const output = desktopOutputDirectory(root, env.FRONDOSE_DESKTOP_OUTPUT_DIR);
   const clientDirectory = desktopClientDirectory(root, env.FRONDOSE_DESKTOP_CLIENT_DIR);
   if ((await lstat(clientDirectory)).isSymbolicLink()) throw Error('Desktop client input must not be a symbolic link.');
@@ -141,6 +143,7 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
   try {
     console.log('Preparing a private desktop staging application. The checkout and local database are not packaging inputs.');
     for (const input of DESKTOP_PACKAGE_INPUTS) await copyPackageInput(input === 'dist/client' ? clientDirectory : join(root, input), join(stage, input));
+    if (releaseConfig) await writeFile(join(stage, 'desktop/release-config.json'), JSON.stringify(releaseConfig, null, 2) + '\n');
     if (buildVersion) {
       const lockPath = join(stage, 'package-lock.json');
       const lock = JSON.parse(await readFile(lockPath, 'utf8'));
@@ -154,7 +157,8 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
     const childEnv = packagingEnvironment(env, process.execPath, tools);
     childEnv.npm_execpath = npm;
     await run(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: stage, env: childEnv });
-    await run(process.execPath, [cli, '--projectDir', stage, '--config', join(stage, 'config/electron-builder.cjs'), '--config.directories.output', output, '--config.electronVersion', electronVersion, ...args], { cwd: stage, env: childEnv });
+    // This wrapper never publishes. Only the separately approved CI job has R2 permissions.
+    await run(process.execPath, [cli, '--projectDir', stage, '--config', join(stage, 'config/electron-builder.cjs'), '--config.directories.output', output, '--config.electronVersion', electronVersion, '--publish', 'never', ...args], { cwd: stage, env: childEnv });
     await writeFile(join(output, 'frondose-build.json'), JSON.stringify({ version: buildVersion || packageJson.version, platform: desktopTarget.platform, targetBranch: desktopTarget.branch, architecture: process.arch, electronVersion, nodeVersion: process.version, nativeRebuild: 'isolated-staging-only', inputs: [...DESKTOP_PACKAGE_INPUTS], lockSha256: createHash('sha256').update(await readFile(join(stage, 'package-lock.json'))).digest('hex') }, null, 2) + '\n');
     console.log('Desktop package built. Root Node-native dependencies and local workspace data were not rebuilt or copied.');
   } catch (error) { failure = error; }

@@ -1,0 +1,203 @@
+name: Desktop public release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version (no v prefix)'
+        required: true
+        type: string
+      mac_sha:
+        description: 'Reviewed master-mac HEAD SHA'
+        required: true
+        type: string
+      windows_sha:
+        description: 'Reviewed master-windows HEAD SHA'
+        required: true
+        type: string
+      linux_sha:
+        description: 'Reviewed master-linux HEAD SHA'
+        required: true
+        type: string
+      publish:
+        description: 'Promote approved packages to the stable feed'
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: frondose-desktop-public-release
+  cancel-in-progress: false
+jobs:
+  package:
+    if: github.ref == 'refs/heads/master-mac'
+    name: Build ${{ matrix.target }}
+    environment: ${{ matrix.environment }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            arch: arm64
+            branch: master-mac
+            runner: macos-15
+            environment: desktop-sign-mac
+          - target: mac-x64
+            arch: x64
+            branch: master-mac
+            runner: macos-15-intel
+            environment: desktop-sign-mac
+          - target: windows-x64
+            arch: x64
+            branch: master-windows
+            runner: windows-latest
+            environment: desktop-sign-windows
+          - target: linux-x64
+            arch: x64
+            branch: master-linux
+            runner: ubuntu-22.04
+            environment: desktop-build-linux
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ matrix.branch }}
+          persist-credentials: false
+      - name: Verify reviewed source and release version
+        shell: bash
+        env:
+          MAC_SHA: ${{ inputs.mac_sha }}
+          WINDOWS_SHA: ${{ inputs.windows_sha }}
+          LINUX_SHA: ${{ inputs.linux_sha }}
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          case "$TARGET" in
+            mac-*) reviewed="$MAC_SHA" ;;
+            windows-x64) reviewed="$WINDOWS_SHA" ;;
+            linux-x64) reviewed="$LINUX_SHA" ;;
+            *) exit 1 ;;
+          esac
+          [[ "$reviewed" =~ ^[a-f0-9]{40}$ && "$(git rev-parse HEAD)" == "$reviewed" ]]
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$VERSION" != 0.0.0 ]]
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --test-timeout=180000
+      - name: Build platform release (never uploads)
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+          TARGET: ${{ matrix.target }}
+          FRONDOSE_UPDATES_ORIGIN: ${{ vars.FRONDOSE_UPDATES_ORIGIN }}
+          FRONDOSE_RELEASE_DOWNLOADS_URL: ${{ vars.FRONDOSE_DOWNLOADS_URL }}
+          FRONDOSE_RELEASE_MAC_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          FRONDOSE_RELEASE_WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+          FRONDOSE_WIN_SIGN_ENDPOINT: ${{ vars.WINDOWS_SIGN_ENDPOINT }}
+          FRONDOSE_WIN_SIGN_ACCOUNT: ${{ vars.WINDOWS_SIGN_ACCOUNT }}
+          FRONDOSE_WIN_SIGN_PROFILE: ${{ vars.WINDOWS_SIGN_PROFILE }}
+          FRONDOSE_DESKTOP_BUILD_VERSION: ${{ inputs.version }}
+          FRONDOSE_RELEASE_BUILD: '1'
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          [[ "$(node -p 'process.arch')" == "$ARCH" ]]
+          [[ "$FRONDOSE_UPDATES_ORIGIN" =~ ^https://[a-zA-Z0-9.-]+/?$ ]]
+          export FRONDOSE_RELEASE_FEED_URL="${FRONDOSE_UPDATES_ORIGIN%/}/stable/$TARGET/"
+          if [[ "$TARGET" == mac-* ]]; then
+            umask 077
+            export APPLE_API_KEY="$RUNNER_TEMP/frondose-notary.p8"
+            node --input-type=module -e 'import {writeFileSync} from "node:fs"; if (!process.env.APPLE_API_KEY_B64) throw Error("Missing notarization key"); writeFileSync(process.env.APPLE_API_KEY, Buffer.from(process.env.APPLE_API_KEY_B64,"base64"), {mode: 0o600,flag:"wx"})'
+            trap 'rm -f -- "$APPLE_API_KEY"' EXIT
+            unset APPLE_API_KEY_B64
+          fi
+          npm run desktop:dist -- "--$ARCH"
+      - name: Verify macOS signature and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TEAM: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          shopt -s nullglob
+          apps=(dist-desktop/mac*/Frondose.app)
+          [[ ${#apps[@]} == 1 ]]
+          codesign --verify --deep --strict "${apps[0]}"
+          codesign -dv --verbose=4 "${apps[0]}" 2>&1 | grep -Fx "TeamIdentifier=$TEAM"
+          xcrun stapler validate "${apps[0]}"
+          spctl --assess --type execute "${apps[0]}"
+      - name: Verify Windows Authenticode signature
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+        run: |
+          $file = Get-Item -LiteralPath "dist-desktop/Frondose Setup $env:VERSION.exe"
+          $sig = Get-AuthenticodeSignature -LiteralPath $file.FullName
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.GetNameInfo('SimpleName',$false) -cne $env:PUBLISHER) {
+            throw 'Installer does not have the expected, trusted Authenticode publisher.'
+          }
+      - name: Smoke-test the packaged app
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            xvfb-run -a node scripts/desktop-smoke.mjs --packaged
+          else
+            node scripts/desktop-smoke.mjs --packaged
+          fi
+      - name: Verify and collect only the public release files
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          shopt -s nullglob
+          mkdir reviewed-release
+          files=(dist-desktop/Frondose*.{exe,AppImage,dmg,zip,blockmap} dist-desktop/frondose*.deb dist-desktop/latest*.yml)
+          cp -- "${files[@]}" reviewed-release/
+          node scripts/publish-desktop-release.mjs review reviewed-release "$TARGET" "$VERSION"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}
+          path: reviewed-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.ref == 'refs/heads/master-mac' && inputs.publish == true
+    needs: package
+    runs-on: ubuntu-22.04
+    environment: desktop-release-production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: release-input
+          digest-mismatch: error
+      - name: Publish reviewed artifacts and promote manifests last
+        env:
+          VERSION: ${{ inputs.version }}
+          FRONDOSE_UPDATES_ORIGIN: ${{ vars.FRONDOSE_UPDATES_ORIGIN }}
+          R2_ENDPOINT: ${{ vars.R2_ENDPOINT }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          AWS_PAGER: ''
+        run: node scripts/publish-desktop-release.mjs publish release-input "$VERSION"

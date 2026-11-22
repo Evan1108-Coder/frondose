@@ -1,6 +1,8 @@
 'use strict';
 const { releaseConfiguration } = require('../desktop/update-service.cjs');
 const release = releaseConfiguration(require('../desktop/release-config.json'));
+const { windowsSigning } = require('../desktop/release-build.cjs');
+const signing = release.feedUrl && release.windowsPublisherName && process.platform === 'win32' ? windowsSigning(process.env, release) : null;
 module.exports = {
   appId: 'app.frondose.desktop', productName: 'Frondose',
   protocols: [{ name: 'Frondose navigation', schemes: ['frondose'] }],
@@ -9,18 +11,22 @@ module.exports = {
   files: ['desktop/**', 'server/**', 'src/lib/**', 'scripts/*.mjs', 'third-party/**', 'public/brand/frondose-frond-icon.png', 'dist/client/**', 'package.json', '!**/*.test.*', '!desktop/open-in-apps.cjs', '!desktop/editor-tab-setup.cjs', '!node_modules/@anthropic-ai/claude-agent-sdk-*/**'],
   asarUnpack: ['**/*.node', '**/node-pty/**', 'desktop/bin/**'],
   npmRebuild: true,
+  ...(release.feedUrl && process.platform !== 'linux' ? { forceCodeSigning: true } : {}),
   icon: 'public/brand/frondose-frond.png',
   // A sealed ad-hoc local signature enables macOS notification identity without
   // accessing signing credentials. This is not Developer ID/notarization.
-  mac: { icon: 'desktop/assets/mac/Frondose.icns', target: ['dmg', 'zip'], category: 'public.app-category.productivity', identity: '-', extendInfo: {
+  mac: { icon: 'desktop/assets/mac/Frondose.icns', target: ['dmg', 'zip'], category: 'public.app-category.productivity',
+    ...(release.feedUrl ? { hardenedRuntime: true, notarize: true } : { identity: '-' }), extendInfo: {
     NSMicrophoneUsageDescription: 'Frondose uses your microphone only while you explicitly record dictation.',
     NSSpeechRecognitionUsageDescription: 'Frondose transcribes dictation on this Mac when an on-device language is available.',
     NSAppleEventsUsageDescription: 'Frondose operates only the applications you explicitly select for Computer Use.',
     CFBundleDocumentTypes: [{ CFBundleTypeName: 'Frondose text preview', CFBundleTypeRole: 'Viewer', LSHandlerRank: 'Alternate', CFBundleTypeExtensions: ['md', 'markdown', 'txt', 'csv', 'tsv'] }],
   } },
-  win: { target: ['nsis', 'zip'], ...(release.windowsPublisherName ? { publisherName: release.windowsPublisherName } : {}) },
+  // A release ZIP must not inherit the NSIS updater. Keep the unsigned local
+  // packaging options; production initially offers only the signed installer.
+  win: signing ? { target: ['nsis'], azureSignOptions: signing } : { target: ['nsis', 'zip'] },
   linux: { target: ['AppImage', 'deb'], category: 'Development', maintainer: 'Frondose <270086281+Evan1108-Coder@users.noreply.github.com>' },
   // Signed installers and update distribution require owner-provisioned
-  // certificates and release infrastructure; no Orca update service is used.
+  // certificates and release infrastructure.
   publish: release.feedUrl ? { provider: 'generic', url: release.feedUrl } : null,
 };
