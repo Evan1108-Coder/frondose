@@ -1,5 +1,5 @@
 import {
-  Import, ShieldKeyhole, ShieldPlus, ClipboardClock, Languages, FolderCheck, Trash2, SpellCheck2,
+  Import, ShieldKeyhole, ShieldPlus, ClipboardClock, ClipboardType, Languages, FolderCheck, Trash2, SpellCheck2,
   FileClock, CircleFadingArrowUp, PanelsRightBottom, ArrowDownToLine, CircleArrowDown, ListEnd, BadgePlus,
   GalleryVerticalEnd, BrainCircuit, MousePointerClick, AudioLines, TabletSmartphone, Container, GitCompare, FileScan,
   TextCursor, FolderInput, BringToFront, ListTree, GlobeLock, PanelTopClose, Pilcrow, SquareChevronRight, Paperclip,
@@ -15,6 +15,7 @@ import { DOC_AI_ARTICLE_ICONS } from './docs-ai-icons.js';
 // Explicit editorial choices: each article keeps its own semantic visual identity.
 // Named imports keep unused library geometry out of the Docs bundle.
 export const DOC_ARTICLE_ICONS = Object.freeze({
+  'dated-support-logs':{iconName:'ClipboardType',iconNode:ClipboardType},
   'organized-frond-menu':{iconName:'ListCollapse',iconNode:ListCollapse},
   'release-candidate-fixes':{iconName:'BadgePlus',iconNode:BadgePlus},
   'review-update-cleanup':{iconName:'ListEnd',iconNode:ListEnd},

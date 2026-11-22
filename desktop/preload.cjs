@@ -15,12 +15,6 @@ contextBridge.exposeInMainWorld('frondoseDesktop', Object.freeze({
     text: payload?.text, locale: payload?.locale, appId: payload?.appId, windowId: payload?.windowId, direction: payload?.direction,
   }) }),
   appInfo: () => invoke('app-info'),
-  reports: Object.freeze({
-    status: () => invoke('report-status'),
-    send: payload => invoke('report-send', {
-      requestId: payload?.requestId, message: payload?.message, email: payload?.email, files: payload?.files,
-    }),
-  }),
   presence: Object.freeze({
     status: () => invoke('presence', { operation: 'status' }),
     set: (key, value) => invoke('presence', { operation: 'set', key, value }),

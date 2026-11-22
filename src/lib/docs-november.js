@@ -1,6 +1,15 @@
 // Dated local development milestones; not fabricated public release dates.
 export const DOC_NOVEMBER = [
   {
+    id:'dated-support-logs',group:'updates',date:'2026-11-22',
+    title:'Copy a day of support logs',
+    description:'Find the date an issue happened and share the recorded actions and outcomes.',
+    sections:[
+      {id:'choose-day',title:'Review the day an issue happened',paragraphs:['Help → Contact us shows the current email address and links to Support logs in Settings. Choose a date and copy or download the log for that day. Frondose does not send an email for you.']},
+      {id:'context',title:'Share only what you review',paragraphs:['Up to 30 days of support history stay on this computer. Names, paths, credentials, file contents and terminal output are excluded. Chat can add a bounded excerpt after you review it; nothing is sent just by opening or adding the log.']},
+    ],related:['help-feedback','workspace-activity'],
+  },
+  {
     id:'organized-frond-menu',group:'updates',date:'2026-11-21',
     title:'More controls in the frond menu',
     description:'Jump to your work, see agent activity and change desktop settings from the system menu.',

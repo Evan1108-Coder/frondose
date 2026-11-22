@@ -1,9 +1,10 @@
 import { LOCAL_SIDEBAR_PAGES } from './local-navigation.js';
+import { SUPPORT_LOG_SECTION } from './support-logs.js';
 const isLocalProduct = data => data?.meta?.product?.edition === 'local';
 
 const LOCAL_GROUPS = [
   ['This workspace', [['onboarding-checklist', 'Onboarding Checklist'], ['cli-agents', 'CLI Agents'], ['workspace-activity', 'Workspace activity']]],
-  ['This computer', [['local-installation', 'Local installation'], ['app-updates', 'App updates'], ['integrations', 'Integrations'], ['computer-use', 'Computer Use'], ['dictation', 'Dictation'], ['emulators', 'Emulators & environments']]],
+  ['This computer', [['local-installation', 'Local installation'], ['app-updates', 'App updates'], [SUPPORT_LOG_SECTION, 'Support logs'], ['integrations', 'Integrations'], ['computer-use', 'Computer Use'], ['dictation', 'Dictation'], ['emulators', 'Emulators & environments']]],
   ['Personal', [['preferences', 'General'], ['languages', 'Languages'], ['profile', 'Profile'], ['appearance', 'Appearance'], ['workspace-tabs', 'Workspace tabs'], ['terminal', 'Terminal'], ['session-history', 'Session history search'], ['notifications', 'Notifications'], ['code-reviews', 'Code appearance'], ['field-defaults', 'Field defaults'], ['privacy', 'Privacy']]],
   ['Routes', [['route-labels', 'Labels'], ['route-templates', 'Templates'], ['route-workflow', 'Workflow']]],
   ['Projects', [['project-labels', 'Labels'], ['project-templates', 'Templates'], ['project-statuses', 'Statuses']]],
