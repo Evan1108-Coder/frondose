@@ -16,7 +16,7 @@ test('local retirement covers canonical pages and aliases, not real planning/rev
   for (const view of ['workspace', 'projects', 'tasks', 'docs', 'documents', 'library', 'teams', 'views', 'settings', 'starred']) assert.equal(isRetiredLocalPage(view), false);
   assert.equal(isRetiredLocalPage(null), false);
   assert.equal(isLocalNavigationItemAllowed(null), false);
-  assert.deepEqual(LOCAL_PRIMARY_NAV.map(item => item.id), ['workspace', 'projects', 'tasks', 'todos']);
+  assert.deepEqual(LOCAL_PRIMARY_NAV.map(item => item.id), ['workspace', 'projects', 'tasks', 'todos', 'work-plan']);
 });
 
 test('old agent/chat/session create and shortcut launchers cannot reintroduce local feature UI', () => {

@@ -1,5 +1,6 @@
 /** Every entry must link to an authored in-app Docs article. Newest first. */
 export const PRODUCT_UPDATES = Object.freeze([
+  Object.freeze({id:'work-plan-and-first-run',title:'Work Plan and a smoother first run',date:'2026-11-23',articleId:'work-plan-and-first-run'}),
   Object.freeze({id:'dated-support-logs',title:'Copy a day of support logs',date:'2026-11-22',articleId:'dated-support-logs'}),
   Object.freeze({id:'organized-frond-menu',title:'More controls in the frond menu',date:'2026-11-21',articleId:'organized-frond-menu',appVersion:'0.1.18'}),
   Object.freeze({id:'native-desktop-presence',title:'Frondose in the menu bar and system tray',date:'2026-11-21',articleId:'native-desktop-presence',appVersion:'0.1.17'}),

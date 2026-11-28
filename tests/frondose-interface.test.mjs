@@ -11,7 +11,7 @@ test('Updates keeps at most three newest entries and every shipped update opens 
   const entries = Array.from({ length: 5 }, (_, i) => ({ id: `${i}`, date: `2026-10-${String(i + 1).padStart(2, '0')}` }));
   assert.deepEqual(recentProductUpdates(entries).map(item => item.id), ['4', '3', '2']);
   for (const update of PRODUCT_UPDATES) assert.ok(DOC_ARTICLES.some(article => article.id === update.articleId && article.group === 'updates'));
-  assert.equal(PRODUCT_UPDATES[0].id, 'dated-support-logs');
+  assert.equal(PRODUCT_UPDATES[0].id, 'work-plan-and-first-run');
   assert.equal(PRODUCT_UPDATES.find(item => item.appVersion)?.id, 'organized-frond-menu');
   assert.equal(PRODUCT_UPDATES.find(item=>item.appVersion==='0.1.17')?.id, 'native-desktop-presence');
   assert.equal(PRODUCT_UPDATES.find(item=>item.appVersion==='0.1.16')?.id, 'release-candidate-fixes');

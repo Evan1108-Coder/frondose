@@ -14,8 +14,8 @@ import { localWorkspaceQuickAccess } from '../src/lib/local-settings-catalog.js'
 
 const source = name => readFileSync(new URL(`../${name}`,import.meta.url),'utf8');
 test('all useful local pages are offered without Docs or retired agent surfaces', () => {
-  assert.deepEqual(LOCAL_SIDEBAR_PAGES.map(page=>page.id),['workspace','projects','tasks','todos','starred','updates','library','documents','comments','views','memory','teams']);
-  assert.equal(new Set(LOCAL_SIDEBAR_PAGES.map(page=>page.id)).size,12);
+  assert.deepEqual(LOCAL_SIDEBAR_PAGES.map(page=>page.id),['workspace','projects','tasks','todos','work-plan','starred','updates','library','documents','comments','views','memory','teams']);
+  assert.equal(new Set(LOCAL_SIDEBAR_PAGES.map(page=>page.id)).size,13);
   for(const id of RETIRED_LOCAL_VIEWS)assert.equal(isLocalSidebarItemAllowed(id),false,id);
   for(const id of ['docs','settings','focus'])assert.equal(isLocalSidebarItemAllowed(id),false,id);
   for(const id of ['custom:research','entity:projects:p1','entity:teams:t1'])assert.equal(isLocalSidebarItemAllowed(id),true,id);
