@@ -1,6 +1,16 @@
 // Dated local development milestones; not fabricated public release dates.
 export const DOC_NOVEMBER = [
   {
+    id:'work-plan-and-first-run',group:'updates',date:'2026-11-23',
+    title:'Work Plan and a smoother first run',
+    description:'Decide what to tackle first, and see what changed when setting up Frondose.',
+    sections:[
+      {id:'plan',title:'Plan active To Dos and Routes',paragraphs:['Open Work Plan beside To Do List or inside an Area. Active To Dos appear automatically; enable Include open Routes to see those too. Drag cards into Do first, In parallel, Tomorrow or Later. Use the move menu and up/down controls without dragging. Tomorrow records the next date when you place the card. Move a card back to Unplanned to take it out of the plan. Workspace and Area plans keep their own order. Finished or archived work stays in the original history and is not shown in Work Plan. Planning never runs an agent, changes a task’s status, or edits its deadline.']},
+      {id:'onboarding',title:'Set up Frondose from scratch',paragraphs:['Frondose opens in dark mode. Your name sets both initial display names, which you can change later in Settings. New installations see an optional questionnaire between workspace creation and CLI settings. You can enter your company or organization, select an example, or leave it blank. Answers stay on the device; there is no link to a hosted inbox and no customer account. Once all checklist steps are done or skipped, the item leaves the Settings sidebar. Finishing elsewhere shows a bottom-right link to the completed checklist.']},
+      {id:'details',title:'More room in the desktop UI',paragraphs:['The To Do save row stays separate from the scrollable fields, Explorer details start folded, Automations cards have more space, and dropdowns can be wider than their triggers.']},
+    ],related:['workspace-setup','to-do-list','local-automations'],appLink:{view:'work-plan',label:'Open Work Plan'},
+  },
+  {
     id:'dated-support-logs',group:'updates',date:'2026-11-22',
     title:'Copy a day of support logs',
     description:'Find the date an issue happened and share the recorded actions and outcomes.',

@@ -1,10 +1,10 @@
 const VIEWS = new Set([
-  "todos", "workspace", "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
+  "todos", "work-plan", "workspace", "overview", "rumbo-agent", "starred", "inbox", "projects", "tasks", "chats", "work", "memory",
   "agents", "connections", "settings", "teams", "focus", "workbench", "library", "operations", "documents", "comments", "views", "docs", "reader", "updates", "skills", "workflows",
 ]);
 const SCOPED_VIEWS = new Set(["tasks", "chats", "memory", "workbench", "library", "operations", "documents", "updates"]);
 const home = () => ({ view: "overview", id: null, projectId: null });
-const TEAM_SECTIONS = new Set(['overview', 'todos', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
+const TEAM_SECTIONS = new Set(['overview', 'todos', 'work-plan', 'routes', 'projects', 'agents', 'resources', 'documents', 'updates', 'people', 'settings']);
 const ASSISTANT_SECTIONS = new Set(['conversation', 'activity', 'scheduled']);
 const VIEW_ALIASES = { 'frondose-agent': 'rumbo-agent', 'talvori-agent': 'rumbo-agent', areas: 'teams', today: 'overview', conversations: 'chats', knowledge: 'library', runs: 'work' };
 

@@ -2,7 +2,7 @@ import { useLayoutEffect, useState } from "react";
 
 // Panels stay inside their owning dialog for focus containment, while fixed
 // placement lets them escape a scrolling form without getting clipped.
-export function usePopupPosition(open, anchor, { width, height = 320, portal = false } = {}) {
+export function usePopupPosition(open, anchor, { width, minWidth = 0, height = 320, portal = false } = {}) {
   const [position, setPosition] = useState(null);
   useLayoutEffect(() => {
     if (!open || !anchor.current) return;
@@ -15,7 +15,7 @@ export function usePopupPosition(open, anchor, { width, height = 320, portal = f
       const topEdge = viewport?.offsetTop ?? 0;
       const viewWidth = viewport?.width ?? window.innerWidth;
       const viewHeight = viewport?.height ?? window.innerHeight;
-      const panelWidth = Math.min(width ?? rect.width, viewWidth - 24);
+      const panelWidth = Math.max(0, Math.min(width ?? Math.max(rect.width, minWidth), viewWidth - 24));
       const below = topEdge + viewHeight - rect.bottom - 14;
       const above = rect.top - topEdge - 14;
       const upwards = below < height && above > below;
@@ -67,6 +67,6 @@ export function usePopupPosition(open, anchor, { width, height = 320, portal = f
       window.visualViewport?.removeEventListener("scroll", schedule);
       observer.disconnect();
     };
-  }, [open, anchor, width, height, portal]);
+  }, [open, anchor, width, minWidth, height, portal]);
   return position;
 }

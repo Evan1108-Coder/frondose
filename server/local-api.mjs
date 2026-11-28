@@ -49,6 +49,7 @@ import {createLocalAutomationService} from './local-cli-automations.mjs';
 import {createTodoService} from './local-todos.mjs';
 import { installWorkspaceActivity, recordWorkspaceActivity, readWorkspaceActivity, formatWorkspaceActivity } from './workspace-activity.mjs';
 import { classifySupportRequest, installSupportLogs, readSupportLogs, recordSupportEvent, supportRequestOutcome } from './support-logs.mjs';
+import { dispatchWorkPlan } from './work-plan.mjs';
 import { createFileCommentsService } from './file-comments.mjs';
 import { createDesktopUpdateGate } from './desktop-update-gate.mjs';
 import { authorizeNativeAgentBinding } from './native-agent-authorization.mjs';
@@ -1677,6 +1678,10 @@ export function createLocalApi({ dataDir, seedMode = 'clean', integrationOptions
         return filtered;
       };
       const body = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) ? await readBody(req, path === '/import' ? 25_000_000 : path === '/local-todos/uploads' ? 35_000_000 : path === '/workspace-agent-chat/decision' ? 18_000_000 : 1_000_000) : {};
+      if (path === '/work-plan') {
+        if (!product.local) return fail(res,404,'not_found','Work Plan is local-only.');
+        return send(res,200,{result:dispatchWorkPlan(db,{workspaceId:url.searchParams.get('workspace_id'),teamId:url.searchParams.get('team_id'),actor,method:req.method,input:body})});
+      }
       if (path === '/local-session-history' || path.startsWith('/local-session-history/')) {
         if (!product.local) return fail(res, 404, 'not_found', 'Native history search is available only in the local edition.');
         res.setHeader('Cache-Control', 'no-store');

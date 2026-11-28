@@ -50,11 +50,13 @@ const SessionHistorySearch = lazy(() => import('./SessionHistorySearch.jsx').the
 const GitRepositoryBar = lazy(() => import('./GitRepositoryBar.jsx').then(m => ({ default: m.GitRepositoryBar })));
 const kindIcons = { app: ListChecks, automations:RotateCcw, 'release-notes': BookOpen, terminal: Terminal, 'agent-session': Bot, browser: Globe, editor: FileText, 'editor-home': FileText, repository: ListChecks, 'source-control': ListChecks, worktrees: Folder, 'repository-tasks': ListChecks, 'workstation-tool': LayoutGrid, 'web-app': Globe, 'new-tab': Plus, group: LayoutGrid };
 const terminalScope=(workspaceId,view,binding)=>view.terminalHost==='workspace'?{workspaceId,projectId:null,host:'workspace'}:{workspaceId,projectId:view.projectId||binding?.projectId};
-const labels = { todos:'To Do List', teams:'Areas', projects:'Projects', tasks:'Routes', work:'Runs', library:'Outputs', documents:'Documents', updates:'Updates', views:'Saved views', memory:'Memory', starred:'Starred' };
+const labels = { todos:'To Do List','work-plan':'Work Plan', teams:'Areas', projects:'Projects', tasks:'Routes', work:'Runs', library:'Outputs', documents:'Documents', updates:'Updates', views:'Saved views', memory:'Memory', starred:'Starred' };
 const readLocal = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
 const writeLocal = (key, value) => { try { localStorage.setItem(key, value); } catch {} };
 const fallback = <div className="workspace-opening" role="status">Opening…</div>;
 const identity = tab => JSON.stringify(workspaceTabViews(tab).map(v => [v.id,v.entityId,v.contentType,v.projectId,v.terminalHost]));
+
+import { updateChecklist } from '../../lib/onboarding-checklist.js';
 
 export function WorkspaceSurface({ page, onActivatePage, onActiveTab, onWorkspaceDestination, renderPage, children }) {
   const { workspace, data, navigate, notify, edit } = useApp();
@@ -68,6 +70,7 @@ export function WorkspaceSurface({ page, onActivatePage, onActiveTab, onWorkspac
   const [terminalClose,setTerminalClose]=useState(null),[terminalCloseError,setTerminalCloseError]=useState(null),[terminalStopping,setTerminalStopping]=useState(false),closeLookup=useRef(null),closeBusy=useRef(false);
   const [browserClose,setBrowserClose]=useState(null),[browserClosing,setBrowserClosing]=useState(false),[browserCloseError,setBrowserCloseError]=useState(null);
   const [directory,setDirectory]=useState(null),[directoryError,setDirectoryError]=useState(null),[providerInventory,setProviderInventory]=useState({providers:[]});
+  useEffect(()=>{if(directory?.ready)try{updateChecklist(workspace.id,{observed:{directory:true}});}catch{/* Setup storage does not block files. */}},[workspace.id,directory?.ready]);
   const [explorerRevision,setExplorerRevision]=useState(0),[refreshes,setRefreshes]=useState({}),[menu,setMenu]=useState(null),[rename,setRename]=useState(null),[renameText,setRenameText]=useState('');
   useEffect(()=>{
     const restored=event=>{
@@ -229,5 +232,5 @@ export function WorkspaceSurface({ page, onActivatePage, onActiveTab, onWorkspac
 function NewTabPage({rootReady,onChoose,onDirectory,onPage,onHistory}) {
   return <section className="workspace-new-tab"><h1>New tab</h1><div className="workspace-new-options"><button onClick={()=>onChoose('terminal',{label:'Terminal'})}><Terminal/><span><strong>Terminal</strong><small>{rootReady?'Your shell, in this directory':'Your shell, in your home folder'}</small></span></button><button disabled={!rootReady} onClick={()=>onChoose('editor',{label:'Untitled.md',path:'Untitled.md',draft:true})}><FileText/><span><strong>Markdown file</strong><small>Write source or preview Markdown</small></span></button>
     <button disabled={!globalThis.frondoseDesktop?.browser?.available} title={globalThis.frondoseDesktop?.browser?.available?'Open an isolated Chromium tab':'Browser tabs require Frondose desktop'} onClick={()=>onChoose('browser',{label:'Browser'})}><Globe/><span><strong>Browser</strong><small>Browse websites and localhost in Chromium</small></span></button><button disabled={!rootReady} onClick={()=>onChoose('editor-home',{label:'Text editor'})}><FileText/><span><strong>Text editor</strong><small>Browse and edit workspace files</small></span></button>
-    </div>{!rootReady?<Button icon={Folder} onClick={onDirectory}>Choose workspace directory</Button>:null}<div className="workspace-new-shortcuts"><button onClick={()=>onChoose('automations',{label:'Automations'})}><RotateCcw/>Automations</button><button onClick={()=>onPage('projects')}><Folder/>Projects</button><button onClick={()=>onPage('tasks')}><ListChecks/>Routes</button><button onClick={()=>onPage('docs')}><BookOpen/>Docs</button><button onClick={onHistory}><RotateCcw/>Session history</button></div></section>;
+    </div>{!rootReady?<Button icon={Folder} onClick={onDirectory}>Choose workspace directory</Button>:null}<div className="workspace-new-shortcuts"><button onClick={()=>onPage('work-plan')}><ListChecks/>Work Plan</button><button onClick={()=>onChoose('automations',{label:'Automations'})}><RotateCcw/>Automations</button><button onClick={()=>onPage('projects')}><Folder/>Projects</button><button onClick={()=>onPage('tasks')}><ListChecks/>Routes</button><button onClick={()=>onPage('docs')}><BookOpen/>Docs</button><button onClick={onHistory}><RotateCcw/>Session history</button></div></section>;
 }

@@ -22,7 +22,8 @@ test('body portal positioning skips transformed trigger ancestors but leaves inl
   const popup = source('components/usePopupPosition.js');
   assert.match(popup, /portal = false/);
   assert.match(popup, /parent = portal \? null : anchor\.current\.parentElement/);
-  assert.match(popup, /\[open, anchor, width, height, portal\]/);
+  assert.match(popup, /\[open, anchor, width, minWidth, height, portal\]/);
+  assert.match(popup, /Math\.max\(rect\.width, minWidth\)/);
   assert.match(popup, /visualViewport/);
 });
 
