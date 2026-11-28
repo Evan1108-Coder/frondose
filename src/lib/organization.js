@@ -53,6 +53,7 @@ export function normalizeOrganization(value) {
   const order = Object.fromEntries(Object.entries(SIDEBAR_GROUPS).map(([key, defaults]) => [key, ids(input.order?.[key], defaults)]));
   const visibility = Object.fromEntries(Object.values(SIDEBAR_GROUPS).flat().map(id => [id, ["always", "activity", "hidden"].includes(input.visibility?.[id]) ? input.visibility[id] : "always"]));
   visibility['rumbo-agent'] = 'always';
+  visibility['work-plan'] = 'always';
   const favorites = [], seen = new Set();
   for (const item of Array.isArray(input.favorites) ? input.favorites.slice(0, 100) : []) {
     if (!FAVORITE_VIEWS.has(item?.view) || !validString(item.id) || seen.has(favoriteKey(item))) continue;

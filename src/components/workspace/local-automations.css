@@ -7,5 +7,12 @@
 .automation-activity-option input{width:16px;flex-shrink:0;margin-top:4px}
 .automation-activity-option small{display:block;margin-top:3px;line-height:1.5}
 .automation-row>.automation-row-actions{align-self:center;align-items:center}
+.local-automations .automation-templates{max-width:1160px;margin:44px auto}
+.local-automations .automation-templates h2{font-size:20px;margin-bottom:22px}
+.local-automations .automation-recipe-grid{gap:20px}
+.local-automations .automation-recipe-grid>button{min-height:190px;padding:clamp(18px,3cqw,30px);gap:16px}
+.local-automations .automation-recipe-grid strong{font-size:17px}
+.local-automations .automation-recipe-grid p{font-size:14px}
+.local-automations .automation-templates>.button{margin-top:22px;min-height:46px;padding-inline:18px}
 .local-automations .automation-row-actions>.button,.local-automations .automation-row-actions>.icon-button{box-sizing:border-box;min-height:30px;height:30px;padding:4px 10px}
 .local-automations .automation-row-actions>.icon-button{width:30px;padding:4px}

@@ -14,7 +14,7 @@ import './workspace-setup-settings.css';
 export function useChecklistNav(workspaceId){
  const snapshot=()=>{const saved=readChecklist(workspaceId);return {id:workspaceId,complete:Boolean(saved.completedAt)&&!saved.retiredAt,hidden:Boolean(saved.retiredAt)};};
  const [entry,setEntry]=useState(snapshot);
- useEffect(()=>{setEntry(snapshot());},[workspaceId]);
+ useEffect(()=>{const refresh=event=>{if(!event||event.detail?.workspaceId===workspaceId)setEntry(snapshot());};refresh();window.addEventListener('frondose:checklist-changed',refresh);return()=>window.removeEventListener('frondose:checklist-changed',refresh);},[workspaceId]);
  useEffect(()=>{if(!entry.complete||entry.hidden)return;const reduced=document.documentElement.dataset.motion==='reduced'||matchMedia('(prefers-reduced-motion: reduce)').matches;const timer=setTimeout(()=>{try{retireChecklist(entry.id);setEntry(old=>({...old,hidden:true}));}catch(error){setEntry(old=>({...old,complete:false,error}));}},reduced?0:900);return()=>clearTimeout(timer);},[entry.id,entry.complete,entry.hidden]);
  return entry.id===workspaceId?entry:{hidden:true,complete:false};
 }
@@ -22,6 +22,7 @@ export function OnboardingChecklist(){
  const {workspace,data,navigate}=useApp(),id=workspace.id;
  const language=useInterfaceLanguage(),t=copy=>interfaceText(copy,language);
  const [value,setValue]=useState(()=>readChecklist(id)),[error,setError]=useState(null);
+ useEffect(()=>{const update=event=>{if(event.detail?.workspaceId===id)setValue(readChecklist(id));};window.addEventListener('frondose:checklist-changed',update);return()=>window.removeEventListener('frondose:checklist-changed',update);},[id]);
  useEffect(()=>{const controller=new AbortController();apiRequest('/api/directory-workspace?'+new URLSearchParams({workspace_id:id}),{signal:controller.signal}).then(({result})=>{
    const next=updateChecklist(id,{observed:{directory:result.ready===true,cli:Boolean(readWorkspaceOnboarding(id).defaultCli),route:data.tasks.some(row=>row.workspace_id===id&&!row.archived_at)}});setValue(next);
  }).catch(cause=>{if(!controller.signal.aborted)setError(cause);});return()=>controller.abort();},[id,data.tasks]);

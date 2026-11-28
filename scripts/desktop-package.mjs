@@ -16,11 +16,23 @@ export const DESKTOP_PACKAGE_INPUTS = Object.freeze([
 ]);
 const SOURCE_OR_ASSET = /\.(?:mjs|cjs|js|jsx|ts|tsx|swift|json|sql|css|txt|md|html|webmanifest|svg|png|jpe?g|gif|webp|ico|icns|woff2?|ttf|otf)$/i;
 const LICENSE_NAME = /^(?:LICENSE(?:-[A-Za-z0-9.-]+)?|UNLICENSE|NOTICE|COPYING)$/i;
+// Vite emits these pinned PDF.js resources and their accompanying notices.
+// Do not allow additional binary inputs outside the built PDF asset tree.
+const PDF_BUILT_ASSET = /^pdfjs\/(?:cmaps\/[^/]+\.bcmap|standard_fonts\/[^/]+\.pfb|wasm\/[^/]+\.wasm|iccs\/[^/]+\.icc|(?:cmaps|standard_fonts|wasm|iccs)\/LICENSE(?:_[A-Z0-9_]+)?)$/i;
 export function packageArguments(input = []) {
   const allowed = new Set(['--dir', '--mac', '--win', '--linux', '--x64', '--arm64', '--universal']);
   if (input.some(arg => !allowed.has(arg)) || new Set(input).size !== input.length) throw Error('Desktop packaging accepts --dir, one platform and one architecture only; publishing is not supported.');
   if (input.filter(arg => ['--mac', '--win', '--linux'].includes(arg)).length > 1 || input.filter(arg => ['--x64', '--arm64', '--universal'].includes(arg)).length > 1) throw Error('Build one target platform and architecture at a time.');
   return [...input];
+}
+export function desktopBuildArchitecture(args, host = process.arch) {
+  return args.includes('--universal') ? 'universal' : args.includes('--arm64') ? 'arm64' : args.includes('--x64') ? 'x64' : host;
+}
+export function desktopProductionInstallArgs(architecture) {
+  // Electron can rebuild node-pty for the requested CPU, but npm independently
+  // selects OS/CPU-specific optional dependencies such as Copilot and canvas.
+  return ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund',
+    ...(['arm64', 'x64'].includes(architecture) ? ['--cpu=' + architecture] : [])];
 }
 const desktopTargets = Object.freeze({
   darwin: { branch: 'master-mac', flag: '--mac', name: 'macOS' },
@@ -60,7 +72,10 @@ export function packagingEnvironment(env, executable, binaryDirectory) {
   const key = Object.keys(env).find(name => name.toLowerCase() === 'path') || 'PATH';
   return { ...env, [key]: [binaryDirectory, dirname(executable), env[key] || ''].filter(Boolean).join(delimiter), npm_node_execpath: executable, CSC_IDENTITY_AUTO_DISCOVERY: 'false' };
 }
-export async function copyPackageInput(source, destination) {
+export function copyPackageInput(source, destination, { clientBuild = false } = {}) {
+  return copyPackageTree(source, destination, clientBuild ? '' : null);
+}
+async function copyPackageTree(source, destination, clientPath) {
   const info = await lstat(source);
   if (info.isSymbolicLink()) throw Error(`Packaging refuses a symbolic-link source: ${basename(source)}`);
   if (info.isDirectory()) {
@@ -68,8 +83,9 @@ export async function copyPackageInput(source, destination) {
     for (const name of (await readdir(source)).sort()) {
       if (name.startsWith('.') || /\.test\.[^.]+$/.test(name)) continue;
       const info = await lstat(join(source, name));
-      if (info.isFile() && !SOURCE_OR_ASSET.test(name) && !LICENSE_NAME.test(name)) continue;
-      await copyPackageInput(join(source, name), join(destination, name));
+      const childPath = clientPath === null ? null : clientPath ? clientPath + '/' + name : name;
+      if (info.isFile() && !SOURCE_OR_ASSET.test(name) && !LICENSE_NAME.test(name) && !(childPath && PDF_BUILT_ASSET.test(childPath))) continue;
+      await copyPackageTree(join(source, name), join(destination, name), childPath);
     }
   } else if (info.isFile()) {
     await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
@@ -132,6 +148,7 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
   if (buildVersion != null && (buildVersion.length > 60 || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(buildVersion))) throw Error('A local desktop build version must be a stable major.minor.patch version.');
   const electronVersion = packageJson.devDependencies?.electron;
   if (!/^\d+\.\d+\.\d+$/.test(electronVersion || '')) throw Error('Pin an exact Electron version before packaging.');
+  const architecture = desktopBuildArchitecture(args);
   const parent = stagingRoot(env.FRONDOSE_DESKTOP_STAGING_ROOT || tmpdir());
   await access(parent, constants.W_OK);
   const sourceNativeRoot = join(root, 'node_modules/node-pty');
@@ -140,7 +157,10 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
   let failure;
   try {
     console.log('Preparing a private desktop staging application. The checkout and local database are not packaging inputs.');
-    for (const input of DESKTOP_PACKAGE_INPUTS) await copyPackageInput(input === 'dist/client' ? clientDirectory : join(root, input), join(stage, input));
+    for (const input of DESKTOP_PACKAGE_INPUTS) {
+      const clientBuild = input === 'dist/client';
+      await copyPackageInput(clientBuild ? clientDirectory : join(root, input), join(stage, input), { clientBuild });
+    }
     if (buildVersion) {
       const lockPath = join(stage, 'package-lock.json');
       const lock = JSON.parse(await readFile(lockPath, 'utf8'));
@@ -148,14 +168,14 @@ export async function packageDesktop({ root = fileURLToPath(new URL('../', impor
       await writeFile(lockPath, JSON.stringify(lock));
       await writeFile(join(stage, 'package.json'), JSON.stringify({ ...packageJson, version: buildVersion }));
     }
-    if (process.platform === 'darwin' && !args.some(arg => ['--win','--linux'].includes(arg))) await buildNativeTools(join(stage,'desktop/bin/frondose-tools'),{architecture:args.includes('--universal')?'universal':args.includes('--arm64')?'arm64':args.includes('--x64')?'x64':process.arch});
+    if (process.platform === 'darwin' && !args.some(arg => ['--win','--linux'].includes(arg))) await buildNativeTools(join(stage,'desktop/bin/frondose-tools'),{architecture});
     const tools = join(stage, '.frondose-build-bin');
     await writeNpmShims(tools, process.execPath, npm);
     const childEnv = packagingEnvironment(env, process.execPath, tools);
     childEnv.npm_execpath = npm;
-    await run(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: stage, env: childEnv });
+    await run(process.execPath, [npm, ...desktopProductionInstallArgs(architecture)], { cwd: stage, env: childEnv });
     await run(process.execPath, [cli, '--projectDir', stage, '--config', join(stage, 'config/electron-builder.cjs'), '--config.directories.output', output, '--config.electronVersion', electronVersion, ...args], { cwd: stage, env: childEnv });
-    await writeFile(join(output, 'frondose-build.json'), JSON.stringify({ version: buildVersion || packageJson.version, platform: desktopTarget.platform, targetBranch: desktopTarget.branch, architecture: process.arch, electronVersion, nodeVersion: process.version, nativeRebuild: 'isolated-staging-only', inputs: [...DESKTOP_PACKAGE_INPUTS], lockSha256: createHash('sha256').update(await readFile(join(stage, 'package-lock.json'))).digest('hex') }, null, 2) + '\n');
+    await writeFile(join(output, 'frondose-build.json'), JSON.stringify({ version: buildVersion || packageJson.version, platform: desktopTarget.platform, targetBranch: desktopTarget.branch, architecture, electronVersion, nodeVersion: process.version, nativeRebuild: 'isolated-staging-only', inputs: [...DESKTOP_PACKAGE_INPUTS], lockSha256: createHash('sha256').update(await readFile(join(stage, 'package-lock.json'))).digest('hex') }, null, 2) + '\n');
     console.log('Desktop package built. Root Node-native dependencies and local workspace data were not rebuilt or copied.');
   } catch (error) { failure = error; }
   finally { await rm(stage, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); }

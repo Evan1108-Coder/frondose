@@ -92,7 +92,8 @@ export function SettingsCenter() {
   const mobileSections = describeSections(visibleGroups);
   const teams = isLocalProduct(data) ? [] : visible(data.teams).filter(team=>interfaceSearchKey(team.name).includes(search));
   const teamId = !isLocalProduct(data) && page.id?.startsWith('team:') ? page.id.slice(5) : null;
-  const section = sections.find(s => s.id === page.id) ?? { id: page.id === 'archive' ? 'archive' : teamId ? page.id : 'preferences', label: t(teamId ? 'Area settings' : page.id === 'archive' ? 'Archive' : 'General'), group: t(teamId ? 'Your Areas' : 'Personal') };
+  const completedChecklist = isLocalProduct(data) && page.id === 'onboarding-checklist' && checklistNav.hidden;
+  const section = sections.find(s => s.id === page.id) ?? (completedChecklist ? { id:'onboarding-checklist', label:t('Onboarding Checklist'), group:t('This workspace') } : { id: page.id === 'archive' ? 'archive' : teamId ? page.id : 'preferences', label: t(teamId ? 'Area settings' : page.id === 'archive' ? 'Archive' : 'General'), group: t(teamId ? 'Your Areas' : 'Personal') });
   useEffect(() => { document.title = `${interfaceText('Settings', language)} · ${workspace.name} · Frondose`; }, [language, workspace.name]);
   useEffect(() => { const selected = railNav.current?.querySelector('.active'); if (selected) selected.scrollIntoView({ block: 'nearest', behavior: document.documentElement.dataset.motion === 'reduced' ? 'instant' : 'smooth' }); }, [section.id]);
   return <main style={{'--settings-sidebar-width': `${sidebarSizing?.width ?? SIDEBAR_DEFAULT_WIDTH}px`}} className={`settings-center ${sidebarSizing?.hidden ? 'settings-sidebar-hidden' : ''} ${sidebarSizing?.peek ? 'settings-sidebar-peek' : ''}`}>

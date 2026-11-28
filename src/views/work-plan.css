@@ -1,0 +1,19 @@
+.work-plan{min-width:0;padding:clamp(16px,3vw,30px);display:grid;gap:18px;container-type:inline-size}
+.work-plan>header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:18px}
+.work-plan h1{font-size:26px;margin:0 0 8px}.work-plan p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.work-plan-controls,.work-plan-controls label{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.work-plan-controls label{font-size:13px}
+.work-plan-lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:14px;align-items:start}
+.work-plan-lane{background:var(--panel);border:1px solid var(--border);border-radius:12px;min-height:140px;min-width:0;padding:13px}
+.work-plan-lane h2{font-size:15px;margin:0 0 6px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+.work-plan-lane h2 small,.work-plan li>small{color:var(--muted);font-size:11px}
+.work-plan-lane ol{display:grid;gap:9px;margin:12px 0 0;padding:0;list-style:none}
+.work-plan-lane li{display:grid;gap:8px;min-width:0;padding:10px;border:1px solid var(--border-soft);background:var(--surface);border-radius:8px;cursor:grab}
+.work-plan-card-title{display:flex;align-items:flex-start;gap:6px;min-width:0}
+.work-plan-card-title>svg{width:14px;height:16px;flex:none;color:var(--muted)}
+.work-plan-card-title button{text-align:start;overflow-wrap:anywhere;padding:0;font-weight:550;min-width:0}
+.work-plan-card-actions{display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.work-plan-card-actions .rumbo-select{flex:1 1 90px;min-width:0}
+.work-plan-card-actions .icon-button{width:28px;height:28px}
+.work-plan-drop-hint{margin-top:12px!important;border:1px dashed var(--border);padding:12px;border-radius:7px}
+.work-plan-lane[data-over],.work-plan-lane li[data-over]{border-color:var(--focus)}

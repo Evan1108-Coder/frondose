@@ -14,6 +14,10 @@
 @container(max-width:900px){.todo-priorities{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @container(max-width:480px){.todo-priorities{grid-template-columns:minmax(0,1fr)}.todo-lane-items{min-height:90px}.todo-heading h1{font-size:22px}}
 @media(max-width:600px){.todo-board{padding:16px;gap:12px}.todo-editor{padding:18px}.todo-properties{grid-template-columns:1fr}.todo-add-link{flex-wrap:wrap}}
+.dialog > form.todo-editor { display:flex; flex-direction:column; gap:0; overflow:hidden; padding:0; }
+.todo-editor-body { display:grid; gap:18px; overflow-y:auto; min-height:0; min-width:0; padding:16px 24px 24px; overscroll-behavior:contain; }
+.dialog .todo-editor > .dialog-footer { position:static; z-index:auto; margin:0; border-top:1px solid var(--border-soft); padding:14px 24px; background:transparent; }
+@media(max-width:600px){.todo-editor-body,.dialog .todo-editor > .dialog-footer{padding-inline:18px}}
 @media(hover:none){.todo-copy-prompt,.todo-prompt>button{opacity:1}}
 @media(prefers-reduced-motion:reduce){.todo-lane{transition:none}}:root[data-motion=reduced] .todo-lane{transition:none}
 

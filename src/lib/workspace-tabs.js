@@ -73,7 +73,7 @@ function uniqueWorkspaceIdentities(tabs) {
   }
   return true;
 }
-const pageLabel = page => ({ todos:'To Do List', overview: 'Today', tasks: 'Routes', agents: 'Your agents', work: 'Runs', connections: 'AI connections', 'rumbo-agent': 'Frondose' }[page?.view] || (page?.view ? page.view[0].toUpperCase() + page.view.slice(1) : 'Today'));
+const pageLabel = page => ({ todos:'To Do List','work-plan':'Work Plan', overview: 'Today', tasks: 'Routes', agents: 'Your agents', work: 'Runs', connections: 'AI connections', 'rumbo-agent': 'Frondose' }[page?.view] || (page?.view ? page.view[0].toUpperCase() + page.view.slice(1) : 'Today'));
 export function safeWorkspaceFile(path) {
   return typeof path === 'string' && path.length > 0 && path.length <= 2048 && !/^[\\/]|^[a-z]:|[\u0000-\u001f]/i.test(path) && !path.split(/[\\/]/).some(part => !part || part === '..' || part === '.');
 }
