@@ -43,7 +43,8 @@ export function SelectField({ label, value, defaultValue = "", onChange, childre
   const selectedValue = String(value ?? uncontrolled ?? "");
   const selected = options.findIndex((option) => option.value === selectedValue);
   const enabled = options.map((option, index) => !option.disabled ? index : -1).filter((index) => index >= 0);
-  const position = usePopupPosition(open, trigger, { height: Math.min(320, options.length * 38 + new Set(options.map((option) => option.group).filter(Boolean)).size * 28 + 12) });
+  const minWidth = options.reduce((width, option) => Math.max(width, Math.min(440, 60 + Math.max(String(option.label).length, String(option.group ?? '').length) * 8)), 216);
+  const position = usePopupPosition(open, trigger, { minWidth, height: Math.min(320, options.length * 38 + new Set(options.map((option) => option.group).filter(Boolean)).size * 28 + 12) });
   const popup = usePopupMotion(open, list, { ready: Boolean(position) });
 
   function close(restore = false) {

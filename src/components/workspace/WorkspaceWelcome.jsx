@@ -13,6 +13,7 @@ import { useTipPresence } from './useTipPresence.js';
 import { notify } from '../../lib/notifications.js';
 import { readWorkspaceOnboarding, saveWorkspaceOnboarding, readTipPreferences, saveTipPreferences, TIP_DURATIONS, remainingTipDuration, tourPosition, createRunNoticeTracker } from '../../lib/workspace-onboarding.js';
 import './welcome.css';
+import {updateChecklist} from '../../lib/onboarding-checklist.js';
 
 const STEPS = ['Choose your default CLI', 'Make it feel like home', 'Choose your project directory', 'Set up notifications'];
 const emit = (type, workspaceId) => window.dispatchEvent(new CustomEvent(type, { detail: { workspaceId } }));
@@ -28,7 +29,7 @@ export function WorkspaceWelcome({ workspaceId, rootReady, onChooseDirectory, on
   const open = replaying || !progress.completed;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { setProgress({ ...readWorkspaceOnboarding(workspaceId), scope: workspaceId }); setReplaying(force); setError(null); setNotificationStatus(''); setBusy(false); }, [workspaceId, force]);
-  const patch = useCallback(value => { try { const next = saveWorkspaceOnboarding(workspaceId, value); setProgress({ ...next, scope: workspaceId }); return next; } catch (cause) { setError(`Setup could not be saved in this browser: ${cause.message}`); return null; } }, [workspaceId]);
+  const patch = useCallback(value => { try { const next = saveWorkspaceOnboarding(workspaceId, value); setProgress({ ...next, scope: workspaceId }); if(value.defaultCli)updateChecklist(workspaceId,{observed:{cli:true}}); return next; } catch (cause) { setError(`Setup could not be saved in this browser: ${cause.message}`); return null; } }, [workspaceId]);
   useEffect(() => {
     const replay = event => { if (!event.detail?.workspaceId || event.detail.workspaceId === workspaceId) { notificationStep.current.reset(workspaceId); setReplaying(true); patch({ step: 0 }); } };
     window.addEventListener('frondose-workspace-onboarding', replay);

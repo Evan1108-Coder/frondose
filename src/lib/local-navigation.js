@@ -12,6 +12,7 @@ export const LOCAL_PRIMARY_NAV = Object.freeze([
   Object.freeze({ id: 'projects', label: 'Projects', key: 'P' }),
   Object.freeze({ id: 'tasks', label: 'Routes', key: 'R' }),
   Object.freeze({ id: 'todos', label: 'To Do List', key: 'Q' }),
+  Object.freeze({ id: 'work-plan', label: 'Work Plan' }),
 ]);
 // Real local destinations offered by sidebar customization. Docs and Settings
 // are separate screens; neither is a workspace-tab customization choice.

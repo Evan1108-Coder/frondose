@@ -37,6 +37,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 
 ## Frondose product decisions
 
+- November 23 first run and planning: start in dark mode, use the single initial name for both display names, and put the optional, local-only questionnaire before CLI setup. Retire the checklist navigation entry on completion while keeping a direct completion link. Work Plan references active To Dos and optionally open Routes, with separate workspace and Area ordering; moving a card never changes source work, starts an agent, or dispatches a schedule.
+- Keep the oversized first-run splash on the welcome screen only. The questionnaire may suggest organizations and accept a custom answer, but must allow a blank answer and keep all responses local.
+
 - Desktop presence: keep the menu-bar/tray preference independent from close-to-background and power settings. Use the existing frond, make attention a local hint rather than an authorization signal, and never start or resume agent work from a visibility change or system link. Finder previews stay read-only, bounded and outside any workspace. Preserve drafts and the update safety gate when adding native menu shortcuts.
 
 - November 15 localization: switching interface language should update all product-owned labels, controls, descriptions, and accessibility names throughout the app. Preserve workspace and item names, comments, files, prompts, CLI commands/output and external content in their original language. Reuse locale catalogs for repeated app labels, keep IDs and stored values stable, and explicitly label partial translations and formatting-only options until the real coverage is complete.

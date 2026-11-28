@@ -2,7 +2,10 @@ import {ContextInputDrops} from './components/ContextInputDrops.jsx';
 import {useInterfaceLanguage} from './components/InterfaceLanguage.jsx';
 import {interfaceText} from './lib/interface-language.js';
 import {TodoBoard} from './views/TodoBoard.jsx';
+import {WorkPlan} from './views/WorkPlan.jsx';
+import {FirstRunSurvey, readSurvey, saveSurvey} from './components/FirstRunSurvey.jsx';
 import {ChecklistCelebration} from './components/ChecklistCelebration.jsx';
+import {updateChecklist} from './lib/onboarding-checklist.js';
 import { requestUpdateNavigation, UnsavedUpdatesDialog } from './components/UnsavedUpdates.jsx';
 import { useGlobalWorkstationAppearance } from './lib/workstation-appearance.js';
 import './components/workstation-appearance.css';
@@ -133,6 +136,7 @@ function WorkspaceConnectionHealth({status}) {
 }
 
 export function App() {
+  const [surveyPending, setSurveyPending] = useState(() => readSurvey()?.state === 'pending');
   useGlobalWorkstationAppearance();
   const desktopUpdateState = useDesktopUpdates();
   useGlobalDisplayPreferences();
@@ -263,6 +267,11 @@ export function App() {
     visible(rawData?.workspaces).find((item) => item.id === workspaceId) ??
     visible(rawData?.workspaces)[0];
   const hasWorkspace = Boolean(workspace);
+  const hasSetupRoute = Boolean(workspace && rawData?.tasks?.some(row => row.workspace_id === workspace.id && !row.archived_at));
+  useEffect(() => {
+    if (!localEdition || !workspace?.id || !hasSetupRoute) return;
+    try { updateChecklist(workspace.id, { observed:{route:true} }); } catch { /* Setup storage cannot block work. */ }
+  }, [localEdition, workspace?.id, hasSetupRoute]);
   const handleDesktopRoute = useEffectEvent(route => {
     switch (route) {
       case 'settings': navigate('settings', 'local-installation'); break;
@@ -527,12 +536,17 @@ export function App() {
   if (!workspace)
     return (
       <AppContext.Provider value={context}><UnsavedUpdatesDialog />
-        <FirstRun onCreated={setWorkspace} />
+        <FirstRun onCreated={setWorkspace} onBeforeCreate={localEdition ? () => {
+          try { saveSurvey({ state:'pending' }); } catch { /* Still offer setup in this session. */ }
+          setSurveyPending(true);
+        } : undefined} />
       </AppContext.Provider>
     );
+  if (localEdition && surveyPending) return <FirstRunSurvey onDone={() => setSurveyPending(false)}/>;
   const renderView = viewPage => localEdition && isRetiredLocalPage(viewPage) ? null : {
     workspace: null,
     todos: localEdition ? <TodoBoard/> : null,
+    'work-plan': localEdition ? <WorkPlan key={workspace.id}/> : null,
     overview: <Home />,
     focus: <FocusView />,
     starred: <StarredView />,
@@ -563,7 +577,7 @@ export function App() {
   const fieldDefinitions = fieldDefinitionsForWorkspace(data);
   return (
     <AppContext.Provider value={context}>
-      {localEdition?<ChecklistCelebration workspaceId={workspace.id}/>:null}
+      {localEdition?<ChecklistCelebration workspaceId={workspace.id} active={page.view==='settings'&&page.id==='onboarding-checklist'} onReview={()=>navigate('settings','onboarding-checklist')}/>:null}
       <FieldDefaultsProvider workspaceId={workspace.id} definitions={fieldDefinitions}><IconColorsProvider><UnsavedUpdatesDialog />{localEdition?<ContextInputDrops/>:null}
       {localEdition ? <DesktopUpdates hasOpenEditor={Boolean(editor || session || sidebarEditorOpen)} pendingMutations={Boolean(status.pendingMutations)}/> : null}
       <div inert={nativeUpdateCritical(desktopUpdateState.phase) || undefined} className={`rumbo-app ${localEdition ? 'local-workbench' : ''} ${rawData.meta?.sampleWorkspace ? 'sample-workspace' : ''} ${collapsed ? "sidebar-collapsed" : ""} ${sidebarSize.hidden ? 'sidebar-auto-hidden' : ''} ${sidebarPeek ? 'sidebar-peek' : ''} ${previewActive ? 'sidebar-preview-mode' : ''} ${page.view === 'settings' ? 'in-settings' : ''} ${page.view === 'docs' ? 'in-docs' : ''} ${!localEdition && page.view === 'reader' ? 'in-reader' : ''}`} style={previewGeometry ? { '--sidebar': `${viewport.width - 24}px`, '--preview-x': `${previewGeometry.x}px`, '--preview-y': `${previewGeometry.y}px`, '--preview-scale': previewGeometry.scale } : sidebarSize.width != null && (!collapsed || page.view === 'settings') ? { '--sidebar': `${sidebarSize.width}px` } : undefined}>
@@ -639,13 +653,14 @@ export function App() {
   );
 }
 
-function FirstRun({ onCreated }) {
+function FirstRun({ onCreated, onBeforeCreate }) {
   const [name, setName] = useState(""),
     [profile, setProfile] = useState("");
   const { busy, error, execute } = useAsync();
   return (
     <div className="onboarding">
       <aside>
+        <div className="first-run-splash" aria-hidden="true">FRONDOSE</div>
         <div className="onboarding-brand">
           <FrondoseWordmark width={320} />
         </div>
@@ -678,7 +693,8 @@ function FirstRun({ onCreated }) {
             e.preventDefault();
             execute(async () => {
               if (profile.trim())
-                await frondoseActions.updateProfile({ name: profile.trim() });
+                await frondoseActions.updateProfile({ name: profile.trim(), self_display_name: profile.trim() });
+              onBeforeCreate?.();
               const workspace = await frondoseActions.createWorkspace({
                 name: name.trim(),
                 description: "",
